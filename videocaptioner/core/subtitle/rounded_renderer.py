@@ -426,7 +426,7 @@ def render_rounded_video(
                 "-preset",
                 "ultrafast" if not is_last_batch else preset,
                 "-crf",
-                "0" if not is_last_batch else str(crf),
+                "18" if not is_last_batch else str(crf),
                 "-pix_fmt",
                 "yuv420p",
                 "-c:a",
