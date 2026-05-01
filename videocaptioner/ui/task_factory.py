@@ -304,11 +304,10 @@ class TaskFactory:
             cfg.dubbing_mix_mode.value, AudioMixMode.REDUCE_ORIGINAL
         )
 
-        # Map provider string to enum
         provider_map = {
             "openai": TTSProviderEnum.OPENAI,
-            "siliconflow": TTSProviderEnum.SILICONFLOW,
-            "openai_fm": TTSProviderEnum.OPENAI_FM,
+            "minimax": TTSProviderEnum.MINIMAX,
+            "local_ai": TTSProviderEnum.LOCAL_AI,
         }
         tts_provider = provider_map.get(
             cfg.dubbing_tts_provider.value, TTSProviderEnum.OPENAI

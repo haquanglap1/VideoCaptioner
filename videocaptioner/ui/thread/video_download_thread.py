@@ -230,19 +230,15 @@ class VideoDownloadThread(QThread):
             "fragment_retries": 5,
         }
 
+        initial_ydl_opts["extractor_args"] = {
+            "youtube": {"player_client": ["android", "web", "ios", "tv"]}
+        }
+
         # 检查 cookies 文件
         cookiefile_path = APPDATA_PATH / "cookies.txt"
         if cookiefile_path.exists():
             logger.info(f"使用cookiefile: {cookiefile_path}")
             initial_ydl_opts["cookiefile"] = str(cookiefile_path)
-            # When the user is logged in, let yt-dlp pick its default player client.
-            # Pinning to ["android","web"] can hide the higher-tier formats that the
-            # cookies unlock, which surfaces as "Requested format is not available".
-        else:
-            # Anonymous flow: prefer Android/web clients which currently work without login.
-            initial_ydl_opts["extractor_args"] = {
-                "youtube": {"player_client": ["android", "web"]}
-            }
 
         with yt_dlp.YoutubeDL(initial_ydl_opts) as ydl:
             # 提取视频信息（不下载）

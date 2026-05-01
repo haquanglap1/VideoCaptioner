@@ -19,8 +19,8 @@ class TTSProviderEnum(Enum):
     """TTS provider."""
 
     OPENAI = "OpenAI"
-    SILICONFLOW = "SiliconFlow"
-    OPENAI_FM = "OpenAI.fm"
+    MINIMAX = "MiniMax"
+    LOCAL_AI = "Local AI"
 
 
 @dataclass

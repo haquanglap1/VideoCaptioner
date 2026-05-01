@@ -35,12 +35,12 @@ class TestDubbingConfig:
     def test_print_config_enabled(self):
         config = DubbingConfig(
             enabled=True,
-            tts_provider=TTSProviderEnum.SILICONFLOW,
+            tts_provider=TTSProviderEnum.MINIMAX,
             mix_mode=AudioMixMode.MUTE_ORIGINAL,
         )
         output = config.print_config()
         assert "Enabled: True" in output
-        assert "SiliconFlow" in output
+        assert "MiniMax" in output
         assert "Tắt audio gốc" in output
 
 
@@ -96,37 +96,21 @@ class TestDubbingEngine:
         provider = engine._create_tts_provider(config)
         assert isinstance(provider, OpenAITTS)
 
-    def test_create_tts_provider_siliconflow(self):
-        """Test creating SiliconFlow TTS provider."""
+    def test_create_tts_provider_minimax(self):
+        """Test creating MiniMax TTS provider."""
         engine = DubbingEngine()
         config = DubbingConfig(
-            tts_provider=TTSProviderEnum.SILICONFLOW,
+            tts_provider=TTSProviderEnum.MINIMAX,
             tts_config=TTSConfig(
-                model="FunAudioLLM/CosyVoice2-0.5B",
+                model="speech-01-turbo",
                 api_key="test-key",
-                base_url="https://api.siliconflow.cn/v1",
+                base_url="https://api.minimax.chat/v1/t2a_v2",
             ),
         )
-        from videocaptioner.core.tts.siliconflow import SiliconFlowTTS
+        from videocaptioner.core.tts.minimax_tts import MiniMaxTTS
 
         provider = engine._create_tts_provider(config)
-        assert isinstance(provider, SiliconFlowTTS)
-
-    def test_create_tts_provider_openai_fm(self):
-        """Test creating OpenAI.fm TTS provider."""
-        engine = DubbingEngine()
-        config = DubbingConfig(
-            tts_provider=TTSProviderEnum.OPENAI_FM,
-            tts_config=TTSConfig(
-                model="",
-                api_key="",
-                base_url="",
-            ),
-        )
-        from videocaptioner.core.tts.openai_fm import OpenAIFmTTS
-
-        provider = engine._create_tts_provider(config)
-        assert isinstance(provider, OpenAIFmTTS)
+        assert isinstance(provider, MiniMaxTTS)
 
     def test_create_tts_provider_no_config(self):
         """Test error when tts_config is None."""
@@ -157,17 +141,20 @@ class TestDubbingEngine:
         # Create a temp file to pass video validation
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
             temp_video = f.name
+        with tempfile.NamedTemporaryFile(suffix=".srt", delete=False) as f2:
+            temp_sub = f2.name
 
         try:
             with pytest.raises(ValueError, match="TTS config"):
                 engine.dub(
                     video_path=temp_video,
-                    subtitle_path="/nonexistent/sub.srt",
+                    subtitle_path=temp_sub,
                     output_path="/tmp/out.mp4",
                     config=config,
                 )
         finally:
             Path(temp_video).unlink(missing_ok=True)
+            Path(temp_sub).unlink(missing_ok=True)
 
     def test_align_timeline_speed_clamping(self):
         """Test that timeline alignment clamps speed within range."""

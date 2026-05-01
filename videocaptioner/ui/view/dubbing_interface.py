@@ -7,7 +7,7 @@ Hỗ trợ 2 chế độ:
 
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     ComboBox,
+    EditableComboBox,
     InfoBar,
     InfoBarPosition,
     LineEdit,
@@ -37,6 +38,43 @@ from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.dubbing_thread import DubbingThread
 
 logger = setup_logger("dubbing_interface")
+
+
+class VoiceFetchThread(QThread):
+    """Luồng phụ để tải danh sách model/giọng nói từ API (Local AI)."""
+    finished_fetch = pyqtSignal(list, str)  # (models, error_msg)
+
+    def __init__(self, api_base: str, api_key: str):
+        super().__init__()
+        self.api_base = api_base
+        self.api_key = api_key
+
+    def run(self):
+        import requests
+        try:
+            base_url = self.api_base.rstrip("/")
+            if not base_url:
+                self.finished_fetch.emit([], "Thiếu API Base")
+                return
+            
+            headers = {}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+                
+            response = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models = []
+                # Handle standard OpenAI /v1/models response
+                if "data" in data and isinstance(data["data"], list):
+                    for m in data["data"]:
+                        if "id" in m:
+                            models.append(m["id"])
+                self.finished_fetch.emit(models, "")
+            else:
+                self.finished_fetch.emit([], f"HTTP {response.status_code}: {response.text}")
+        except Exception as e:
+            self.finished_fetch.emit([], str(e))
 
 
 class DubbingInterface(QWidget):
@@ -82,8 +120,8 @@ class DubbingInterface(QWidget):
         row1 = QHBoxLayout()
         row1.addWidget(BodyLabel(self.tr("TTS Provider:")))
         self.provider_combo = ComboBox()
-        self.provider_combo.addItems(["OpenAI", "SiliconFlow", "OpenAI.fm"])
-        _provider_map = {"openai": 0, "siliconflow": 1, "openai_fm": 2}
+        self.provider_combo.addItems(["OpenAI", "MiniMax", "Local AI"])
+        _provider_map = {"openai": 0, "minimax": 1, "local_ai": 2}
         self.provider_combo.setCurrentIndex(
             _provider_map.get(cfg.dubbing_tts_provider.value, 0)
         )
@@ -95,11 +133,20 @@ class DubbingInterface(QWidget):
         # Voice
         row2 = QHBoxLayout()
         row2.addWidget(BodyLabel(self.tr("Giọng nói:")))
-        self.voice_edit = LineEdit()
-        self.voice_edit.setPlaceholderText("alloy, echo, fable, onyx, nova, shimmer")
-        self.voice_edit.setText(cfg.dubbing_tts_voice.value)
-        self.voice_edit.setFixedWidth(200)
-        row2.addWidget(self.voice_edit)
+        self.voice_combo = EditableComboBox()
+        self.voice_combo.setPlaceholderText(self.tr("Chọn hoặc nhập tên giọng nói..."))
+        self.voice_combo.setFixedWidth(200)
+        
+        # Load saved voice if any
+        saved_voice = cfg.dubbing_tts_voice.value
+        self.voice_combo.setText(saved_voice)
+
+        self.fetch_voice_btn = PushButton(self.tr("Tải danh sách"))
+        self.fetch_voice_btn.setFixedWidth(120)
+        self.fetch_voice_btn.clicked.connect(self._fetch_voices)
+        
+        row2.addWidget(self.voice_combo)
+        row2.addWidget(self.fetch_voice_btn)
         row2.addStretch()
         settings_layout.addLayout(row2)
 
@@ -336,9 +383,94 @@ class DubbingInterface(QWidget):
         cfg.set(cfg.dubbing_enabled, checked)
 
     def _on_provider_changed(self, index: int):
-        provider_keys = ["openai", "siliconflow", "openai_fm"]
+        provider_keys = ["openai", "minimax", "local_ai"]
         if 0 <= index < len(provider_keys):
             cfg.set(cfg.dubbing_tts_provider, provider_keys[index])
+            
+        # Update default API Base and Model based on provider
+        provider = provider_keys[index]
+        if provider == "openai":
+            self.voice_combo.clear()
+            self.voice_combo.addItems(["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
+            self.voice_combo.setText("alloy")
+            self.api_base_edit.setText("https://api.openai.com/v1")
+            self.model_edit.setText("tts-1")
+        elif provider == "minimax":
+            self.voice_combo.clear()
+            self.voice_combo.addItems([
+                "male-qn-qingse", "female-shaonv", "female-yujie", 
+                "male-tiehan", "speech-01-nova", "speech-01-turbo"
+            ])
+            self.voice_combo.setText("male-qn-qingse")
+            self.api_base_edit.setText("https://api.minimax.chat/v1/t2a_v2")
+            self.model_edit.setText("speech-01-turbo")
+        elif provider == "local_ai":
+            self.voice_combo.clear()
+            self.api_base_edit.setText("http://localhost:8000/v1")
+            self.model_edit.setText("")
+
+    def _fetch_voices(self):
+        """Tải danh sách giọng nói từ API."""
+        api_base = self.api_base_edit.text().strip()
+        api_key = self.api_key_edit.text().strip()
+        
+        provider_idx = self.provider_combo.currentIndex()
+        if provider_idx in [0, 1]:  # OpenAI or MiniMax -> Hardcoded usually
+            InfoBar.info(
+                self.tr("Thông báo"),
+                self.tr("Provider này sử dụng danh sách giọng nói mặc định."),
+                duration=3000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            # Re-trigger the default list
+            self._on_provider_changed(provider_idx)
+            return
+
+        self.fetch_voice_btn.setEnabled(False)
+        self.fetch_voice_btn.setText(self.tr("Đang tải..."))
+        
+        self.fetch_thread = VoiceFetchThread(api_base, api_key)
+        self.fetch_thread.finished_fetch.connect(self._on_fetch_voices_finished)
+        self.fetch_thread.start()
+
+    def _on_fetch_voices_finished(self, models: list, error_msg: str):
+        self.fetch_voice_btn.setEnabled(True)
+        self.fetch_voice_btn.setText(self.tr("Tải danh sách"))
+        
+        if error_msg:
+            InfoBar.error(
+                self.tr("Lỗi tải danh sách"),
+                error_msg,
+                duration=4000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+            
+        if models:
+            current_text = self.voice_combo.text()
+            self.voice_combo.clear()
+            self.voice_combo.addItems(models)
+            if current_text in models:
+                self.voice_combo.setText(current_text)
+            else:
+                self.voice_combo.setText(models[0])
+            InfoBar.success(
+                self.tr("Thành công"),
+                self.tr("Đã tải {0} giọng nói.").format(len(models)),
+                duration=3000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+        else:
+            InfoBar.warning(
+                self.tr("Không có dữ liệu"),
+                self.tr("Không tìm thấy model nào từ API."),
+                duration=3000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
 
     def _on_progress(self, value: int, message: str):
         self.progress_bar.setValue(value)
@@ -384,7 +516,7 @@ class DubbingInterface(QWidget):
 
     def _save_settings(self):
         """Lưu settings hiện tại vào persistent config."""
-        cfg.set(cfg.dubbing_tts_voice, self.voice_edit.text())
+        cfg.set(cfg.dubbing_tts_voice, self.voice_combo.text())
         cfg.set(cfg.dubbing_tts_api_key, self.api_key_edit.text())
         cfg.set(cfg.dubbing_tts_api_base, self.api_base_edit.text())
         cfg.set(cfg.dubbing_tts_model, self.model_edit.text())

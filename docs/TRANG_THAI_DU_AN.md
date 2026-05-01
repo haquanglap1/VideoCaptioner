@@ -87,7 +87,7 @@
 
 ### Còn lại:
 - [ ] Batch processing — tích hợp dubbing vào FULL_PROCESS batch flow
-- [ ] Thêm provider local AI: Piper/Coqui/ChatTTS qua OpenAI-compatible adapter
+- [x] Thêm provider local AI: Hỗ trợ OpenAI-Compatible (Piper, xTTS, v.v) và MiniMax TTS
 - [ ] CLI: `videocaptioner dub <video> -s subtitle.srt --provider openai --voice alloy`
 - [ ] Test end-to-end dubbing với TTS API key thật
 - [ ] Build tối ưu (UPX, exclude unused modules)

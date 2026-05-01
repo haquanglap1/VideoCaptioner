@@ -23,9 +23,8 @@ from videocaptioner.core.dubbing.audio_mixer import (
 from videocaptioner.core.dubbing.config import DubbingConfig, TTSProviderEnum
 from videocaptioner.core.tts import (
     BaseTTS,
-    OpenAIFmTTS,
     OpenAITTS,
-    SiliconFlowTTS,
+    MiniMaxTTS,
     TTSData,
     TTSDataSeg,
 )
@@ -192,12 +191,13 @@ class DubbingEngine:
         if tts_config is None:
             raise ValueError("tts_config is required")
 
-        if config.tts_provider == TTSProviderEnum.SILICONFLOW:
-            return SiliconFlowTTS(tts_config)
-        elif config.tts_provider == TTSProviderEnum.OPENAI_FM:
-            return OpenAIFmTTS(tts_config)
+        if config.tts_provider == TTSProviderEnum.MINIMAX:
+            return MiniMaxTTS(tts_config)
+        elif config.tts_provider == TTSProviderEnum.LOCAL_AI:
+            # Local AI uses the standard OpenAI-compatible adapter
+            return OpenAITTS(tts_config)
         else:
-            # Default: OpenAI-compatible
+            # Default: OpenAI
             return OpenAITTS(tts_config)
 
     def _align_timeline(
