@@ -52,6 +52,7 @@ from videocaptioner.core.utils.platform_utils import open_folder, reveal_in_expl
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
 from videocaptioner.ui.components.SubtitleSettingDialog import SubtitleSettingDialog
+from videocaptioner.ui.components.SearchReplaceDialog import SearchReplaceDialog
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.subtitle_thread import RetranslateThread, SubtitleThread
 
