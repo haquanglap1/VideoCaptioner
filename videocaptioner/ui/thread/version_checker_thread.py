@@ -32,36 +32,40 @@ class VersionChecker(QObject):
 
     def get_latest_version_info(self) -> dict:
         """Get latest version information"""
-        url = "https://vc.bkfeng.top/api/version"
-        headers = {"app_version": VERSION}
+        from videocaptioner.config import GITHUB_OWNER, GITHUB_REPO
+        url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+        headers = {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "VideoCaptioner-Updater"
+        }
 
         try:
             response = requests.get(url, timeout=10, headers=headers)
             response.raise_for_status()
             data = response.json()
-            # data = {
-            #     "latest_version": "v1.4.0",
-            #     "update_required": True,
-            #     "update_info": "更新内容",
-            #     "download_url": "https://github.com/WEIFENG2333/VideoCaptioner/releases/latest",
-            #     "announcement": {
-            #         "enabled": True,
-            #         "content": "公告内容211",
-            #         "start_date": "2025-01-01",
-            #         "end_date": "2025-12-30",
-            #     },
-            # }
+            
+            # Parse GitHub release format
+            self.latest_version = data.get("tag_name", self.current_version)
+            
+            # Consider any new release as required if version is newer
+            self.update_required = False
+            
+            self.update_info = data.get("body", "")
+            
+            # Find the first .exe asset for download url
+            self.download_url = data.get("html_url", "")
+            for asset in data.get("assets", []):
+                if asset.get("name", "").lower().endswith(".exe"):
+                    self.download_url = asset.get("browser_download_url", "")
+                    break
+                    
+            self.announcement = {}
 
-            self.latest_version = data.get("latest_version", self.current_version)
-            self.update_required = data.get("update_required", False)
-            self.update_info = data.get("update_info", "")
-            self.download_url = data.get("download_url", "")
-            self.announcement = data.get("announcement", {})
-
-            logger.info("Successfully fetched version info: %s", self.latest_version)
+            logger.info("Successfully fetched version info from GitHub: %s", self.latest_version)
             return data
 
-        except requests.RequestException:
+        except requests.RequestException as e:
+            logger.warning("Failed to fetch GitHub version: %s", e)
             return {}
 
     def has_new_version(self) -> bool:
@@ -92,63 +96,8 @@ class VersionChecker(QObject):
 
         return False
 
-    def check_announcement(self) -> None:
-        """Check and show announcement"""
-        ann = self.announcement
-        if not ann.get("enabled", False):
-            return
-
-        content = ann.get("content", "")
-        if not content:
-            return
-
-        announcement_id = (
-            hashlib.sha256(content.encode("utf-8")).hexdigest()
-            + "_"
-            + datetime.today().strftime("%Y-%m-%d")
-        )
-
-        settings_key = f"announcement/shown_{announcement_id}"
-        if self.cache.get(settings_key, default=False):
-            return
-
-        start_date_str = ann.get("start_date")
-        end_date_str = ann.get("end_date")
-        if not start_date_str or not end_date_str:
-            return
-
-        try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-            today = datetime.today().date()
-
-            if start_date <= today <= end_date:
-                self.cache.set(settings_key, True, expire=30 * 60 * 24)
-                self.announcementAvailable.emit(content)
-
-        except ValueError as e:
-            logger.error("Announcement date format error: %s", str(e))
-
-    def check_new_version_announcement(self) -> None:
-        """Check new version announcement"""
-        if self.latest_version != self.current_version:
-            return
-
-        version_key = f"version/shown_{self.latest_version}"
-
-        if not self.cache.get(version_key, default=False):
-            self.cache.set(version_key, True)
-
-            welcome = self.tr("Welcome to VideoCaptioner")
-            whats_new = self.tr("What's new:")
-            update_announcement = (
-                f"{welcome} {self.current_version}\n\n"
-                f"{whats_new}\n{self.update_info}"
-            )
-            self.announcementAvailable.emit(update_announcement)
-
     def perform_check(self) -> None:
-        """Perform version check. Announcement popups are intentionally disabled."""
+        """Perform version check."""
         try:
             version_data = self.get_latest_version_info()
             if not version_data:

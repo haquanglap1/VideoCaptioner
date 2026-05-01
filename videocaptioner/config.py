@@ -18,6 +18,10 @@ GITHUB_REPO_URL = "https://github.com/WEIFENG2333/VideoCaptioner"
 RELEASE_URL = "https://github.com/WEIFENG2333/VideoCaptioner/releases/latest"
 FEEDBACK_URL = "https://github.com/WEIFENG2333/VideoCaptioner/issues"
 
+# GitHub Auto-Update Configuration
+GITHUB_OWNER = "haquanglap1"
+GITHUB_REPO = "VideoCaptioner"
+
 # Detect whether running from source tree or pip-installed
 _PACKAGE_DIR = Path(__file__).parent
 _PROJECT_ROOT = _PACKAGE_DIR.parent
