@@ -230,12 +230,19 @@ class SubtitleStyleInterface(QWidget):
 
     def _initSettingCards(self):
         """初始化所有设置卡片"""
+        self._render_mode_display_to_enum = {
+            self.tr(e.value): e for e in SubtitleRenderModeEnum
+        }
+        self._layout_display_to_enum = {
+            self.tr(e.value): e for e in SubtitleLayoutEnum
+        }
+
         # 渲染模式切换
         self.renderModeCard = ComboBoxSettingCard(
             FIF.BRUSH,  # type: ignore
             self.tr("渲染模式"),
             self.tr("选择字幕渲染方式"),
-            texts=[e.value for e in SubtitleRenderModeEnum],
+            texts=list(self._render_mode_display_to_enum.keys()),
         )
 
         # 字幕排布设置
@@ -243,7 +250,7 @@ class SubtitleStyleInterface(QWidget):
             FIF.ALIGNMENT,  # type: ignore
             self.tr("字幕排布"),
             self.tr("设置主字幕和副字幕的显示方式"),
-            texts=["译文在上", "原文在上", "仅译文", "仅原文"],
+            texts=list(self._layout_display_to_enum.keys()),
         )
 
         # ASS 模式 - 垂直间距
@@ -523,11 +530,13 @@ class SubtitleStyleInterface(QWidget):
         """设置初始值"""
         # 设置渲染模式
         self.renderModeCard.comboBox.setCurrentText(
-            cfg.subtitle_render_mode.value.value
+            self._display_for_render_mode(cfg.subtitle_render_mode.value)
         )
 
         # 设置字幕排布
-        self.layoutCard.comboBox.setCurrentText(cfg.subtitle_layout.value.value)
+        self.layoutCard.comboBox.setCurrentText(
+            self._display_for_layout(cfg.subtitle_layout.value)
+        )
 
         # 设置字幕样式
         self.styleNameComboBox.comboBox.setCurrentText(cfg.get(cfg.subtitle_style_name))
@@ -607,7 +616,7 @@ class SubtitleStyleInterface(QWidget):
         self.layoutCard.currentTextChanged.connect(
             lambda: cfg.set(
                 cfg.subtitle_layout,
-                SubtitleLayoutEnum(self.layoutCard.comboBox.currentText()),
+                self._getCurrentLayout(),
             )
         )
         # ASS 模式 - 垂直间距
@@ -689,15 +698,16 @@ class SubtitleStyleInterface(QWidget):
         open_folder(str(SUBTITLE_STYLE_PATH))
 
     def on_subtitle_layout_changed(self, layout: str):
-        layout_enum = SubtitleLayoutEnum(layout)
+        layout_enum = self._layout_from_text(layout)
         cfg.subtitle_layout.value = layout_enum
-        self.layoutCard.setCurrentText(layout)
+        self.layoutCard.setCurrentText(self._display_for_layout(layout_enum))
 
     def on_render_mode_changed_external(self, mode_text: str):
         """处理外部渲染模式变更（从视频合成界面同步）"""
+        mode = self._render_mode_from_text(mode_text)
         # 避免信号循环：阻断信号后再更新
         self.renderModeCard.comboBox.blockSignals(True)
-        self.renderModeCard.comboBox.setCurrentText(mode_text)
+        self.renderModeCard.comboBox.setCurrentText(self._display_for_render_mode(mode))
         self.renderModeCard.comboBox.blockSignals(False)
         # 手动触发 UI 更新
         self._updateVisibleGroups()
@@ -706,12 +716,11 @@ class SubtitleStyleInterface(QWidget):
 
     def onRenderModeChanged(self):
         """渲染模式切换（本界面触发）"""
-        mode_text = self.renderModeCard.comboBox.currentText()
-        mode = SubtitleRenderModeEnum(mode_text)
+        mode = self._getCurrentRenderMode()
         cfg.set(cfg.subtitle_render_mode, mode)
         # 断开自身监听，避免信号回传导致重复执行
         signalBus.subtitle_render_mode_changed.disconnect(self.on_render_mode_changed_external)
-        signalBus.subtitle_render_mode_changed.emit(mode_text)
+        signalBus.subtitle_render_mode_changed.emit(mode.value)
         signalBus.subtitle_render_mode_changed.connect(self.on_render_mode_changed_external)
         self._updateVisibleGroups()
         self._refreshStyleList()
@@ -756,8 +765,7 @@ class SubtitleStyleInterface(QWidget):
 
     def _updateVisibleGroups(self):
         """根据渲染模式显示/隐藏设置组"""
-        mode_text = self.renderModeCard.comboBox.currentText()
-        is_ass_mode = mode_text == SubtitleRenderModeEnum.ASS_STYLE.value
+        is_ass_mode = self._getCurrentRenderMode() == SubtitleRenderModeEnum.ASS_STYLE
 
         # ASS 样式设置组
         self.assVerticalSpacingCard.setVisible(is_ass_mode)
@@ -819,8 +827,23 @@ class SubtitleStyleInterface(QWidget):
 
     def _getCurrentRenderMode(self) -> SubtitleRenderModeEnum:
         """获取当前渲染模式"""
-        mode_text = self.renderModeCard.comboBox.currentText()
-        return SubtitleRenderModeEnum(mode_text)
+        return self._render_mode_from_text(self.renderModeCard.comboBox.currentText())
+
+    def _getCurrentLayout(self) -> SubtitleLayoutEnum:
+        """获取当前字幕排布"""
+        return self._layout_from_text(self.layoutCard.comboBox.currentText())
+
+    def _display_for_render_mode(self, mode: SubtitleRenderModeEnum) -> str:
+        return self.tr(mode.value)
+
+    def _display_for_layout(self, layout: SubtitleLayoutEnum) -> str:
+        return self.tr(layout.value)
+
+    def _render_mode_from_text(self, text: str) -> SubtitleRenderModeEnum:
+        return self._render_mode_display_to_enum.get(text) or SubtitleRenderModeEnum(text)
+
+    def _layout_from_text(self, text: str) -> SubtitleLayoutEnum:
+        return self._layout_display_to_enum.get(text) or SubtitleLayoutEnum(text)
 
     def _parseRgbaHex(self, hex_color: str) -> QColor:
         """解析 #RRGGBBAA 格式的颜色"""
@@ -912,14 +935,14 @@ class SubtitleStyleInterface(QWidget):
         main_text, sub_text = PERVIEW_TEXTS[self.previewTextCard.comboBox.currentText()]
 
         # 字幕布局
-        layout = self.layoutCard.comboBox.currentText()
-        if layout == "译文在上":
+        layout = self._getCurrentLayout()
+        if layout == SubtitleLayoutEnum.TRANSLATE_ON_TOP:
             main_text, sub_text = sub_text, main_text
-        elif layout == "原文在上":
+        elif layout == SubtitleLayoutEnum.ORIGINAL_ON_TOP:
             main_text, sub_text = main_text, sub_text
-        elif layout == "仅译文":
+        elif layout == SubtitleLayoutEnum.ONLY_TRANSLATE:
             main_text, sub_text = sub_text, None
-        elif layout == "仅原文":
+        elif layout == SubtitleLayoutEnum.ONLY_ORIGINAL:
             main_text, sub_text = main_text, None
 
         # 获取预览方向和背景

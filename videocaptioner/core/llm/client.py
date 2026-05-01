@@ -2,7 +2,7 @@
 
 import os
 import threading
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse, urlunparse
 
 import openai
@@ -21,6 +21,7 @@ from videocaptioner.core.utils.logger import setup_logger
 from .request_logger import create_logging_http_client, log_llm_response
 
 _global_client: Optional[OpenAI] = None
+_client_credentials: Optional[Tuple[str, str]] = None
 _client_lock = threading.Lock()
 
 logger = setup_logger("llm_client")
@@ -49,27 +50,47 @@ def normalize_base_url(base_url: str) -> str:
     return normalized
 
 
+def reset_llm_client() -> None:
+    """Force the next get_llm_client() to build a fresh OpenAI client.
+
+    Call this when LLM credentials are updated by the user so that the
+    singleton does not keep serving requests with stale auth.
+    """
+    global _global_client, _client_credentials
+    with _client_lock:
+        _global_client = None
+        _client_credentials = None
+
+
 def get_llm_client() -> OpenAI:
-    """Get global LLM client instance (thread-safe singleton)."""
-    global _global_client
+    """Get global LLM client instance (thread-safe, credential-aware).
 
-    if _global_client is None:
-        with _client_lock:
-            if _global_client is None:
-                base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-                base_url = normalize_base_url(base_url)
-                api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    The client is rebuilt automatically when OPENAI_BASE_URL or
+    OPENAI_API_KEY change between calls, so updates from the UI take effect
+    without restarting the app.
+    """
+    global _global_client, _client_credentials
 
-                if not base_url or not api_key:
-                    raise ValueError(
-                        "OPENAI_BASE_URL and OPENAI_API_KEY environment variables must be set"
-                    )
+    base_url = normalize_base_url(os.getenv("OPENAI_BASE_URL", "").strip())
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
 
-                _global_client = OpenAI(
-                    base_url=base_url,
-                    api_key=api_key,
-                    http_client=create_logging_http_client(),
-                )
+    if not base_url or not api_key:
+        raise ValueError(
+            "OPENAI_BASE_URL and OPENAI_API_KEY environment variables must be set"
+        )
+
+    current = (base_url, api_key)
+
+    with _client_lock:
+        if _global_client is None or _client_credentials != current:
+            if _global_client is not None:
+                logger.info("LLM credentials changed, rebuilding OpenAI client")
+            _global_client = OpenAI(
+                base_url=base_url,
+                api_key=api_key,
+                http_client=create_logging_http_client(),
+            )
+            _client_credentials = current
 
     return _global_client
 

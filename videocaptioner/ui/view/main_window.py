@@ -1,6 +1,5 @@
 import atexit
 import os
-import shutil
 
 import psutil
 from PyQt5.QtCore import QSize, QThread, QUrl
@@ -17,9 +16,14 @@ from qfluentwidgets import (
 )
 
 from videocaptioner.config import ASSETS_PATH, GITHUB_REPO_URL
-from videocaptioner.core.constant import INFOBAR_DURATION_FOREVER
+from videocaptioner.core.constant import (
+    INFOBAR_DURATION_FOREVER,
+    INFOBAR_DURATION_SUCCESS,
+)
+from videocaptioner.core.utils.installer import ffmpeg_path
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.DonateDialog import DonateDialog
+from videocaptioner.ui.thread.ffmpeg_install_thread import FFmpegInstallThread
 from videocaptioner.ui.thread.version_checker_thread import VersionChecker
 from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
 from videocaptioner.ui.view.home_interface import HomeInterface
@@ -167,8 +171,8 @@ class MainWindow(FluentWindow):
 
     def onAnnouncement(self, content):
         """显示公告"""
-        w = MessageBox("公告", content, self)
-        w.yesButton.setText("我知道了")
+        w = MessageBox(self.tr("公告"), content, self)
+        w.yesButton.setText(self.tr("我知道了"))
         w.cancelButton.hide()
         w.exec()
 
@@ -178,29 +182,55 @@ class MainWindow(FluentWindow):
             self.splashScreen.resize(self.size())
 
     def closeEvent(self, event):
-        # 关闭所有子界面
-        # self.homeInterface.close()
-        # self.batchProcessInterface.close()
-        # self.subtitleStyleInterface.close()
-        # self.settingInterface.close()
-        super().closeEvent(event)
+        # Stop background QThread (version checker) cleanly so it doesn't keep
+        # the network call alive after the window is gone.
+        try:
+            if hasattr(self, "versionThread") and self.versionThread.isRunning():
+                self.versionThread.quit()
+                self.versionThread.wait(2000)
+        except Exception:
+            pass
 
-        # 强制退出应用程序
+        # Kill child processes (ffmpeg, aria2c, faster-whisper, etc.) BEFORE Qt
+        # tears down — atexit alone is unreliable when the user X-closes the app
+        # and orphaned conhost.exe / ffmpeg.exe pile up in Task Manager.
+        self.stop()
+
+        super().closeEvent(event)
         QApplication.quit()
 
-        # 确保所有线程和进程都被终止 要是一些错误退出就不会处理了。
-        # import os
-        # os._exit(0)
-
     def stop(self):
-        # 找到 FFmpeg 进程并关闭
-        process = psutil.Process(os.getpid())
-        for child in process.children(recursive=True):
-            child.kill()
+        """Terminate all child processes spawned by this app."""
+        try:
+            process = psutil.Process(os.getpid())
+            children = process.children(recursive=True)
+        except Exception:
+            return
+
+        for child in children:
+            try:
+                child.terminate()
+            except Exception:
+                pass
+
+        # Give them a moment to exit gracefully, then hard-kill survivors.
+        gone, alive = psutil.wait_procs(children, timeout=2)
+        for child in alive:
+            try:
+                child.kill()
+            except Exception:
+                pass
 
     def _check_ffmpeg(self):
-        """检查 FFmpeg 是否已安装"""
-        if shutil.which("ffmpeg") is None:
+        """Detect ffmpeg; if missing, offer one-click auto-install on Windows."""
+        # Honor managed install dir (already prepended to PATH on import) and
+        # any user-installed ffmpeg.
+        if ffmpeg_path() is not None:
+            return
+
+        # On non-Windows platforms we can't auto-download portably; just warn.
+        import platform
+        if platform.system() != "Windows":
             InfoBar.warning(
                 self.tr("FFmpeg 未安装"),
                 self.tr("软件处理音视频文件时需要 FFmpeg，请先安装"),
@@ -208,3 +238,72 @@ class MainWindow(FluentWindow):
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
+            return
+
+        # Windows: prompt with a "Cài tự động" / install-now button.
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QApplication, QPushButton
+        from qfluentwidgets import ProgressBar
+
+        bar = InfoBar.warning(
+            self.tr("FFmpeg 未安装"),
+            self.tr("Cần FFmpeg để xử lý video. Bấm để cài tự động vào AppData."),
+            duration=INFOBAR_DURATION_FOREVER,
+            position=InfoBarPosition.BOTTOM,
+            isClosable=True,
+            parent=self,
+        )
+
+        progress = ProgressBar(bar)
+        progress.setFixedWidth(180)
+        progress.setVisible(False)
+        bar.addWidget(progress)
+
+        install_btn = QPushButton(self.tr("Cài tự động"))
+        install_btn.setCursor(Qt.PointingHandCursor)
+        install_btn.setStyleSheet(
+            "QPushButton { padding: 4px 12px; border-radius: 4px;"
+            " background: #28f08b; color: black; font-weight: 600; }"
+            "QPushButton:hover { background: #4cffa5; }"
+            "QPushButton:disabled { background: #555; color: #aaa; }"
+        )
+        bar.addWidget(install_btn)
+
+        def _start_install():
+            install_btn.setEnabled(False)
+            install_btn.setText(self.tr("Đang tải..."))
+            progress.setVisible(True)
+            progress.setValue(0)
+
+            self._ffmpeg_thread = FFmpegInstallThread(self)
+            self._ffmpeg_thread.progress.connect(
+                lambda p, msg: (progress.setValue(p), install_btn.setText(msg))
+            )
+            self._ffmpeg_thread.finished_ok.connect(_on_done)
+            self._ffmpeg_thread.failed.connect(_on_fail)
+            self._ffmpeg_thread.start()
+
+        def _on_done(path: str):
+            bar.close()
+            InfoBar.success(
+                self.tr("成功"),
+                self.tr("Đã cài FFmpeg: ") + path,
+                duration=INFOBAR_DURATION_SUCCESS,
+                position=InfoBarPosition.BOTTOM,
+                parent=self,
+            )
+
+        def _on_fail(msg: str):
+            install_btn.setEnabled(True)
+            install_btn.setText(self.tr("Thử lại"))
+            progress.setValue(0)
+            InfoBar.error(
+                self.tr("下载错误"),
+                msg,
+                duration=8000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self,
+            )
+            QApplication.beep()
+
+        install_btn.clicked.connect(_start_install)

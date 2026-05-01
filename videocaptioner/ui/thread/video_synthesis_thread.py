@@ -20,7 +20,7 @@ class VideoSynthesisThread(QThread):
     def __init__(self, task: SynthesisTask):
         super().__init__()
         self.task = task
-        logger.debug(f"初始化 VideoSynthesisThread，任务: {self.task}")
+        logger.debug(f"Khoi tao VideoSynthesisThread, task: {self.task}")
 
     def run(self):
         try:
@@ -33,30 +33,30 @@ class VideoSynthesisThread(QThread):
             output_path = self.task.output_path
 
             if not config.need_video:
-                logger.info("不需要合成视频，跳过")
-                self.progress.emit(100, self.tr("合成完成"))
+                logger.info("Khong can ghep video, bo qua")
+                self.progress.emit(100, self.tr("Hoàn tất ghép video"))
                 self.finished.emit(self.task)
                 return
 
-            logger.info(f"开始合成视频: {video_file}")
-            self.progress.emit(5, self.tr("正在合成"))
+            logger.info(f"Bat dau ghep video: {video_file}")
+            self.progress.emit(5, self.tr("Đang ghép video"))
 
             if not video_file:
-                raise ValueError(self.tr("视频路径为空"))
+                raise ValueError(self.tr("Đường dẫn video đang trống"))
             if not subtitle_file:
-                raise ValueError(self.tr("字幕路径为空"))
+                raise ValueError(self.tr("Đường dẫn phụ đề đang trống"))
             if not output_path:
-                raise ValueError(self.tr("输出路径为空"))
+                raise ValueError(self.tr("Đường dẫn đầu ra đang trống"))
 
             video_quality = config.video_quality
             crf = video_quality.get_crf()
             preset = video_quality.get_preset()
 
-            # 读取字幕数据
+            # Doc du lieu phu de
             asr_data = ASRData.from_subtitle_file(subtitle_file)
 
             if config.soft_subtitle:
-                # 软字幕：转为 SRT 后内嵌
+                # Phu de mem: chuyen ve SRT roi nhung vao video
                 with tempfile.NamedTemporaryFile(
                     mode="w",
                     suffix=".srt",
@@ -82,7 +82,7 @@ class VideoSynthesisThread(QThread):
                     Path(temp_srt_path).unlink(missing_ok=True)
 
             else:
-                # 硬字幕：使用样式配置渲染
+                # Phu de cung: render bang cau hinh kieu phu de
                 add_subtitles_with_style(
                     video_path=video_file,
                     asr_data=asr_data,
@@ -96,16 +96,16 @@ class VideoSynthesisThread(QThread):
                     progress_callback=self.progress_callback,
                 )
 
-            self.progress.emit(100, self.tr("合成完成"))
-            logger.info(f"视频合成完成，保存路径: {output_path}")
+            self.progress.emit(100, self.tr("Hoàn tất ghép video"))
+            logger.info(f"Ghep video hoan tat, luu tai: {output_path}")
             self.finished.emit(self.task)
 
         except Exception as e:
-            logger.exception(f"视频合成失败: {e}")
+            logger.exception(f"Ghep video that bai: {e}")
             self.error.emit(str(e))
-            self.progress.emit(100, self.tr("视频合成失败"))
+            self.progress.emit(100, self.tr("Ghép video thất bại"))
 
     def progress_callback(self, value, message):
         progress = int(5 + int(value) / 100 * 95)
-        logger.debug(f"合成进度: {progress}% - {message}")
+        logger.debug(f"Tien do ghep video: {progress}% - {message}")
         self.progress.emit(progress, str(progress) + "% " + message)

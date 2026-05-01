@@ -11,6 +11,22 @@ from videocaptioner.core.utils.logger import setup_logger
 
 logger = setup_logger("video_download_thread")
 
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _strip_ansi(value: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", value).strip()
+
+
+def _format_bytes(num_bytes: float) -> str:
+    if num_bytes is None:
+        return "?"
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if num_bytes < 1024.0:
+            return f"{num_bytes:.1f}{unit}"
+        num_bytes /= 1024.0
+    return f"{num_bytes:.1f}PiB"
+
 
 class VideoDownloadThread(QThread):
     """视频下载线程类"""
@@ -31,30 +47,81 @@ class VideoDownloadThread(QThread):
             video_file_path, subtitle_file_path, thumbnail_file_path, info_dict = (
                 self.download()
             )
-            self.finished.emit(video_file_path)
+            self.finished.emit(video_file_path or "")
+        except yt_dlp.utils.DownloadError as e:
+            logger.exception("下载视频失败 (DownloadError): %s", str(e))
+            self.error.emit(self._friendly_error(str(e)))
         except Exception as e:
             logger.exception("下载视频失败: %s", str(e))
             self.error.emit(str(e))
 
+    @staticmethod
+    def _friendly_error(message: str) -> str:
+        """Map yt-dlp errors to actionable hints (Vietnamese)."""
+        lowered = message.lower()
+        if "sign in to confirm" in lowered or "confirm you" in lowered or "bot" in lowered:
+            return (
+                "YouTube yêu cầu xác thực (chống bot). Hãy cập nhật yt-dlp lên bản mới nhất "
+                "và đặt cookies.txt vào AppData, hoặc đăng nhập trên trình duyệt."
+            )
+        if "ffmpeg" in lowered:
+            return (
+                "Không tìm thấy ffmpeg để hợp nhất video/audio. Hãy cài ffmpeg và thêm vào PATH."
+            )
+        if "http error 403" in lowered or "forbidden" in lowered:
+            return (
+                "Bị YouTube từ chối (HTTP 403). Hãy cập nhật yt-dlp và thử lại sau, hoặc dùng cookies.txt."
+            )
+        if "unable to extract" in lowered or "no video formats" in lowered:
+            return (
+                "Không tách được luồng video. yt-dlp có thể đã lỗi thời với YouTube; "
+                "chạy 'pip install -U yt-dlp' để cập nhật."
+            )
+        return message
+
     def progress_hook(self, d):
-        """下载进度回调函数"""
-        if d["status"] == "downloading":
-            percent = d["_percent_str"]
-            speed = d["_speed_str"]
+        """下载进度回调函数 — robust against missing/N-A fields and ANSI noise."""
+        try:
+            status = d.get("status")
+            if status != "downloading":
+                return
 
-            # 提取百分比和速度的纯文本
-            clean_percent = (
-                percent.replace("\x1b[0;94m", "")
-                .replace("\x1b[0m", "")
-                .strip()
-                .replace("%", "")
-            )
-            clean_speed = speed.replace("\x1b[0;32m", "").replace("\x1b[0m", "").strip()
+            # Prefer numeric fields (stable across yt-dlp versions). Fall back to strings.
+            downloaded = d.get("downloaded_bytes") or 0
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
 
-            self.progress.emit(
-                int(float(clean_percent)),
-                f"下载进度: {clean_percent}%  速度: {clean_speed}",
-            )
+            percent_value = None
+            if total:
+                percent_value = max(0.0, min(100.0, downloaded * 100.0 / total))
+            else:
+                raw_percent = _strip_ansi(d.get("_percent_str", "")).rstrip("%").strip()
+                if raw_percent and raw_percent.upper() not in ("N/A", "---"):
+                    try:
+                        percent_value = float(raw_percent)
+                    except ValueError:
+                        percent_value = None
+
+            speed_value = d.get("speed")
+            if speed_value:
+                speed_text = f"{_format_bytes(speed_value)}/s"
+            else:
+                speed_text = _strip_ansi(d.get("_speed_str", "")) or "—"
+
+            progress_label = self.tr("下载进度")
+            speed_label = self.tr("速度")
+            if percent_value is None:
+                self.progress.emit(
+                    0,
+                    f"{progress_label}: {_format_bytes(downloaded)}  {speed_label}: {speed_text}",
+                )
+            else:
+                self.progress.emit(
+                    int(percent_value),
+                    f"{progress_label}: {percent_value:.1f}%  {speed_label}: {speed_text}",
+                )
+        except Exception as exc:
+            # Never let progress hook abort the download.
+            logger.warning("progress_hook error: %s", exc)
 
     def sanitize_filename(self, name: str, replacement: str = "_") -> str:
         """清理文件名中不允许的字符"""
@@ -116,6 +183,25 @@ class VideoDownloadThread(QThread):
         """下载视频"""
         logger.info("开始下载视频: %s", self.url)
 
+        # If ffmpeg is unavailable, fall back to a single-file format that doesn't need merging.
+        # YouTube exposes pre-merged streams up to 720p; better than nothing.
+        from shutil import which
+        has_ffmpeg = bool(which("ffmpeg"))
+        if has_ffmpeg:
+            # Broad chain: prefer mp4+m4a for compatibility, but fall through to ANY best
+            # video+audio combo, then any single best/worst — so logged-in/Premium accounts
+            # whose top formats are AV1/Opus/WebM still resolve to a downloadable stream.
+            format_selector = (
+                "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+                "bestvideo*+bestaudio/"
+                "best[ext=mp4]/"
+                "best/"
+                "worst"
+            )
+        else:
+            format_selector = "best[ext=mp4]/best/worst"
+            logger.warning("ffmpeg 未找到，使用单文件下载（最高 720p）。")
+
         # 初始化 ydl 选项
         initial_ydl_opts = {
             "outtmpl": {
@@ -123,7 +209,7 @@ class VideoDownloadThread(QThread):
                 "subtitle": "【下载字幕】.%(ext)s",
                 "thumbnail": "thumbnail",
             },
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",  # 优先下载mp4格式
+            "format": format_selector,
             "progress_hooks": [self.progress_hook],  # 下载进度钩子
             "quiet": True,  # 禁用日志输出
             "no_warnings": True,  # 禁用警告信息
@@ -131,6 +217,16 @@ class VideoDownloadThread(QThread):
             "writeautomaticsub": need_subtitle,  # 下载自动生成的字幕
             "writethumbnail": need_thumbnail,  # 下载缩略图
             "thumbnail_format": "jpg",  # 指定缩略图的格式
+            # Modern UA helps avoid some YouTube anti-bot rejections.
+            "http_headers": {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0 Safari/537.36"
+                )
+            },
+            "retries": 5,
+            "fragment_retries": 5,
         }
 
         # 检查 cookies 文件
@@ -138,6 +234,14 @@ class VideoDownloadThread(QThread):
         if cookiefile_path.exists():
             logger.info(f"使用cookiefile: {cookiefile_path}")
             initial_ydl_opts["cookiefile"] = str(cookiefile_path)
+            # When the user is logged in, let yt-dlp pick its default player client.
+            # Pinning to ["android","web"] can hide the higher-tier formats that the
+            # cookies unlock, which surfaces as "Requested format is not available".
+        else:
+            # Anonymous flow: prefer Android/web clients which currently work without login.
+            initial_ydl_opts["extractor_args"] = {
+                "youtube": {"player_client": ["android", "web"]}
+            }
 
         with yt_dlp.YoutubeDL(initial_ydl_opts) as ydl:
             # 提取视频信息（不下载）
@@ -174,8 +278,15 @@ class VideoDownloadThread(QThread):
             # 更新 yt-dlp 的配置
             ydl.params.update(ydl_opts)
 
-            # 使用 process_info 进行下载
-            ydl.process_info(info_dict)
+            # Use the public extractor pipeline so format selection, post-processing,
+            # and subtitle writing all run as expected.
+            try:
+                processed_info = ydl.process_ie_result(info_dict, download=True)
+                if isinstance(processed_info, dict):
+                    info_dict = processed_info
+            except AttributeError:
+                # Older yt-dlp builds: fall back to internal API.
+                ydl.process_info(info_dict)
 
             # 获取视频文件路径
             video_file_path = Path(ydl.prepare_filename(info_dict))

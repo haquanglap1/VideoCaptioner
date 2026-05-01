@@ -1,5 +1,6 @@
 """子进程输出流处理工具模块"""
 
+import os
 import queue
 import subprocess
 import threading
@@ -8,6 +9,10 @@ from typing import Callable, Optional, Tuple
 from ..utils.logger import setup_logger
 
 logger = setup_logger("subprocess_helper")
+
+# Suppress the conhost.exe console window that subprocess.Popen would
+# otherwise spawn for every child on Windows.
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 
 class StreamReader:
@@ -128,6 +133,7 @@ def run_process_with_stream_reader(
         "text": True,
         "encoding": "utf-8",
         "bufsize": 1,  # 行缓冲
+        "creationflags": _NO_WINDOW,
     }
     default_kwargs.update(popen_kwargs)
 

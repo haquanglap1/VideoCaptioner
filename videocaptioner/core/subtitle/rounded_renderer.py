@@ -339,7 +339,9 @@ def render_rounded_video(
         temp_path = Path(temp_dir)
 
         # 步骤1: 生成All字幕PNG (0-30%)
-        logger.debug(f"Generating subtitle PNGs图片（共{len(asr_data.segments)}个，布局: {layout.value}）")
+        logger.debug(
+            f"Generating subtitle PNGs (total: {len(asr_data.segments)}, layout: {layout.value})"
+        )
         subtitle_frames = []
 
         for i, seg in enumerate(asr_data.segments):
@@ -366,7 +368,7 @@ def render_rounded_video(
             # 进度回调
             if progress_callback:
                 progress = int((i + 1) / len(asr_data.segments) * 30)
-                progress_callback(progress, f"生成字幕图片 {i + 1}/{len(asr_data.segments)}")
+                progress_callback(progress, f"Tạo ảnh phụ đề {i + 1}/{len(asr_data.segments)}")
 
         if not subtitle_frames:
             raise ValueError("No valid subtitle images generated")
@@ -448,13 +450,13 @@ def render_rounded_video(
             )
 
             if result.returncode != 0:
-                logger.error(f"批次 {batch_idx + 1} 失败: {result.stderr}")
-                raise RuntimeError(f"Subtitle processing failed（批次 {batch_idx + 1}）")
+                logger.error(f"Lo batch {batch_idx + 1} that bai: {result.stderr}")
+                raise RuntimeError(f"Xu ly phu de that bai (batch {batch_idx + 1})")
 
             # 更新进度 (30-100%)
             if progress_callback:
                 progress = 30 + int((batch_idx + 1) / total_batches * 70)
-                progress_callback(progress, f"合成视频 {batch_idx + 1}/{total_batches}")
+                progress_callback(progress, f"Ghép video {batch_idx + 1}/{total_batches}")
 
             # 更新当前视频
             current_video = str(batch_output)

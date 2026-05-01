@@ -23,7 +23,7 @@ class TranscriptionSettingDialog(MessageBoxBase):
             FIF.SAVE,
             self.tr("输出格式"),
             self.tr("选择转录字幕的输出格式"),
-            texts=[fmt.value for fmt in TranscribeOutputFormatEnum],
+            texts=[self.tr(fmt.value) for fmt in TranscribeOutputFormatEnum],
             parent=self,
         )
 

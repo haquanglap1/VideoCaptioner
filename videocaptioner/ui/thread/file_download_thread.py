@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
@@ -93,7 +94,7 @@ class Aria2Downloader(BaseDownloader):
 
         if self.process.returncode == 0:
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(temp_file), self.save_path)
+            os.replace(temp_file, self.save_path)
             return True
         else:
             error = self.process.stderr.read()
@@ -136,6 +137,7 @@ class RequestsDownloader(BaseDownloader):
     def download(self) -> bool:
         logger.info(f"使用 requests 下载: {self.url}")
         self.progress_callback(0, "正在连接...")
+        temp_file = self.save_path.with_suffix(".tmp")
 
         try:
             response = requests.get(self.url, stream=True, timeout=30)
@@ -143,14 +145,14 @@ class RequestsDownloader(BaseDownloader):
 
             total_size = int(response.headers.get("content-length", 0))
             downloaded = 0
+            cancelled = False
 
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
-            temp_file = self.save_path.with_suffix(".tmp")
 
             with open(temp_file, "wb") as f:
                 for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
                     if self._cancelled:
-                        temp_file.unlink(missing_ok=True)
+                        cancelled = True
                         return False
 
                     f.write(chunk)
@@ -163,12 +165,16 @@ class RequestsDownloader(BaseDownloader):
                         self.progress_callback(percent, status)
 
             # 下载完成后重命名
-            shutil.move(str(temp_file), self.save_path)
+            os.replace(temp_file, self.save_path)
             return True
 
         except requests.RequestException as e:
             logger.error(f"requests 下载失败: {e}")
             return False
+        finally:
+            if self._cancelled or locals().get("cancelled", False):
+                temp_file = self.save_path.with_suffix(".tmp")
+                temp_file.unlink(missing_ok=True)
 
     @staticmethod
     def _format_size(bytes_size: int) -> str:

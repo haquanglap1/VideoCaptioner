@@ -82,6 +82,7 @@ class BaseTranslator(ABC):
         future_to_chunk = {}
         translated_list = []
         failed_count = 0
+        first_error: Optional[BaseException] = None
         total_segments = sum(len(c) for c in chunks)
 
         for chunk in chunks:
@@ -96,6 +97,8 @@ class BaseTranslator(ABC):
                 translated_list.extend(result)
             except Exception as e:
                 logger.error(f"Translation chunk failed: {e}")
+                if first_error is None:
+                    first_error = e
                 failed_count += len(future_to_chunk[future])
                 translated_list.extend(future_to_chunk[future])
 
@@ -103,10 +106,12 @@ class BaseTranslator(ABC):
         if failed_count > 0 and total_segments > 0:
             fail_rate = failed_count / total_segments
             if fail_rate >= 0.5:
+                cause = type(first_error).__name__ if first_error else "unknown"
+                detail = str(first_error) if first_error else ""
                 raise RuntimeError(
                     f"Translation failed: {failed_count}/{total_segments} segments failed "
-                    f"({fail_rate:.0%}). Check your API key and network connection."
-                )
+                    f"({fail_rate:.0%}). First error [{cause}]: {detail}"
+                ) from first_error
             elif failed_count > 0:
                 logger.warning(f"Translation partially failed: {failed_count}/{total_segments} segments")
 

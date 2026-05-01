@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal, Optional
 
@@ -35,6 +36,88 @@ PresetType = Literal[
 ]
 
 logger = setup_logger("video_utils")
+
+
+@dataclass(frozen=True)
+class VideoChunkPlan:
+    """One logical video chunk plus the source range used for processing.
+
+    ``start_ms``/``end_ms`` are the non-overlapping timeline range shown to the
+    user. ``source_start_ms``/``source_end_ms`` include optional overlap for
+    ASR/proxy generation so boundaries have enough context.
+    """
+
+    index: int
+    start_ms: int
+    end_ms: int
+    source_start_ms: int
+    source_end_ms: int
+
+    @property
+    def duration_ms(self) -> int:
+        return self.end_ms - self.start_ms
+
+    @property
+    def source_duration_ms(self) -> int:
+        return self.source_end_ms - self.source_start_ms
+
+
+def plan_video_chunks(
+    duration_seconds: float,
+    chunk_length_seconds: int = 20 * 60,
+    overlap_seconds: int = 10,
+) -> list[VideoChunkPlan]:
+    """Plan ~20 minute chunks for long-video editing/transcription.
+
+    Args:
+        duration_seconds: Total media duration in seconds.
+        chunk_length_seconds: Logical chunk length. Defaults to 20 minutes.
+        overlap_seconds: Extra source context around chunk boundaries.
+
+    Returns:
+        Ordered chunk plans. Short videos return a single chunk.
+    """
+    if duration_seconds < 0:
+        raise ValueError("duration_seconds must be >= 0")
+    if chunk_length_seconds <= 0:
+        raise ValueError("chunk_length_seconds must be > 0")
+    if overlap_seconds < 0:
+        raise ValueError("overlap_seconds must be >= 0")
+    if overlap_seconds >= chunk_length_seconds:
+        raise ValueError("overlap_seconds must be smaller than chunk_length_seconds")
+
+    total_ms = int(round(duration_seconds * 1000))
+    chunk_ms = chunk_length_seconds * 1000
+    overlap_ms = overlap_seconds * 1000
+
+    if total_ms == 0:
+        return [
+            VideoChunkPlan(
+                index=1,
+                start_ms=0,
+                end_ms=0,
+                source_start_ms=0,
+                source_end_ms=0,
+            )
+        ]
+
+    chunks: list[VideoChunkPlan] = []
+    start_ms = 0
+    while start_ms < total_ms:
+        end_ms = min(start_ms + chunk_ms, total_ms)
+        source_start_ms = max(0, start_ms - overlap_ms)
+        source_end_ms = min(total_ms, end_ms + overlap_ms)
+        chunks.append(
+            VideoChunkPlan(
+                index=len(chunks) + 1,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                source_start_ms=source_start_ms,
+                source_end_ms=source_end_ms,
+            )
+        )
+        start_ms = end_ms
+    return chunks
 
 
 @contextmanager
@@ -339,10 +422,10 @@ def add_subtitles(
                     # 计算进度百分比
                     if total_duration:
                         progress = (current_time / total_duration) * 100
-                        progress_callback(f"{round(progress)}", "正在合成")
+                        progress_callback(f"{round(progress)}", "Đang ghép video")
 
                 if progress_callback:
-                    progress_callback("100", "合成完成")
+                    progress_callback("100", "Hoàn tất ghép video")
 
                 # 检查进程的Return code
                 return_code = process.wait()
@@ -363,7 +446,7 @@ def add_subtitles(
                     process.kill()
                 raise
             except Exception as e:
-                logger.error(f"视频合成过程出错: {str(e)}")
+                logger.error(f"Loi trong qua trinh ghep video: {str(e)}")
                 if process and process.poll() is None:
                     process.kill()
                 raise

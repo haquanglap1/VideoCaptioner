@@ -139,21 +139,21 @@ class VersionChecker(QObject):
         if not self.cache.get(version_key, default=False):
             self.cache.set(version_key, True)
 
+            welcome = self.tr("Welcome to VideoCaptioner")
+            whats_new = self.tr("What's new:")
             update_announcement = (
-                f"Welcome to VideoCaptioner {self.current_version}\n\n"
-                f"What's new:\n{self.update_info}"
+                f"{welcome} {self.current_version}\n\n"
+                f"{whats_new}\n{self.update_info}"
             )
             self.announcementAvailable.emit(update_announcement)
 
     def perform_check(self) -> None:
-        """Perform version and announcement check"""
+        """Perform version check. Announcement popups are intentionally disabled."""
         try:
             version_data = self.get_latest_version_info()
             if not version_data:
                 return
             self.has_new_version()
-            self.check_new_version_announcement()
-            self.check_announcement()
             self.checkCompleted.emit()
         except Exception:
-            logger.exception("Version and announcement check failed")
+            logger.exception("Version check failed")

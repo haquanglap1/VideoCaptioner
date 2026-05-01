@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from PyQt5.QtCore import QStandardPaths, Qt, pyqtSignal
+from PyQt5.QtCore import QStandardPaths, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -46,11 +46,21 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     VideoInfo,
 )
-from videocaptioner.core.utils.platform_utils import get_available_transcribe_models, open_folder
+from videocaptioner.core.utils.platform_utils import (
+    get_available_transcribe_models,
+    open_folder,
+)
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
+from videocaptioner.ui.components.FasterWhisperSettingWidget import (
+    _model_config_for_enum,
+    check_faster_whisper_exists,
+    is_faster_whisper_model_downloaded,
+)
 from videocaptioner.ui.components.transcription_setting_card import TranscriptionSettingCard
-from videocaptioner.ui.components.TranscriptionSettingDialog import TranscriptionSettingDialog
+from videocaptioner.ui.components.TranscriptionSettingDialog import (
+    TranscriptionSettingDialog,
+)
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 from videocaptioner.ui.thread.video_info_thread import VideoInfoThread
@@ -140,6 +150,7 @@ class VideoInfoCard(CardWidget):
         self.button_layout = QVBoxLayout()
         self.open_folder_button = PushButton(self.tr("打开文件夹"), self)
         self.start_button = PrimaryPushButton(self.tr("开始转录"), self)
+        self.start_button.setMinimumWidth(150)
         self.button_layout.addWidget(self.open_folder_button)
         self.button_layout.addWidget(self.start_button)
 
@@ -147,7 +158,7 @@ class VideoInfoCard(CardWidget):
 
         button_widget = QWidget()
         button_widget.setLayout(self.button_layout)
-        button_widget.setFixedWidth(130)
+        button_widget.setMinimumWidth(170)
         self.main_layout.addWidget(button_widget)  # type: ignore
 
     def update_info(self, video_info: VideoInfo) -> None:
@@ -261,7 +272,8 @@ class VideoInfoCard(CardWidget):
         self.progress_ring.setValue(0)
         self.progress_ring.show()
         self.start_button.setDisabled(True)
-        self.start_transcription()
+        if not self.start_transcription():
+            self.reset_ui()
 
     def on_open_folder_clicked(self):
         """打开文件夹按钮点击事件"""
@@ -281,16 +293,28 @@ class VideoInfoCard(CardWidget):
                 parent=self,
             )
 
-    def start_transcription(self, need_create_task=True):
+    def start_transcription(self, need_create_task=True) -> bool:
         """开始转录过程"""
-        self.transcription_interface.is_processing = True  # type: ignore
-        self.start_button.setEnabled(False)
+        if not self.video_info:
+            InfoBar.warning(
+                self.tr("警告"),
+                self.tr("Vui lòng chọn tệp âm thanh hoặc video trước"),
+                duration=INFOBAR_DURATION_WARNING,
+                parent=self,
+            )
+            return False
 
         if need_create_task:
             self.task = TaskFactory.create_transcribe_task(self.video_info.file_path)
 
         if not self.task:
-            return
+            return False
+
+        if not self._validate_transcription_runtime(self.task):
+            return False
+
+        self.transcription_interface.is_processing = True  # type: ignore
+        self.start_button.setEnabled(False)
 
         # 将选中的音轨索引作为临时属性传递给 task
         self.task.selected_audio_track_index = self.selected_audio_track_index  # type: ignore
@@ -300,10 +324,44 @@ class VideoInfoCard(CardWidget):
         self.transcript_thread.progress.connect(self.on_transcript_progress)
         self.transcript_thread.error.connect(self.on_transcript_error)
         self.transcript_thread.start()
+        return True
+
+    def _validate_transcription_runtime(self, task: TranscribeTask) -> bool:
+        config = task.transcribe_config
+        if not config:
+            return False
+        if config.transcribe_model != TranscribeModelEnum.FASTER_WHISPER:
+            return True
+
+        has_program, _ = check_faster_whisper_exists()
+        if not has_program:
+            InfoBar.error(
+                self.tr("Faster Whisper chưa sẵn sàng"),
+                self.tr(
+                    "Chưa có chương trình Faster Whisper hợp lệ. "
+                    "Nếu trước đó đã tải nhưng vẫn lỗi, tệp chương trình bị hỏng; "
+                    "hãy mở Quản lý mô hình và tải lại."
+                ),
+                duration=INFOBAR_DURATION_ERROR,
+                parent=self.window(),
+            )
+            return False
+        model = config.faster_whisper_model
+        model_config = _model_config_for_enum(model) if model else None
+        if not model_config or not is_faster_whisper_model_downloaded(model_config):
+            InfoBar.error(
+                self.tr("Faster Whisper chưa sẵn sàng"),
+                self.tr("Chưa tải mô hình Faster Whisper. Vui lòng tải mô hình trước."),
+                duration=INFOBAR_DURATION_ERROR,
+                parent=self.window(),
+            )
+            return False
+        return True
 
     def on_transcript_progress(self, value, message):
         """更新转录进度"""
-        self.start_button.setText(message)
+        self.start_button.setText(self.tr("Đang nhận dạng... ") + f"{int(value)}%")
+        self.start_button.setToolTip(str(message))
         self.progress_ring.setValue(value)
 
     def on_transcript_error(self, error):
@@ -311,7 +369,13 @@ class VideoInfoCard(CardWidget):
         self.transcription_interface.is_processing = False  # type: ignore
         self.start_button.setEnabled(True)
         self.start_button.setText(self.tr("重新转录"))
+        self.start_button.setToolTip("")
         self.progress_ring.hide()
+        if "WinError 193" in str(error) or "not a valid Win32 application" in str(error):
+            error = self.tr(
+                "Chương trình Faster Whisper bị hỏng hoặc không đúng kiến trúc Windows. "
+                "Vui lòng tải lại chương trình trong Quản lý mô hình."
+            )
         InfoBar.error(
             self.tr("转录失败"),
             self.tr(error),
@@ -323,6 +387,7 @@ class VideoInfoCard(CardWidget):
         """转录完成处理"""
         self.start_button.setEnabled(True)
         self.start_button.setText(self.tr("转录完成"))
+        self.start_button.setToolTip("")
         self.progress_ring.hide()
         self.finished.emit(task)
 
@@ -330,6 +395,7 @@ class VideoInfoCard(CardWidget):
         """重置UI状态"""
         self.start_button.setDisabled(False)
         self.start_button.setText(self.tr("开始转录"))
+        self.start_button.setToolTip("")
         self.progress_ring.setValue(0)
         self.progress_ring.hide()
 
@@ -354,6 +420,7 @@ class TranscriptionInterface(QWidget):
         self.setAcceptDrops(True)
         self.task: Optional[TranscribeTask] = None
         self.is_processing: bool = False
+        self._pending_auto_start: bool = False
 
         self._init_ui()
         self._setup_signals()
@@ -393,28 +460,24 @@ class TranscriptionInterface(QWidget):
             self.tr("转录模型"), self, FluentIcon.MICROPHONE
         )
         self.model_button.setFixedHeight(34)
-        self.model_button.setMinimumWidth(180)
+        self.model_button.setMinimumWidth(220)
 
         self.model_menu = RoundMenu(parent=self)
+        self._model_action_map = {}
         # 只显示当前平台可用的模型（macOS 上不显示 FasterWhisper）
         available_models = get_available_transcribe_models()
         for model in available_models:
+            text = self.tr(model.value)
             if (
                 model == TranscribeModelEnum.WHISPER_API
                 or model == TranscribeModelEnum.BIJIAN
                 or model == TranscribeModelEnum.JIANYING
             ):
-                self.model_menu.addActions(
-                    [
-                        Action(FluentIcon.GLOBE, model.value),
-                    ]
-                )
+                action = Action(FluentIcon.GLOBE, text)
             else:
-                self.model_menu.addActions(
-                    [
-                        Action(FluentIcon.ROBOT, model.value),
-                    ]
-                )
+                action = Action(FluentIcon.ROBOT, text)
+            self._model_action_map[action] = model.value
+            self.model_menu.addAction(action)
         self.model_button.setMenu(self.model_menu)
         self.command_bar.addWidget(self.model_button)
 
@@ -434,8 +497,8 @@ class TranscriptionInterface(QWidget):
         # 设置模型选择菜单的信号连接
         for action in self.model_menu.actions():
             action.triggered.connect(
-                lambda checked, text=action.text(): self.on_transcription_model_changed(
-                    text
+                lambda checked, act=action: self.on_transcription_model_changed(
+                    self._model_action_map.get(act, act.text())
                 )
             )
 
@@ -457,12 +520,48 @@ class TranscriptionInterface(QWidget):
 
     def on_transcription_model_changed(self, model_name: str):
         """处理转录模型改变"""
-        self.model_button.setText(self.tr(model_name))
         self.transcription_setting_card.on_model_changed(model_name)
         for model in TranscribeModelEnum:
             if model.value == model_name:
                 cfg.set(cfg.transcribe_model, model)
                 break
+        self._refresh_model_button_status()
+
+    def _refresh_model_button_status(self) -> None:
+        model = cfg.transcribe_model.value
+        if model != TranscribeModelEnum.FASTER_WHISPER:
+            self.model_button.setText(self.tr(model.value))
+            self.model_button.setToolTip(self.tr("Chọn công cụ chuyển giọng nói"))
+            self.model_button.setStyleSheet("")
+            return
+
+        has_program, _ = check_faster_whisper_exists()
+        model_config = _model_config_for_enum(cfg.faster_whisper_model.value)
+        has_model = bool(
+            model_config and is_faster_whisper_model_downloaded(model_config)
+        )
+        if has_program and has_model:
+            self.model_button.setText("FasterWhisper OK")
+            self.model_button.setToolTip(
+                self.tr("Faster Whisper đã sẵn sàng: có chương trình và mô hình.")
+            )
+            self.model_button.setStyleSheet(
+                "TransparentDropDownPushButton { color: #4CFFA5; font-weight: 600; }"
+            )
+        else:
+            missing = []
+            if not has_program:
+                missing.append(self.tr("chương trình"))
+            if not has_model:
+                missing.append(self.tr("mô hình"))
+            self.model_button.setText("FasterWhisper !")
+            self.model_button.setToolTip(
+                self.tr("Faster Whisper chưa sẵn sàng, thiếu: ")
+                + ", ".join(missing)
+            )
+            self.model_button.setStyleSheet(
+                "TransparentDropDownPushButton { color: #FFB84D; font-weight: 700; }"
+            )
 
     def _on_transcript_finished(self, task: TranscribeTask):
         """转录完成处理"""
@@ -496,13 +595,30 @@ class TranscriptionInterface(QWidget):
     def update_info(self, file_path):
         """设置UI"""
         self.video_info_thread = VideoInfoThread(file_path)
-        self.video_info_thread.finished.connect(self.video_info_card.update_info)
+        self.video_info_thread.finished.connect(self._on_video_info_loaded)
         self.video_info_thread.error.connect(self._on_video_info_error)
         self.video_info_thread.start()
+
+    def _on_video_info_loaded(self, video_info: VideoInfo) -> None:
+        self.video_info_card.update_info(video_info)
+        if self._pending_auto_start:
+            QTimer.singleShot(0, self._start_pending_transcription)
+
+    def _start_pending_transcription(self) -> None:
+        if not self._pending_auto_start or self.is_processing:
+            return
+        self._pending_auto_start = False
+        self.video_info_card.progress_ring.setValue(0)
+        self.video_info_card.progress_ring.show()
+        self.video_info_card.start_button.setEnabled(False)
+        if not self.video_info_card.start_transcription(need_create_task=False):
+            self.is_processing = False
+            self.video_info_card.reset_ui()
 
     def _on_video_info_error(self, error_msg):
         """处理视频信息提取错误"""
         self.is_processing = False
+        self._pending_auto_start = False
         InfoBar.error(
             self.tr("错误"),
             self.tr(error_msg),
@@ -518,8 +634,13 @@ class TranscriptionInterface(QWidget):
 
     def process(self):
         """主处理函数"""
-        self.is_processing = True
-        self.video_info_card.start_transcription(need_create_task=False)
+        self._pending_auto_start = True
+        if self.video_info_card.video_info is not None:
+            self._start_pending_transcription()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._refresh_model_button_status()
 
     def dragEnterEvent(self, event):
         """拖拽进入事件处理"""

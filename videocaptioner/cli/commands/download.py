@@ -24,13 +24,22 @@ def run(args: Namespace, config: dict) -> int:
 
     try:
         import subprocess
+        has_ffmpeg = bool(shutil.which("ffmpeg"))
+        format_selector = (
+            "bestvideo+bestaudio/best" if has_ffmpeg else "best[ext=mp4]/best"
+        )
         cmd = [
             "yt-dlp",
-            "-f", "bestvideo+bestaudio/best",
+            "-f", format_selector,
             "-o", f"{out_dir}/%(title)s.%(ext)s",
             "--no-playlist",
+            "--retries", "5",
+            "--fragment-retries", "5",
+            "--extractor-args", "youtube:player_client=android,web",
             url,
         ]
+        if not has_ffmpeg:
+            output.hint("ffmpeg not found — falling back to single-file format (≤720p).")
         if quiet:
             cmd.append("--quiet")
 

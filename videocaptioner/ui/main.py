@@ -25,11 +25,17 @@ def main():
     from videocaptioner.ui.view.main_window import MainWindow
 
     # Qt platform plugin path
-    lib_folder = "Lib" if platform.system() == "Windows" else "lib"
-    plugin_path = os.path.join(
-        sys.prefix, lib_folder, "site-packages", "PyQt5", "Qt5", "plugins"
-    )
-    os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = plugin_path
+    if getattr(sys, "frozen", False):
+        bundle_root = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        plugin_path = os.path.join(bundle_root, "PyQt5", "Qt5", "plugins")
+        if os.path.isdir(plugin_path):
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = plugin_path
+    else:
+        lib_folder = "Lib" if platform.system() == "Windows" else "lib"
+        plugin_path = os.path.join(
+            sys.prefix, lib_folder, "site-packages", "PyQt5", "Qt5", "plugins"
+        )
+        os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = plugin_path
 
     # Logger + global exception hook
     logger = setup_logger("VideoCaptioner")
@@ -63,8 +69,16 @@ def main():
     # i18n
     locale = cfg.get(cfg.language).value
     app.installTranslator(FluentTranslator(locale))
-    my_translator = QTranslator()
-    my_translator.load(str(TRANSLATIONS_PATH / f"VideoCaptioner_{locale.name()}.qm"))
+
+    if locale.name() == "vi_VN":
+        # Vietnamese ships as JSON (no lrelease toolchain required).
+        from videocaptioner.ui.common.json_translator import JsonTranslator
+        my_translator = JsonTranslator(TRANSLATIONS_PATH / "VideoCaptioner_vi_VN.json")
+    else:
+        my_translator = QTranslator()
+        my_translator.load(
+            str(TRANSLATIONS_PATH / f"VideoCaptioner_{locale.name()}.qm")
+        )
     app.installTranslator(my_translator)
 
     w = MainWindow()

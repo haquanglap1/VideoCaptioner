@@ -386,10 +386,10 @@ def render_ass_video(
                 # 计算进度百分比
                 if total_duration:
                     progress = (current_time / total_duration) * 100
-                    progress_callback(f"{round(progress)}", "正在合成")
+                    progress_callback(f"{round(progress)}", "Đang ghép video")
 
             if progress_callback:
-                progress_callback("100", "合成完成")
+                progress_callback("100", "Hoàn tất ghép video")
 
             # 检查Return code
             return_code = process.wait()

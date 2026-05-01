@@ -37,6 +37,19 @@ from videocaptioner.ui.components.EditComboBoxSettingCard import EditComboBoxSet
 from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
 
 
+def _enum_from_display(enum_cls, text: str, tr):
+    """Look up an Enum member by either its raw value or its translated display.
+
+    Required because we render combobox texts via ``self.tr(member.value)`` for
+    Vietnamese support, then later read ``currentText()`` back to identify the
+    enum. Direct ``EnumCls(text)`` would fail on the translated string.
+    """
+    for member in enum_cls:
+        if member.value == text or tr(member.value) == text:
+            return member
+    raise ValueError(f"{text!r} is not a valid {enum_cls.__name__}")
+
+
 class SettingInterface(ScrollArea):
     """设置界面"""
 
@@ -113,7 +126,7 @@ class SettingInterface(ScrollArea):
             FIF.LANGUAGE,
             self.tr("目标语言"),
             self.tr("选择翻译字幕的目标语言"),
-            texts=[lang.value for lang in cfg.target_language.validator.options],  # type: ignore
+            texts=[self.tr(lang.value) for lang in cfg.target_language.validator.options],  # type: ignore
             parent=self.translateGroup,
         )
 
@@ -153,7 +166,7 @@ class SettingInterface(ScrollArea):
             FIF.SPEED_HIGH,
             self.tr("视频合成质量"),
             self.tr("硬字幕视频合成时的质量等级（质量越高文件越大，编码时间越长）"),
-            texts=[quality.value for quality in cfg.video_quality.validator.options],  # type: ignore
+            texts=[self.tr(quality.value) for quality in cfg.video_quality.validator.options],  # type: ignore
             parent=self.subtitleGroup,
         )
 
@@ -202,7 +215,7 @@ class SettingInterface(ScrollArea):
             FIF.LANGUAGE,
             self.tr("语言"),
             self.tr("设置您偏好的界面语言"),
-            texts=["简体中文", "繁體中文", "English", self.tr("使用系统设置")],
+            texts=["简体中文", "繁體中文", "English", "Tiếng Việt", self.tr("使用系统设置")],
             parent=self.personalGroup,
         )
 
@@ -266,7 +279,7 @@ class SettingInterface(ScrollArea):
             FIF.ROBOT,
             self.tr("LLM 提供商"),
             self.tr("选择大模型提供商，用于字幕断句、优化、翻译"),
-            texts=[service.value for service in cfg.llm_service.validator.options],  # type: ignore
+            texts=[self.tr(service.value) for service in cfg.llm_service.validator.options],  # type: ignore
             parent=self.llmGroup,
         )
         self.llmServiceCard.comboBox.setMinimumWidth(150)
@@ -434,7 +447,7 @@ class SettingInterface(ScrollArea):
             FIF.MICROPHONE,
             self.tr("转录模型"),
             self.tr("语音转换文字要使用的语音识别服务"),
-            texts=[model.value for model in cfg.transcribe_model.validator.options],  # type: ignore
+            texts=[self.tr(model.value) for model in cfg.transcribe_model.validator.options],  # type: ignore
             parent=self.transcribeGroup,
         )
         self.transcribeModelCard.comboBox.setMinimumWidth(150)
@@ -496,7 +509,7 @@ class SettingInterface(ScrollArea):
             self.tr("翻译服务"),
             self.tr("选择翻译服务"),
             texts=[
-                service.value
+                self.tr(service.value)
                 for service in cfg.translator_service.validator.options  # type: ignore
             ],
             parent=self.translate_serviceGroup,
@@ -734,7 +747,9 @@ class SettingInterface(ScrollArea):
         scroll_position = self.verticalScrollBar().value()
 
         # 获取当前选中的服务
-        current_service = LLMServiceEnum(self.llmServiceCard.comboBox.currentText())
+        current_service = _enum_from_display(
+            LLMServiceEnum, self.llmServiceCard.comboBox.currentText(), self.tr
+        )
 
         # 获取服务配置
         service_config = self.llm_service_configs.get(current_service)
@@ -787,7 +802,9 @@ class SettingInterface(ScrollArea):
         self.checkLLMConnectionCard.button.setText(self.tr("检查连接"))
 
         # 获取当前服务
-        current_service = LLMServiceEnum(self.llmServiceCard.comboBox.currentText())
+        current_service = _enum_from_display(
+            LLMServiceEnum, self.llmServiceCard.comboBox.currentText(), self.tr
+        )
 
         if models:
             # 更新当前服务的模型列表
@@ -823,7 +840,7 @@ class SettingInterface(ScrollArea):
 
     def __onLLMServiceChanged(self, service):
         """处理LLM服务切换事件"""
-        current_service = LLMServiceEnum(service)
+        current_service = _enum_from_display(LLMServiceEnum, service, self.tr)
 
         # 隐藏所有卡片
         for config in self.llm_service_configs.values():
@@ -872,10 +889,15 @@ class SettingInterface(ScrollArea):
             card.setVisible(False)
 
         # 根据选择的服务显示相应的配置卡片
-        if service in [TranslatorServiceEnum.DEEPLX.value]:
+        # `service` is the comboBox display text — translated. Resolve via helper.
+        try:
+            current = _enum_from_display(TranslatorServiceEnum, service, self.tr)
+        except ValueError:
+            return
+        if current is TranslatorServiceEnum.DEEPLX:
             for card in deeplx_cards:
                 card.setVisible(True)
-        elif service in [TranslatorServiceEnum.OPENAI.value]:
+        elif current is TranslatorServiceEnum.OPENAI:
             for card in openai_cards:
                 card.setVisible(True)
 
@@ -893,8 +915,13 @@ class SettingInterface(ScrollArea):
             self.checkWhisperConnectionCard,
         ]
 
-        # 根据选择的模型显示/隐藏 Whisper API 配置
-        is_whisper_api = model_name == TranscribeModelEnum.WHISPER_API.value
+        # The combo shows translated text, so resolve it before checking which
+        # model-specific cards should be visible.
+        try:
+            current = _enum_from_display(TranscribeModelEnum, model_name, self.tr)
+        except ValueError:
+            current = None
+        is_whisper_api = current is TranscribeModelEnum.WHISPER_API
         for card in whisper_api_cards:
             card.setVisible(is_whisper_api)
 

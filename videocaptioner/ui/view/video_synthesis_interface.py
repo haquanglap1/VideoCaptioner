@@ -51,7 +51,13 @@ class VideoSynthesisInterface(QWidget):
         super().__init__(parent)
         self.setObjectName("VideoSynthesisInterface")
         self.setAttribute(Qt.WA_StyledBackground, True)  # type: ignore
-        self.setAcceptDrops(True)  # 启用拖放功能
+        self.setAcceptDrops(True)
+        self._quality_display_to_enum = {
+            self.tr(e.value): e for e in VideoQualityEnum
+        }
+        self._render_mode_display_to_enum = {
+            self.tr(e.value): e for e in SubtitleRenderModeEnum
+        }
         self.setup_ui()
         self.setup_style()
         self.set_value()
@@ -64,110 +70,96 @@ class VideoSynthesisInterface(QWidget):
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setSpacing(20)
 
-        # 创建顶部布局
         top_layout = QHBoxLayout()
 
-        # 添加顶部命令栏
         self.command_bar = CommandBar(self)
         self.command_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)  # type: ignore
-        top_layout.addWidget(self.command_bar, 1)  # 设置stretch为1，使其尽可能占用空间
+        top_layout.addWidget(self.command_bar, 1)
 
-        # 设置命令栏
         self._setup_command_bar()
 
-        # 添加开始合成按钮到水平布局
         self.synthesize_button = PrimaryPushButton(
-            self.tr("开始合成"), self, icon=FIF.PLAY
+            self.tr("Bắt đầu ghép"), self, icon=FIF.PLAY
         )
         self.synthesize_button.setFixedHeight(34)
         top_layout.addWidget(self.synthesize_button)
 
         self.main_layout.addLayout(top_layout)
 
-        # 配置卡片
         self.config_card = CardWidget(self)
         self.config_layout = QVBoxLayout(self.config_card)
         self.config_layout.setContentsMargins(20, 20, 20, 20)
         self.config_layout.setSpacing(20)
 
-        # 字幕文件选择
         self.subtitle_layout = QHBoxLayout()
         self.subtitle_layout.setSpacing(15)
-        self.subtitle_label = BodyLabel(self.tr("字幕文件"), self)
+        self.subtitle_label = BodyLabel(self.tr("File phụ đề"), self)
         self.subtitle_input = LineEdit(self)
-        self.subtitle_input.setPlaceholderText(self.tr("选择或者拖拽字幕文件"))
-        self.subtitle_input.setAcceptDrops(True)  # 启用拖放
-        self.subtitle_button = PushButton(self.tr("浏览"))
+        self.subtitle_input.setPlaceholderText(self.tr("Chọn hoặc kéo thả file phụ đề"))
+        self.subtitle_input.setAcceptDrops(True)
+        self.subtitle_button = PushButton(self.tr("Duyệt"))
         self.subtitle_layout.addWidget(self.subtitle_label)
         self.subtitle_layout.addWidget(self.subtitle_input)
         self.subtitle_layout.addWidget(self.subtitle_button)
         self.config_layout.addLayout(self.subtitle_layout)
 
-        # 视频文件选择
         self.video_layout = QHBoxLayout()
         self.video_layout.setSpacing(15)
-        self.video_label = BodyLabel(self.tr("视频文件"), self)
+        self.video_label = BodyLabel(self.tr("File video"), self)
         self.video_input = LineEdit(self)
-        self.video_input.setPlaceholderText(self.tr("选择或者拖拽视频文件"))
-        self.video_input.setAcceptDrops(True)  # 启用拖放
-        self.video_button = PushButton(self.tr("浏览"))
+        self.video_input.setPlaceholderText(self.tr("Chọn hoặc kéo thả file video"))
+        self.video_input.setAcceptDrops(True)
+        self.video_button = PushButton(self.tr("Duyệt"))
         self.video_layout.addWidget(self.video_label)
         self.video_layout.addWidget(self.video_input)
         self.video_layout.addWidget(self.video_button)
         self.config_layout.addLayout(self.video_layout)
 
         self.main_layout.addWidget(self.config_card)
-
         self.main_layout.addStretch(1)
 
-        # 底部进度条和状态信息
         self.bottom_layout = QHBoxLayout()
         self.progress_bar = ProgressBar(self)
-        self.status_label = BodyLabel(self.tr("就绪"), self)
-        self.status_label.setMinimumWidth(100)  # 设置最小宽度
-        self.status_label.setAlignment(Qt.AlignCenter)  # type: ignore  # 设置文本居中对齐
-        self.bottom_layout.addWidget(self.progress_bar, 1)  # 进度条使用剩余空间
-        self.bottom_layout.addWidget(self.status_label)  # 状态标签使用固定宽度
+        self.status_label = BodyLabel(self.tr("Sẵn sàng"), self)
+        self.status_label.setMinimumWidth(100)
+        self.status_label.setAlignment(Qt.AlignCenter)  # type: ignore
+        self.bottom_layout.addWidget(self.progress_bar, 1)
+        self.bottom_layout.addWidget(self.status_label)
         self.main_layout.addLayout(self.bottom_layout)
 
     def _setup_command_bar(self):
-        """设置顶部命令栏"""
-        # 添加软字幕选项
         self.soft_subtitle_action = Action(
             FIF.FONT,
-            self.tr("软字幕"),
+            self.tr("Phụ đề mềm"),
             triggered=self.on_soft_subtitle_action_triggered,
             checkable=True,
         )
-        self.soft_subtitle_action.setToolTip(self.tr("使用软字幕嵌入视频"))
+        self.soft_subtitle_action.setToolTip(self.tr("Nhúng phụ đề như một track riêng"))
         self.command_bar.addAction(self.soft_subtitle_action)
 
-        # 添加分隔符
         self.command_bar.addSeparator()
 
-        # 添加使用样式开关
         self.use_style_action = Action(
             FIF.PALETTE,
-            self.tr("使用样式"),
+            self.tr("Dùng kiểu phụ đề"),
             triggered=self.on_use_style_action_triggered,
             checkable=True,
         )
-        self.use_style_action.setToolTip(self.tr("启用字幕样式渲染"))
+        self.use_style_action.setToolTip(self.tr("Bật render phụ đề theo kiểu đã chọn"))
         self.command_bar.addAction(self.use_style_action)
 
         self.command_bar.addSeparator()
 
-        # 添加渲染模式下拉按钮
         self.render_mode_button = TransparentDropDownPushButton(
-            self.tr("渲染模式"), self, FIF.FONT_SIZE
+            self.tr("Chế độ render"), self, FIF.FONT_SIZE
         )
         self.render_mode_button.setFixedHeight(34)
         self.render_mode_button.setMinimumWidth(140)
         self.render_mode_menu = RoundMenu(parent=self)
         for mode in SubtitleRenderModeEnum:
-            action = Action(text=mode.value)
+            action = Action(text=self._display_for_render_mode(mode))
             action.triggered.connect(
-                lambda checked, m=mode.value: self.on_render_mode_changed(m)
+                lambda checked, m=mode: self.on_render_mode_changed(m)
             )
             self.render_mode_menu.addAction(action)
         self.render_mode_button.setMenu(self.render_mode_menu)
@@ -175,40 +167,36 @@ class VideoSynthesisInterface(QWidget):
 
         self.command_bar.addSeparator()
 
-        # 添加视频质量选择下拉按钮
         self.video_quality_button = TransparentDropDownPushButton(
-            self.tr("视频质量"), self, FIF.SPEED_HIGH
+            self.tr("Chất lượng video"), self, FIF.SPEED_HIGH
         )
         self.video_quality_button.setFixedHeight(34)
         self.video_quality_button.setMinimumWidth(125)
         self.video_quality_menu = RoundMenu(parent=self)
         for quality in VideoQualityEnum:
-            action = Action(text=quality.value)
+            action = Action(text=self._display_for_quality(quality))
             action.triggered.connect(
-                lambda checked, q=quality.value: self.on_video_quality_action_changed(q)
+                lambda checked, q=quality: self.on_video_quality_action_changed(q)
             )
             self.video_quality_menu.addAction(action)
         self.video_quality_button.setMenu(self.video_quality_menu)
         self.command_bar.addWidget(self.video_quality_button)
 
-        # 添加分隔符
         self.command_bar.addSeparator()
 
-        # 添加是否合成视频选项
         self.need_video_action = Action(
             FIF.VIDEO,
-            self.tr("合成视频"),
+            self.tr("Ghép video"),
             triggered=self.on_need_video_action_triggered,
             checkable=True,
         )
-        self.need_video_action.setToolTip(self.tr("是否生成新的视频文件"))
+        self.need_video_action.setToolTip(self.tr("Tạo file video mới sau khi xử lý"))
         self.command_bar.addAction(self.need_video_action)
 
         self.command_bar.addSeparator()
 
-        # 添加打开文件夹按钮
         folder_action = Action(FIF.FOLDER, "", triggered=self.open_video_folder)
-        folder_action.setToolTip(self.tr("打开输出文件夹"))
+        folder_action.setToolTip(self.tr("Mở thư mục đầu ra"))
         self.command_bar.addAction(folder_action)
 
     def setup_style(self):
@@ -255,16 +243,12 @@ class VideoSynthesisInterface(QWidget):
         )
 
     def setup_signals(self):
-        # 文件选择相关信号
         self.subtitle_button.clicked.connect(self.choose_subtitle_file)
         self.video_button.clicked.connect(self.choose_video_file)
-
-        # 合成和文件夹相关信号
         self.synthesize_button.clicked.connect(
             lambda: self.start_video_synthesis(need_create_task=True)
         )
 
-        # 全局 signalBus
         signalBus.soft_subtitle_changed.connect(self.on_soft_subtitle_changed)
         signalBus.need_video_changed.connect(self.on_need_video_changed)
         signalBus.video_quality_changed.connect(self.on_video_quality_changed)
@@ -272,180 +256,173 @@ class VideoSynthesisInterface(QWidget):
         signalBus.subtitle_render_mode_changed.connect(self.on_render_mode_changed_external)
 
     def set_value(self):
-        """设置初始值"""
         self.soft_subtitle_action.setChecked(cfg.soft_subtitle.value)
         self.need_video_action.setChecked(cfg.need_video.value)
-        self.video_quality_button.setText(cfg.video_quality.value.value)
+        self.video_quality_button.setText(self._display_for_quality(cfg.video_quality.value))
 
-        # 设置样式相关初始值
         self.use_style_action.setChecked(cfg.use_subtitle_style.value)
-        self.render_mode_button.setText(cfg.subtitle_render_mode.value.value)
+        self.render_mode_button.setText(
+            self._display_for_render_mode(cfg.subtitle_render_mode.value)
+        )
         self._update_synthesis_controls_state()
 
     def on_soft_subtitle_action_triggered(self, checked: bool):
-        """处理软字幕按钮点击（更新配置+显示InfoBar）"""
         cfg.set(cfg.soft_subtitle, checked)
 
-        # 显示说明信息
         if checked:
-            # 开启软字幕时自动关闭使用样式
             if self.use_style_action.isChecked():
                 self.use_style_action.setChecked(False)
                 cfg.set(cfg.use_subtitle_style, False)
                 self._update_style_controls_state()
             InfoBar.info(
-                self.tr("开启软字幕"),
-                self.tr("字幕作为独立轨道嵌入视频，不包含字幕样式"),
+                self.tr("Đã bật phụ đề mềm"),
+                self.tr("Phụ đề được nhúng thành track riêng và không kèm kiểu hiển thị."),
                 duration=3000,
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
         else:
             InfoBar.info(
-                self.tr("开启硬烧录字幕"),
-                self.tr("字幕直接烧录到视频画面中，包含字幕样式"),
+                self.tr("Đã bật phụ đề cứng"),
+                self.tr("Phụ đề sẽ được ghi trực tiếp lên khung hình video."),
                 duration=3000,
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
 
     def on_soft_subtitle_changed(self, checked: bool):
-        """处理外部软字幕配置变更（仅更新UI状态）"""
         self.soft_subtitle_action.setChecked(checked)
 
     def on_need_video_action_triggered(self, checked: bool):
-        """处理视频合成按钮点击（更新配置+显示InfoBar）"""
         cfg.set(cfg.need_video, checked)
         self._update_synthesis_controls_state()
 
-        # 显示说明信息
         if checked:
             InfoBar.info(
-                self.tr("开启视频合成"),
-                self.tr("将进行视频与字幕的合成操作"),
+                self.tr("Đã bật ghép video"),
+                self.tr("Video và phụ đề sẽ được ghép thành file mới."),
                 duration=3000,
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
         else:
             InfoBar.info(
-                self.tr("关闭视频合成"),
-                self.tr("仅生成字幕文件，不生成新的视频文件"),
+                self.tr("Đã tắt ghép video"),
+                self.tr("Chỉ tạo file phụ đề, không tạo video mới."),
                 duration=3000,
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
 
     def on_need_video_changed(self, checked: bool):
-        """处理外部视频合成配置变更（仅更新UI状态）"""
         self.need_video_action.setChecked(checked)
         self._update_synthesis_controls_state()
 
-    def on_video_quality_action_changed(self, quality_text: str):
-        """处理质量选择"""
-        # 根据文本找到对应的枚举
-        quality_enum = None
-        for e in VideoQualityEnum:
-            if e.value == quality_text:
-                quality_enum = e
-                break
-
-        if quality_enum is None:
+    def on_video_quality_action_changed(self, quality: VideoQualityEnum | str):
+        quality_enum = (
+            quality if isinstance(quality, VideoQualityEnum) else self._quality_from_text(quality)
+        )
+        if not quality_enum:
             return
 
         cfg.set(cfg.video_quality, quality_enum)
-        self.video_quality_button.setText(quality_text)
+        self.video_quality_button.setText(self._display_for_quality(quality_enum))
 
     def on_video_quality_changed(self, quality_text: str):
-        """处理外部质量配置变更（仅更新UI状态）"""
-        self.video_quality_button.setText(quality_text)
+        quality = self._quality_from_text(quality_text)
+        self.video_quality_button.setText(
+            self._display_for_quality(quality) if quality else quality_text
+        )
 
     def on_use_style_action_triggered(self, checked: bool):
-        """处理使用样式开关点击"""
         cfg.set(cfg.use_subtitle_style, checked)
         self._update_style_controls_state()
 
         if checked:
-            # 启用样式时自动关闭软字幕
             if self.soft_subtitle_action.isChecked():
                 self.soft_subtitle_action.setChecked(False)
                 cfg.set(cfg.soft_subtitle, False)
             InfoBar.info(
-                self.tr("启用字幕样式"),
-                self.tr("已自动切换为硬字幕渲染"),
+                self.tr("Đã bật kiểu phụ đề"),
+                self.tr("Tự động chuyển sang render phụ đề cứng."),
                 duration=3000,
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
         else:
             InfoBar.info(
-                self.tr("关闭字幕样式"),
-                self.tr("将使用默认字幕渲染"),
+                self.tr("Đã tắt kiểu phụ đề"),
+                self.tr("Sẽ dùng kiểu render phụ đề mặc định."),
                 duration=3000,
                 position=InfoBarPosition.BOTTOM,
                 parent=self,
             )
 
     def on_use_style_changed(self, checked: bool):
-        """处理外部使用样式配置变更（仅更新 UI）"""
         self.use_style_action.setChecked(checked)
         self._update_style_controls_state()
 
-    def on_render_mode_changed(self, mode_text: str):
-        """处理渲染模式选择（本界面触发）"""
-        mode_enum = None
-        for e in SubtitleRenderModeEnum:
-            if e.value == mode_text:
-                mode_enum = e
-                break
+    def on_render_mode_changed(self, mode: SubtitleRenderModeEnum | str):
+        mode_enum = (
+            mode if isinstance(mode, SubtitleRenderModeEnum) else self._render_mode_from_text(mode)
+        )
         if mode_enum:
             cfg.set(cfg.subtitle_render_mode, mode_enum)
-            self.render_mode_button.setText(mode_text)
-            signalBus.subtitle_render_mode_changed.emit(mode_text)
+            self.render_mode_button.setText(self._display_for_render_mode(mode_enum))
+            signalBus.subtitle_render_mode_changed.emit(mode_enum.value)
 
     def on_render_mode_changed_external(self, mode_text: str):
-        """处理外部渲染模式变更（仅更新 UI）"""
-        self.render_mode_button.setText(mode_text)
+        mode = self._render_mode_from_text(mode_text)
+        self.render_mode_button.setText(
+            self._display_for_render_mode(mode) if mode else mode_text
+        )
+
+    def _display_for_quality(self, quality: VideoQualityEnum) -> str:
+        return self.tr(quality.value)
+
+    def _quality_from_text(self, text: str) -> VideoQualityEnum | None:
+        if text in self._quality_display_to_enum:
+            return self._quality_display_to_enum[text]
+        return next((e for e in VideoQualityEnum if e.value == text), None)
+
+    def _display_for_render_mode(self, mode: SubtitleRenderModeEnum) -> str:
+        return self.tr(mode.value)
+
+    def _render_mode_from_text(self, text: str) -> SubtitleRenderModeEnum | None:
+        if text in self._render_mode_display_to_enum:
+            return self._render_mode_display_to_enum[text]
+        return next((e for e in SubtitleRenderModeEnum if e.value == text), None)
 
     def _update_synthesis_controls_state(self):
-        """更新所有合成相关控件的启用/禁用状态"""
         need_video = self.need_video_action.isChecked()
-
-        # 合成视频关闭时，禁用所有相关选项
         self.soft_subtitle_action.setEnabled(need_video)
         self.use_style_action.setEnabled(need_video)
         self.video_quality_button.setEnabled(need_video)
-
-        # 渲染模式按钮需要同时满足：合成视频开启 且 使用样式开启
         self._update_style_controls_state()
 
     def _update_style_controls_state(self):
-        """更新样式相关控件的启用/禁用状态"""
         need_video = self.need_video_action.isChecked()
         use_style = self.use_style_action.isChecked()
-        # 渲染模式按钮：需要合成视频开启 且 使用样式开启
         self.render_mode_button.setEnabled(need_video and use_style)
 
     def choose_subtitle_file(self):
-        # 构建文件过滤器
         subtitle_formats = " ".join(
             f"*.{fmt.value}" for fmt in SupportedSubtitleFormats
         )
-        filter_str = f"{self.tr('字幕文件')} ({subtitle_formats})"
+        filter_str = f"{self.tr('File phụ đề')} ({subtitle_formats})"
 
         file_path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("选择字幕文件"), "", filter_str
+            self, self.tr("Chọn file phụ đề"), "", filter_str
         )
         if file_path:
             self.subtitle_input.setText(file_path)
 
     def choose_video_file(self):
-        # 构建文件过滤器
         video_formats = " ".join(f"*.{fmt.value}" for fmt in SupportedVideoFormats)
-        filter_str = f"{self.tr('视频文件')} ({video_formats})"
+        filter_str = f"{self.tr('File video')} ({video_formats})"
 
         file_path, _ = QFileDialog.getOpenFileName(
-            self, self.tr("选择视频文件"), "", filter_str
+            self, self.tr("Chọn file video"), "", filter_str
         )
         if file_path:
             self.video_input.setText(file_path)
@@ -455,8 +432,8 @@ class VideoSynthesisInterface(QWidget):
         video_file = self.video_input.text()
         if not subtitle_file or not video_file:
             InfoBar.error(
-                self.tr("错误"),
-                self.tr("请选择字幕文件和视频文件"),
+                self.tr("Lỗi"),
+                self.tr("Vui lòng chọn cả file phụ đề và file video."),
                 duration=INFOBAR_DURATION_ERROR,
                 position=InfoBarPosition.TOP,
                 parent=self,
@@ -501,8 +478,8 @@ class VideoSynthesisInterface(QWidget):
         self.progress_bar.setValue(100)
         self.open_video_folder()
         InfoBar.success(
-            self.tr("成功"),
-            self.tr("视频合成已完成"),
+            self.tr("Thành công"),
+            self.tr("Ghép video đã hoàn tất."),
             duration=INFOBAR_DURATION_SUCCESS,
             position=InfoBarPosition.TOP,
             parent=self,
@@ -516,7 +493,7 @@ class VideoSynthesisInterface(QWidget):
         self.synthesize_button.setEnabled(True)
         self.progress_bar.error()
         InfoBar.error(
-            self.tr("错误"),
+            self.tr("Lỗi"),
             str(error),
             duration=INFOBAR_DURATION_ERROR,
             position=InfoBarPosition.TOP,
@@ -535,23 +512,20 @@ class VideoSynthesisInterface(QWidget):
                     else file_path.parent
                 )
             )
-            # Cross-platform folder opening
             open_folder(target_dir)
         else:
             InfoBar.warning(
-                self.tr("警告"),
-                self.tr("没有可用的视频文件夹"),
+                self.tr("Cảnh báo"),
+                self.tr("Không có thư mục video khả dụng."),
                 duration=INFOBAR_DURATION_WARNING,
                 position=InfoBarPosition.TOP,
                 parent=self,
             )
 
     def dragEnterEvent(self, event):
-        """拖拽进入事件处理"""
         event.accept() if event.mimeData().hasUrls() else event.ignore()
 
     def dropEvent(self, event: QDropEvent):
-        """拖拽放下事件处理"""
         files = [u.toLocalFile() for u in event.mimeData().urls()]
         for file_path in files:
             if not os.path.isfile(file_path):
@@ -559,12 +533,11 @@ class VideoSynthesisInterface(QWidget):
 
             file_ext = os.path.splitext(file_path)[1][1:].lower()
 
-            # 检查文件格式是否支持
             if file_ext in {fmt.value for fmt in SupportedSubtitleFormats}:
                 self.subtitle_input.setText(file_path)
                 InfoBar.success(
-                    self.tr("导入成功"),
-                    self.tr("字幕文件已放入输入框"),
+                    self.tr("Đã nhập file"),
+                    self.tr("File phụ đề đã được đưa vào ô nhập."),
                     duration=INFOBAR_DURATION_SUCCESS,
                     parent=self,
                 )
@@ -572,16 +545,16 @@ class VideoSynthesisInterface(QWidget):
             elif file_ext in {fmt.value for fmt in SupportedVideoFormats}:
                 self.video_input.setText(file_path)
                 InfoBar.success(
-                    self.tr("导入成功"),
-                    self.tr("视频文件已输入框"),
+                    self.tr("Đã nhập file"),
+                    self.tr("File video đã được đưa vào ô nhập."),
                     duration=INFOBAR_DURATION_SUCCESS,
                     parent=self,
                 )
                 break
             else:
                 InfoBar.error(
-                    self.tr("格式错误") + file_ext,
-                    self.tr("请拖入视频或者字幕文件"),
+                    self.tr("Sai định dạng: ") + file_ext,
+                    self.tr("Vui lòng kéo thả file video hoặc file phụ đề."),
                     duration=INFOBAR_DURATION_ERROR,
                     parent=self,
                 )
@@ -596,6 +569,6 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
     window = VideoSynthesisInterface()
-    window.resize(600, 400)  # 设置窗口大小
+    window.resize(600, 400)
     window.show()
     sys.exit(app.exec_())

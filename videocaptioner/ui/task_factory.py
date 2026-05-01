@@ -212,9 +212,9 @@ class TaskFactory:
         need_next_task: bool = False,
         task_id: Optional[str] = None,
     ) -> SynthesisTask:
-        """创建视频合成任务"""
+        """Create a video synthesis task."""
         output_path = str(
-            Path(video_path).parent / f"【卡卡】{Path(video_path).stem}.mp4"
+            Path(video_path).parent / f"{Path(video_path).stem}_captioned.mp4"
         )
 
         # 只有启用样式时才传入样式配置

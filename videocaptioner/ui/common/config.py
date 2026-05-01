@@ -42,6 +42,7 @@ class Language(Enum):
     CHINESE_SIMPLIFIED = QLocale(QLocale.Chinese, QLocale.China)
     CHINESE_TRADITIONAL = QLocale(QLocale.Chinese, QLocale.HongKong)
     ENGLISH = QLocale(QLocale.English)
+    VIETNAMESE = QLocale(QLocale.Vietnamese, QLocale.Vietnam)
     AUTO = QLocale()
 
 
@@ -249,7 +250,7 @@ class Config(QConfig):
         OptionsValidator(VideoQualityEnum),
         EnumSerializer(VideoQualityEnum),
     )
-    use_subtitle_style = ConfigItem("Video", "UseSubtitleStyle", False, BoolValidator())
+    use_subtitle_style = ConfigItem("Video", "UseSubtitleStyle", True, BoolValidator())
 
     # ------------------- 字幕样式配置 -------------------
     subtitle_style_name = ConfigItem("SubtitleStyle", "StyleName", "default")
@@ -313,7 +314,7 @@ class Config(QConfig):
     language = OptionsConfigItem(
         "MainWindow",
         "Language",
-        Language.AUTO,
+        Language.VIETNAMESE,
         OptionsValidator(Language),
         LanguageSerializer(),
         restart=True,

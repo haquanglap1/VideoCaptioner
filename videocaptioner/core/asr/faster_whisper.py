@@ -19,6 +19,22 @@ from .base import BaseASR
 from .status import ASRStatus
 
 logger = setup_logger("faster_whisper")
+MIN_PROGRAM_SIZE = 1024 * 1024
+
+
+def _is_valid_program(path: Optional[str]) -> bool:
+    if not path:
+        return False
+    program_path = Path(path)
+    try:
+        return program_path.is_file() and program_path.stat().st_size >= MIN_PROGRAM_SIZE
+    except OSError:
+        return False
+
+
+def _which_valid(program: str) -> Optional[str]:
+    path = shutil.which(program)
+    return path if _is_valid_program(path) else None
 
 
 class FasterWhisperASR(BaseASR):
@@ -101,19 +117,28 @@ class FasterWhisperASR(BaseASR):
 
         # 根据设备选择程序
         if self.device == "cpu":
-            if shutil.which("faster-whisper-xxl"):
-                self.faster_whisper_program = "faster-whisper-xxl"
-            else:
-                if not shutil.which("faster-whisper"):
-                    raise EnvironmentError("faster-whisper program not found，请确保已经下载。")
-                self.faster_whisper_program = "faster-whisper"
+            xxl_program = _which_valid("faster-whisper-xxl")
+            cpu_program = _which_valid("faster-whisper")
+            if xxl_program:
+                self.faster_whisper_program = xxl_program
+            elif cpu_program:
+                self.faster_whisper_program = cpu_program
                 self.vad_method = ""
-        elif self.device == "cuda":
-            if not shutil.which("faster-whisper-xxl"):
+            else:
                 raise EnvironmentError(
-                    "faster-whisper-xxl 程序未找到，请确保已经下载。"
+                    "Không tìm thấy chương trình Faster Whisper hợp lệ. "
+                    "Vui lòng tải lại chương trình trong phần Quản lý mô hình."
                 )
-            self.faster_whisper_program = "faster-whisper-xxl"
+        elif self.device == "cuda":
+            xxl_program = _which_valid("faster-whisper-xxl")
+            if not xxl_program:
+                raise EnvironmentError(
+                    "Không tìm thấy Faster Whisper GPU hợp lệ. "
+                    "Tệp chương trình có thể bị hỏng hoặc chưa tải xong. "
+                    "Vui lòng tải lại bản GPU trong Quản lý mô hình, "
+                    "hoặc đổi Thiết bị chạy sang cpu nếu chỉ dùng bản CPU."
+                )
+            self.faster_whisper_program = xxl_program
 
     def _build_command(self, audio_input: str) -> List[str]:
         """Build command line arguments for faster-whisper."""

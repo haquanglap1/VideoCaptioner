@@ -155,26 +155,26 @@ class VadMethodEnum(Enum):
 class SubtitleLayoutEnum(Enum):
     """字幕布局"""
 
-    TRANSLATE_ON_TOP = "译文在上"
-    ORIGINAL_ON_TOP = "原文在上"
-    ONLY_ORIGINAL = "仅原文"
-    ONLY_TRANSLATE = "仅译文"
+    TRANSLATE_ON_TOP = "Bản dịch ở trên"
+    ORIGINAL_ON_TOP = "Bản gốc ở trên"
+    ONLY_ORIGINAL = "Chỉ bản gốc"
+    ONLY_TRANSLATE = "Chỉ bản dịch"
 
 
 class SubtitleRenderModeEnum(Enum):
     """字幕渲染模式"""
 
-    ASS_STYLE = "ASS 样式"  # FFmpeg ASS 渲染
-    ROUNDED_BG = "圆角背景"  # Pillow 圆角矩形背景
+    ASS_STYLE = "Kiểu ASS"  # FFmpeg ASS render
+    ROUNDED_BG = "Nền bo góc"  # Pillow rounded background
 
 
 class VideoQualityEnum(Enum):
     """视频合成质量"""
 
-    ULTRA_HIGH = "极高质量"
-    HIGH = "高质量"
-    MEDIUM = "中等质量"
-    LOW = "低质量"
+    ULTRA_HIGH = "Cực cao"
+    HIGH = "Cao"
+    MEDIUM = "Trung bình"
+    LOW = "Thấp"
 
     def get_crf(self) -> int:
         """获取对应的 CRF 值（越小质量越高，文件越大）"""

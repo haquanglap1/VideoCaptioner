@@ -66,17 +66,21 @@ class BatchProcessInterface(QWidget):
         top_layout = QHBoxLayout()
         top_layout.setSpacing(8)
 
-        # 任务类型选择
+        # 任务类型选择 — display text is translated, but the enum stays attached
+        # via userData so look-up code keeps working regardless of locale.
         self.task_type_combo = ComboBox()
-        self.task_type_combo.addItems([str(task_type) for task_type in BatchTaskType])
-        self.task_type_combo.setCurrentText(str(BatchTaskType.FULL_PROCESS))
+        for t in BatchTaskType:
+            self.task_type_combo.addItem(self.tr(str(t)), userData=t)
+        self.task_type_combo.setCurrentIndex(
+            list(BatchTaskType).index(BatchTaskType.FULL_PROCESS)
+        )
 
-        # 任务类型说明
+        # 任务类型说明 — keyed by enum, not by display string.
         self.task_type_descriptions = {
-            str(BatchTaskType.TRANSCRIBE): self.tr("仅进行语音识别，生成字幕文件"),
-            str(BatchTaskType.SUBTITLE): self.tr("对已有字幕进行分割、优化或翻译"),
-            str(BatchTaskType.TRANS_SUB): self.tr("先转录再处理字幕，不合成视频"),
-            str(BatchTaskType.FULL_PROCESS): self.tr("转录 → 字幕处理 → 合成视频"),
+            BatchTaskType.TRANSCRIBE: self.tr("仅进行语音识别，生成字幕文件"),
+            BatchTaskType.SUBTITLE: self.tr("对已有字幕进行分割、优化或翻译"),
+            BatchTaskType.TRANS_SUB: self.tr("先转录再处理字幕，不合成视频"),
+            BatchTaskType.FULL_PROCESS: self.tr("转录 → 字幕处理 → 合成视频"),
         }
 
         # 控制按钮
@@ -95,7 +99,9 @@ class BatchProcessInterface(QWidget):
         # 创建任务表格
         self.task_table = TableWidget()
         self.task_table.setColumnCount(3)
-        self.task_table.setHorizontalHeaderLabels(["文件名", "进度", "状态"])
+        self.task_table.setHorizontalHeaderLabels(
+            [self.tr("文件名"), self.tr("进度"), self.tr("状态")]
+        )
 
         # 设置表格样式
         self.task_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -129,7 +135,7 @@ class BatchProcessInterface(QWidget):
         self.add_file_btn.clicked.connect(self.on_add_file_clicked)
         self.start_all_btn.clicked.connect(self.start_all_tasks)
         self.clear_btn.clicked.connect(self.clear_tasks)
-        self.task_type_combo.currentTextChanged.connect(self.on_task_type_changed)
+        self.task_type_combo.currentIndexChanged.connect(self.on_task_type_changed)
 
     def setup_connections(self):
         # 批处理线程信号连接
@@ -142,24 +148,22 @@ class BatchProcessInterface(QWidget):
         self.task_table.customContextMenuRequested.connect(self.show_context_menu)
 
     def on_add_file_clicked(self):
-        task_type = self.task_type_combo.currentText()
+        task_type = self.task_type_combo.currentData()
         file_filter = ""
         if task_type in [
             BatchTaskType.TRANSCRIBE,
             BatchTaskType.TRANS_SUB,
             BatchTaskType.FULL_PROCESS,
         ]:
-            # 获取所有支持的音视频格式
             audio_formats = [f"*.{fmt.value}" for fmt in SupportedAudioFormats]
             video_formats = [f"*.{fmt.value}" for fmt in SupportedVideoFormats]
             formats = audio_formats + video_formats
-            file_filter = f"音视频文件 ({' '.join(formats)})"
+            file_filter = f"{self.tr('音视频文件')} ({' '.join(formats)})"
         elif task_type == BatchTaskType.SUBTITLE:
-            # 获取所有支持的字幕格式
             subtitle_formats = [f"*.{fmt.value}" for fmt in SupportedSubtitleFormats]
-            file_filter = f"字幕文件 ({' '.join(subtitle_formats)})"
+            file_filter = f"{self.tr('字幕文件')} ({' '.join(subtitle_formats)})"
 
-        files, _ = QFileDialog.getOpenFileNames(self, "选择文件", "", file_filter)
+        files, _ = QFileDialog.getOpenFileNames(self, self.tr("选择文件"), "", file_filter)
         if files:
             self.add_files(files)
 
@@ -174,7 +178,7 @@ class BatchProcessInterface(QWidget):
         self.add_files(files)
 
     def add_files(self, file_paths):
-        task_type = BatchTaskType(self.task_type_combo.currentText())
+        task_type = self.task_type_combo.currentData()
 
         # 展开文件夹为其中的文件（最多 3 层深度）
         max_depth = 3
@@ -224,7 +228,9 @@ class BatchProcessInterface(QWidget):
                 first_file.endswith(f".{fmt.value}") for fmt in SupportedSubtitleFormats
             )
             if is_subtitle:
-                self.task_type_combo.setCurrentText(str(BatchTaskType.SUBTITLE))
+                self.task_type_combo.setCurrentIndex(
+                    list(BatchTaskType).index(BatchTaskType.SUBTITLE)
+                )
                 task_type = BatchTaskType.SUBTITLE
             # elif is_media:
             #     self.task_type_combo.setCurrentText(str(BatchTaskType.FULL_PROCESS))
@@ -336,7 +342,7 @@ class BatchProcessInterface(QWidget):
 
     def open_output_folder(self, file_path: str):
         # 根据任务类型和文件路径确定输出文件夹
-        task_type = BatchTaskType(self.task_type_combo.currentText())
+        task_type = self.task_type_combo.currentData()
         file_dir = os.path.dirname(file_path)
 
         if task_type == BatchTaskType.FULL_PROCESS:
@@ -414,7 +420,7 @@ class BatchProcessInterface(QWidget):
             file_path = self.task_table.item(row, 0).toolTip()
             status = self.task_table.item(row, 2).text()
             if status == str(BatchTaskStatus.WAITING):
-                task_type = BatchTaskType(self.task_type_combo.currentText())
+                task_type = self.task_type_combo.currentData()
                 batch_task = BatchTask(file_path, task_type)
                 self.batch_thread.add_task(batch_task)
 
@@ -430,7 +436,7 @@ class BatchProcessInterface(QWidget):
         )
 
         # 创建并添加单个任务
-        task_type = BatchTaskType(self.task_type_combo.currentText())
+        task_type = self.task_type_combo.currentData()
         batch_task = BatchTask(file_path, task_type)
         self.batch_thread.add_task(batch_task)
 
@@ -446,12 +452,15 @@ class BatchProcessInterface(QWidget):
         self.batch_thread.stop_all()
         self.task_table.setRowCount(0)
 
-    def on_task_type_changed(self, task_type: str):
+    def on_task_type_changed(self, _index: int):
         # 显示任务类型说明
+        task_type = self.task_type_combo.currentData()
+        if task_type is None:
+            return
         description = self.task_type_descriptions.get(task_type, "")
         if description:
             InfoBar.info(
-                title=task_type,
+                title=self.task_type_combo.currentText(),
                 content=description,
                 duration=INFOBAR_DURATION_INFO,
                 position=InfoBarPosition.BOTTOM,

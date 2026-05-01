@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
-from videocaptioner.config import BIN_PATH, MODEL_PATH
+from videocaptioner.config import BIN_PATH, LEGACY_BIN_PATH, MODEL_PATH
 from videocaptioner.core.entities import (
     FasterWhisperModelEnum,
     TranscribeLanguageEnum,
@@ -47,14 +48,14 @@ from videocaptioner.ui.thread.modelscope_download_thread import ModelscopeDownlo
 # 在文件开头添加常量定义
 FASTER_WHISPER_PROGRAMS = [
     {
-        "label": "GPU（cuda） + CPU 版本",
+        "label": "Bản GPU (CUDA) + CPU",
         "value": "faster-whisper-gpu.7z",
         "type": "GPU",
         "size": "1.35 GB",
         "downloadLink": "https://modelscope.cn/models/bkfengg/whisper-cpp/resolve/master/Faster-Whisper-XXL_r245.2_windows.7z",
     },
     {
-        "label": "CPU版本",
+        "label": "Bản CPU",
         "value": "faster-whisper.exe",
         "type": "CPU",
         "size": "78.7 MB",
@@ -121,8 +122,126 @@ FASTER_WHISPER_MODELS = [
     },
 ]
 
+MIN_PROGRAM_SIZE = 1024 * 1024
+
+
+def _model_dir(model: dict) -> Path:
+    return Path(MODEL_PATH) / model["value"]
+
+
+def is_faster_whisper_model_downloaded(model: dict) -> bool:
+    """Return True when a Faster Whisper model directory contains model.bin."""
+    model_path = _model_dir(model)
+    if not model_path.exists():
+        return False
+    if (model_path / "model.bin").exists():
+        return True
+    return any(
+        model_file
+        for model_file in model_path.rglob("model.bin")
+        if not any(part.startswith("._____") for part in model_file.parts)
+    )
+
+
+def _model_config_for_enum(model_enum: FasterWhisperModelEnum) -> dict | None:
+    return next(
+        (
+            model
+            for model in FASTER_WHISPER_MODELS
+            if model["label"].lower() == model_enum.value.lower()
+        ),
+        None,
+    )
+
+
+def available_faster_whisper_models() -> list[FasterWhisperModelEnum]:
+    available = []
+    for model_enum in FasterWhisperModelEnum:
+        model = _model_config_for_enum(model_enum)
+        if model and is_faster_whisper_model_downloaded(model):
+            available.append(model_enum)
+    return available
+
+
+def _is_valid_program_file(path: Path) -> bool:
+    """Return True when `path` looks like a usable executable."""
+    return path.exists() and path.is_file() and path.stat().st_size >= MIN_PROGRAM_SIZE
+
+
+def _remove_invalid_program(path: Path) -> None:
+    if path.exists() and not _is_valid_program_file(path):
+        path.unlink(missing_ok=True)
+
 
 # 在类外添加这个工具函数
+def _program_search_roots() -> list[Path]:
+    roots = [Path(BIN_PATH)]
+    legacy = Path(LEGACY_BIN_PATH)
+    if legacy != roots[0]:
+        roots.append(legacy)
+    return roots
+
+
+def _find_program_file(*relative_paths: str) -> Path | None:
+    for root in _program_search_roots():
+        for relative_path in relative_paths:
+            candidate = root / relative_path
+            _remove_invalid_program(candidate)
+            if _is_valid_program_file(candidate):
+                return candidate
+        for name in {Path(p).name for p in relative_paths}:
+            for candidate in root.rglob(name):
+                _remove_invalid_program(candidate)
+                if _is_valid_program_file(candidate):
+                    return candidate
+    return None
+
+
+def _find_7z_executable() -> str | None:
+    """Return a native 7-Zip executable when one is available."""
+    for executable in ("7z", "7za", "7zr"):
+        path = shutil.which(executable)
+        if path:
+            return path
+
+    candidates = []
+    for root in _program_search_roots():
+        candidates.extend(
+            [
+                root / "7z.exe",
+                root / "7za.exe",
+                root / "7zr.exe",
+                root / "7-Zip" / "7z.exe",
+            ]
+        )
+
+    if os.name == "nt":
+        program_files = [
+            os.environ.get("ProgramFiles"),
+            os.environ.get("ProgramFiles(x86)"),
+            os.environ.get("LocalAppData"),
+        ]
+        for program_dir in filter(None, program_files):
+            candidates.extend(
+                [
+                    Path(program_dir) / "7-Zip" / "7z.exe",
+                    Path(program_dir) / "Programs" / "7-Zip" / "7z.exe",
+                    Path(program_dir) / "Microsoft" / "WindowsApps" / "7z.exe",
+                    Path(program_dir) / "Microsoft" / "WindowsApps" / "NanaZipC.exe",
+                ]
+            )
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _find_tar_executable() -> str | None:
+    """Return the platform tar executable when libarchive-backed tar is available."""
+    return shutil.which("tar")
+
+
 def check_faster_whisper_exists() -> tuple[bool, list[str]]:
     """检查 faster-whisper 程序是否存在
 
@@ -133,18 +252,18 @@ def check_faster_whisper_exists() -> tuple[bool, list[str]]:
     Returns:
         tuple[bool, list[str]]: (是否存在程序, 已安装的版本列表)
     """
-    bin_path = Path(BIN_PATH)
     installed_versions = []
 
     # 检查 faster-whisper.exe(CPU版本)
-    if (bin_path / "faster-whisper.exe").exists():
+    if _find_program_file("faster-whisper.exe", "whisper-faster.exe"):
         installed_versions.append("CPU")
 
     # 检查 Faster-Whisper-XXL/faster-whisper-xxl.exe(GPU版本)
-    xxl_path = bin_path / "Faster-Whisper-XXL" / "faster-whisper-xxl.exe"
-    if xxl_path.exists():
+    if _find_program_file("Faster-Whisper-XXL/faster-whisper-xxl.exe"):
         installed_versions.extend(["GPU", "CPU"])
-    installed_versions = list(set(installed_versions))
+    installed_versions = [
+        version for version in ("GPU", "CPU") if version in installed_versions
+    ]
 
     return bool(installed_versions), installed_versions
 
@@ -156,25 +275,81 @@ class UnzipThread(QThread):
     finished = pyqtSignal()  # 解压完成信号
     error = pyqtSignal(str)  # 解压错误信号
 
-    def __init__(self, zip_file, extract_path):
+    def __init__(self, zip_file, extract_path, remove_archive: bool = True):
         super().__init__()
         self.zip_file = zip_file
         self.extract_path = extract_path
+        self.remove_archive = remove_archive
 
     def run(self):
         try:
-            subprocess.run(
-                ["7z", "x", self.zip_file, f"-o{self.extract_path}", "-y"],
-                check=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-            # 删除压缩包
-            os.remove(self.zip_file)
+            if str(self.zip_file).lower().endswith(".7z"):
+                self._extract_7z()
+            else:
+                self._extract_with_7z()
+            if self.remove_archive:
+                os.remove(self.zip_file)
             self.finished.emit()
         except subprocess.CalledProcessError as e:
-            self.error.emit(f"解压失败: {str(e)}")
+            stderr = (e.stderr or "").strip()
+            self.error.emit(stderr or f"Extract failed: {e}")
         except Exception as e:
-            self.error.emit(str(e))
+            msg = str(e)
+            if "BCJ2 filter is not supported by py7zr" in msg:
+                msg = (
+                    "File .7z nay can 7-Zip de giai nen. "
+                    "Vui long cai 7-Zip hoac dat 7z.exe vao thu muc chuong trinh, "
+                    "sau do bam tai/cai dat lai."
+                )
+            self.error.emit(msg)
+
+    def _extract_7z(self):
+        seven_zip = _find_7z_executable()
+        if seven_zip:
+            self._extract_with_7z(seven_zip)
+            return
+
+        tar = _find_tar_executable()
+        if tar:
+            try:
+                self._extract_with_tar(tar)
+                return
+            except subprocess.CalledProcessError as e:
+                logger.warning(
+                    "tar failed to extract %s: %s",
+                    self.zip_file,
+                    (e.stderr or e.stdout or str(e)).strip(),
+                )
+
+        import py7zr
+
+        with py7zr.SevenZipFile(self.zip_file, mode="r") as archive:
+            archive.extractall(path=self.extract_path)
+
+    def _extract_with_7z(self, seven_zip: str | None = None):
+        seven_zip = seven_zip or _find_7z_executable()
+        if not seven_zip:
+            raise RuntimeError(
+                "Khong tim thay 7-Zip. Vui long cai 7-Zip hoac dat 7z.exe "
+                "vao thu muc chuong trinh de giai nen goi GPU Faster Whisper."
+            )
+
+        subprocess.run(
+            [seven_zip, "x", str(self.zip_file), f"-o{self.extract_path}", "-y"],
+            check=True,
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+
+    def _extract_with_tar(self, tar: str):
+        subprocess.run(
+            [tar, "-xf", str(self.zip_file), "-C", str(self.extract_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
 
 
 class FasterWhisperDownloadDialog(MessageBoxBase):
@@ -251,7 +426,10 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
         for program in FASTER_WHISPER_PROGRAMS:
             version_type = program["type"]
             if version_type not in installed_versions:
-                self.program_combo.addItem(f"{program['label']} ({program['size']})")
+                self.program_combo.addItem(
+                    f"{self.tr(program['label'])} ({program['size']})",
+                    userData=program,
+                )
 
         # 如果还有可下载的版本，显示下载控件
         if self.program_combo.count() > 0:
@@ -353,10 +531,8 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
         size_item.setTextAlignment(Qt.AlignCenter)  # type: ignore
         self.model_table.setItem(row, 1, size_item)
 
-        # 状态 - 检查model.bin文件是否存在
-        model_path = os.path.join(MODEL_PATH, model["value"])
-        model_bin_path = os.path.join(model_path, "model.bin")
-        is_downloaded = os.path.exists(model_bin_path)
+        # 状态 - ModelScope/HuggingFace may place model.bin in nested snapshots.
+        is_downloaded = is_faster_whisper_model_downloaded(model)
 
         status_item = QTableWidgetItem(
             self.tr("已下载") if is_downloaded else self.tr("未下载")
@@ -403,16 +579,7 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
         # 禁用所有下载按钮
         self._set_all_download_buttons_enabled(False)
 
-        # 获取选中的文本
-        selected_text = self.program_combo.currentText()
-
-        # 从显示文本中提取程序标签
-        selected_label = selected_text.split(" (")[0]
-
-        # 根据标签找到对应的程序配置
-        program = next(
-            (p for p in FASTER_WHISPER_PROGRAMS if p["label"] == selected_label), None
-        )
+        program = self.program_combo.currentData()
 
         if not program:
             InfoBar.error(
@@ -433,8 +600,24 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
         self.program_download_btn.setEnabled(False)
         self.program_combo.setEnabled(False)
 
-        # 直接下载到bin目录
+        # 直接下载到bin目录. 旧版开发环境曾下载到 resource/bin;
+        # nếu còn file cài đặt ở đó thì tái sử dụng để không tải lại 1.35 GB.
         save_path = os.path.join(BIN_PATH, program["value"])
+        legacy_save_path = os.path.join(LEGACY_BIN_PATH, program["value"])
+
+        if os.path.exists(save_path):
+            if save_path.endswith(".exe") and not _is_valid_program_file(Path(save_path)):
+                Path(save_path).unlink(missing_ok=True)
+            elif save_path.endswith(".7z") and Path(save_path).stat().st_size < MIN_PROGRAM_SIZE:
+                Path(save_path).unlink(missing_ok=True)
+
+        if not os.path.exists(save_path) and os.path.exists(legacy_save_path):
+            save_path = legacy_save_path
+
+        if os.path.exists(save_path):
+            self.progress_label.setText(self.tr("已找到下载文件，正在安装..."))
+            self._on_program_download_finished(save_path)
+            return
 
         self.program_download_thread = FileDownloadThread(
             program["downloadLink"], save_path
@@ -459,14 +642,19 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
             # 检查是否是 CPU 版本的直接下载
             if save_path.endswith(".exe"):
                 # 如果是exe文件,重命名为faster-whisper.exe
-                os.rename(save_path, os.path.join(BIN_PATH, "faster-whisper.exe"))
+                target_path = os.path.join(BIN_PATH, "faster-whisper.exe")
+                if os.path.abspath(save_path) != os.path.abspath(target_path):
+                    os.replace(save_path, target_path)
                 self._finish_program_installation()
             else:
                 # GPU 版本需要解压
                 self.progress_label.setText(self.tr("正在解压文件..."))
 
                 # 创建并启动解压线程
-                self.unzip_thread = UnzipThread(save_path, BIN_PATH)
+                remove_archive = Path(save_path).parent == Path(BIN_PATH)
+                self.unzip_thread = UnzipThread(
+                    save_path, BIN_PATH, remove_archive=remove_archive
+                )
                 self.unzip_thread.finished.connect(self._finish_program_installation)
                 self.unzip_thread.error.connect(self._on_unzip_error)
                 self.unzip_thread.start()
@@ -488,16 +676,18 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
 
     def _on_dialog_reject(self):
         """对话框关闭处理"""
+        self._cleanup_download_threads()
+
+    def _cleanup_download_threads(self):
         if self.program_download_thread and self.program_download_thread.isRunning():
             self.program_download_thread.stop()
         if self.model_download_thread and self.model_download_thread.isRunning():
             self.model_download_thread.terminate()
         FasterWhisperDownloadDialog.is_downloading = False
-        self.reject()
 
     def closeEvent(self, event):
         """窗口关闭事件处理"""
-        self._on_dialog_reject()
+        self._cleanup_download_threads()
         super().closeEvent(event)
 
     def _download_model(self, row):
@@ -537,48 +727,12 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
         def _on_model_download_finished():
             FasterWhisperDownloadDialog.is_downloading = False
             self._set_all_download_buttons_enabled(True)
-            # 更新状态
-            status_item = QTableWidgetItem(self.tr("已下载"))
-            status_item.setForeground(Qt.green)  # type: ignore
-            status_item.setTextAlignment(Qt.AlignCenter)  # type: ignore
-            self.model_table.setItem(row, 2, status_item)
-
-            # 更新下载按钮文本
-            if download_btn:
-                download_btn.setText(self.tr("重新下载"))
-                download_btn.setEnabled(True)
-
             model = FASTER_WHISPER_MODELS[row]
+            self._populate_model_table()
 
             # 更新主设置对话框的模型选择
             if self.setting_widget:
-                # 保存当前值并清空
-                current_value = cfg.faster_whisper_model.value
-                combo = self.setting_widget.model_card.comboBox
-                combo.clear()
-
-                # 找出已下载的模型
-                available = []
-                model_map = {
-                    m["label"].lower(): m["value"] for m in FASTER_WHISPER_MODELS
-                }
-                for enum_val in FasterWhisperModelEnum:
-                    if enum_val.value in model_map:
-                        if (MODEL_PATH / model_map[enum_val.value]).exists():
-                            available.append(enum_val)
-
-                # 重建下拉框
-                self.setting_widget.model_card.optionToText = {
-                    e: e.value for e in available
-                }
-                for enum_val in available:
-                    combo.addItem(enum_val.value, userData=enum_val)
-
-                # 恢复选择
-                if current_value in available:
-                    combo.setCurrentText(current_value.value)
-                elif combo.count() > 0:
-                    combo.setCurrentIndex(0)
+                self.setting_widget.refresh_model_options()
 
             InfoBar.success(
                 self.tr("下载成功"),
@@ -633,6 +787,20 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
 
     def _finish_program_installation(self):
         """完成程序安装"""
+        has_program, _ = check_faster_whisper_exists()
+        if not has_program:
+            InfoBar.error(
+                self.tr("安装失败"),
+                self.tr(
+                    "Không tìm thấy chương trình Faster Whisper hợp lệ. "
+                    "Tệp tải về có thể bị hỏng, vui lòng tải lại."
+                ),
+                duration=5000,
+                parent=self,
+            )
+            self._cleanup_installation()
+            return
+
         InfoBar.success(
             self.tr("安装完成"),
             self.tr("Faster Whisper 程序已安装成功"),
@@ -654,20 +822,28 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
         self.progress_bar.hide()
         self.progress_label.hide()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._populate_model_table()
+
 
 class FasterWhisperSettingWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._missing_program_warned = False
         self.setup_ui()
         self._connect_signals()
 
     def showEvent(self, a0: QShowEvent) -> None:
         super().showEvent(a0)
+        self.refresh_model_options()
         # 检查Faster Whisper模型是否存在
         is_faster_whisper_exists, _ = check_faster_whisper_exists()
-        if not is_faster_whisper_exists:
-            self.show_error_info(self.tr("Faster Whisper程序不存在，请先下载程序"))
-            self._show_model_manager()
+        if is_faster_whisper_exists:
+            self._missing_program_warned = False
+        elif not self._missing_program_warned:
+            self.show_warning_info(self.tr("Faster Whisper程序不存在，请先下载程序"))
+            self._missing_program_warned = True
         return
 
     def setup_ui(self):
@@ -693,27 +869,11 @@ class FasterWhisperSettingWidget(QWidget):
             FIF.ROBOT,
             self.tr("模型"),
             self.tr("选择 Faster Whisper 模型"),
-            [model.value for model in FasterWhisperModelEnum],
+            [self.tr(model.value) for model in FasterWhisperModelEnum],
             self.setting_group,
         )
 
-        # 检查未下载的模型并从下拉框中移除
-        for i in range(self.model_card.comboBox.count() - 1, -1, -1):
-            model_text = self.model_card.comboBox.itemText(i).lower()
-            model_config = next(
-                (
-                    model
-                    for model in FASTER_WHISPER_MODELS
-                    if model["label"].lower() == model_text
-                ),
-                None,
-            )
-            if model_config:
-                model_path = Path(MODEL_PATH) / model_config["value"]
-                model_bin_path = model_path / "model.bin"
-                if model_bin_path.exists():
-                    continue
-            self.model_card.comboBox.removeItem(i)
+        self.refresh_model_options()
 
         # 创建管理模型卡片
         self.manage_model_card = HyperlinkCard(
@@ -731,7 +891,7 @@ class FasterWhisperSettingWidget(QWidget):
             FIF.LANGUAGE,
             self.tr("源语言"),
             self.tr("音视频中说话的语言，默认根据前30秒自动识别"),
-            [lang.value for lang in TranscribeLanguageEnum],
+            [self.tr(lang.value) for lang in TranscribeLanguageEnum],
             self.setting_group,
         )
         self.language_card.comboBox.setMaxVisibleItems(6)
@@ -779,7 +939,7 @@ class FasterWhisperSettingWidget(QWidget):
             FIF.MUSIC,
             self.tr("VAD方法"),
             self.tr("选择VAD检测方法"),
-            [method.value for method in VadMethodEnum],
+            [self.tr(method.value) for method in VadMethodEnum],
             self.vad_group,
         )
 
@@ -864,12 +1024,53 @@ class FasterWhisperSettingWidget(QWidget):
         """显示模型管理对话框"""
         dialog = FasterWhisperDownloadDialog(self.window(), self)
         dialog.exec_()
+        self.refresh_model_options()
+        has_program, _ = check_faster_whisper_exists()
+        self._missing_program_warned = not has_program
+
+    def refresh_model_options(self):
+        """Refresh the model combo from the models that exist on disk."""
+        available = available_faster_whisper_models()
+        current_value = cfg.faster_whisper_model.value
+        combo = self.model_card.comboBox
+
+        combo.blockSignals(True)
+        combo.clear()
+        combo.setEnabled(bool(available))
+        self.model_card.optionToText = {
+            model: self.tr(model.value) for model in available
+        }
+        for model in available:
+            combo.addItem(self.tr(model.value), userData=model)
+
+        selected = current_value if current_value in available else None
+        if selected:
+            combo.setCurrentText(self.model_card.optionToText[selected])
+        elif available:
+            selected = available[0]
+            combo.setCurrentIndex(0)
+        combo.blockSignals(False)
+
+        if selected and current_value != selected:
+            cfg.set(cfg.faster_whisper_model, selected)
+        if not selected:
+            combo.setPlaceholderText(self.tr("Chưa có mô hình đã tải"))
 
     def show_error_info(self, error_msg):
         """显示错误信息"""
         InfoBar.error(
             title=self.tr("错误"),
             content=error_msg,
+            parent=self.window(),
+            duration=5000,
+            position=InfoBarPosition.BOTTOM,
+        )
+
+    def show_warning_info(self, warning_msg):
+        """显示非阻塞提示信息"""
+        InfoBar.warning(
+            title=self.tr("提示"),
+            content=warning_msg,
             parent=self.window(),
             duration=5000,
             position=InfoBarPosition.BOTTOM,
@@ -901,10 +1102,8 @@ class FasterWhisperSettingWidget(QWidget):
             self.show_error_info(self.tr("模型配置不存在"))
             return False
 
-        model_path = MODEL_PATH / model_config["value"]
-        model_files = model_path / "model.bin"
         # 检查模型文件是否存在
-        if not model_path.exists() and not model_files.exists():
+        if not is_faster_whisper_model_downloaded(model_config):
             self.show_error_info(self.tr("模型文件不存在: ") + model_value)
             return False
         return True

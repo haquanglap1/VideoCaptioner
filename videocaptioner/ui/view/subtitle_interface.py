@@ -2,7 +2,6 @@
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -34,7 +33,6 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
-from videocaptioner.config import SUBTITLE_STYLE_PATH
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.constant import (
     INFOBAR_DURATION_ERROR,
@@ -217,13 +215,21 @@ class SubtitleInterface(QWidget):
         self._setup_subtitle_table()
         self._setup_bottom_layout()
 
+    def _subtitle_layout_text(self, layout: SubtitleLayoutEnum) -> str:
+        return self.tr(layout.value)
+
+    def _target_language_text(self, language: TargetLanguage) -> str:
+        return self.tr(language.value)
+
     def set_values(self):
         self.layout_button.setText(
-            cfg.subtitle_layout.value.value
+            self._subtitle_layout_text(cfg.subtitle_layout.value)
         )  # Get enum's string value
         self.translate_button.setChecked(cfg.need_translate.value)
         self.optimize_button.setChecked(cfg.need_optimize.value)
-        self.target_language_button.setText(cfg.target_language.value.value)
+        self.target_language_button.setText(
+            self._target_language_text(cfg.target_language.value)
+        )
         self.target_language_button.setEnabled(cfg.need_translate.value)
 
     def _setup_top_layout(self):
@@ -260,10 +266,15 @@ class SubtitleInterface(QWidget):
         self.layout_button.setFixedHeight(34)
         self.layout_button.setMinimumWidth(125)
         self.layout_menu = RoundMenu(parent=self)
-        for layout in ["译文在上", "原文在上", "仅译文", "仅原文"]:
-            action = Action(text=layout)
+        for layout in [
+            SubtitleLayoutEnum.TRANSLATE_ON_TOP,
+            SubtitleLayoutEnum.ORIGINAL_ON_TOP,
+            SubtitleLayoutEnum.ONLY_TRANSLATE,
+            SubtitleLayoutEnum.ONLY_ORIGINAL,
+        ]:
+            action = Action(text=self._subtitle_layout_text(layout))
             action.triggered.connect(
-                lambda checked, layout_value=layout: signalBus.subtitle_layout_changed.emit(
+                lambda checked, layout_value=layout.value: signalBus.subtitle_layout_changed.emit(
                     layout_value
                 )
             )
@@ -300,7 +311,7 @@ class SubtitleInterface(QWidget):
         self.target_language_menu = RoundMenu(parent=self)
         self.target_language_menu.setMaxVisibleItems(10)
         for lang in TargetLanguage:
-            action = Action(text=lang.value)
+            action = Action(text=self._target_language_text(lang))
             action.triggered.connect(
                 lambda checked, lang_value=lang.value: signalBus.target_language_changed.emit(
                     lang_value
@@ -519,10 +530,12 @@ class SubtitleInterface(QWidget):
         self.start_button.setEnabled(True)
         self.cancel_button.hide()  # 隐藏取消按钮
         self.progress_bar.error()
+        # Persist the real cause in the status label so it survives the InfoBar timeout.
+        self.status_label.setText(self.tr("失败：") + (error or "")[:200])
         InfoBar.error(
             self.tr("优化失败"),
             self.tr(error),
-            duration=INFOBAR_DURATION_ERROR,
+            duration=-1,  # Sticky so user can read/copy the full error before dismissing.
             parent=self,
         )
 
@@ -680,47 +693,6 @@ class SubtitleInterface(QWidget):
         """显示字幕设置对话框"""
         dialog = SubtitleSettingDialog(self.window())
         dialog.exec_()
-
-    def show_video_player(self) -> None:
-        """显示视频播放器窗口"""
-        # 创建视频播放器窗口（延迟导入，因为vlc是可选依赖）
-        from videocaptioner.ui.components.MyVideoWidget import MyVideoWidget
-
-        self.video_player = MyVideoWidget()
-        self.video_player.resize(800, 600)
-
-        def signal_update() -> None:
-            if not self.model._data:
-                return
-            ass_style_name = cfg.subtitle_style_name.value
-            ass_style_path = SUBTITLE_STYLE_PATH / f"{ass_style_name}.txt"
-            if ass_style_path.exists():
-                subtitle_style_srt = ass_style_path.read_text(encoding="utf-8")
-            else:
-                subtitle_style_srt = None
-            temp_srt_path = os.path.join(tempfile.gettempdir(), "temp_subtitle.ass")
-            asr_data = ASRData.from_json(self.model._data)
-            asr_data.save(
-                temp_srt_path,
-                layout=cfg.subtitle_layout.value,
-                ass_style=subtitle_style_srt or "",
-            )
-            signalBus.add_subtitle(temp_srt_path)
-
-        # 如果有字幕文件,则添加字幕
-        signal_update()
-
-        signalBus.subtitle_layout_changed.connect(signal_update)
-        self.model.dataChanged.connect(signal_update)
-        self.model.layoutChanged.connect(signal_update)
-
-        # 如果有关联的视频文件,则自动加载
-        # Note: SubtitleTask doesn't have file_path attribute
-        # if self.task and hasattr(self.task, "file_path") and self.task.file_path:
-        #     self.video_player.setVideo(QUrl.fromLocalFile(self.task.file_path))
-
-        self.video_player.show()
-        self.video_player.play()
 
     def on_subtitle_clicked(self, index: QModelIndex) -> None:
         row = index.row()
@@ -957,7 +929,7 @@ class SubtitleInterface(QWidget):
         """处理翻译语言变更"""
         for lang in TargetLanguage:
             if lang.value == language:
-                self.target_language_button.setText(lang.value)
+                self.target_language_button.setText(self._target_language_text(lang))
                 cfg.set(cfg.target_language, lang)
                 break
 
@@ -977,7 +949,43 @@ class SubtitleInterface(QWidget):
         """处理字幕排布变更"""
         layout_enum = SubtitleLayoutEnum(layout)  # Convert string to enum
         cfg.set(cfg.subtitle_layout, layout_enum)
-        self.layout_button.setText(layout)
+        self.layout_button.setText(self._subtitle_layout_text(layout_enum))
+        self._reexport_pipeline_outputs(layout_enum)
+
+    def _reexport_pipeline_outputs(self, layout: SubtitleLayoutEnum) -> None:
+        # The optimize/translate pipeline auto-saves files at task start using
+        # the layout captured then; without re-exporting, picking a new layout
+        # afterwards has no effect on the on-disk files. Only touches files the
+        # pipeline itself wrote — never user-opened paths.
+        if not (self.task and self.model._data):
+            return
+        try:
+            asr_data = ASRData.from_json(self.model._data)
+        except Exception:
+            return
+
+        targets: list[str] = []
+        output_path = getattr(self.task, "output_path", None)
+        if output_path:
+            targets.append(output_path)
+        video_path = getattr(self.task, "video_path", None)
+        if video_path:
+            video_dir = Path(video_path).parent
+            stem = Path(video_path).stem
+            targets.append(str(video_dir / f"{stem}.srt"))
+            targets.append(str(video_dir / f"{stem}.ass"))
+
+        for target in dict.fromkeys(targets):
+            if not target or not Path(target).exists():
+                continue
+            try:
+                if target.endswith(".ass"):
+                    style_str = get_subtitle_style(cfg.subtitle_style_name.value)
+                    asr_data.to_ass(style_str, layout, target)
+                else:
+                    asr_data.save(target, layout=layout)
+            except Exception:
+                continue
 
 
 class PromptDialog(MessageBoxBase):

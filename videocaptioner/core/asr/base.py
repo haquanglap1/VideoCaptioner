@@ -104,15 +104,20 @@ class BaseASR:
                 Optional[dict], self._cache.get(cache_key, default=None)
             )
             if cached_result is not None:
-                logger.debug("找到缓存，直接返回")
+                logger.info("ASR cache HIT (%s) — returning cached transcript", cache_key)
                 segments = self._make_segments(cached_result)
                 return ASRData(segments)
+            else:
+                logger.info("ASR cache MISS (%s) — running fresh transcription", cache_key)
+        elif self.use_cache:
+            logger.info("ASR cache disabled globally — running fresh transcription")
 
         # Run ASR
         resp_data = self._run(callback, **kwargs)
 
-        # Cache result
+        # Cache result (write is unconditional; reads are gated by use_cache above)
         self._cache.set(cache_key, resp_data, expire=86400 * 2)
+        logger.info("ASR result stored to cache (%s)", cache_key)
 
         segments = self._make_segments(resp_data)
         return ASRData(segments)

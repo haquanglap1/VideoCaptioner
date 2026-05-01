@@ -95,7 +95,6 @@ class LLMTranslator(BaseTranslator):
         except Exception as e:
             logger.error(f"LLM translation error: {e}")
             raise
-            return self._translate_chunk_single(subtitle_chunk)
 
     def _agent_loop(
         self, system_prompt: str, subtitle_dict: Dict[str, str]
