@@ -299,6 +299,29 @@ class Config(QConfig):
         "RoundedBgStyle", "LetterSpacing", 0, RangeValidator(0, 20)
     )
 
+    # ------------------- Dubbing / Lồng tiếng -------------------
+    dubbing_enabled = ConfigItem("Dubbing", "Enabled", False, BoolValidator())
+    dubbing_tts_provider = OptionsConfigItem(
+        "Dubbing", "TTSProvider", "openai",
+        OptionsValidator(["openai", "siliconflow", "openai_fm"]),
+    )
+    dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
+    dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
+    dubbing_tts_api_base = ConfigItem(
+        "Dubbing", "TTSApiBase", "https://api.openai.com/v1"
+    )
+    dubbing_tts_model = ConfigItem("Dubbing", "TTSModel", "tts-1")
+    dubbing_mix_mode = OptionsConfigItem(
+        "Dubbing", "MixMode", "reduce",
+        OptionsValidator(["keep", "reduce", "mute"]),
+    )
+    dubbing_original_volume = RangeConfigItem(
+        "Dubbing", "OriginalVolume", 40, RangeValidator(0, 100)
+    )
+    dubbing_tts_speed = RangeConfigItem(
+        "Dubbing", "TTSSpeed", 10, RangeValidator(5, 20)
+    )  # stored as 10x (1.0x = 10)
+
     # ------------------- 保存配置 -------------------
     work_dir = ConfigItem("Save", "Work_Dir", WORK_PATH, FolderValidator())
 

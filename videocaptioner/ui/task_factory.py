@@ -5,6 +5,7 @@ from typing import Optional
 from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.entities import (
     LANGUAGES,
+    DubbingTask,
     FullProcessTask,
     LLMServiceEnum,
     SubtitleConfig,
@@ -15,6 +16,12 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
+from videocaptioner.core.dubbing.config import (
+    AudioMixMode,
+    DubbingConfig,
+    TTSProviderEnum,
+)
+from videocaptioner.core.tts.tts_data import TTSConfig
 from videocaptioner.ui.common.config import cfg
 
 
@@ -280,3 +287,69 @@ class TaskFactory:
             file_path=file_path,
             output_path=output_path,
         )
+
+    @staticmethod
+    def create_dubbing_config() -> Optional[DubbingConfig]:
+        """Tạo DubbingConfig từ cài đặt UI hiện tại. Trả về None nếu dubbing tắt."""
+        if not cfg.dubbing_enabled.value:
+            return None
+
+        # Map mix mode string to enum
+        mix_mode_map = {
+            "keep": AudioMixMode.KEEP_ORIGINAL,
+            "reduce": AudioMixMode.REDUCE_ORIGINAL,
+            "mute": AudioMixMode.MUTE_ORIGINAL,
+        }
+        mix_mode = mix_mode_map.get(
+            cfg.dubbing_mix_mode.value, AudioMixMode.REDUCE_ORIGINAL
+        )
+
+        # Map provider string to enum
+        provider_map = {
+            "openai": TTSProviderEnum.OPENAI,
+            "siliconflow": TTSProviderEnum.SILICONFLOW,
+            "openai_fm": TTSProviderEnum.OPENAI_FM,
+        }
+        tts_provider = provider_map.get(
+            cfg.dubbing_tts_provider.value, TTSProviderEnum.OPENAI
+        )
+
+        tts_config = TTSConfig(
+            model=cfg.dubbing_tts_model.value,
+            api_key=cfg.dubbing_tts_api_key.value,
+            base_url=cfg.dubbing_tts_api_base.value,
+            voice=cfg.dubbing_tts_voice.value,
+            speed=cfg.dubbing_tts_speed.value / 10.0,  # 10 -> 1.0x
+            response_format="wav",
+        )
+
+        return DubbingConfig(
+            tts_provider=tts_provider,
+            tts_config=tts_config,
+            mix_mode=mix_mode,
+            original_volume=cfg.dubbing_original_volume.value / 100.0,
+            enabled=True,
+        )
+
+    @staticmethod
+    def create_dubbing_task(
+        video_path: str,
+        subtitle_path: str,
+        task_id: Optional[str] = None,
+    ) -> DubbingTask:
+        """Tạo dubbing task."""
+        output_path = str(
+            Path(video_path).parent / f"{Path(video_path).stem}_dubbed.mp4"
+        )
+        dubbing_config = TaskFactory.create_dubbing_config()
+
+        task = DubbingTask(
+            queued_at=datetime.datetime.now(),
+            video_path=video_path,
+            subtitle_path=subtitle_path,
+            output_path=output_path,
+            dubbing_config=dubbing_config,
+        )
+        if task_id:
+            task.task_id = task_id
+        return task

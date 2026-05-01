@@ -21,7 +21,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
-from videocaptioner.config import AUTHOR, FEEDBACK_URL, HELP_URL, RELEASE_URL, VERSION, YEAR
+from videocaptioner.config import AUTHOR, RELEASE_URL, VERSION, YEAR
 from videocaptioner.core.constant import (
     INFOBAR_DURATION_ERROR,
     INFOBAR_DURATION_SUCCESS,
@@ -219,22 +219,6 @@ class SettingInterface(ScrollArea):
             parent=self.personalGroup,
         )
 
-        # 关于卡片
-        self.helpCard = HyperlinkCard(
-            HELP_URL,
-            self.tr("打开帮助页面"),
-            FIF.HELP,
-            self.tr("帮助"),
-            self.tr("发现新功能并了解有关VideoCaptioner的使用技巧"),
-            self.aboutGroup,
-        )
-        self.feedbackCard = PrimaryPushSettingCard(
-            self.tr("提供反馈"),
-            FIF.FEEDBACK,
-            self.tr("提供反馈"),
-            self.tr("提供反馈帮助我们改进VideoCaptioner"),
-            self.aboutGroup,
-        )
         self.aboutCard = PrimaryPushSettingCard(
             self.tr("检查更新"),
             FIF.INFO,
@@ -267,8 +251,6 @@ class SettingInterface(ScrollArea):
         self.personalGroup.addSettingCard(self.zoomCard)
         self.personalGroup.addSettingCard(self.languageCard)
 
-        self.aboutGroup.addSettingCard(self.helpCard)
-        self.aboutGroup.addSettingCard(self.feedbackCard)
         self.aboutGroup.addSettingCard(self.aboutCard)
 
     def __createLLMServiceCards(self):
@@ -678,11 +660,6 @@ class SettingInterface(ScrollArea):
         self.themeCard.optionChanged.connect(lambda ci: setTheme(cfg.get(ci)))
         self.themeColorCard.colorChanged.connect(setThemeColor)
 
-        # 反馈
-        self.feedbackCard.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl(FEEDBACK_URL))  # type: ignore
-        )
-
         # 关于
         self.aboutCard.clicked.connect(self.checkUpdate)
 
@@ -836,7 +813,59 @@ class SettingInterface(ScrollArea):
             )
 
     def checkUpdate(self):
-        webbrowser.open(RELEASE_URL)
+        """Kiểm tra cập nhật và hiện UpdateDialog nếu có phiên bản mới."""
+        from videocaptioner.ui.thread.version_checker_thread import VersionChecker
+        from videocaptioner.ui.components.UpdateDialog import UpdateDialog
+
+        # Disable button while checking
+        self.aboutCard.button.setEnabled(False)
+        self.aboutCard.button.setText(self.tr("Đang kiểm tra..."))
+
+        try:
+            checker = VersionChecker()
+            data = checker.get_latest_version_info()
+
+            self.aboutCard.button.setEnabled(True)
+            self.aboutCard.button.setText(self.tr("检查更新"))
+
+            if not data:
+                InfoBar.warning(
+                    self.tr("Kiểm tra cập nhật"),
+                    self.tr("Không thể kết nối tới server. Thử lại sau."),
+                    duration=INFOBAR_DURATION_WARNING,
+                    parent=self,
+                )
+                return
+
+            if not checker.has_new_version():
+                InfoBar.success(
+                    self.tr("Đã cập nhật"),
+                    self.tr("Bạn đang dùng phiên bản mới nhất!"),
+                    duration=INFOBAR_DURATION_SUCCESS,
+                    parent=self,
+                )
+                return
+
+            # Có phiên bản mới — hiện UpdateDialog
+            dialog = UpdateDialog(
+                version=checker.latest_version,
+                update_info=checker.update_info,
+                download_url=checker.download_url,
+                parent=self.window(),
+            )
+            dialog.exec()
+
+        except Exception as e:
+            self.aboutCard.button.setEnabled(True)
+            self.aboutCard.button.setText(self.tr("检查更新"))
+            InfoBar.error(
+                self.tr("Lỗi"),
+                str(e),
+                duration=INFOBAR_DURATION_ERROR,
+                parent=self,
+            )
+            # Fallback: mở browser
+            webbrowser.open(RELEASE_URL)
 
     def __onLLMServiceChanged(self, service):
         """处理LLM服务切换事件"""

@@ -5,6 +5,7 @@ from qfluentwidgets import SegmentedWidget
 
 from videocaptioner.core.llm.context import generate_task_id
 from videocaptioner.ui.task_factory import TaskFactory
+from videocaptioner.ui.view.dubbing_interface import DubbingInterface
 from videocaptioner.ui.view.subtitle_interface import SubtitleInterface
 from videocaptioner.ui.view.task_creation_interface import TaskCreationInterface
 from videocaptioner.ui.view.transcription_interface import TranscriptionInterface
@@ -35,6 +36,7 @@ class HomeInterface(QWidget):
         self.task_creation_interface = TaskCreationInterface(self)
         self.transcription_interface = TranscriptionInterface(self)
         self.subtitle_optimization_interface = SubtitleInterface(self)
+        self.dubbing_interface = DubbingInterface(self)
         self.video_synthesis_interface = VideoSynthesisInterface(self)
 
         self.addSubInterface(
@@ -47,6 +49,11 @@ class HomeInterface(QWidget):
             self.subtitle_optimization_interface,
             "SubtitleInterface",
             self.tr("字幕优化与翻译"),
+        )
+        self.addSubInterface(
+            self.dubbing_interface,
+            "DubbingInterface",
+            self.tr("Lồng tiếng"),
         )
         self.addSubInterface(
             self.video_synthesis_interface,
@@ -67,6 +74,9 @@ class HomeInterface(QWidget):
             self.switch_to_subtitle_optimization
         )
         self.subtitle_optimization_interface.finished.connect(
+            self.switch_to_dubbing
+        )
+        self.dubbing_interface.finished.connect(
             self.switch_to_video_synthesis
         )
 
@@ -91,6 +101,16 @@ class HomeInterface(QWidget):
         self.subtitle_optimization_interface.process()
         self.stackedWidget.setCurrentWidget(self.subtitle_optimization_interface)
         self.pivot.setCurrentItem("SubtitleInterface")
+
+    def switch_to_dubbing(self, video_path, subtitle_path):
+        # Tạo dubbing task
+        dubbing_task = TaskFactory.create_dubbing_task(
+            video_path, subtitle_path, task_id=self._current_task_id
+        )
+        self.dubbing_interface.set_task(dubbing_task)
+        self.dubbing_interface.process()
+        self.stackedWidget.setCurrentWidget(self.dubbing_interface)
+        self.pivot.setCurrentItem("DubbingInterface")
 
     def switch_to_video_synthesis(self, video_path, subtitle_path):
         # 继续使用同一个 task_id，流程结束后清空
@@ -124,5 +144,6 @@ class HomeInterface(QWidget):
         self.task_creation_interface.close()
         self.transcription_interface.close()
         self.subtitle_optimization_interface.close()
+        self.dubbing_interface.close()
         self.video_synthesis_interface.close()
         super().closeEvent(event)

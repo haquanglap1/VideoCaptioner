@@ -794,6 +794,29 @@ class SynthesisTask:
 
 
 @dataclass
+class DubbingTask:
+    """Dubbing (lồng tiếng) task."""
+
+    # 任务标识
+    task_id: str = field(default_factory=_generate_task_id)
+
+    queued_at: Optional[datetime.datetime] = None
+    started_at: Optional[datetime.datetime] = None
+    completed_at: Optional[datetime.datetime] = None
+
+    # Input
+    video_path: Optional[str] = None
+    subtitle_path: Optional[str] = None
+
+    # Output — video with dubbed audio
+    output_path: Optional[str] = None
+
+    need_next_task: bool = False
+
+    dubbing_config: Optional["DubbingConfig"] = None
+
+
+@dataclass
 class TranscriptAndSubtitleTask:
     """转录和字幕任务类"""
 
@@ -832,6 +855,7 @@ class FullProcessTask:
 
     transcribe_config: Optional[TranscribeConfig] = None
     subtitle_config: Optional[SubtitleConfig] = None
+    dubbing_config: Optional["DubbingConfig"] = None
     synthesis_config: Optional[SynthesisConfig] = None
 
 

@@ -214,7 +214,8 @@ class VideoDownloadThread(QThread):
             "quiet": True,  # 禁用日志输出
             "no_warnings": True,  # 禁用警告信息
             "noprogress": True,
-            "writeautomaticsub": need_subtitle,  # 下载自动生成的字幕
+            "writesubtitles": need_subtitle,  # 下载人工上传的字幕（优先）
+            "writeautomaticsub": need_subtitle,  # 下载自动生成的字幕（备选）
             "writethumbnail": need_thumbnail,  # 下载缩略图
             "thumbnail_format": "jpg",  # 指定缩略图的格式
             # Modern UA helps avoid some YouTube anti-bot rejections.
@@ -256,14 +257,27 @@ class VideoDownloadThread(QThread):
 
             try:
                 subtitle_download_link = None
-                automatic_captions = info_dict.get("automatic_captions")
-                if automatic_captions and subtitle_language:
-                    for lang_code in automatic_captions:
+                # 优先使用人工上传的字幕（manual/community subtitles）
+                manual_subtitles = info_dict.get("subtitles")
+                if manual_subtitles and subtitle_language:
+                    for lang_code in manual_subtitles:
                         if lang_code.startswith(subtitle_language):
-                            subtitle_download_link = automatic_captions[lang_code][-1][
+                            subtitle_download_link = manual_subtitles[lang_code][-1][
                                 "url"
                             ]
+                            logger.info("找到人工上传字幕 (lang=%s)", lang_code)
                             break
+                # 如果没有人工字幕，退回自动生成的字幕
+                if not subtitle_download_link:
+                    automatic_captions = info_dict.get("automatic_captions")
+                    if automatic_captions and subtitle_language:
+                        for lang_code in automatic_captions:
+                            if lang_code.startswith(subtitle_language):
+                                subtitle_download_link = automatic_captions[lang_code][-1][
+                                    "url"
+                                ]
+                                logger.info("使用自动生成字幕 (lang=%s)", lang_code)
+                                break
             except Exception:
                 subtitle_download_link = None
 

@@ -23,6 +23,7 @@ from videocaptioner.core.constant import (
 from videocaptioner.core.utils.installer import ffmpeg_path
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.DonateDialog import DonateDialog
+from videocaptioner.ui.components.UpdateDialog import UpdateDialog
 from videocaptioner.ui.thread.ffmpeg_install_thread import FFmpegInstallThread
 from videocaptioner.ui.thread.version_checker_thread import VersionChecker
 from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
@@ -76,14 +77,7 @@ class MainWindow(FluentWindow):
 
         self.navigationInterface.addSeparator()
 
-        # 在底部添加自定义小部件
-        self.navigationInterface.addItem(
-            routeKey="avatar",
-            text="GitHub",
-            icon=FIF.GITHUB,
-            onClick=self.onGithubDialog,
-            position=NavigationItemPosition.BOTTOM,
-        )
+        # 在底部添加设置
         self.addSubInterface(
             self.settingInterface,
             FIF.SETTING,
@@ -142,27 +136,27 @@ class MainWindow(FluentWindow):
             donate_dialog.exec_()
 
     def onNewVersion(self, version, update_required, update_info, download_url):
-        """新版本提示"""
-        if update_required:
-            title = "发现新版本, 需要更新"
-            content = f"发现新版本 {version}\n\n" f"更新内容：\n{update_info}"
-        else:
-            title = "发现新版本"
-            content = f"发现新版本 {version}\n\n{update_info}"
-
-        w = MessageBox(title, content, self)
-        w.yesButton.setText("立即更新")
-        w.cancelButton.setText("稍后再说")
-
-        if w.exec() or update_required:
-            QDesktopServices.openUrl(QUrl(download_url))
+        """新版本提示 — 显示 UpdateDialog cho phép tải và cài tự động."""
+        dialog = UpdateDialog(
+            version=version,
+            update_info=update_info,
+            download_url=download_url,
+            parent=self,
+        )
 
         if update_required:
+            # Bắt buộc cập nhật: ẩn nút cancel
+            dialog.cancelButton.setVisible(False)
+
+        result = dialog.exec()
+
+        if update_required and result == 0:
+            # User đóng dialog mà không cập nhật — tắt tính năng
             self.homeInterface.setEnabled(False)
             self.batchProcessInterface.setEnabled(False)
             InfoBar.error(
-                title="需要更新",
-                content=self.tr("当前版本部分功能已被禁用。请尽快更新。"),
+                title="Cần cập nhật",
+                content=self.tr("Đã có phiên bản mới bắt buộc. Vui lòng cập nhật."),
                 isClosable=False,
                 position=InfoBarPosition.BOTTOM,
                 duration=-1,

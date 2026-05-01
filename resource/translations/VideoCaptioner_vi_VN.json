@@ -60,7 +60,7 @@
   "Whisper API 设置": "Cài đặt Whisper API",
   "Whisper API 连接失败！\n{result}": "Kết nối Whisper API thất bại!\n{result}",
   "Whisper API 连接成功！": "Kết nối Whisper API thành công!",
-  "Whisper API 连接成功！\n转录结果:": "Kết nối Whisper API thành công!\nKết quả nhận dạng:",
+  "Whisper API 连接成功！\n转录结果:": "Kết nối Whisper API thành công!\nKết quả chuyển ngữ:",
   "Whisper CPP": "Whisper CPP",
   "Whisper CPP 设置": "Cài đặt Whisper CPP (chưa ổn định 🤔)",
   "Whisper CPP 设置 (不稳定 🤔)": "Cài đặt Whisper CPP (chưa ổn định 🤔)",
@@ -689,5 +689,12 @@
   "默认背景: ": "Ảnh nền mặc định: ",
   "💡 Kéo thả video + phụ đề (.srt/.ass) vào đây, hoặc bấm 📺 Mở video trên thanh công cụ để chỉnh sửa trực tiếp.": "💡 Kéo thả video + phụ đề (.srt/.ass) vào đây, hoặc bấm 📺 Mở video trên thanh công cụ để chỉnh sửa trực tiếp.",
   "📺 ": "📺 ",
-  "📺 Mở video": "📺 Mở video"
+  "📺 Mở video": "📺 Mở video",
+  "已找到下载文件，正在安装...": "Đã tìm thấy file tải xuống, đang cài đặt...",
+  "失败：": "Thất bại: ",
+  "发现新版本": "Phát hiện phiên bản mới",
+  "发现新版本, 需要更新": "Phát hiện phiên bản mới, cần cập nhật",
+  "立即更新": "Cập nhật ngay",
+  "稍后再说": "Để sau",
+  "需要更新": "Cần cập nhật"
 }
