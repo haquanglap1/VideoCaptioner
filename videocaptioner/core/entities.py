@@ -866,6 +866,7 @@ class BatchTaskType(Enum):
     SUBTITLE = "批量字幕"
     TRANS_SUB = "转录+字幕"
     FULL_PROCESS = "全流程处理"
+    DUBBING = "Lồng tiếng hàng loạt"
 
     def __str__(self):
         return self.value

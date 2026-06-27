@@ -1,6 +1,7 @@
 import queue
 import time
 from functools import partial
+from pathlib import Path
 from typing import Dict, Optional
 
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -9,6 +10,7 @@ from videocaptioner.core.entities import (
     BatchTaskStatus,
     BatchTaskType,
     DubbingTask,
+    SupportedSubtitleFormats,
     TranscribeTask,
 )
 from videocaptioner.core.utils.logger import setup_logger
@@ -88,6 +90,8 @@ class BatchProcessThread(QThread):
                 self._handle_trans_sub_task(batch_task)
             elif batch_task.task_type == BatchTaskType.FULL_PROCESS:
                 self._handle_full_process_task(batch_task)
+            elif batch_task.task_type == BatchTaskType.DUBBING:
+                self._handle_dubbing_task(batch_task)
 
         except Exception as e:
             logger.exception(f"处理任务失败: {str(e)}")
@@ -139,6 +143,58 @@ class BatchProcessThread(QThread):
 
         task = self.factory.create_subtitle_task(batch_task.file_path)
         thread = SubtitleThread(task)
+        batch_task.current_thread = thread
+
+        # 保存线程引用
+        self.threads.append(thread)
+
+        thread.progress.connect(  # type: ignore
+            partial(self._on_progress_wrapper, batch_task)  # type: ignore
+        )
+        thread.error.connect(  # type: ignore
+            partial(self._on_error_wrapper, batch_task)  # type: ignore
+        )
+        thread.finished.connect(  # type: ignore
+            partial(self._on_finished_wrapper, batch_task)  # type: ignore
+        )
+
+        thread.start()
+
+    @staticmethod
+    def _find_subtitle_for_video(video_path: str) -> Optional[str]:
+        """Tìm file phụ đề cùng tên với video trong cùng thư mục.
+
+        Ưu tiên .srt, sau đó .ass, .vtt. Trả về đường dẫn hoặc None.
+        """
+        video = Path(video_path)
+        ordered_exts = ["srt"] + [
+            fmt.value
+            for fmt in SupportedSubtitleFormats
+            if fmt.value != "srt"
+        ]
+        for ext in ordered_exts:
+            candidate = video.with_suffix(f".{ext}")
+            if candidate.exists():
+                return str(candidate)
+        return None
+
+    def _handle_dubbing_task(self, batch_task: BatchTask):
+        """Lồng tiếng cho 1 video, tự tìm phụ đề cùng tên trong thư mục."""
+        if not cfg.dubbing_enabled.value:
+            raise ValueError(
+                "Lồng tiếng đang tắt — hãy bật và cấu hình ở tab Lồng tiếng trước"
+            )
+
+        subtitle_path = self._find_subtitle_for_video(batch_task.file_path)
+        if not subtitle_path:
+            raise ValueError(
+                "Không tìm thấy phụ đề cùng tên (.srt/.ass/.vtt) trong thư mục"
+            )
+
+        dubbing_task = self.factory.create_dubbing_task(
+            batch_task.file_path, subtitle_path
+        )
+        thread = DubbingThread(dubbing_task)
         batch_task.current_thread = thread
 
         # 保存线程引用

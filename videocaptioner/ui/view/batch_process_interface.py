@@ -83,6 +83,9 @@ class BatchProcessInterface(QWidget):
             BatchTaskType.FULL_PROCESS: self.tr(
                 "转录 → 字幕处理 →（lồng tiếng nếu bật）→ 合成视频"
             ),
+            BatchTaskType.DUBBING: self.tr(
+                "Lồng tiếng cho video, tự tìm file phụ đề cùng tên trong thư mục"
+            ),
         }
 
         # 控制按钮
@@ -161,6 +164,9 @@ class BatchProcessInterface(QWidget):
             video_formats = [f"*.{fmt.value}" for fmt in SupportedVideoFormats]
             formats = audio_formats + video_formats
             file_filter = f"{self.tr('音视频文件')} ({' '.join(formats)})"
+        elif task_type == BatchTaskType.DUBBING:
+            video_formats = [f"*.{fmt.value}" for fmt in SupportedVideoFormats]
+            file_filter = f"{self.tr('视频文件')} ({' '.join(video_formats)})"
         elif task_type == BatchTaskType.SUBTITLE:
             subtitle_formats = [f"*.{fmt.value}" for fmt in SupportedSubtitleFormats]
             file_filter = f"{self.tr('字幕文件')} ({' '.join(subtitle_formats)})"
@@ -281,6 +287,8 @@ class BatchProcessInterface(QWidget):
             valid_extensions = {f".{fmt.value}" for fmt in SupportedAudioFormats} | {
                 f".{fmt.value}" for fmt in SupportedVideoFormats
             }
+        elif task_type == BatchTaskType.DUBBING:
+            valid_extensions = {f".{fmt.value}" for fmt in SupportedVideoFormats}
         elif task_type == BatchTaskType.SUBTITLE:
             valid_extensions = {f".{fmt.value}" for fmt in SupportedSubtitleFormats}
 

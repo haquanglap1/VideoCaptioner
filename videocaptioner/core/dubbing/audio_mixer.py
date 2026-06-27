@@ -36,6 +36,10 @@ _LOUDNORM_I = -16.0
 _LOUDNORM_TP = -1.5
 _LOUDNORM_LRA = 11.0
 
+# Chuỗi loudnorm one-pass (dynamic), fold vào bước dựng voice track để khỏi
+# phải quét file thêm một lượt ở bước mix.
+_LOUDNORM_ONEPASS = f"loudnorm=I={_LOUDNORM_I}:TP={_LOUDNORM_TP}:LRA={_LOUDNORM_LRA}"
+
 
 def get_audio_duration(audio_path: str) -> float:
     """Lấy thời lượng audio bằng ffprobe (giây).
@@ -137,6 +141,7 @@ def build_voice_track(
     total_duration_s: float,
     output_path: str,
     sample_rate: int = 24000,
+    normalize: bool = False,
 ) -> bool:
     """Ghép các audio segment thành voice track hoàn chỉnh.
 
@@ -154,6 +159,9 @@ def build_voice_track(
         total_duration_s: Tổng thời lượng video (giây).
         output_path: Đường dẫn voice track đầu ra.
         sample_rate: Sample rate của output.
+        normalize: Nếu True, chuẩn hóa độ to (loudnorm one-pass) ngay trong
+            bước dựng track — fold vào pass ffmpeg vốn đã chạy, để bước mix
+            sau đó khỏi phải quét file thêm lần nữa.
 
     Returns:
         True nếu thành công.
@@ -169,10 +177,13 @@ def build_voice_track(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     if len(valid) <= _MAX_INPUTS_PER_PASS:
-        return _render_voice_track(valid, total_duration_s, output_path, sample_rate)
+        return _render_voice_track(
+            valid, total_duration_s, output_path, sample_rate, loudnorm=normalize
+        )
 
     # Quá nhiều segment: chia batch, render từng batch thành track full-length
-    # (im lặng ở các đoạn không có segment), rồi amix các batch lại.
+    # (im lặng ở các đoạn không có segment), rồi amix các batch lại. Chuẩn hóa
+    # độ to chỉ áp dụng một lần ở bước trộn cuối (không phải từng batch).
     temp_dir = Path(tempfile.mkdtemp(prefix="vc_dub_track_"))
     try:
         batch_tracks: List[str] = []
@@ -183,10 +194,9 @@ def build_voice_track(
                 batch_tracks.append(btrack)
         if not batch_tracks:
             return False
-        if len(batch_tracks) == 1:
-            shutil.copy2(batch_tracks[0], output_path)
-            return True
-        return _mix_full_tracks(batch_tracks, output_path, sample_rate)
+        return _mix_full_tracks(
+            batch_tracks, output_path, sample_rate, loudnorm=normalize
+        )
     finally:
         shutil.rmtree(str(temp_dir), ignore_errors=True)
 
@@ -198,6 +208,7 @@ def mix_audio_tracks(
     mix_mode: AudioMixMode = AudioMixMode.REDUCE_ORIGINAL,
     original_volume: float = 0.2,
     voice_volume: float = 1.0,
+    normalize_voice: bool = True,
 ) -> bool:
     """Mix voice track vào video, xử lý audio gốc theo mix_mode.
 
@@ -211,6 +222,9 @@ def mix_audio_tracks(
         mix_mode: Chế độ xử lý audio gốc.
         original_volume: Âm lượng audio gốc (0.0-1.0) khi REDUCE.
         voice_volume: Hệ số khuếch đại giọng lồng (1.0 = giữ nguyên sau loudnorm).
+        normalize_voice: Nếu True (mặc định) thì chuẩn hóa độ to giọng tại đây
+            (two-pass). Đặt False khi voice track đã được chuẩn hóa sẵn ở bước
+            dựng — tránh quét file thêm một lượt, tăng tốc bước ghép.
 
     Returns:
         True nếu thành công.
@@ -219,8 +233,9 @@ def mix_audio_tracks(
 
     vv = max(0.1, float(voice_volume))
     # Chuẩn hóa độ to giọng lồng (two-pass nếu đo được) + boost theo người dùng.
-    loudnorm = _loudnorm_filter(voice_track_path)
-    voice_chain = f"[1:a]{loudnorm},volume={vv:.3f}[voice]"
+    # Nếu track đã chuẩn hóa sẵn thì bỏ qua loudnorm (và bỏ luôn pass đo).
+    loudnorm = f"{_loudnorm_filter(voice_track_path)}," if normalize_voice else ""
+    voice_chain = f"[1:a]{loudnorm}volume={vv:.3f}[voice]"
     # Limiter cuối để chống clipping khi giọng + nền cộng dồn.
     limiter = "[mixed]alimiter=limit=0.95[aout]"
 
@@ -229,7 +244,7 @@ def mix_audio_tracks(
         # apad + -shortest: nếu audio ngắn hơn video thì đệm im lặng tới hết
         # video (không cắt video); nếu dài hơn thì cắt theo video.
         filter_complex = (
-            f"[1:a]{loudnorm},volume={vv:.3f},"
+            f"[1:a]{loudnorm}volume={vv:.3f},"
             f"apad,alimiter=limit=0.95[aout]"
         )
         cmd = [
@@ -399,12 +414,16 @@ def _render_voice_track(
     total_duration_s: float,
     output_path: str,
     sample_rate: int,
+    loudnorm: bool = False,
 ) -> bool:
     """Dựng một track full-length từ <= _MAX_INPUTS_PER_PASS segment.
 
     Mỗi segment: aresample về sample_rate mono, fade in/out, adelay tới đúng
-    mốc, rồi amix. Pad/trim về đúng total_duration_s.
+    mốc, rồi amix. Pad/trim về đúng total_duration_s. Nếu loudnorm=True thì
+    chuẩn hóa độ to trên phần giọng (trước khi đệm im lặng).
     """
+    # Chèn loudnorm trên phần giọng, trước apad (im lặng không ảnh hưởng đo).
+    ln = f"{_LOUDNORM_ONEPASS}," if loudnorm else ""
     inputs: List[str] = []
     filters: List[str] = []
     labels: List[str] = []
@@ -440,7 +459,7 @@ def _render_voice_track(
     if n == 1:
         graph = (
             ";".join(filters)
-            + f";{labels[0]}apad=whole_dur={total:.3f},atrim=0:{total:.3f}[out]"
+            + f";{labels[0]}{ln}apad=whole_dur={total:.3f},atrim=0:{total:.3f}[out]"
         )
     else:
         graph = (
@@ -448,7 +467,7 @@ def _render_voice_track(
             + ";"
             + "".join(labels)
             + f"amix=inputs={n}:normalize=0:dropout_transition=0[mx];"
-            + f"[mx]apad=whole_dur={total:.3f},atrim=0:{total:.3f}[out]"
+            + f"[mx]{ln}apad=whole_dur={total:.3f},atrim=0:{total:.3f}[out]"
         )
 
     # Đưa filter graph vào file để không bị giới hạn độ dài command line.
@@ -489,18 +508,28 @@ def _mix_full_tracks(
     track_paths: List[str],
     output_path: str,
     sample_rate: int,
+    loudnorm: bool = False,
 ) -> bool:
-    """Trộn nhiều track full-length (cùng độ dài) thành một, amix normalize=0."""
+    """Trộn nhiều track full-length (cùng độ dài) thành một, amix normalize=0.
+
+    Hỗ trợ cả trường hợp chỉ có 1 track (passthrough). Nếu loudnorm=True thì
+    chuẩn hóa độ to ở bước này (fold vào pass đang chạy).
+    """
     inputs: List[str] = []
     labels: List[str] = []
     for i, p in enumerate(track_paths):
         inputs += ["-i", p]
         labels.append(f"[{i}:a]")
 
-    graph = (
-        "".join(labels)
-        + f"amix=inputs={len(track_paths)}:normalize=0:dropout_transition=0[out]"
-    )
+    ln = f",{_LOUDNORM_ONEPASS}" if loudnorm else ""
+    n = len(track_paths)
+    if n == 1:
+        graph = f"{labels[0]}aresample={sample_rate}{ln}[out]"
+    else:
+        graph = (
+            "".join(labels)
+            + f"amix=inputs={n}:normalize=0:dropout_transition=0{ln}[out]"
+        )
     cmd = [
         "ffmpeg",
         *inputs,

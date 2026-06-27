@@ -186,10 +186,13 @@ class DubbingEngine:
                 total_duration,
                 voice_track_path,
                 sample_rate=voice_sample_rate,
+                normalize=True,
             ):
                 raise RuntimeError("Ghép voice track thất bại")
 
             # --- Step 6: Mix vào video ---
+            # Voice track đã chuẩn hóa độ to ở bước trên → bỏ loudnorm (và pass
+            # đo) ở bước ghép để tăng tốc, giữ nguyên chất lượng.
             callback(85, "Đang mix audio vào video...")
             if not mix_audio_tracks(
                 video_path,
@@ -198,6 +201,7 @@ class DubbingEngine:
                 mix_mode=config.mix_mode,
                 original_volume=config.original_volume,
                 voice_volume=config.voice_volume,
+                normalize_voice=False,
             ):
                 raise RuntimeError("Mix audio thất bại")
 
