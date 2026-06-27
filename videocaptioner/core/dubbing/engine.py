@@ -9,6 +9,7 @@ Pipeline:
 6. Mix voice track vào video gốc
 """
 
+import os
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -76,6 +77,15 @@ class DubbingEngine:
         if not config.tts_config:
             raise ValueError("TTS config chưa được cấu hình")
 
+        # Kiểm tra ffmpeg/ffprobe có sẵn trong PATH
+        import shutil as _shutil
+        missing_tools = [t for t in ("ffmpeg", "ffprobe") if _shutil.which(t) is None]
+        if missing_tools:
+            raise RuntimeError(
+                "Không tìm thấy: %s. Vui lòng cài FFmpeg và thêm vào PATH."
+                % ", ".join(missing_tools)
+            )
+
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
         # Tạo thư mục tạm cho intermediate files
@@ -116,10 +126,19 @@ class DubbingEngine:
             tts_data = tts_provider.synthesize(tts_data, tts_output_dir, tts_callback)
 
             # Kiểm tra kết quả TTS
+            total_segs = len(tts_data.segments)
             success_count = sum(1 for seg in tts_data.segments if seg.audio_path)
             if success_count == 0:
                 raise RuntimeError("TTS thất bại cho tất cả segments")
-            logger.info("TTS success: %d/%d segments", success_count, len(tts_data.segments))
+            logger.info("TTS success: %d/%d segments", success_count, total_segs)
+            failed_count = total_segs - success_count
+            if failed_count > 0:
+                # Các câu lỗi sẽ thành khoảng lặng trên voice track — báo cho user biết
+                logger.warning(
+                    "TTS lỗi %d/%d câu, các câu này sẽ bị lặng tiếng",
+                    failed_count, total_segs,
+                )
+                callback(60, f"TTS lỗi {failed_count}/{total_segs} câu (sẽ bị lặng tiếng)")
 
             # --- Step 4: Timeline Alignment ---
             callback(60, "Đang căn chỉnh timeline...")
@@ -133,7 +152,13 @@ class DubbingEngine:
             # --- Step 5: Build Voice Track ---
             callback(75, "Đang ghép voice track...")
             voice_track_path = str(work_dir / "voice_track.wav")
-            if not build_voice_track(segment_infos, total_duration, voice_track_path):
+            voice_sample_rate = config.tts_config.sample_rate or 24000
+            if not build_voice_track(
+                segment_infos,
+                total_duration,
+                voice_track_path,
+                sample_rate=voice_sample_rate,
+            ):
                 raise RuntimeError("Ghép voice track thất bại")
 
             # --- Step 6: Mix vào video ---
@@ -223,6 +248,10 @@ class DubbingEngine:
 
         for idx, tts_seg in enumerate(tts_data.segments):
             if not tts_seg.audio_path or not Path(tts_seg.audio_path).is_file():
+                logger.warning(
+                    "Segment %d không có audio (TTS lỗi), bỏ qua: %.40s",
+                    idx, tts_seg.text,
+                )
                 continue
 
             # Timeline target (seconds)
