@@ -303,7 +303,7 @@ class Config(QConfig):
     dubbing_enabled = ConfigItem("Dubbing", "Enabled", False, BoolValidator())
     dubbing_tts_provider = OptionsConfigItem(
         "Dubbing", "TTSProvider", "openai",
-        OptionsValidator(["openai", "siliconflow", "openai_fm"]),
+        OptionsValidator(["openai", "minimax", "local_ai"]),
     )
     dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
     dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
@@ -321,6 +321,10 @@ class Config(QConfig):
     dubbing_tts_speed = RangeConfigItem(
         "Dubbing", "TTSSpeed", 10, RangeValidator(5, 20)
     )  # stored as 10x (1.0x = 10)
+    dubbing_tts_sample_rate = OptionsConfigItem(
+        "Dubbing", "TTSSampleRate", 32000,
+        OptionsValidator([16000, 24000, 32000, 44100]),
+    )
 
     # ------------------- 保存配置 -------------------
     work_dir = ConfigItem("Save", "Work_Dir", WORK_PATH, FolderValidator())

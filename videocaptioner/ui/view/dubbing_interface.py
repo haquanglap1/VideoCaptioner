@@ -61,18 +61,33 @@ class VoiceFetchThread(QThread):
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
                 
-            response = requests.get(f"{base_url}/models", headers=headers, timeout=10)
-            if response.status_code == 200:
+            models_url = f"{base_url}/models"
+            response = requests.get(models_url, headers=headers, timeout=10)
+            if response.status_code != 200:
+                self.finished_fetch.emit(
+                    [], f"HTTP {response.status_code}: {response.text[:200]}"
+                )
+                return
+
+            try:
                 data = response.json()
-                models = []
-                # Handle standard OpenAI /v1/models response
-                if "data" in data and isinstance(data["data"], list):
-                    for m in data["data"]:
-                        if "id" in m:
-                            models.append(m["id"])
-                self.finished_fetch.emit(models, "")
-            else:
-                self.finished_fetch.emit([], f"HTTP {response.status_code}: {response.text}")
+            except ValueError:
+                # Response không phải JSON — thường do API Base sai endpoint
+                self.finished_fetch.emit(
+                    [],
+                    f"API không trả về JSON hợp lệ tại {models_url}. "
+                    "Kiểm tra lại API Base (endpoint tương thích OpenAI /models). "
+                    "Nếu dùng MiniMax, hãy chọn provider MiniMax thay vì Local AI.",
+                )
+                return
+
+            models = []
+            # Handle standard OpenAI /v1/models response
+            if isinstance(data, dict) and isinstance(data.get("data"), list):
+                for m in data["data"]:
+                    if isinstance(m, dict) and "id" in m:
+                        models.append(m["id"])
+            self.finished_fetch.emit(models, "")
         except Exception as e:
             self.finished_fetch.emit([], str(e))
 
@@ -214,6 +229,38 @@ class DubbingInterface(QWidget):
         row7.addWidget(self.volume_label)
         row7.addStretch()
         settings_layout.addLayout(row7)
+
+        # Speed slider (giá trị lưu dạng 10x: 10 = 1.0x)
+        row8 = QHBoxLayout()
+        row8.addWidget(BodyLabel(self.tr("Tốc độ giọng:")))
+        self.speed_slider = Slider(Qt.Horizontal)
+        self.speed_slider.setRange(5, 20)  # 0.5x - 2.0x
+        self.speed_slider.setValue(cfg.dubbing_tts_speed.value)
+        self.speed_slider.setFixedWidth(200)
+        self.speed_label = BodyLabel(f"{cfg.dubbing_tts_speed.value / 10.0:.1f}x")
+        self.speed_slider.valueChanged.connect(
+            lambda v: self.speed_label.setText(f"{v / 10.0:.1f}x")
+        )
+        row8.addWidget(self.speed_slider)
+        row8.addWidget(self.speed_label)
+        row8.addStretch()
+        settings_layout.addLayout(row8)
+
+        # Sample rate (chất lượng audio)
+        row9 = QHBoxLayout()
+        row9.addWidget(BodyLabel(self.tr("Chất lượng (Hz):")))
+        self.sample_rate_combo = ComboBox()
+        self._sample_rates = [16000, 24000, 32000, 44100]
+        self.sample_rate_combo.addItems([str(r) for r in self._sample_rates])
+        try:
+            self.sample_rate_combo.setCurrentIndex(
+                self._sample_rates.index(cfg.dubbing_tts_sample_rate.value)
+            )
+        except ValueError:
+            self.sample_rate_combo.setCurrentIndex(2)  # 32000
+        row9.addWidget(self.sample_rate_combo)
+        row9.addStretch()
+        settings_layout.addLayout(row9)
 
         # --- Separator ---
         settings_layout.addSpacing(10)
@@ -526,3 +573,8 @@ class DubbingInterface(QWidget):
         if 0 <= idx < len(mix_keys):
             cfg.set(cfg.dubbing_mix_mode, mix_keys[idx])
         cfg.set(cfg.dubbing_original_volume, self.volume_slider.value())
+        cfg.set(cfg.dubbing_tts_speed, self.speed_slider.value())
+
+        sr_idx = self.sample_rate_combo.currentIndex()
+        if 0 <= sr_idx < len(self._sample_rates):
+            cfg.set(cfg.dubbing_tts_sample_rate, self._sample_rates[sr_idx])

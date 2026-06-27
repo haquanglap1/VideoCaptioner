@@ -319,6 +319,7 @@ class TaskFactory:
             base_url=cfg.dubbing_tts_api_base.value,
             voice=cfg.dubbing_tts_voice.value,
             speed=cfg.dubbing_tts_speed.value / 10.0,  # 10 -> 1.0x
+            sample_rate=cfg.dubbing_tts_sample_rate.value,
             response_format="wav",
         )
 

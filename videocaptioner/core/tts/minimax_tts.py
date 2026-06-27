@@ -64,7 +64,7 @@ class MiniMaxTTS(BaseTTS):
                 "pitch": 0
             },
             "audio_setting": {
-                "sample_rate": 32000,
+                "sample_rate": self.config.sample_rate or 32000,
                 "bitrate": 128000,
                 "format": "mp3",
                 "channel": 1
