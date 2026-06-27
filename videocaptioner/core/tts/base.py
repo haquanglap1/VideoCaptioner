@@ -1,7 +1,9 @@
 """TTS 基类 - 提供缓存、批量处理等通用功能"""
 
 import hashlib
+import threading
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Optional, cast
 
@@ -36,6 +38,7 @@ class BaseTTS(ABC):
         tts_data: TTSData,
         output_dir: str,
         callback: Optional[Callable[[int, str], None]] = None,
+        max_workers: int = 1,
     ) -> TTSData:
         """合成语音（统一批量处理接口）
 
@@ -43,6 +46,7 @@ class BaseTTS(ABC):
             tts_data: TTS 数据（包含多个待合成的文本段）
             output_dir: 输出目录
             callback: 进度回调函数 callback(progress: int, message: str)
+            max_workers: 并行合成线程数（>1 时启用 ThreadPoolExecutor）
 
         Returns:
             TTS 数据（segments 已填充 audio_path 等信息）
@@ -62,26 +66,43 @@ class BaseTTS(ABC):
             logger.warning("TTS data empty, nothing to synthesize")
             return tts_data
 
-        logger.debug(f"Starting batch synthesis of {total}  utterances")
+        workers = max(1, int(max_workers))
+        logger.debug(
+            f"Starting batch synthesis of {total} utterances (workers={workers})"
+        )
 
-        for idx, segment in enumerate(tts_data.segments):
+        progress_lock = threading.Lock()
+        done_count = 0
+
+        def _synthesize_one(idx: int, segment: TTSDataSeg) -> None:
+            nonlocal done_count
             try:
-                # 计算进度
-                progress = int((idx / total) * 100)
-                callback(progress, "synthesizing")
-
-                # 生成音频文件名
                 audio_filename = self._generate_filename(segment.text, idx)
                 audio_path = output_path / audio_filename
-
-                # 合成单 utterances（带缓存）
+                # 合成单 utterances（带缓存）— diskcache 线程安全
                 self._synthesize_segment(segment, str(audio_path))
-
             except Exception as e:
                 logger.error(
                     f"TTS 失败 [{idx+1}/{total}]: {segment.text[:50]}... - {str(e)}"
                 )
                 # 失败时保持 segment，但不设置 audio_path
+            finally:
+                with progress_lock:
+                    done_count += 1
+                    progress = int((done_count / total) * 100)
+                callback(progress, "synthesizing")
+
+        if workers == 1:
+            for idx, segment in enumerate(tts_data.segments):
+                _synthesize_one(idx, segment)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(_synthesize_one, idx, segment)
+                    for idx, segment in enumerate(tts_data.segments)
+                ]
+                for future in as_completed(futures):
+                    future.result()
 
         callback(*TTSStatus.COMPLETED.callback_tuple())
         success_count = sum(1 for seg in tts_data.segments if seg.audio_path)

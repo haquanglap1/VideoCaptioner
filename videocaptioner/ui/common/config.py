@@ -321,9 +321,18 @@ class Config(QConfig):
     dubbing_tts_speed = RangeConfigItem(
         "Dubbing", "TTSSpeed", 10, RangeValidator(5, 20)
     )  # stored as 10x (1.0x = 10)
+    dubbing_max_speed = RangeConfigItem(
+        "Dubbing", "MaxSpeed", 20, RangeValidator(10, 30)
+    )  # trần tăng tốc khi căn timeline, stored as 10x (2.0x = 20)
     dubbing_tts_sample_rate = OptionsConfigItem(
         "Dubbing", "TTSSampleRate", 32000,
         OptionsValidator([16000, 24000, 32000, 44100]),
+    )
+    dubbing_voice_volume = RangeConfigItem(
+        "Dubbing", "VoiceVolume", 100, RangeValidator(50, 300)
+    )  # stored as %, 100 = 1.0x
+    dubbing_tts_concurrency = RangeConfigItem(
+        "Dubbing", "TTSConcurrency", 4, RangeValidator(1, 16)
     )
 
     # ------------------- 保存配置 -------------------

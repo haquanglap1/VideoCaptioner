@@ -328,6 +328,9 @@ class TaskFactory:
             tts_config=tts_config,
             mix_mode=mix_mode,
             original_volume=cfg.dubbing_original_volume.value / 100.0,
+            voice_volume=cfg.dubbing_voice_volume.value / 100.0,
+            tts_concurrency=cfg.dubbing_tts_concurrency.value,
+            speed_range=(0.75, cfg.dubbing_max_speed.value / 10.0),
             enabled=True,
         )
 

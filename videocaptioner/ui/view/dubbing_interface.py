@@ -31,10 +31,12 @@ from qfluentwidgets import (
     SwitchButton,
 )
 
+from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.task_factory import TaskFactory
+from videocaptioner.ui.thread.audio_merge_thread import AudioMergeThread
 from videocaptioner.ui.thread.dubbing_thread import DubbingThread
 
 logger = setup_logger("dubbing_interface")
@@ -246,6 +248,22 @@ class DubbingInterface(QWidget):
         row8.addStretch()
         settings_layout.addLayout(row8)
 
+        # Max speed slider — trần tăng tốc khi căn timeline (10 = 1.0x .. 30 = 3.0x)
+        row8b = QHBoxLayout()
+        row8b.addWidget(BodyLabel(self.tr("Tốc độ tối đa:")))
+        self.max_speed_slider = Slider(Qt.Horizontal)
+        self.max_speed_slider.setRange(10, 30)
+        self.max_speed_slider.setValue(cfg.dubbing_max_speed.value)
+        self.max_speed_slider.setFixedWidth(200)
+        self.max_speed_label = BodyLabel(f"{cfg.dubbing_max_speed.value / 10.0:.1f}x")
+        self.max_speed_slider.valueChanged.connect(
+            lambda v: self.max_speed_label.setText(f"{v / 10.0:.1f}x")
+        )
+        row8b.addWidget(self.max_speed_slider)
+        row8b.addWidget(self.max_speed_label)
+        row8b.addStretch()
+        settings_layout.addLayout(row8b)
+
         # Sample rate (chất lượng audio)
         row9 = QHBoxLayout()
         row9.addWidget(BodyLabel(self.tr("Chất lượng (Hz):")))
@@ -261,6 +279,38 @@ class DubbingInterface(QWidget):
         row9.addWidget(self.sample_rate_combo)
         row9.addStretch()
         settings_layout.addLayout(row9)
+
+        # Voice volume slider (giá trị lưu dạng %: 100 = 1.0x)
+        row10 = QHBoxLayout()
+        row10.addWidget(BodyLabel(self.tr("Âm lượng giọng:")))
+        self.voice_volume_slider = Slider(Qt.Horizontal)
+        self.voice_volume_slider.setRange(50, 300)
+        self.voice_volume_slider.setValue(cfg.dubbing_voice_volume.value)
+        self.voice_volume_slider.setFixedWidth(200)
+        self.voice_volume_label = BodyLabel(f"{cfg.dubbing_voice_volume.value}%")
+        self.voice_volume_slider.valueChanged.connect(
+            lambda v: self.voice_volume_label.setText(f"{v}%")
+        )
+        row10.addWidget(self.voice_volume_slider)
+        row10.addWidget(self.voice_volume_label)
+        row10.addStretch()
+        settings_layout.addLayout(row10)
+
+        # TTS concurrency (số luồng chạy song song)
+        row11 = QHBoxLayout()
+        row11.addWidget(BodyLabel(self.tr("Số luồng TTS:")))
+        self.concurrency_slider = Slider(Qt.Horizontal)
+        self.concurrency_slider.setRange(1, 16)
+        self.concurrency_slider.setValue(cfg.dubbing_tts_concurrency.value)
+        self.concurrency_slider.setFixedWidth(200)
+        self.concurrency_label = BodyLabel(str(cfg.dubbing_tts_concurrency.value))
+        self.concurrency_slider.valueChanged.connect(
+            lambda v: self.concurrency_label.setText(str(v))
+        )
+        row11.addWidget(self.concurrency_slider)
+        row11.addWidget(self.concurrency_label)
+        row11.addStretch()
+        settings_layout.addLayout(row11)
 
         # --- Separator ---
         settings_layout.addSpacing(10)
@@ -306,6 +356,51 @@ class DubbingInterface(QWidget):
         self.manual_dub_btn.setFixedWidth(160)
         self.manual_dub_btn.clicked.connect(self._start_manual_dub)
         settings_layout.addWidget(self.manual_dub_btn, alignment=Qt.AlignCenter)
+
+        # --- Separator ---
+        settings_layout.addSpacing(10)
+
+        # --- Manual mode: ghép audio ngoài vào video (không qua TTS) ---
+        merge_label = StrongBodyLabel(self.tr("Ghép audio thủ công"))
+        settings_layout.addWidget(merge_label)
+
+        # Video file
+        row_mvideo = QHBoxLayout()
+        row_mvideo.addWidget(BodyLabel(self.tr("📁 File video:")))
+        self.merge_video_path_edit = LineEdit()
+        self.merge_video_path_edit.setPlaceholderText(
+            self.tr("Chọn file video (.mp4, .mkv, ...)")
+        )
+        self.merge_video_path_edit.setFixedWidth(350)
+        row_mvideo.addWidget(self.merge_video_path_edit)
+        self.browse_merge_video_btn = PushButton(self.tr("Duyệt"))
+        self.browse_merge_video_btn.setFixedWidth(60)
+        self.browse_merge_video_btn.clicked.connect(self._browse_merge_video)
+        row_mvideo.addWidget(self.browse_merge_video_btn)
+        row_mvideo.addStretch()
+        settings_layout.addLayout(row_mvideo)
+
+        # Audio file
+        row_maudio = QHBoxLayout()
+        row_maudio.addWidget(BodyLabel(self.tr("📁 File audio:")))
+        self.merge_audio_path_edit = LineEdit()
+        self.merge_audio_path_edit.setPlaceholderText(
+            self.tr("Chọn file audio (.mp3, .wav, .m4a, ...)")
+        )
+        self.merge_audio_path_edit.setFixedWidth(350)
+        row_maudio.addWidget(self.merge_audio_path_edit)
+        self.browse_merge_audio_btn = PushButton(self.tr("Duyệt"))
+        self.browse_merge_audio_btn.setFixedWidth(60)
+        self.browse_merge_audio_btn.clicked.connect(self._browse_merge_audio)
+        row_maudio.addWidget(self.browse_merge_audio_btn)
+        row_maudio.addStretch()
+        settings_layout.addLayout(row_maudio)
+
+        # Merge button
+        self.merge_audio_btn = PrimaryPushButton(self.tr("▶ Ghép audio"))
+        self.merge_audio_btn.setFixedWidth(160)
+        self.merge_audio_btn.clicked.connect(self._start_merge_audio)
+        settings_layout.addWidget(self.merge_audio_btn, alignment=Qt.AlignCenter)
 
         layout.addWidget(self.settings_widget)
         self.settings_widget.setEnabled(cfg.dubbing_enabled.value)
@@ -404,6 +499,116 @@ class DubbingInterface(QWidget):
         self._task = task
         self._run_dubbing(task)
 
+    # ==== Manual audio merge ====
+
+    def _browse_merge_video(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Chọn file video"),
+            "",
+            self.tr("Video Files (*.mp4 *.mkv *.avi *.mov *.webm *.flv *.ts)"),
+        )
+        if path:
+            self.merge_video_path_edit.setText(path)
+
+    def _browse_merge_audio(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Chọn file audio"),
+            "",
+            self.tr("Audio Files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus)"),
+        )
+        if path:
+            self.merge_audio_path_edit.setText(path)
+
+    def _start_merge_audio(self):
+        """Ghép audio ngoài vào video bằng các tuỳ chọn âm thanh phía trên."""
+        video_path = self.merge_video_path_edit.text().strip()
+        audio_path = self.merge_audio_path_edit.text().strip()
+
+        if not video_path or not Path(video_path).is_file():
+            InfoBar.warning(
+                self.tr("Thiếu file"),
+                self.tr("Vui lòng chọn file video hợp lệ"),
+                duration=3000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        if not audio_path or not Path(audio_path).is_file():
+            InfoBar.warning(
+                self.tr("Thiếu file"),
+                self.tr("Vui lòng chọn file audio hợp lệ"),
+                duration=3000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+
+        # Lưu cài đặt (dùng chung các slider âm thanh phía trên)
+        self._save_settings()
+
+        mix_mode_map = {
+            "keep": AudioMixMode.KEEP_ORIGINAL,
+            "reduce": AudioMixMode.REDUCE_ORIGINAL,
+            "mute": AudioMixMode.MUTE_ORIGINAL,
+        }
+        mix_mode = mix_mode_map.get(
+            cfg.dubbing_mix_mode.value, AudioMixMode.REDUCE_ORIGINAL
+        )
+        original_volume = cfg.dubbing_original_volume.value / 100.0
+        voice_volume = cfg.dubbing_voice_volume.value / 100.0
+
+        output_path = str(
+            Path(video_path).parent / f"{Path(video_path).stem}_merged.mp4"
+        )
+
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.status_label.setVisible(True)
+        self.status_label.setText(self.tr("Đang ghép audio..."))
+        self.merge_audio_btn.setEnabled(False)
+        self.manual_dub_btn.setEnabled(False)
+
+        self._merge_thread = AudioMergeThread(
+            video_path,
+            audio_path,
+            output_path,
+            mix_mode,
+            original_volume,
+            voice_volume,
+        )
+        self._merge_thread.progress.connect(self._on_progress)
+        self._merge_thread.error.connect(self._on_merge_error)
+        self._merge_thread.finished.connect(self._on_merge_finished)
+        self._merge_thread.start()
+
+    def _on_merge_error(self, error_msg: str):
+        self.progress_bar.setVisible(False)
+        self.status_label.setText(self.tr("Ghép audio thất bại"))
+        self.merge_audio_btn.setEnabled(True)
+        self.manual_dub_btn.setEnabled(True)
+        InfoBar.error(
+            self.tr("Lỗi ghép audio"),
+            error_msg,
+            duration=5000,
+            position=InfoBarPosition.BOTTOM,
+            parent=self.window(),
+        )
+
+    def _on_merge_finished(self, output_path: str):
+        self.progress_bar.setValue(100)
+        self.status_label.setText(self.tr("Ghép audio hoàn tất!"))
+        self.merge_audio_btn.setEnabled(True)
+        self.manual_dub_btn.setEnabled(True)
+        InfoBar.success(
+            self.tr("Thành công"),
+            self.tr("Đã ghép audio: ") + str(output_path),
+            duration=5000,
+            position=InfoBarPosition.BOTTOM,
+            parent=self.window(),
+        )
+
     # ==== Shared execution ====
 
     def _run_dubbing(self, task: DubbingTask):
@@ -431,30 +636,51 @@ class DubbingInterface(QWidget):
 
     def _on_provider_changed(self, index: int):
         provider_keys = ["openai", "minimax", "local_ai"]
-        if 0 <= index < len(provider_keys):
-            cfg.set(cfg.dubbing_tts_provider, provider_keys[index])
-            
-        # Update default API Base and Model based on provider
+        if not (0 <= index < len(provider_keys)):
+            return
         provider = provider_keys[index]
-        if provider == "openai":
-            self.voice_combo.clear()
-            self.voice_combo.addItems(["alloy", "echo", "fable", "onyx", "nova", "shimmer"])
-            self.voice_combo.setText("alloy")
-            self.api_base_edit.setText("https://api.openai.com/v1")
-            self.model_edit.setText("tts-1")
-        elif provider == "minimax":
-            self.voice_combo.clear()
-            self.voice_combo.addItems([
-                "male-qn-qingse", "female-shaonv", "female-yujie", 
-                "male-tiehan", "speech-01-nova", "speech-01-turbo"
-            ])
-            self.voice_combo.setText("male-qn-qingse")
-            self.api_base_edit.setText("https://api.minimax.chat/v1/t2a_v2")
-            self.model_edit.setText("speech-01-turbo")
-        elif provider == "local_ai":
-            self.voice_combo.clear()
-            self.api_base_edit.setText("http://localhost:8000/v1")
-            self.model_edit.setText("")
+        cfg.set(cfg.dubbing_tts_provider, provider)
+
+        # Gợi ý voice + default API Base/Model theo provider.
+        # Chỉ điền vào ô đang trống — không ghi đè giá trị user đã nhập.
+        defaults = {
+            "openai": {
+                "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+                "voice": "alloy",
+                "api_base": "https://api.openai.com/v1",
+                "model": "tts-1",
+            },
+            "minimax": {
+                "voices": [
+                    "male-qn-qingse", "female-shaonv", "female-yujie",
+                    "male-tiehan", "speech-01-nova", "speech-01-turbo",
+                ],
+                "voice": "male-qn-qingse",
+                "api_base": "https://api.minimax.chat/v1/t2a_v2",
+                "model": "speech-01-turbo",
+            },
+            "local_ai": {
+                "voices": [],
+                "voice": "",
+                "api_base": "http://localhost:8000/v1",
+                "model": "",
+            },
+        }[provider]
+
+        # Refresh danh sách gợi ý voice (giữ lại text hiện tại nếu có)
+        current_voice = self.voice_combo.text().strip()
+        self.voice_combo.clear()
+        if defaults["voices"]:
+            self.voice_combo.addItems(defaults["voices"])
+        if current_voice:
+            self.voice_combo.setText(current_voice)
+        elif defaults["voice"]:
+            self.voice_combo.setText(defaults["voice"])
+
+        if not self.api_base_edit.text().strip() and defaults["api_base"]:
+            self.api_base_edit.setText(defaults["api_base"])
+        if not self.model_edit.text().strip() and defaults["model"]:
+            self.model_edit.setText(defaults["model"])
 
     def _fetch_voices(self):
         """Tải danh sách giọng nói từ API."""
@@ -574,7 +800,11 @@ class DubbingInterface(QWidget):
             cfg.set(cfg.dubbing_mix_mode, mix_keys[idx])
         cfg.set(cfg.dubbing_original_volume, self.volume_slider.value())
         cfg.set(cfg.dubbing_tts_speed, self.speed_slider.value())
+        cfg.set(cfg.dubbing_max_speed, self.max_speed_slider.value())
 
         sr_idx = self.sample_rate_combo.currentIndex()
         if 0 <= sr_idx < len(self._sample_rates):
             cfg.set(cfg.dubbing_tts_sample_rate, self._sample_rates[sr_idx])
+
+        cfg.set(cfg.dubbing_voice_volume, self.voice_volume_slider.value())
+        cfg.set(cfg.dubbing_tts_concurrency, self.concurrency_slider.value())

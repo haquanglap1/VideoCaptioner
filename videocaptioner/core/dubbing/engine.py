@@ -10,6 +10,7 @@ Pipeline:
 """
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -33,6 +34,28 @@ from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import get_video_info
 
 logger = setup_logger("dubbing.engine")
+
+# Ký tự Hán/CJK còn sót trong phụ đề đích (vd tiếng Trung chưa dịch hết) khiến
+# TTS đọc nhầm. Lọc bỏ trước khi tổng hợp giọng.
+_CJK_PATTERN = re.compile(
+    "["
+    "\u3000-\u303f"      # CJK symbols & punctuation (、。「」…)
+    "\u3400-\u4dbf"      # CJK Unified Ext A
+    "\u4e00-\u9fff"      # CJK Unified Ideographs
+    "\uf900-\ufaff"      # CJK Compatibility Ideographs
+    "\uff00-\uffef"      # Halfwidth/Fullwidth forms
+    "\U00020000-\U0002a6df"  # CJK Unified Ext B
+    "]+"
+)
+# Sau khi bỏ CJK, gộp khoảng trắng thừa.
+_WS_PATTERN = re.compile(r"\s{2,}")
+
+
+def _strip_cjk(text: str) -> str:
+    """Loại bỏ ký tự Hán/CJK và gộp khoảng trắng thừa."""
+    cleaned = _CJK_PATTERN.sub(" ", text)
+    cleaned = _WS_PATTERN.sub(" ", cleaned)
+    return cleaned.strip()
 
 
 class DubbingEngine:
@@ -123,7 +146,12 @@ class DubbingEngine:
                 mapped = 15 + int(progress * 0.45)
                 callback(mapped, f"Đang tổng hợp giọng nói... {progress}%")
 
-            tts_data = tts_provider.synthesize(tts_data, tts_output_dir, tts_callback)
+            tts_data = tts_provider.synthesize(
+                tts_data,
+                tts_output_dir,
+                tts_callback,
+                max_workers=config.tts_concurrency,
+            )
 
             # Kiểm tra kết quả TTS
             total_segs = len(tts_data.segments)
@@ -145,7 +173,7 @@ class DubbingEngine:
             adjusted_dir = str(work_dir / "adjusted")
             Path(adjusted_dir).mkdir(parents=True, exist_ok=True)
             segment_infos = self._align_timeline(
-                tts_data, segments, adjusted_dir, config
+                tts_data, segments, adjusted_dir, config, total_duration
             )
             logger.info("Timeline aligned: %d segments", len(segment_infos))
 
@@ -169,6 +197,7 @@ class DubbingEngine:
                 output_path,
                 mix_mode=config.mix_mode,
                 original_volume=config.original_volume,
+                voice_volume=config.voice_volume,
             ):
                 raise RuntimeError("Mix audio thất bại")
 
@@ -195,6 +224,12 @@ class DubbingEngine:
             text = seg.text.strip()
             if not text:
                 continue
+            # Lọc tiếng Trung/CJK còn sót để TTS không đọc nhầm
+            cleaned = _strip_cjk(text)
+            if not cleaned:
+                logger.debug("Bỏ qua câu chỉ chứa ký tự CJK: %.40s", text)
+                continue
+            text = cleaned
             tts_seg = TTSDataSeg(
                 text=text,
                 start_time=seg.start_time / 1000.0,  # ms → seconds
@@ -231,22 +266,29 @@ class DubbingEngine:
         asr_segments,
         output_dir: str,
         config: DubbingConfig,
+        total_duration: float,
     ) -> list:
-        """Căn chỉnh timeline: speed up/slow down TTS audio cho vừa subtitle gap.
+        """Căn chỉnh timeline: tăng tốc TTS audio vừa đủ để không đè câu kế tiếp.
+
+        Mỗi câu được phép tràn vào khoảng lặng phía sau (tới khi câu kế tiếp bắt
+        đầu, hoặc tới hết video với câu cuối). Chỉ tăng tốc (không kéo giãn chậm)
+        và chỉ cắt cụt khi sau khi đã tăng tới trần tốc độ mà vẫn đè lên câu kế.
 
         Args:
             tts_data: TTSData đã synthesize (có audio_path).
             asr_segments: ASRData segments gốc (có start_time, end_time in ms).
             output_dir: Thư mục lưu audio đã điều chỉnh.
             config: DubbingConfig.
+            total_duration: Tổng thời lượng video (giây).
 
         Returns:
             List[dict] — mỗi item: {"audio_path", "start_time", "end_time"} (seconds).
         """
-        min_speed, max_speed = config.speed_range
+        max_speed = config.speed_range[1]
+        segs = tts_data.segments
         result = []
 
-        for idx, tts_seg in enumerate(tts_data.segments):
+        for idx, tts_seg in enumerate(segs):
             if not tts_seg.audio_path or not Path(tts_seg.audio_path).is_file():
                 logger.warning(
                     "Segment %d không có audio (TTS lỗi), bỏ qua: %.40s",
@@ -267,14 +309,20 @@ class DubbingEngine:
             if actual_duration <= 0:
                 continue
 
-            # Tính tốc độ cần thiết
-            if actual_duration > 0:
-                needed_speed = actual_duration / target_duration
+            # Khung khả dụng: cho phép tràn vào khoảng lặng tới khi câu kế tiếp
+            # bắt đầu (câu cuối: tới hết video). Không bao giờ nhỏ hơn khung gốc.
+            next_start = segs[idx + 1].start_time if idx + 1 < len(segs) else None
+            if next_start is not None:
+                available_end = next_start
+            elif total_duration > 0:
+                available_end = total_duration
             else:
-                needed_speed = 1.0
+                available_end = target_end
+            available_duration = max(target_duration, available_end - target_start)
 
-            # Clamp speed trong giới hạn cho phép
-            clamped_speed = max(min_speed, min(max_speed, needed_speed))
+            # Chỉ tăng tốc (>=1.0), không kéo giãn chậm; chặn ở trần tốc độ.
+            needed_speed = actual_duration / available_duration
+            clamped_speed = max(1.0, min(max_speed, needed_speed))
 
             # Áp dụng speed adjustment
             if abs(clamped_speed - 1.0) > 0.02:
@@ -286,12 +334,16 @@ class DubbingEngine:
             else:
                 audio_path = tts_seg.audio_path
 
-            # Nếu audio vẫn dài hơn target sau adjust, truncate
+            # Chỉ cắt khi vẫn vượt khung khả dụng (sẽ đè lên câu kế tiếp)
             final_duration = get_audio_duration(audio_path)
-            if final_duration > target_duration + 0.05:
+            if final_duration > available_duration + 0.05:
                 truncated_path = str(Path(output_dir) / f"seg_{idx:04d}_trunc.wav")
-                if _truncate_audio(audio_path, truncated_path, target_duration):
+                if _truncate_audio(audio_path, truncated_path, available_duration):
                     audio_path = truncated_path
+                logger.debug(
+                    "Segment %d cắt cụt: %.2fs > khung %.2fs",
+                    idx, final_duration, available_duration,
+                )
 
             result.append({
                 "audio_path": audio_path,

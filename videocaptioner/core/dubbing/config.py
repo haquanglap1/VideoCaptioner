@@ -34,6 +34,10 @@ class DubbingConfig:
     # Audio mixing
     mix_mode: AudioMixMode = AudioMixMode.REDUCE_ORIGINAL
     original_volume: float = 0.4  # Âm lượng audio gốc khi REDUCE (0.0 - 1.0)
+    voice_volume: float = 1.0  # Hệ số khuếch đại giọng lồng tiếng (sau loudnorm)
+
+    # TTS concurrency
+    tts_concurrency: int = 1  # Số luồng TTS chạy song song
 
     # Timeline alignment
     speed_range: Tuple[float, float] = (0.75, 1.5)  # min/max tốc độ co giãn
@@ -54,6 +58,8 @@ class DubbingConfig:
             lines.append(f"Mix Mode: {self.mix_mode.value}")
             if self.mix_mode == AudioMixMode.REDUCE_ORIGINAL:
                 lines.append(f"Original Volume: {self.original_volume:.0%}")
+            lines.append(f"Voice Volume: {self.voice_volume:.0%}")
+            lines.append(f"TTS Concurrency: {self.tts_concurrency}")
             lines.append(f"Speed Range: {self.speed_range[0]}x - {self.speed_range[1]}x")
             lines.append(f"Gap: {self.gap_ms}ms")
         lines.append("=" * 36)
