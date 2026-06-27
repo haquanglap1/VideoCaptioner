@@ -80,7 +80,9 @@ class BatchProcessInterface(QWidget):
             BatchTaskType.TRANSCRIBE: self.tr("仅进行语音识别，生成字幕文件"),
             BatchTaskType.SUBTITLE: self.tr("对已有字幕进行分割、优化或翻译"),
             BatchTaskType.TRANS_SUB: self.tr("先转录再处理字幕，不合成视频"),
-            BatchTaskType.FULL_PROCESS: self.tr("转录 → 字幕处理 → 合成视频"),
+            BatchTaskType.FULL_PROCESS: self.tr(
+                "转录 → 字幕处理 →（lồng tiếng nếu bật）→ 合成视频"
+            ),
         }
 
         # 控制按钮

@@ -27,6 +27,7 @@ from qfluentwidgets import (
     ProgressBar,
     PushButton,
     Slider,
+    SpinBox,
     StrongBodyLabel,
     SwitchButton,
 )
@@ -296,19 +297,14 @@ class DubbingInterface(QWidget):
         row10.addStretch()
         settings_layout.addLayout(row10)
 
-        # TTS concurrency (số luồng chạy song song)
+        # TTS concurrency (số luồng chạy song song) — nhập trực tiếp
         row11 = QHBoxLayout()
         row11.addWidget(BodyLabel(self.tr("Số luồng TTS:")))
-        self.concurrency_slider = Slider(Qt.Horizontal)
-        self.concurrency_slider.setRange(1, 16)
-        self.concurrency_slider.setValue(cfg.dubbing_tts_concurrency.value)
-        self.concurrency_slider.setFixedWidth(200)
-        self.concurrency_label = BodyLabel(str(cfg.dubbing_tts_concurrency.value))
-        self.concurrency_slider.valueChanged.connect(
-            lambda v: self.concurrency_label.setText(str(v))
-        )
-        row11.addWidget(self.concurrency_slider)
-        row11.addWidget(self.concurrency_label)
+        self.concurrency_spinbox = SpinBox()
+        self.concurrency_spinbox.setRange(1, 48)
+        self.concurrency_spinbox.setValue(cfg.dubbing_tts_concurrency.value)
+        self.concurrency_spinbox.setFixedWidth(120)
+        row11.addWidget(self.concurrency_spinbox)
         row11.addStretch()
         settings_layout.addLayout(row11)
 
@@ -807,4 +803,4 @@ class DubbingInterface(QWidget):
             cfg.set(cfg.dubbing_tts_sample_rate, self._sample_rates[sr_idx])
 
         cfg.set(cfg.dubbing_voice_volume, self.voice_volume_slider.value())
-        cfg.set(cfg.dubbing_tts_concurrency, self.concurrency_slider.value())
+        cfg.set(cfg.dubbing_tts_concurrency, self.concurrency_spinbox.value())

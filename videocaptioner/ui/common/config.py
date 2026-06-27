@@ -332,7 +332,7 @@ class Config(QConfig):
         "Dubbing", "VoiceVolume", 100, RangeValidator(50, 300)
     )  # stored as %, 100 = 1.0x
     dubbing_tts_concurrency = RangeConfigItem(
-        "Dubbing", "TTSConcurrency", 4, RangeValidator(1, 16)
+        "Dubbing", "TTSConcurrency", 4, RangeValidator(1, 48)
     )
 
     # ------------------- 保存配置 -------------------

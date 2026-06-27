@@ -8,10 +8,13 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from videocaptioner.core.entities import (
     BatchTaskStatus,
     BatchTaskType,
+    DubbingTask,
     TranscribeTask,
 )
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.task_factory import TaskFactory
+from videocaptioner.ui.thread.dubbing_thread import DubbingThread
 from videocaptioner.ui.thread.subtitle_thread import SubtitleThread
 from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 from videocaptioner.ui.thread.video_synthesis_thread import VideoSynthesisThread
@@ -238,7 +241,10 @@ class BatchProcessThread(QThread):
     ):
         """处理全流程任务的转录进度"""
         if batch_task.status == BatchTaskStatus.RUNNING:
-            progress_value = progress // 3  # 转录占33%进度
+            if cfg.dubbing_enabled.value:
+                progress_value = progress * 25 // 100  # 转录占25%（含lồng tiếng）
+            else:
+                progress_value = progress // 3  # 转录占33%进度
             self.task_progress.emit(batch_task.file_path, progress_value, message)
 
     def on_full_process_finished(self, batch_task: BatchTask, task: TranscribeTask):
@@ -275,17 +281,69 @@ class BatchProcessThread(QThread):
     ):
         """处理全流程任务中字幕部分的进度"""
         if batch_task.status == BatchTaskStatus.RUNNING:
-            progress_value = 33 + progress // 3  # 字幕处理占中间33%进度
+            if cfg.dubbing_enabled.value:
+                progress_value = 25 + progress * 25 // 100  # 字幕占中间25%
+            else:
+                progress_value = 33 + progress // 3  # 字幕处理占中间33%进度
             self.task_progress.emit(batch_task.file_path, progress_value, message)
 
     def on_full_process_subtitle_finished(
         self, batch_task: BatchTask, video_path: str, subtitle_path: str
     ):
-        """处理字幕完成后开始视频合成任务"""
+        """字幕完成后：bật lồng tiếng thì chèn bước lồng tiếng, không thì ghép video"""
         if batch_task.current_thread in self.threads:
             self.threads.remove(batch_task.current_thread)
 
-        # 字幕完成后创建视频合成任务
+        if cfg.dubbing_enabled.value:
+            # Chèn bước lồng tiếng trước khi ghép video
+            dubbing_task = self.factory.create_dubbing_task(video_path, subtitle_path)
+            thread = DubbingThread(dubbing_task)
+            batch_task.current_thread = thread
+
+            # 保存线程引用
+            self.threads.append(thread)
+
+            thread.progress.connect(
+                partial(self.on_full_process_dubbing_progress, batch_task)
+            )
+            thread.error.connect(partial(self._on_error_wrapper, batch_task))
+            thread.finished.connect(
+                partial(self.on_full_process_dubbing_finished, batch_task)
+            )
+
+            thread.start()
+            return
+
+        # Không lồng tiếng: ghép video trực tiếp
+        self._start_full_process_synthesis(batch_task, video_path, subtitle_path)
+
+    def on_full_process_dubbing_progress(
+        self, batch_task: BatchTask, progress: int, message: str
+    ):
+        """处理全流程任务中lồng tiếng部分的进度"""
+        if batch_task.status == BatchTaskStatus.RUNNING:
+            progress_value = 50 + progress * 25 // 100  # lồng tiếng占第三个25%
+            self.task_progress.emit(batch_task.file_path, progress_value, message)
+
+    def on_full_process_dubbing_finished(
+        self, batch_task: BatchTask, task: DubbingTask
+    ):
+        """lồng tiếng完成后用配音视频继续视频合成"""
+        if batch_task.current_thread in self.threads:
+            self.threads.remove(batch_task.current_thread)
+
+        # Dùng video đã lồng tiếng cho bước ghép phụ đề
+        dubbed_video = task.output_path or task.video_path
+        if not dubbed_video:
+            raise ValueError("Dubbing output_path is None")
+        self._start_full_process_synthesis(
+            batch_task, dubbed_video, task.subtitle_path or ""
+        )
+
+    def _start_full_process_synthesis(
+        self, batch_task: BatchTask, video_path: str, subtitle_path: str
+    ):
+        """Tạo và chạy bước ghép video (chặng cuối của full process)"""
         synthesis_task = self.factory.create_synthesis_task(video_path, subtitle_path)
         thread = VideoSynthesisThread(synthesis_task)
         batch_task.current_thread = thread
@@ -306,7 +364,10 @@ class BatchProcessThread(QThread):
     ):
         """处理全流程任务中视频合成部分的进度"""
         if batch_task.status == BatchTaskStatus.RUNNING:
-            progress_value = 66 + progress // 3  # 视频合成占最后34%进度
+            if cfg.dubbing_enabled.value:
+                progress_value = 75 + progress * 25 // 100  # 视频合成占最后25%
+            else:
+                progress_value = 66 + progress // 3  # 视频合成占最后34%进度
             self.task_progress.emit(batch_task.file_path, progress_value, message)
 
     def stop_task(self, file_path: str):
