@@ -263,9 +263,11 @@ def mix_audio_tracks(
     elif mix_mode == AudioMixMode.REDUCE_ORIGINAL:
         # Giảm âm lượng audio gốc, mix với voice track
         vol = max(0.0, min(1.0, original_volume))
+        # normalize=0: giữ nguyên âm lượng từng input (không chia đôi).
+        # Giọng lồng tiếng [1:a] giữ 100%, chỉ audio gốc bị giảm theo `vol`.
         filter_complex = (
             f"[0:a]volume={vol}[orig];"
-            f"[orig][1:a]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            f"[orig][1:a]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
         )
         cmd = [
             "ffmpeg",
@@ -280,9 +282,9 @@ def mix_audio_tracks(
             output_path,
         ]
     else:
-        # KEEP_ORIGINAL: mix cả hai ở full volume
+        # KEEP_ORIGINAL: mix cả hai ở full volume (normalize=0 để không bị chia đôi)
         filter_complex = (
-            "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+            "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]"
         )
         cmd = [
             "ffmpeg",
