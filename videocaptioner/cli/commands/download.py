@@ -20,6 +20,17 @@ def run(args: Namespace, config: dict) -> int:
 
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
+    # Ensure Deno (JS runtime for YouTube signature solving) is available; auto-install
+    # on first use. Non-fatal: without it the download degrades to low-res formats.
+    try:
+        from videocaptioner.core.utils.installer import deno_path, ensure_deno
+
+        if deno_path() is None:
+            output.hint("Installing Deno (needed for YouTube HD downloads)...")
+            ensure_deno()
+    except Exception:
+        pass
+
     progress = None if quiet else output.ProgressLine(f"Downloading {url}").start()
 
     try:
@@ -35,7 +46,9 @@ def run(args: Namespace, config: dict) -> int:
             "--no-playlist",
             "--retries", "5",
             "--fragment-retries", "5",
-            "--extractor-args", "youtube:player_client=android,web",
+            # Auto-fetch the EJS solver so Deno can solve YouTube signature/n challenges;
+            # without it adaptive formats are skipped. No player_client pin (it hides formats).
+            "--remote-components", "ejs:github",
             url,
         ]
         if not has_ffmpeg:

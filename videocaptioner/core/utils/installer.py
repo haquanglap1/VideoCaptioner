@@ -84,7 +84,78 @@ def ensure_ffmpeg(progress_cb: Optional[ProgressCb] = None) -> Path:
     return bin_path
 
 
-def _download(url: str, cb: ProgressCb) -> bytes:
+# Deno is the JS runtime yt-dlp uses to solve YouTube signature/n challenges.
+# Without it almost all adaptive formats are skipped (downloads collapse to 360p
+# or "Requested format is not available"). Pinned to the official latest release.
+DENO_WIN_URL = (
+    "https://github.com/denoland/deno/releases/latest/download/"
+    "deno-x86_64-pc-windows-msvc.zip"
+)
+
+
+def _managed_deno_dir() -> Path:
+    return APPDATA_PATH / "bin" / "deno"
+
+
+def deno_path() -> Optional[Path]:
+    """Return the resolved deno executable path, or None if missing.
+
+    Search order: managed install dir → PATH → None.
+    """
+    managed = _managed_deno_dir() / ("deno.exe" if _is_windows() else "deno")
+    if managed.exists():
+        return managed
+    found = shutil.which("deno")
+    return Path(found) if found else None
+
+
+def ensure_deno(progress_cb: Optional[ProgressCb] = None) -> Path:
+    """Ensure deno is installed; download into APPDATA if missing.
+
+    Returns the absolute path to the deno binary on success.
+    Raises RuntimeError on download/extract failure or unsupported platform.
+    """
+    existing = deno_path()
+    if existing:
+        _prepend_to_path(existing.parent)
+        return existing
+
+    if not _is_windows():
+        raise RuntimeError(
+            "Auto-install Deno hỗ trợ Windows. Trên macOS/Linux cài Deno qua "
+            "`curl -fsSL https://deno.land/install.sh | sh` hoặc package manager."
+        )
+
+    cb = progress_cb or (lambda *_: None)
+    install_dir = _managed_deno_dir()
+    install_dir.mkdir(parents=True, exist_ok=True)
+
+    cb(5, "Đang tải Deno (runtime giải mã YouTube)...")
+    archive_bytes = _download(DENO_WIN_URL, cb, label="Deno")
+
+    cb(85, "Đang giải nén Deno...")
+    _extract_deno_zip(archive_bytes, install_dir)
+
+    bin_path = install_dir / "deno.exe"
+    if not bin_path.exists():
+        raise RuntimeError("Deno installed but binary not found after extraction")
+    _prepend_to_path(bin_path.parent)
+    cb(100, "Hoàn tất")
+    return bin_path
+
+
+def _extract_deno_zip(data: bytes, install_dir: Path) -> None:
+    """Extract deno.exe to install_dir. The release zip has deno.exe at its root."""
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        for name in zf.namelist():
+            if Path(name).name == "deno.exe":
+                target = install_dir / "deno.exe"
+                with zf.open(name) as src, target.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                return
+
+
+def _download(url: str, cb: ProgressCb, label: str = "FFmpeg") -> bytes:
     import urllib.request
 
     req = urllib.request.Request(
@@ -108,7 +179,7 @@ def _download(url: str, cb: ProgressCb) -> bytes:
                 # Map download progress to 5-80% of overall progress.
                 pct = 5 + int(75 * received / total)
                 mb = received / (1024 * 1024)
-                cb(pct, f"Đang tải FFmpeg... {mb:.1f} MB")
+                cb(pct, f"Đang tải {label}... {mb:.1f} MB")
     return b"".join(chunks)
 
 
@@ -145,3 +216,8 @@ if (_existing / "ffmpeg.exe").exists():
     _prepend_to_path(_existing)
 elif (_existing / "ffmpeg").exists():
     _prepend_to_path(_existing)
+
+# Same for a previously auto-installed Deno, so yt-dlp can find it on PATH.
+_existing_deno = _managed_deno_dir()
+if (_existing_deno / "deno.exe").exists() or (_existing_deno / "deno").exists():
+    _prepend_to_path(_existing_deno)

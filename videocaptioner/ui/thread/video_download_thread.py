@@ -183,6 +183,18 @@ class VideoDownloadThread(QThread):
         """下载视频"""
         logger.info("开始下载视频: %s", self.url)
 
+        # Ensure the Deno JS runtime is available so yt-dlp can solve YouTube's
+        # signature/n challenges (otherwise HD formats are skipped). Auto-download
+        # it on first use; a failure here is non-fatal — the download still proceeds
+        # (degraded to whatever pre-signed formats remain).
+        try:
+            from videocaptioner.core.utils.installer import deno_path, ensure_deno
+
+            if deno_path() is None:
+                ensure_deno(progress_cb=lambda p, m: self.progress.emit(p, m))
+        except Exception as exc:  # noqa: BLE001 — never block the download on this
+            logger.warning("Deno auto-install skipped: %s", exc)
+
         # If ffmpeg is unavailable, fall back to a single-file format that doesn't need merging.
         # YouTube exposes pre-merged streams up to 720p; better than nothing.
         from shutil import which
@@ -228,11 +240,16 @@ class VideoDownloadThread(QThread):
             },
             "retries": 5,
             "fragment_retries": 5,
+            # Auto-download the EJS challenge solver script so the Deno JS runtime can
+            # solve YouTube signature / n-sig challenges. Without it, almost every
+            # adaptive format is skipped and downloads collapse to a single 360p stream
+            # (or "Requested format is not available" when 360p isn't offered).
+            "remote_components": ["ejs:github"],
         }
 
-        initial_ydl_opts["extractor_args"] = {
-            "youtube": {"player_client": ["android", "web", "ios", "tv"]}
-        }
+        # Note: do NOT pin extractor_args.youtube.player_client. A hard pin
+        # (android/web/ios/tv) hides formats that those clients can't serve without
+        # PO tokens; yt-dlp's default client selection resolves full HD formats.
 
         # 检查 cookies 文件
         cookiefile_path = APPDATA_PATH / "cookies.txt"

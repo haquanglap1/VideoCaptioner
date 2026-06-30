@@ -81,10 +81,14 @@ LOG_LEVEL = logging.INFO
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Add bin paths to PATH (only if they exist)
+# Deno is the JS runtime yt-dlp uses to solve YouTube signature/n challenges;
+# include both a bundled location and the default user-level install dir.
 for _bin_dir in (
     FASTER_WHISPER_PATH,
     BIN_PATH,
     BIN_PATH / "ffmpeg",
+    BIN_PATH / "deno",
+    Path.home() / ".deno" / "bin",
     LEGACY_FASTER_WHISPER_PATH,
     LEGACY_BIN_PATH,
 ):
