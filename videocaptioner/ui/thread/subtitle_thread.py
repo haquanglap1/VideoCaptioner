@@ -170,7 +170,15 @@ class SubtitleThread(QThread):
             # 4. 翻译字幕
             if subtitle_config.need_translate:
                 update_stage("translate")
-                self.progress.emit(0, self.tr("翻译字幕..."))
+                if (
+                    subtitle_config.translator_service == TranslatorServiceEnum.OPENAI
+                    and subtitle_config.need_reflect
+                ):
+                    self.progress.emit(
+                        0, self.tr("翻译字幕（反思模式，质量更高但更慢）...")
+                    )
+                else:
+                    self.progress.emit(0, self.tr("翻译字幕..."))
                 logger.info("正在翻译字幕...")
                 self.finished_subtitle_length = 0
 

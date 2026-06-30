@@ -8,6 +8,11 @@ You are a professional subtitle translator specializing in ${target_language}. Y
 - If the last sentence is incomplete, do not add ellipsis (the next subtitle will continue)
 </guidelines>
 
+<video_context>
+The following brief describes the whole video (topic, tone, glossary). Use it to keep terminology and register consistent with the rest of the subtitles. If empty, ignore it.
+${global_context}
+</video_context>
+
 <terminology_and_requirements>
 ${custom_prompt}
 </terminology_and_requirements>

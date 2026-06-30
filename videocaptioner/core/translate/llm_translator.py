@@ -1,5 +1,6 @@
 """LLM 翻译器（使用 OpenAI）"""
 
+import hashlib
 import json
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -17,6 +18,8 @@ class LLMTranslator(BaseTranslator):
     """LLM 翻译器（OpenAI兼容API）"""
 
     MAX_STEPS = 3
+    # 构建全局上下文时发送给模型的原文最大字符数（超出则采样头/中/尾）
+    CONTEXT_MAX_CHARS = 12000
 
     def __init__(
         self,
@@ -38,6 +41,51 @@ class LLMTranslator(BaseTranslator):
         self.model = model
         self.custom_prompt = custom_prompt
         self.is_reflect = is_reflect
+        # 翻译前由 _prepare 构建的全局上下文简报（主题/语气/术语表）
+        self.global_context = ""
+
+    def _prepare(self, translate_data_list: List[SubtitleProcessData]) -> None:
+        """翻译前构建一次全局上下文，供所有并行块共享。"""
+        self.global_context = self._build_global_context(translate_data_list)
+
+    def _build_global_context(
+        self, translate_data_list: List[SubtitleProcessData]
+    ) -> str:
+        """读取整个字幕原文，生成一份精简的上下文简报（主题/语气/术语表）。
+
+        只调用一次 LLM；失败时返回空字符串以优雅降级（翻译照常进行）。
+        """
+        if not translate_data_list:
+            return ""
+
+        full_text = "\n".join(d.original_text for d in translate_data_list)
+        # 超长时采样头/中/尾，避免超出上下文窗口
+        if len(full_text) > self.CONTEXT_MAX_CHARS:
+            third = self.CONTEXT_MAX_CHARS // 3
+            mid_start = (len(full_text) - third) // 2
+            full_text = (
+                full_text[:third]
+                + "\n...\n"
+                + full_text[mid_start : mid_start + third]
+                + "\n...\n"
+                + full_text[-third:]
+            )
+
+        prompt = get_prompt("translate/context", target_language=self.target_language)
+        try:
+            response = call_llm(
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": full_text},
+                ],
+                model=self.model,
+            )
+            context = response.choices[0].message.content.strip()
+            logger.debug(f"[+]已构建全局翻译上下文:\n{context}")
+            return context
+        except Exception as e:
+            logger.warning(f"构建全局上下文失败，跳过（不影响翻译）: {e}")
+            return ""
 
     def _translate_chunk(
         self, subtitle_chunk: List[SubtitleProcessData]
@@ -56,12 +104,14 @@ class LLMTranslator(BaseTranslator):
                 "translate/reflect",
                 target_language=self.target_language,
                 custom_prompt=self.custom_prompt,
+                global_context=self.global_context,
             )
         else:
             prompt = get_prompt(
                 "translate/standard",
                 target_language=self.target_language,
                 custom_prompt=self.custom_prompt,
+                global_context=self.global_context,
             )
 
         try:
@@ -70,6 +120,15 @@ class LLMTranslator(BaseTranslator):
 
             # 处理反思翻译模式的结果
             if self.is_reflect and isinstance(result_dict, dict):
+                # 记录反思过程（initial/reflection），便于排查为何如此改写，
+                # 否则这些已付费生成的字段会被直接丢弃
+                for k, v in result_dict.items():
+                    if isinstance(v, dict) and v.get("reflection"):
+                        logger.debug(
+                            f"[reflect #{k}] initial={v.get('initial_translation')!r} "
+                            f"reflection={v.get('reflection')!r} "
+                            f"-> native={v.get('native_translation')!r}"
+                        )
                 processed_result = {
                     k: f"{v.get('native_translation', v) if isinstance(v, dict) else v}"
                     for k, v in result_dict.items()
@@ -213,9 +272,19 @@ class LLMTranslator(BaseTranslator):
         return subtitle_chunk
 
     def _get_cache_key(self, chunk: List[SubtitleProcessData]) -> str:
-        """生成缓存键"""
+        """生成缓存键
+
+        除文本/语言/模型外，还纳入反思模式、自定义提示词与全局上下文，
+        避免切换这些设置后命中到旧的、用不同设置生成的缓存结果。
+        """
         class_name = self.__class__.__name__
         chunk_key = generate_cache_key(chunk)
         lang = self.target_language.value
         model = self.model
-        return f"{class_name}:{chunk_key}:{lang}:{model}"
+        settings_sig = hashlib.md5(
+            f"{self.custom_prompt}\n{self.global_context}".encode("utf-8")
+        ).hexdigest()[:8]
+        return (
+            f"{class_name}:{chunk_key}:{lang}:{model}"
+            f":reflect={int(self.is_reflect)}:{settings_sig}"
+        )

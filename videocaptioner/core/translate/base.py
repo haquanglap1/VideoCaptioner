@@ -50,6 +50,9 @@ class BaseTranslator(ABC):
                 for i, seg in enumerate(asr_data.segments, 1)
             ]
 
+            # 分块前的准备钩子（如构建全局上下文），默认无操作
+            self._prepare(translate_data_list)
+
             # 分批处理字幕
             chunks = self._split_chunks(translate_data_list)
 
@@ -65,6 +68,14 @@ class BaseTranslator(ABC):
         except Exception as e:
             logger.error(f"Translation failed: {str(e)}")
             raise RuntimeError(f"Translation failed: {str(e)}")
+
+    def _prepare(self, translate_data_list: List[SubtitleProcessData]) -> None:
+        """分块前的准备钩子。
+
+        子类可重写以构建跨块共享的状态（如全局上下文/术语表）。
+        基类默认无操作。
+        """
+        pass
 
     def _split_chunks(
         self, translate_data_list: List[SubtitleProcessData]
