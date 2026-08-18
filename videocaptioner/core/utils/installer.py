@@ -11,16 +11,17 @@ import io
 import os
 import platform
 import shutil
-import sys
 import zipfile
 from pathlib import Path
 from typing import Callable, Optional
 
-from videocaptioner.config import APPDATA_PATH, BIN_PATH
+from videocaptioner.config import BIN_PATH
 
-
-# Pinned to a stable BtbN GPL build. Relatively small (~80 MB) and self-contained.
-# Updated only when older builds break due to TLS/auth changes; pin avoids surprises.
+# BtbN GPL build, ~80 MB and self-contained.
+# NOTE: this tracks BtbN's rolling `latest` tag — it is NOT pinned to a fixed
+# build, and there is no checksum to verify against (upstream publishes none per
+# release asset). Content is validated structurally after download instead
+# (see _validate_archive).
 FFMPEG_WIN_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/"
     "latest/ffmpeg-master-latest-win64-gpl.zip"
@@ -31,6 +32,16 @@ ProgressCb = Callable[[int, str], None]  # (percent 0-100, status text)
 
 def _is_windows() -> bool:
     return platform.system() == "Windows"
+
+
+def can_auto_install() -> bool:
+    """Whether this platform supports the bundled auto-installers.
+
+    Only Windows ships prebuilt archives here; macOS/Linux users are pointed at
+    their package manager instead. Callers should check this before announcing
+    an install to the user.
+    """
+    return _is_windows()
 
 
 def ffmpeg_path() -> Optional[Path]:
@@ -46,7 +57,7 @@ def ffmpeg_path() -> Optional[Path]:
 
 
 def _managed_ffmpeg_dir() -> Path:
-    return APPDATA_PATH / "bin" / "ffmpeg"
+    return BIN_PATH / "ffmpeg"
 
 
 def ensure_ffmpeg(progress_cb: Optional[ProgressCb] = None) -> Path:
@@ -72,6 +83,7 @@ def ensure_ffmpeg(progress_cb: Optional[ProgressCb] = None) -> Path:
 
     cb(5, "Đang tải FFmpeg...")
     archive_bytes = _download(FFMPEG_WIN_URL, cb)
+    _validate_archive(archive_bytes, "FFmpeg", min_bytes=20 * 1024 * 1024)
 
     cb(85, "Đang giải nén...")
     _extract_ffmpeg_zip(archive_bytes, install_dir)
@@ -86,7 +98,9 @@ def ensure_ffmpeg(progress_cb: Optional[ProgressCb] = None) -> Path:
 
 # Deno is the JS runtime yt-dlp uses to solve YouTube signature/n challenges.
 # Without it almost all adaptive formats are skipped (downloads collapse to 360p
-# or "Requested format is not available"). Pinned to the official latest release.
+# or "Requested format is not available").
+# NOTE: tracks Deno's rolling `latest` release, not a pinned version, and is not
+# checksum-verified — see the FFmpeg note above.
 DENO_WIN_URL = (
     "https://github.com/denoland/deno/releases/latest/download/"
     "deno-x86_64-pc-windows-msvc.zip"
@@ -94,7 +108,7 @@ DENO_WIN_URL = (
 
 
 def _managed_deno_dir() -> Path:
-    return APPDATA_PATH / "bin" / "deno"
+    return BIN_PATH / "deno"
 
 
 def deno_path() -> Optional[Path]:
@@ -132,6 +146,7 @@ def ensure_deno(progress_cb: Optional[ProgressCb] = None) -> Path:
 
     cb(5, "Đang tải Deno (runtime giải mã YouTube)...")
     archive_bytes = _download(DENO_WIN_URL, cb, label="Deno")
+    _validate_archive(archive_bytes, "Deno", min_bytes=10 * 1024 * 1024)
 
     cb(85, "Đang giải nén Deno...")
     _extract_deno_zip(archive_bytes, install_dir)
@@ -142,6 +157,27 @@ def ensure_deno(progress_cb: Optional[ProgressCb] = None) -> Path:
     _prepend_to_path(bin_path.parent)
     cb(100, "Hoàn tất")
     return bin_path
+
+
+def _validate_archive(data: bytes, label: str, min_bytes: int) -> None:
+    """Sanity-check a downloaded archive before extracting it.
+
+    Upstream publishes no per-asset checksum for these rolling releases, so this
+    catches the realistic failure modes instead: a truncated download, or an HTML
+    error/redirect page served with a 200.
+    """
+    if len(data) < min_bytes:
+        raise RuntimeError(
+            f"{label} download quá nhỏ ({len(data) / 1024 / 1024:.1f} MB), "
+            "có thể bị cắt giữa hoặc là trang lỗi. Thử lại sau."
+        )
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            bad = zf.testzip()
+    except zipfile.BadZipFile as e:
+        raise RuntimeError(f"{label} download không phải file zip hợp lệ: {e}") from e
+    if bad:
+        raise RuntimeError(f"{label} download bị lỗi CRC ở entry: {bad}")
 
 
 def _extract_deno_zip(data: bytes, install_dir: Path) -> None:

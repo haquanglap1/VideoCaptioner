@@ -145,7 +145,9 @@ class SubtitleThread(QThread):
                 self.update_all.emit(asr_data.to_json())
 
             # 3. 优化字幕
-            context_info = f'The subtitles below are from a file named "{task_file}". Use this context to improve accuracy if needed.\n'
+            # Chỉ gửi tên file, không gửi đường dẫn tuyệt đối: prompt này đi ra
+            # API LLM của bên thứ ba, không cần lộ cấu trúc thư mục của user.
+            context_info = f'The subtitles below are from a file named "{task_file.name}". Use this context to improve accuracy if needed.\n'
             custom_prompt = context_info + (subtitle_config.custom_prompt_text or "") + "\n"
             self.subtitle_length = len(asr_data.segments)
 

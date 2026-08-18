@@ -1,8 +1,7 @@
 """MiniMax TTS API 实现"""
 
+
 import requests
-import json
-from pathlib import Path
 
 from videocaptioner.core.tts.base import BaseTTS
 from videocaptioner.core.tts.tts_data import TTSConfig, TTSDataSeg
@@ -16,14 +15,14 @@ class MiniMaxTTS(BaseTTS):
 
     def __init__(self, config: TTSConfig):
         """初始化
-        
+
         Args:
             config: TTS 配置
         """
         super().__init__(config)
         if not config.api_key:
             raise ValueError("API key is required for MiniMax TTS")
-            
+
         self.api_key = config.api_key
         # Default base URL if not provided or left as OpenAI default
         self.base_url = config.base_url
@@ -32,7 +31,7 @@ class MiniMaxTTS(BaseTTS):
         elif not self.base_url.endswith("t2a_v2"):
             # Ensure it ends with the right endpoint if user provides base URL
             self.base_url = self.base_url.rstrip("/") + "/v1/t2a_v2"
-            
+
         # Optional: set model (default speech-01-turbo)
         self.model = config.model if config.model and config.model != "tts-1" else "speech-01-turbo"
 
@@ -47,12 +46,12 @@ class MiniMaxTTS(BaseTTS):
 
         # 音色选择
         voice_to_use = segment.voice or self.config.voice or "male-qn-qingse"
-        
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
+
         payload = {
             "model": self.model,
             "text": segment.text,
@@ -70,26 +69,26 @@ class MiniMaxTTS(BaseTTS):
                 "channel": 1
             }
         }
-        
+
         response = requests.post(
             self.base_url,
             headers=headers,
             json=payload,
             timeout=30
         )
-        
+
         if response.status_code != 200:
             raise RuntimeError(f"MiniMax TTS HTTP {response.status_code}: {response.text}")
-            
+
         data = response.json()
         base_resp = data.get("base_resp", {})
         if base_resp.get("status_code", 0) != 0:
             raise RuntimeError(f"MiniMax TTS Error: {base_resp.get('status_msg')}")
-            
+
         audio_hex = data.get("data", {}).get("audio", "")
         if not audio_hex:
             raise RuntimeError("MiniMax TTS Error: No audio data returned")
-            
+
         # Write binary file from hex
         with open(output_path, "wb") as f:
             f.write(bytes.fromhex(audio_hex))

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Union
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
+from videocaptioner.core.llm.context import submit_with_context
 from videocaptioner.core.split.split_by_llm import split_by_llm
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.text_utils import (
@@ -251,7 +252,9 @@ class SubtitleSplitter:
         for asr_data in asr_data_list:
             if not self.executor:
                 raise ValueError("Thread pool not initialized")
-            future = self.executor.submit(self._process_single_segment, asr_data)
+            future = submit_with_context(
+                self.executor, self._process_single_segment, asr_data
+            )
             futures.append(future)
 
         processed_segments = []

@@ -5,6 +5,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional
 
 if TYPE_CHECKING:
+    from videocaptioner.core.dubbing.config import DubbingConfig
     from videocaptioner.core.translate.types import TargetLanguage
 
 

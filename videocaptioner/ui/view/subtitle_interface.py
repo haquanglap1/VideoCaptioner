@@ -51,8 +51,8 @@ from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.utils.platform_utils import open_folder, reveal_in_explorer
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
-from videocaptioner.ui.components.SubtitleSettingDialog import SubtitleSettingDialog
 from videocaptioner.ui.components.SearchReplaceDialog import SearchReplaceDialog
+from videocaptioner.ui.components.SubtitleSettingDialog import SubtitleSettingDialog
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.subtitle_thread import RetranslateThread, SubtitleThread
 
@@ -331,6 +331,15 @@ class SubtitleInterface(QWidget):
         )
         self.command_bar.addAction(self.prompt_button)
 
+        # 添加搜索替换按钮（批量修正翻译错误的词）
+        self.command_bar.addAction(
+            Action(
+                FIF.SEARCH,
+                self.tr("Tìm & Thay thế"),
+                triggered=self.show_search_replace_dialog,
+            )
+        )
+
         # 添加设置按钮
         self.command_bar.addAction(
             Action(FIF.SETTING, "", triggered=self.show_subtitle_settings)
@@ -429,6 +438,57 @@ class SubtitleInterface(QWidget):
         if dialog.exec_():
             self.custom_prompt_text = cfg.custom_prompt_text.value
             self._update_prompt_button_style()
+
+    def show_search_replace_dialog(self) -> None:
+        """Tìm & thay thế hàng loạt trên dữ liệu phụ đề đang mở.
+
+        Áp dụng cho cả cột gốc và cột dịch — dùng để sửa nhanh những từ bị LLM
+        dịch sai lặp lại nhiều lần mà không phải sửa từng dòng.
+        """
+        if not self.model._data:
+            InfoBar.warning(
+                self.tr("Chưa có phụ đề"),
+                self.tr("Hãy mở hoặc xử lý một file phụ đề trước."),
+                duration=INFOBAR_DURATION_WARNING,
+                parent=self,
+            )
+            return
+
+        dialog = SearchReplaceDialog(self)
+        if not dialog.exec_():
+            return
+
+        search_word = dialog.get_search_word()
+        if not search_word:
+            return
+        replace_word = dialog.get_replace_word()
+
+        replaced_rows = 0
+        for segment in self.model._data.values():
+            hit = False
+            for field in ("original_subtitle", "translated_subtitle"):
+                text = segment.get(field)
+                if isinstance(text, str) and search_word in text:
+                    segment[field] = text.replace(search_word, replace_word)
+                    hit = True
+            if hit:
+                replaced_rows += 1
+
+        if replaced_rows:
+            self.model.layoutChanged.emit()
+            InfoBar.success(
+                self.tr("Đã thay thế"),
+                self.tr("Đã cập nhật {0} dòng phụ đề.").format(replaced_rows),
+                duration=INFOBAR_DURATION_SUCCESS,
+                parent=self,
+            )
+        else:
+            InfoBar.info(
+                self.tr("Không tìm thấy"),
+                self.tr('Không có dòng nào chứa "{0}".').format(search_word),
+                duration=INFOBAR_DURATION_INFO,
+                parent=self,
+            )
 
     def _update_prompt_button_style(self) -> None:
         if self.custom_prompt_text.strip():

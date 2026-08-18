@@ -9,7 +9,6 @@ import pytest
 from videocaptioner.core.tts import (
     BaseTTS,
     OpenAITTS,
-    SiliconFlowTTS,
     TTSConfig,
     TTSData,
     TTSDataSeg,
@@ -147,8 +146,8 @@ class MockTTS(BaseTTS):
 
     def _synthesize(self, segment: TTSDataSeg, output_path: str) -> None:
         self.synthesize_calls.append((segment.text, output_path))
-        # 创建虚拟音频文件
-        Path(output_path).write_text(f"mock audio: {segment.text}")
+        # 创建虚拟音频文件（必须指定 encoding：Windows 默认 cp1252 写不了中文）
+        Path(output_path).write_text(f"mock audio: {segment.text}", encoding="utf-8")
         # 更新 segment
         segment.audio_path = output_path
         segment.audio_duration = 1.0
@@ -296,76 +295,12 @@ class TestBaseTTS:
             assert len(tts2.synthesize_calls) == 1
 
 
-class TestSiliconFlowTTS:
-    """测试 SiliconFlowTTS 实现"""
-
-    def test_init_without_api_key(self):
-        """测试没有 API key 的初始化"""
-        config = TTSConfig(model="test-model", api_key="", base_url="https://test.api")
-        with pytest.raises(ValueError, match="API key is required"):
-            SiliconFlowTTS(config)
-
-    @patch("videocaptioner.core.tts.siliconflow.requests.post")
-    def test_synthesize_success(self, mock_post):
-        """测试成功合成"""
-        config = TTSConfig(
-            model="test-model",
-            api_key="test-key",
-            base_url="https://api.siliconflow.cn/v1",
-        )
-        tts = SiliconFlowTTS(config)
-
-        # 模拟 API 响应
-        mock_response = Mock()
-        mock_response.content = b"fake audio data"
-        mock_response.raise_for_status = Mock()
-        mock_post.return_value = mock_response
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "test.mp3"
-            segment = TTSDataSeg(text="测试文本")
-            tts._synthesize(segment, str(output_path))
-
-            # 检查 API 调用
-            assert mock_post.called
-            call_args = mock_post.call_args
-            assert "audio/speech" in call_args[0][0]
-            assert call_args[1]["headers"]["Authorization"] == "Bearer test-key"
-            assert call_args[1]["json"]["input"] == "测试文本"
-            assert call_args[1]["json"]["model"] == "test-model"
-
-            # 检查结果
-            assert segment.text == "测试文本"
-            assert segment.audio_path == str(output_path)
-            assert output_path.exists()
-            assert output_path.read_bytes() == b"fake audio data"
-
-    @patch("videocaptioner.core.tts.siliconflow.requests.post")
-    def test_synthesize_with_optional_params(self, mock_post):
-        """测试带可选参数的合成"""
-        config = TTSConfig(
-            model="test-model",
-            api_key="test-key",
-            base_url="https://api.siliconflow.cn/v1",
-            voice="female",
-            stream=True,
-        )
-        tts = SiliconFlowTTS(config)
-
-        mock_response = Mock()
-        mock_response.content = b"audio"
-        mock_response.raise_for_status = Mock()
-        mock_post.return_value = mock_response
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "test.mp3"
-            segment = TTSDataSeg(text="测试")
-            tts._synthesize(segment, str(output_path))
-
-            # 检查可选参数是否传递
-            call_json = mock_post.call_args[1]["json"]
-            assert call_json["voice"] == "female"
-            assert call_json["stream"] is True
+# ============================================================================
+# SiliconFlowTTS đã được gộp vào OpenAITTS (SiliconFlow là endpoint
+# OpenAI-compatible) — xem TestOpenAITTS bên dưới. Class test cũ mock
+# videocaptioner.core.tts.siliconflow.requests, module đó không còn tồn tại
+# nên cả file không collect được.
+# ============================================================================
 
 
 class TestOpenAITTS:

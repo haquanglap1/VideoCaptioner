@@ -1,6 +1,4 @@
 # coding: utf-8
-import hashlib
-from datetime import datetime
 
 import requests
 from PyQt5.QtCore import QObject, QVersionNumber, pyqtSignal
@@ -43,22 +41,22 @@ class VersionChecker(QObject):
             response = requests.get(url, timeout=10, headers=headers)
             response.raise_for_status()
             data = response.json()
-            
+
             # Parse GitHub release format
             self.latest_version = data.get("tag_name", self.current_version)
-            
+
             # Consider any new release as required if version is newer
             self.update_required = False
-            
+
             self.update_info = data.get("body", "")
-            
+
             # Find the first .exe asset for download url
             self.download_url = data.get("html_url", "")
             for asset in data.get("assets", []):
                 if asset.get("name", "").lower().endswith(".exe"):
                     self.download_url = asset.get("browser_download_url", "")
                     break
-                    
+
             self.announcement = {}
 
             logger.info("Successfully fetched version info from GitHub: %s", self.latest_version)

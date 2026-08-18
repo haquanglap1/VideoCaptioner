@@ -14,6 +14,7 @@ import json_repair
 from ..asr.asr_data import ASRData, ASRDataSeg
 from ..entities import SubtitleProcessData
 from ..llm import call_llm
+from ..llm.context import submit_with_context
 from ..prompts import get_prompt
 from ..split.alignment import SubtitleAligner
 from ..utils.logger import setup_logger
@@ -134,7 +135,7 @@ class SubtitleOptimizer:
 
         # 提交All任务
         for chunk in chunks:
-            future = self.executor.submit(self._optimize_chunk, chunk)
+            future = submit_with_context(self.executor, self._optimize_chunk, chunk)
             futures.append((future, chunk))
 
         # 收集结果

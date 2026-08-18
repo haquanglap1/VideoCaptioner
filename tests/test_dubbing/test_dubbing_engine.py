@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -23,8 +22,8 @@ class TestDubbingConfig:
         assert config.tts_provider == TTSProviderEnum.OPENAI
         assert config.mix_mode == AudioMixMode.REDUCE_ORIGINAL
         assert config.original_volume == 0.4
-        assert config.speed_range == (0.75, 1.5)
-        assert config.gap_ms == 100
+        assert config.max_speed == 1.5
+        assert config.strip_cjk is True
         assert config.enabled is False
 
     def test_print_config_disabled(self):
@@ -156,22 +155,46 @@ class TestDubbingEngine:
             Path(temp_video).unlink(missing_ok=True)
             Path(temp_sub).unlink(missing_ok=True)
 
-    def test_align_timeline_speed_clamping(self):
-        """Test that timeline alignment clamps speed within range."""
+    def test_align_timeline_skips_segments_without_audio(self):
+        """Segments whose TTS failed (no audio_path) are dropped, not aligned."""
         engine = DubbingEngine()
-        config = DubbingConfig(speed_range=(0.8, 1.3))
+        config = DubbingConfig(max_speed=1.3)
 
-        # Mock TTS segment with audio longer than target
         tts_seg = TTSDataSeg(
             text="test", start_time=0.0, end_time=2.0, audio_path=""
         )
         tts_data = TTSData([tts_seg])
 
-        # Mock ASR segment
-        class MockASR:
-            start_time = 0
-            end_time = 2000
-
-        # Since audio_path doesn't exist, it should skip
-        result = engine._align_timeline(tts_data, [MockASR()], "/tmp", config)
+        result = engine._align_timeline(
+            tts_data, tempfile.gettempdir(), config, total_duration=2.0
+        )
         assert len(result) == 0  # Skipped because audio_path is empty
+
+    def test_create_tts_data_keeps_cjk_when_strip_disabled(self):
+        """strip_cjk=False must keep CJK text (target language is CJK)."""
+        engine = DubbingEngine()
+
+        class MockSegment:
+            def __init__(self, text, start_time, end_time):
+                self.text = text
+                self.start_time = start_time
+                self.end_time = end_time
+
+        segments = [MockSegment("你好世界", 0, 1000)]
+
+        assert len(engine._create_tts_data(segments, strip_cjk=False).segments) == 1
+
+    def test_create_tts_data_raises_when_all_text_stripped(self):
+        """strip_cjk=True on an all-CJK subtitle must fail with a clear reason."""
+        engine = DubbingEngine()
+
+        class MockSegment:
+            def __init__(self, text, start_time, end_time):
+                self.text = text
+                self.start_time = start_time
+                self.end_time = end_time
+
+        segments = [MockSegment("你好世界", 0, 1000)]
+
+        with pytest.raises(ValueError, match="strip_cjk"):
+            engine._create_tts_data(segments, strip_cjk=True)

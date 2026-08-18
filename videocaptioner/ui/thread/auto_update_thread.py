@@ -1,6 +1,5 @@
 """Auto-update thread — tải exe mới trên background."""
 
-import os
 import tempfile
 from pathlib import Path
 

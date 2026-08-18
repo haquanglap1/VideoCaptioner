@@ -20,6 +20,9 @@ class LLMTranslator(BaseTranslator):
     MAX_STEPS = 3
     # 构建全局上下文时发送给模型的原文最大字符数（超出则采样头/中/尾）
     CONTEXT_MAX_CHARS = 12000
+    # 少于这么多条字幕时不构建全局上下文：一份从几行文本里总结出来的"全片简报"
+    # 没有参考价值，却要多花一次 LLM 调用（重新翻译选中行就是这种场景）。
+    CONTEXT_MIN_SEGMENTS = 10
 
     def __init__(
         self,
@@ -43,9 +46,24 @@ class LLMTranslator(BaseTranslator):
         self.is_reflect = is_reflect
         # 翻译前由 _prepare 构建的全局上下文简报（主题/语气/术语表）
         self.global_context = ""
+        # 全片原文的确定性指纹，用于缓存键（见 _get_cache_key）
+        self.source_signature = ""
 
     def _prepare(self, translate_data_list: List[SubtitleProcessData]) -> None:
         """翻译前构建一次全局上下文，供所有并行块共享。"""
+        # 缓存键需要一个"这是同一个片子"的确定性标识。不能直接用 global_context：
+        # 它由 LLM 在 temperature=1 下生成，每次都不一样，会让翻译缓存永远 miss。
+        self.source_signature = hashlib.sha256(
+            "\n".join(d.original_text for d in translate_data_list).encode("utf-8")
+        ).hexdigest()[:16]
+
+        if len(translate_data_list) < self.CONTEXT_MIN_SEGMENTS:
+            logger.debug(
+                "只有 %d 条字幕，跳过全局上下文构建", len(translate_data_list)
+            )
+            self.global_context = ""
+            return
+
         self.global_context = self._build_global_context(translate_data_list)
 
     def _build_global_context(
@@ -129,12 +147,8 @@ class LLMTranslator(BaseTranslator):
                             f"reflection={v.get('reflection')!r} "
                             f"-> native={v.get('native_translation')!r}"
                         )
-                processed_result = {
-                    k: f"{v.get('native_translation', v) if isinstance(v, dict) else v}"
-                    for k, v in result_dict.items()
-                }
-            else:
-                processed_result = {k: f"{v}" for k, v in result_dict.items()}
+
+            processed_result = self._extract_translations(result_dict)
 
             # 将结果填充回SubtitleProcessData
             for data in subtitle_chunk:
@@ -155,6 +169,33 @@ class LLMTranslator(BaseTranslator):
             logger.error(f"LLM translation error: {e}")
             raise
 
+    def _extract_translations(self, result_dict: Any) -> Dict[str, str]:
+        """从 LLM 返回结果中提取译文，跳过结构不合法的条目。
+
+        只接受字符串（反思模式下是嵌套 dict 里的 ``native_translation``）。
+        结构不对的条目**不放进结果**，让调用方回退到原文 —— 直接 f-string 化
+        会把 ``{'initial_translation': ...}`` 这种 dict 原样写进字幕。
+        """
+        if not isinstance(result_dict, dict):
+            return {}
+
+        processed: Dict[str, str] = {}
+        for key, value in result_dict.items():
+            text = value
+            if isinstance(value, dict):
+                text = value.get("native_translation")
+            if isinstance(text, (int, float)) and not isinstance(text, bool):
+                text = str(text)
+            if isinstance(text, str) and text.strip():
+                processed[str(key)] = text
+            else:
+                logger.warning(
+                    "字幕 #%s 的译文结构不合法（%s），回退到原文",
+                    key,
+                    type(value).__name__,
+                )
+        return processed
+
     def _agent_loop(
         self, system_prompt: str, subtitle_dict: Dict[str, str]
     ) -> Dict[str, str]:
@@ -164,6 +205,7 @@ class LLMTranslator(BaseTranslator):
             {"role": "user", "content": json.dumps(subtitle_dict, ensure_ascii=False)},
         ]
         last_response_dict = None
+        last_error = ""
         # llm 反馈循环
         for _ in range(self.MAX_STEPS):
             response = call_llm(messages=messages, model=self.model)
@@ -177,6 +219,7 @@ class LLMTranslator(BaseTranslator):
             if is_valid:
                 return response_dict
             else:
+                last_error = error_message
                 messages.append(
                     {
                         "role": "assistant",
@@ -190,6 +233,18 @@ class LLMTranslator(BaseTranslator):
                     }
                 )
 
+        # 用完重试次数仍不合法：返回最后一次结果，由 _extract_translations 逐条
+        # 过滤，不合法的条目回退到原文。完全不是 dict 就没什么可用的了 —— raise
+        # 让整块进入失败统计（BaseTranslator 会保留原文）。
+        if not isinstance(last_response_dict, dict):
+            raise ValueError(
+                f"LLM 返回结构在 {self.MAX_STEPS} 次重试后仍不可用: {last_error}"
+            )
+        logger.warning(
+            "LLM 返回结构在 %d 次重试后仍不完全合法（%s），逐条降级处理",
+            self.MAX_STEPS,
+            last_error,
+        )
         return last_response_dict
 
     def _validate_llm_response(
@@ -274,15 +329,19 @@ class LLMTranslator(BaseTranslator):
     def _get_cache_key(self, chunk: List[SubtitleProcessData]) -> str:
         """生成缓存键
 
-        除文本/语言/模型外，还纳入反思模式、自定义提示词与全局上下文，
-        避免切换这些设置后命中到旧的、用不同设置生成的缓存结果。
+        除文本/语言/模型外，还纳入反思模式、自定义提示词、全片原文指纹与
+        "是否启用了全局上下文"，避免切换这些设置后命中到旧的缓存结果。
+
+        注意用的是 source_signature 而不是 global_context 本身：后者由 LLM
+        随机生成，放进键里会让缓存每次都 miss（call_llm 只 memoize 1 小时）。
         """
         class_name = self.__class__.__name__
         chunk_key = generate_cache_key(chunk)
         lang = self.target_language.value
         model = self.model
         settings_sig = hashlib.md5(
-            f"{self.custom_prompt}\n{self.global_context}".encode("utf-8")
+            f"{self.custom_prompt}\n{self.source_signature}\n"
+            f"{bool(self.global_context)}".encode("utf-8")
         ).hexdigest()[:8]
         return (
             f"{class_name}:{chunk_key}:{lang}:{model}"

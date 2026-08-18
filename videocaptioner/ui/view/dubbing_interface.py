@@ -7,12 +7,10 @@ Hỗ trợ 2 chế độ:
 
 from pathlib import Path
 
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
-    QLabel,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -59,11 +57,11 @@ class VoiceFetchThread(QThread):
             if not base_url:
                 self.finished_fetch.emit([], "Thiếu API Base")
                 return
-            
+
             headers = {}
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
-                
+
             models_url = f"{base_url}/models"
             response = requests.get(models_url, headers=headers, timeout=10)
             if response.status_code != 200:
@@ -154,7 +152,7 @@ class DubbingInterface(QWidget):
         self.voice_combo = EditableComboBox()
         self.voice_combo.setPlaceholderText(self.tr("Chọn hoặc nhập tên giọng nói..."))
         self.voice_combo.setFixedWidth(200)
-        
+
         # Load saved voice if any
         saved_voice = cfg.dubbing_tts_voice.value
         self.voice_combo.setText(saved_voice)
@@ -162,7 +160,7 @@ class DubbingInterface(QWidget):
         self.fetch_voice_btn = PushButton(self.tr("Tải danh sách"))
         self.fetch_voice_btn.setFixedWidth(120)
         self.fetch_voice_btn.clicked.connect(self._fetch_voices)
-        
+
         row2.addWidget(self.voice_combo)
         row2.addWidget(self.fetch_voice_btn)
         row2.addStretch()
@@ -682,7 +680,7 @@ class DubbingInterface(QWidget):
         """Tải danh sách giọng nói từ API."""
         api_base = self.api_base_edit.text().strip()
         api_key = self.api_key_edit.text().strip()
-        
+
         provider_idx = self.provider_combo.currentIndex()
         if provider_idx in [0, 1]:  # OpenAI or MiniMax -> Hardcoded usually
             InfoBar.info(
@@ -698,7 +696,7 @@ class DubbingInterface(QWidget):
 
         self.fetch_voice_btn.setEnabled(False)
         self.fetch_voice_btn.setText(self.tr("Đang tải..."))
-        
+
         self.fetch_thread = VoiceFetchThread(api_base, api_key)
         self.fetch_thread.finished_fetch.connect(self._on_fetch_voices_finished)
         self.fetch_thread.start()
@@ -706,7 +704,7 @@ class DubbingInterface(QWidget):
     def _on_fetch_voices_finished(self, models: list, error_msg: str):
         self.fetch_voice_btn.setEnabled(True)
         self.fetch_voice_btn.setText(self.tr("Tải danh sách"))
-        
+
         if error_msg:
             InfoBar.error(
                 self.tr("Lỗi tải danh sách"),
@@ -716,7 +714,7 @@ class DubbingInterface(QWidget):
                 parent=self.window(),
             )
             return
-            
+
         if models:
             current_text = self.voice_combo.text()
             self.voice_combo.clear()

@@ -9,13 +9,14 @@ Provides functions to:
   normalization, optional boost, and a final limiter to avoid clipping)
 """
 
+import functools
 import json
 import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.utils.logger import setup_logger
@@ -182,21 +183,41 @@ def build_voice_track(
         )
 
     # Quá nhiều segment: chia batch, render từng batch thành track full-length
-    # (im lặng ở các đoạn không có segment), rồi amix các batch lại. Chuẩn hóa
-    # độ to chỉ áp dụng một lần ở bước trộn cuối (không phải từng batch).
+    # (im lặng ở các đoạn không có segment), rồi trộn dần vào một accumulator.
+    #
+    # Trộn dần (fold) chứ không giữ hết batch tới bước cuối: mỗi track
+    # full-length nặng ~172 MB/giờ (mono 24kHz s16), video dài nhiều câu sẽ
+    # sinh hàng GB file tạm nếu giữ đồng thời. Cách này chỉ giữ tối đa 3 file.
+    # Chuẩn hóa độ to áp dụng một lần ở lần trộn cuối.
     temp_dir = Path(tempfile.mkdtemp(prefix="vc_dub_track_"))
     try:
-        batch_tracks: List[str] = []
-        for bi, start in enumerate(range(0, len(valid), _MAX_INPUTS_PER_PASS)):
-            chunk = valid[start:start + _MAX_INPUTS_PER_PASS]
+        batches = [
+            valid[start:start + _MAX_INPUTS_PER_PASS]
+            for start in range(0, len(valid), _MAX_INPUTS_PER_PASS)
+        ]
+        acc: Optional[str] = None
+        for bi, chunk in enumerate(batches):
             btrack = str(temp_dir / f"batch_{bi:03d}.wav")
-            if _render_voice_track(chunk, total_duration_s, btrack, sample_rate):
-                batch_tracks.append(btrack)
-        if not batch_tracks:
+            if not _render_voice_track(chunk, total_duration_s, btrack, sample_rate):
+                logger.warning("Batch %d render thất bại, bỏ qua", bi)
+                continue
+            if acc is None:
+                acc = btrack
+                continue
+            merged = str(temp_dir / f"acc_{bi:03d}.wav")
+            if not _mix_full_tracks([acc, btrack], merged, sample_rate):
+                return False
+            # Giải phóng ngay hai input vừa trộn để giữ đỉnh dung lượng thấp.
+            for stale in (acc, btrack):
+                Path(stale).unlink(missing_ok=True)
+            acc = merged
+
+        if acc is None:
             return False
-        return _mix_full_tracks(
-            batch_tracks, output_path, sample_rate, loudnorm=normalize
-        )
+
+        # Pass cuối: passthrough sang output_path, chuẩn hóa độ to ở đây (một
+        # lần duy nhất, trên track đã trộn xong).
+        return _mix_full_tracks([acc], output_path, sample_rate, loudnorm=normalize)
     finally:
         shutil.rmtree(str(temp_dir), ignore_errors=True)
 
@@ -215,8 +236,11 @@ def mix_audio_tracks(
     Giọng lồng tiếng được chuẩn hóa độ to (loudnorm) rồi nhân thêm hệ số
     voice_volume; output qua alimiter để tránh vỡ tiếng (clipping).
 
+    Nếu video không có audio stream thì mọi mix_mode đều tự rơi về
+    MUTE_ORIGINAL (filter `[0:a]` sẽ làm ffmpeg fail trên video không tiếng).
+
     Args:
-        video_path: Video gốc (có audio).
+        video_path: Video gốc.
         voice_track_path: Voice track đã tạo.
         output_path: Video đầu ra.
         mix_mode: Chế độ xử lý audio gốc.
@@ -230,6 +254,15 @@ def mix_audio_tracks(
         True nếu thành công.
     """
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Video không tiếng: các mode có [0:a] sẽ fail ở ffmpeg. Rơi về MUTE.
+    if mix_mode != AudioMixMode.MUTE_ORIGINAL and not _has_audio_stream(video_path):
+        logger.warning(
+            "Video không có audio stream, chuyển mix_mode %s → %s",
+            mix_mode.value,
+            AudioMixMode.MUTE_ORIGINAL.value,
+        )
+        mix_mode = AudioMixMode.MUTE_ORIGINAL
 
     vv = max(0.1, float(voice_volume))
     # Chuẩn hóa độ to giọng lồng (two-pass nếu đo được) + boost theo người dùng.
@@ -328,6 +361,69 @@ def mix_audio_tracks(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=1)
+def _filter_complex_file_flag() -> str:
+    """Flag để nạp filter graph từ file, khác nhau theo phiên bản ffmpeg.
+
+    ffmpeg 8.0 **bỏ** `-filter_complex_script`, thay bằng dạng tổng quát
+    `-/<option> <file>` (đọc giá trị option từ file, có từ ffmpeg 7.1). Dùng sai
+    flag thì ffmpeg thoát ngay với "Unrecognized option" và bước ghép voice track
+    fail hoàn toàn — nên probe một lần rồi cache.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner",
+                "-filter_complex_script", os.devnull,
+                "-f", "null", "-",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=_FFMPEG_CREATE_FLAGS,
+        )
+    except Exception as e:
+        logger.warning("Không probe được ffmpeg filter-script flag: %s", e)
+        return "-/filter_complex"
+
+    stderr = result.stderr or ""
+    if "Unrecognized option" in stderr and "filter_complex_script" in stderr:
+        logger.debug("ffmpeg mới: dùng -/filter_complex")
+        return "-/filter_complex"
+    return "-filter_complex_script"
+
+
+def _has_audio_stream(media_path: str) -> bool:
+    """Kiểm tra file có audio stream hay không (ffprobe).
+
+    Trả về True khi không xác định được: giữ nguyên hành vi cũ thay vì tắt
+    audio gốc chỉ vì ffprobe lỗi.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=index",
+                "-of", "csv=p=0",
+                media_path,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=_FFMPEG_CREATE_FLAGS,
+        )
+    except Exception as e:
+        logger.warning("Không probe được audio stream của %s: %s", media_path, e)
+        return True
+    if result.returncode != 0:
+        return True
+    return bool(result.stdout.strip())
+
 
 def _loudnorm_filter(audio_path: str) -> str:
     """Tạo chuỗi filter loudnorm cho giọng lồng tiếng.
@@ -478,7 +574,7 @@ def _render_voice_track(
         cmd = [
             "ffmpeg",
             *inputs,
-            "-filter_complex_script", str(script_path),
+            _filter_complex_file_flag(), str(script_path),
             "-map", "[out]",
             "-ac", "1",
             "-ar", str(sample_rate),

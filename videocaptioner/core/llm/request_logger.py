@@ -6,10 +6,9 @@ from typing import Any, Dict
 
 import httpx
 
-from videocaptioner.config import LOG_PATH
+from videocaptioner.config import LLM_LOG_FILE, LOG_PATH
 from videocaptioner.core.llm.context import get_task_context
 
-LLM_LOG_FILE = LOG_PATH / "llm_requests.jsonl"
 MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
 
 

@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Optional, cast
 
+from videocaptioner.core.llm.context import submit_with_context
 from videocaptioner.core.tts.status import TTSStatus
 from videocaptioner.core.tts.tts_data import TTSConfig, TTSData, TTSDataSeg
 from videocaptioner.core.utils.cache import get_tts_cache, is_cache_enabled
@@ -98,7 +99,7 @@ class BaseTTS(ABC):
         else:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = [
-                    executor.submit(_synthesize_one, idx, segment)
+                    submit_with_context(executor, _synthesize_one, idx, segment)
                     for idx, segment in enumerate(tts_data.segments)
                 ]
                 for future in as_completed(futures):

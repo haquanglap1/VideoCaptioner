@@ -122,7 +122,14 @@ class TestJianYingASR:
             need_word_time_stamp=need_word_ts,
         )
 
-        result: ASRData = asr.run()
+        # JianYing là service miễn phí của bên thứ ba: rate limit hoặc outage
+        # không nên làm đỏ suite (chạy test nhiều lần liên tiếp sẽ gặp 429).
+        try:
+            result: ASRData = asr.run()
+        except RuntimeError as exc:
+            if "429" in str(exc) or "Too Many Requests" in str(exc):
+                pytest.skip(f"JianYing ASR rate-limited: {exc}")
+            raise
 
         print("\n" + "=" * 60)
         print(f"JianYingASR - {lang.upper()} - {level.title()}-Level Results:")

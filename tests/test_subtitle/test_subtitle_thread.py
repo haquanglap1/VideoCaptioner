@@ -249,6 +249,10 @@ class TestSubtitleThreadTranslate:
         thread = SubtitleThread(task)
         results = run_thread_with_timeout(thread)
 
+        # Bing là endpoint miễn phí của bên thứ ba; outage không nên làm đỏ suite.
+        if "Bing session" in str(results.get("error", "")):
+            pytest.skip(f"Bing translate endpoint unavailable: {results['error']}")
+
         assert "error" not in results, f"Failed: {results.get('error')}"
         assert "output" in results
 

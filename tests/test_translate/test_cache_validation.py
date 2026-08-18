@@ -8,16 +8,27 @@ from diskcache import Cache
 from videocaptioner.core.utils.cache import (
     disable_cache,
     enable_cache,
+    is_cache_enabled,
     memoize,
 )
 
 
 @pytest.fixture(autouse=True)
 def ensure_cache_enabled():
-    """Ensure cache is enabled before each test."""
+    """Enable the cache for this module, then restore the previous state.
+
+    Teardown must restore, not re-enable: the root conftest disables caching for
+    the whole session, so unconditionally enabling here leaked the cache into
+    every test that ran afterwards (TTS tests then hit the persistent on-disk
+    cache and skipped synthesis).
+    """
+    was_enabled = is_cache_enabled()
     enable_cache()
     yield
-    enable_cache()  # Re-enable after test
+    if was_enabled:
+        enable_cache()
+    else:
+        disable_cache()
 
 
 @pytest.fixture

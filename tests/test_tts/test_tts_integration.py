@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from videocaptioner.core.tts import OpenAITTS, SiliconFlowTTS, TTSConfig, TTSData
+from videocaptioner.core.tts import OpenAITTS, TTSConfig, TTSData
 
 # 加载环境变量
 
@@ -80,11 +80,11 @@ def openai_config():
 
 @skip_siliconflow
 class TestSiliconFlowIntegration:
-    """SiliconFlow TTS 真实 API 集成测试"""
+    """SiliconFlow TTS 真实 API 集成测试（qua OpenAITTS — endpoint tương thích OpenAI）"""
 
     def test_siliconflow_single_synthesis(self, siliconflow_config):
         """测试 SiliconFlow 单条语音合成 - 真实 API 调用"""
-        tts = SiliconFlowTTS(siliconflow_config)
+        tts = OpenAITTS(siliconflow_config)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tts_data = TTSData.from_texts(["你好，欢迎使用 SiliconFlow TTS 服务。"])
@@ -100,7 +100,7 @@ class TestSiliconFlowIntegration:
 
     def test_siliconflow_batch_synthesis(self, siliconflow_config):
         """测试 SiliconFlow 批量语音合成"""
-        tts = SiliconFlowTTS(siliconflow_config)
+        tts = OpenAITTS(siliconflow_config)
 
         texts = [
             "第一段文本",

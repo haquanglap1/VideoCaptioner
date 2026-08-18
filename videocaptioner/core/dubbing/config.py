@@ -1,8 +1,8 @@
 """Dubbing configuration data classes."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional
 
 from videocaptioner.core.tts.tts_data import TTSConfig
 
@@ -39,12 +39,16 @@ class DubbingConfig:
     # TTS concurrency
     tts_concurrency: int = 1  # Số luồng TTS chạy song song
 
-    # Timeline alignment
-    speed_range: Tuple[float, float] = (0.75, 1.5)  # min/max tốc độ co giãn
-    gap_ms: int = 100  # Khoảng trống tối thiểu giữa segments (ms)
+    # Timeline alignment — engine chỉ tăng tốc (>= 1.0x), không kéo giãn chậm,
+    # nên chỉ cần trần tốc độ. (Trước đây là speed_range tuple nhưng phần tử
+    # min chưa bao giờ được đọc.)
+    max_speed: float = 1.5
 
-    # Output
-    output_format: str = "wav"  # Format audio intermediate
+    # Text preprocessing
+    # Xóa ký tự CJK khỏi text trước khi gọi TTS. Chỉ đúng khi ngôn ngữ đích là
+    # hệ Latin (lọc phần dịch còn sót tiếng Trung). Phải đặt False khi lồng
+    # tiếng sang Trung/Nhật/Quảng — nếu không mọi câu sẽ bị xóa trắng.
+    strip_cjk: bool = True
 
     # Enable/disable
     enabled: bool = False  # Mặc định tắt, user bật khi cần
@@ -60,7 +64,7 @@ class DubbingConfig:
                 lines.append(f"Original Volume: {self.original_volume:.0%}")
             lines.append(f"Voice Volume: {self.voice_volume:.0%}")
             lines.append(f"TTS Concurrency: {self.tts_concurrency}")
-            lines.append(f"Speed Range: {self.speed_range[0]}x - {self.speed_range[1]}x")
-            lines.append(f"Gap: {self.gap_ms}ms")
+            lines.append(f"Max Speed: {self.max_speed}x")
+            lines.append(f"Strip CJK: {self.strip_cjk}")
         lines.append("=" * 36)
         return "\n".join(lines)

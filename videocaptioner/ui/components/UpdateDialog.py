@@ -5,18 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QVBoxLayout
 from qfluentwidgets import (
     BodyLabel,
-    InfoBar,
-    InfoBarPosition,
     MessageBoxBase,
     ProgressBar,
-    PrimaryPushButton,
-    PushButton,
-    StrongBodyLabel,
     SubtitleLabel,
     TextEdit,
 )
@@ -142,8 +134,6 @@ class UpdateDialog(MessageBoxBase):
                 self.yesButton.setEnabled(False)
                 self.cancelButton.setText(self.tr("Đóng"))
                 return
-
-            current_exe_path = Path(current_exe)
 
             # Create batch script for Windows
             if os.name == "nt":

@@ -25,8 +25,8 @@ from videocaptioner.core.dubbing.audio_mixer import (
 from videocaptioner.core.dubbing.config import DubbingConfig, TTSProviderEnum
 from videocaptioner.core.tts import (
     BaseTTS,
-    OpenAITTS,
     MiniMaxTTS,
+    OpenAITTS,
     TTSData,
     TTSDataSeg,
 )
@@ -49,6 +49,10 @@ _CJK_PATTERN = re.compile(
 )
 # Sau khi bỏ CJK, gộp khoảng trắng thừa.
 _WS_PATTERN = re.compile(r"\s{2,}")
+
+
+def _noop_progress(progress: int, message: str) -> None:
+    """Callback tiến độ rỗng, dùng khi caller không truyền callback."""
 
 
 def _strip_cjk(text: str) -> str:
@@ -90,7 +94,7 @@ class DubbingEngine:
             RuntimeError: Nếu bất kỳ bước nào thất bại.
         """
         if callback is None:
-            callback = lambda p, m: None
+            callback = _noop_progress
 
         # Validate inputs
         if not Path(video_path).is_file():
@@ -133,7 +137,7 @@ class DubbingEngine:
 
             # --- Step 2: Tạo TTSData ---
             callback(10, "Đang chuẩn bị văn bản...")
-            tts_data = self._create_tts_data(segments)
+            tts_data = self._create_tts_data(segments, strip_cjk=config.strip_cjk)
             logger.info("Created TTSData with %d segments", len(tts_data))
 
             # --- Step 3: TTS Synthesize ---
@@ -173,7 +177,7 @@ class DubbingEngine:
             adjusted_dir = str(work_dir / "adjusted")
             Path(adjusted_dir).mkdir(parents=True, exist_ok=True)
             segment_infos = self._align_timeline(
-                tts_data, segments, adjusted_dir, config, total_duration
+                tts_data, adjusted_dir, config, total_duration
             )
             logger.info("Timeline aligned: %d segments", len(segment_infos))
 
@@ -214,32 +218,47 @@ class DubbingEngine:
             import shutil
             shutil.rmtree(str(work_dir), ignore_errors=True)
 
-    def _create_tts_data(self, segments) -> TTSData:
+    def _create_tts_data(self, segments, strip_cjk: bool = True) -> TTSData:
         """Chuyển ASRData segments thành TTSData.
 
         Args:
             segments: Danh sách ASRDataSeg (có text, start_time, end_time in ms).
+            strip_cjk: Lọc ký tự CJK khỏi text (chỉ đúng khi ngôn ngữ đích là hệ
+                Latin). Đặt False khi lồng tiếng sang Trung/Nhật/Quảng, nếu không
+                mọi câu sẽ bị xóa trắng và TTS thất bại toàn bộ.
 
         Returns:
             TTSData instance.
         """
         tts_segments = []
+        skipped_cjk = 0
         for seg in segments:
             text = seg.text.strip()
             if not text:
                 continue
-            # Lọc tiếng Trung/CJK còn sót để TTS không đọc nhầm
-            cleaned = _strip_cjk(text)
-            if not cleaned:
-                logger.debug("Bỏ qua câu chỉ chứa ký tự CJK: %.40s", text)
-                continue
-            text = cleaned
+            if strip_cjk:
+                # Lọc tiếng Trung/CJK còn sót để TTS không đọc nhầm
+                cleaned = _strip_cjk(text)
+                if not cleaned:
+                    logger.debug("Bỏ qua câu chỉ chứa ký tự CJK: %.40s", text)
+                    skipped_cjk += 1
+                    continue
+                text = cleaned
             tts_seg = TTSDataSeg(
                 text=text,
                 start_time=seg.start_time / 1000.0,  # ms → seconds
                 end_time=seg.end_time / 1000.0,
             )
             tts_segments.append(tts_seg)
+
+        if strip_cjk and not tts_segments and skipped_cjk:
+            # Trường hợp điển hình: ngôn ngữ đích là Trung/Nhật nhưng strip_cjk
+            # vẫn bật. Nói rõ nguyên nhân thay vì để đổ ở "TTS thất bại".
+            raise ValueError(
+                f"Toàn bộ {skipped_cjk} câu bị lọc sạch vì chỉ chứa ký tự CJK. "
+                "Nếu ngôn ngữ đích là Trung/Nhật/Quảng, hãy tắt strip_cjk "
+                "trong cấu hình lồng tiếng."
+            )
         return TTSData(tts_segments)
 
     def _create_tts_provider(self, config: DubbingConfig) -> BaseTTS:
@@ -267,7 +286,6 @@ class DubbingEngine:
     def _align_timeline(
         self,
         tts_data: TTSData,
-        asr_segments,
         output_dir: str,
         config: DubbingConfig,
         total_duration: float,
@@ -279,8 +297,7 @@ class DubbingEngine:
         và chỉ cắt cụt khi sau khi đã tăng tới trần tốc độ mà vẫn đè lên câu kế.
 
         Args:
-            tts_data: TTSData đã synthesize (có audio_path).
-            asr_segments: ASRData segments gốc (có start_time, end_time in ms).
+            tts_data: TTSData đã synthesize (có audio_path, thời gian tính bằng giây).
             output_dir: Thư mục lưu audio đã điều chỉnh.
             config: DubbingConfig.
             total_duration: Tổng thời lượng video (giây).
@@ -288,7 +305,7 @@ class DubbingEngine:
         Returns:
             List[dict] — mỗi item: {"audio_path", "start_time", "end_time"} (seconds).
         """
-        max_speed = config.speed_range[1]
+        max_speed = config.max_speed
         segs = tts_data.segments
         result = []
 

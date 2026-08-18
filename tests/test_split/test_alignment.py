@@ -1,6 +1,6 @@
 """字幕对齐模块测试
 
-测试 app/core/split/alignment.py 中的核心功能
+测试 videocaptioner/core/split/alignment.py 中的核心功能
 """
 
 import pytest

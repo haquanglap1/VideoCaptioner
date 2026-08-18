@@ -7,6 +7,7 @@ from typing import Callable, List, Optional
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.entities import SubtitleProcessData
+from videocaptioner.core.llm.context import submit_with_context
 from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.utils.cache import generate_cache_key, get_translate_cache
 from videocaptioner.core.utils.logger import setup_logger
@@ -97,7 +98,7 @@ class BaseTranslator(ABC):
         total_segments = sum(len(c) for c in chunks)
 
         for chunk in chunks:
-            future = self.executor.submit(self._safe_translate_chunk, chunk)
+            future = submit_with_context(self.executor, self._safe_translate_chunk, chunk)
             future_to_chunk[future] = chunk
 
         for future in as_completed(future_to_chunk):
@@ -148,6 +149,10 @@ class BaseTranslator(ABC):
                 cached_result = None
                 self._cache.delete(cache_key)
             if cached_result is not None:
+                # Cache hit vẫn phải báo tiến độ, nếu không progress bar sẽ đứng
+                # và bảng phụ đề không hiển thị phần lấy từ cache.
+                if self.update_callback:
+                    self.update_callback(cached_result)
                 return cached_result
 
             result = self._translate_chunk(chunk)

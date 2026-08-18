@@ -38,12 +38,15 @@ from videocaptioner.core.entities import (
     TranscribeLanguageEnum,
     VadMethodEnum,
 )
+from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
 from videocaptioner.ui.components.SpinBoxSettingCard import DoubleSpinBoxSettingCard
 from videocaptioner.ui.thread.file_download_thread import FileDownloadThread
 from videocaptioner.ui.thread.modelscope_download_thread import ModelscopeDownloadThread
+
+logger = setup_logger("faster_whisper_setting")
 
 # 在文件开头添加常量定义
 FASTER_WHISPER_PROGRAMS = [

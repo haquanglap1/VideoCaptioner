@@ -1,6 +1,6 @@
 """字幕分割模块测试 - 严格边缘用例
 
-测试 app/core/split/split.py 中的核心功能
+测试 videocaptioner/core/split/split.py 中的核心功能
 """
 
 

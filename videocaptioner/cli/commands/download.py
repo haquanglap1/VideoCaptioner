@@ -22,14 +22,26 @@ def run(args: Namespace, config: dict) -> int:
 
     # Ensure Deno (JS runtime for YouTube signature solving) is available; auto-install
     # on first use. Non-fatal: without it the download degrades to low-res formats.
+    # Auto-install is Windows-only, so check that before announcing anything.
     try:
-        from videocaptioner.core.utils.installer import deno_path, ensure_deno
+        from videocaptioner.core.utils.installer import (
+            can_auto_install,
+            deno_path,
+            ensure_deno,
+        )
 
         if deno_path() is None:
-            output.hint("Installing Deno (needed for YouTube HD downloads)...")
-            ensure_deno()
-    except Exception:
-        pass
+            if can_auto_install():
+                output.hint("Installing Deno (needed for YouTube HD downloads)...")
+                ensure_deno()
+            elif not quiet:
+                output.warn(
+                    "Deno not found — YouTube HD formats will be unavailable. "
+                    "Install it with: curl -fsSL https://deno.land/install.sh | sh"
+                )
+    except Exception as exc:
+        if not quiet:
+            output.warn(f"Deno setup skipped: {exc}")
 
     progress = None if quiet else output.ProgressLine(f"Downloading {url}").start()
 

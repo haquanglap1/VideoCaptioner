@@ -3,6 +3,11 @@ from pathlib import Path
 from typing import Optional
 
 from videocaptioner.config import MODEL_PATH
+from videocaptioner.core.dubbing.config import (
+    AudioMixMode,
+    DubbingConfig,
+    TTSProviderEnum,
+)
 from videocaptioner.core.entities import (
     LANGUAGES,
     DubbingTask,
@@ -16,13 +21,17 @@ from videocaptioner.core.entities import (
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
-from videocaptioner.core.dubbing.config import (
-    AudioMixMode,
-    DubbingConfig,
-    TTSProviderEnum,
-)
+from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.tts.tts_data import TTSConfig
 from videocaptioner.ui.common.config import cfg
+
+# Ngôn ngữ đích dùng chữ Hán/kana — không được lọc CJK trước khi gọi TTS.
+_CJK_TARGET_LANGUAGES = {
+    TargetLanguage.SIMPLIFIED_CHINESE,
+    TargetLanguage.TRADITIONAL_CHINESE,
+    TargetLanguage.JAPANESE,
+    TargetLanguage.CANTONESE,
+}
 
 
 class TaskFactory:
@@ -323,6 +332,11 @@ class TaskFactory:
             response_format="wav",
         )
 
+        # Ngôn ngữ đích quyết định có lọc CJK trước khi gọi TTS hay không.
+        # Bật cho đích hệ Latin (lọc phần dịch còn sót tiếng Trung), tắt khi
+        # đích chính là CJK — nếu không mọi câu sẽ bị xóa trắng.
+        strip_cjk = cfg.target_language.value not in _CJK_TARGET_LANGUAGES
+
         return DubbingConfig(
             tts_provider=tts_provider,
             tts_config=tts_config,
@@ -330,7 +344,8 @@ class TaskFactory:
             original_volume=cfg.dubbing_original_volume.value / 100.0,
             voice_volume=cfg.dubbing_voice_volume.value / 100.0,
             tts_concurrency=cfg.dubbing_tts_concurrency.value,
-            speed_range=(0.75, cfg.dubbing_max_speed.value / 10.0),
+            max_speed=cfg.dubbing_max_speed.value / 10.0,
+            strip_cjk=strip_cjk,
             enabled=True,
         )
 

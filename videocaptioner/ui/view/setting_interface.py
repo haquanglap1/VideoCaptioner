@@ -1,7 +1,6 @@
 import webbrowser
 
-from PyQt5.QtCore import Qt, QThread, QUrl, pyqtSignal
-from PyQt5.QtGui import QDesktopServices
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import QFileDialog, QLabel, QWidget
 from qfluentwidgets import (
     ComboBoxSettingCard,
@@ -814,8 +813,8 @@ class SettingInterface(ScrollArea):
 
     def checkUpdate(self):
         """Kiểm tra cập nhật và hiện UpdateDialog nếu có phiên bản mới."""
-        from videocaptioner.ui.thread.version_checker_thread import VersionChecker
         from videocaptioner.ui.components.UpdateDialog import UpdateDialog
+        from videocaptioner.ui.thread.version_checker_thread import VersionChecker
 
         # Disable button while checking
         self.aboutCard.button.setEnabled(False)
