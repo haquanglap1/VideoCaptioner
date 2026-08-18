@@ -93,10 +93,16 @@ override-dependencies = [
     "PyQt5-Qt5==5.15.2; sys_platform == 'win32'",
     "PyQt5-Qt5>=5.15.11; sys_platform != 'win32'",
 ]
-dev-dependencies = [
+
+# PEP 735 dependency groups. `uv sync` installs the `dev` group by default,
+# so this behaves like the deprecated [tool.uv] dev-dependencies it replaced.
+[dependency-groups]
+dev = [
     "pyright>=1.1.0",
     "ruff>=0.4.0",
     "pytest>=8.0.0",
+    # Windows exe build (VideoCaptioner.spec) — see README "Build EXE trên Windows"
+    "pyinstaller>=6.20.0",
     # GUI deps for development
     "PyQt5==5.15.11",
     "PyQt-Fluent-Widgets==1.8.4",

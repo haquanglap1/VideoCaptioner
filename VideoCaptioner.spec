@@ -1,7 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
+"""PyInstaller spec for the VideoCaptioner Windows GUI build.
+
+Single spec for every build. The exe name comes from the VC_BUILD_NAME env var,
+so a dated/labelled build doesn't need its own copy of this file:
+
+    set VC_BUILD_NAME=VideoCaptioner-YouTubeFix-20260630
+    uv run pyinstaller VideoCaptioner.spec --clean --noconfirm
+
+Without VC_BUILD_NAME the exe is just "VideoCaptioner".
+"""
+
 import os
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+BUILD_NAME = os.environ.get("VC_BUILD_NAME", "VideoCaptioner")
 
 datas = [
     ("resource\\assets", "resource\\assets"),
@@ -48,7 +61,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="VideoCaptioner-TranslateContext-20260630",
+    name=BUILD_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
