@@ -65,7 +65,7 @@ GitHub Actions 中通过 **Settings → Secrets** 配置：
 - `OPENAI_API_KEY`
 - `DEEPLX_ENDPOINT`（可选）
 
-详见 [docs/CI_SETUP.md](../docs/CI_SETUP.md)
+CI 工作流定义见 [.github/workflows/publish-pypi.yml](../.github/workflows/publish-pypi.yml)。
 
 ## 📊 测试结果示例
 
@@ -116,7 +116,7 @@ uv sync --all-extras
 ```python
 # tests/test_translate/test_my_translator.py
 import pytest
-from app.core.translate.my_translator import MyTranslator
+from videocaptioner.core.translate.my_translator import MyTranslator
 
 @pytest.mark.integration
 class TestMyTranslator:
@@ -138,5 +138,5 @@ class TestMyTranslator:
 
 ## 🔗 相关文档
 
-- [CI/CD 配置](../docs/CI_SETUP.md)
-- [测试指南](../docs/TESTING.md)
+- [CI 工作流](../.github/workflows/publish-pypi.yml)
+- [模块使用指南](../docs/MODULE_USAGE.md)

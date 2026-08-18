@@ -17,7 +17,7 @@
 ### 基本用法
 
 ```python
-from app.core.asr import BcutASR, ChunkedASR
+from videocaptioner.core.asr import BcutASR, ChunkedASR
 
 # 1. 创建基础 ASR 实例
 base_asr = BcutASR(audio_path, need_word_time_stamp=True)
@@ -39,8 +39,8 @@ result = chunked_asr.run(callback=my_callback)
 `transcribe()` 函数已经自动为 `BIJIAN` 和 `JIANYING` 启用了分块：
 
 ```python
-from app.core.asr import transcribe
-from app.core.entities import TranscribeConfig, TranscribeModelEnum
+from videocaptioner.core.asr import transcribe
+from videocaptioner.core.entities import TranscribeConfig, TranscribeModelEnum
 
 config = TranscribeConfig(
     transcribe_model=TranscribeModelEnum.BIJIAN,
@@ -143,7 +143,7 @@ result = chunked_asr.run(callback=progress_callback)
 
 ```python
 # 为 FasterWhisper 添加分块（处理超长音频）
-from app.core.asr import FasterWhisperASR, ChunkedASR
+from videocaptioner.core.asr import FasterWhisperASR, ChunkedASR
 
 base_asr = FasterWhisperASR(
     audio_path,

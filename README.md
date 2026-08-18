@@ -82,7 +82,7 @@ Hướng dẫn dùng module chi tiết nằm ở [docs/MODULE_USAGE.md](docs/MOD
 Project đã có file cấu hình PyInstaller:
 
 ```bash
-uv run pyinstaller VideoCaptioner-PhaseC-20260429.spec --clean --noconfirm
+uv run pyinstaller VideoCaptioner.spec --clean --noconfirm
 ```
 
 File EXE được tạo trong thư mục `dist/`. Có thể chép file EXE đó sang máy Windows khác; nếu ứng dụng cần gọi FFmpeg bên ngoài, máy đích cũng cần có FFmpeg trong `PATH` hoặc đi kèm thư mục công cụ tương ứng.

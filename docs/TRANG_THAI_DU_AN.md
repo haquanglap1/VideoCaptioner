@@ -6,7 +6,7 @@
 
 - **Exe**: `dist/VideoCaptioner-PhaseD-20260501.exe` (~107 MB)
 - **Build mới nhất**: 2026-05-01 14:09
-- **Spec**: `VideoCaptioner-PhaseD-20260501.spec`
+- **Spec**: `VideoCaptioner.spec` (dat ten exe qua bien moi truong `VC_BUILD_NAME`)
 - **Python**: 3.12.13 (`.venv`)
 - **PyInstaller**: 6.20.0
 

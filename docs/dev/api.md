@@ -7,7 +7,7 @@
 ### `transcribe()`
 
 ```python
-from app.core.asr import transcribe
+from videocaptioner.core.asr import transcribe
 
 result = transcribe(
     audio_path="video.mp4",
@@ -25,7 +25,7 @@ result = transcribe(
 
 ---
 
-详细 API 说明请参考源代码和 `CLAUDE.md` 文档。
+详细 API 说明请参考源代码和 `docs/MODULE_USAGE.md`。
 
 相关文档：
 - [架构设计](/dev/architecture)

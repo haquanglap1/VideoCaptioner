@@ -17,8 +17,8 @@
 ### 示例 1：合并两个有重叠的音频片段
 
 ```python
-from app.core.asr.chunk_merger import ChunkMerger
-from app.core.asr.asr_data import ASRData, ASRDataSeg
+from videocaptioner.core.asr.chunk_merger import ChunkMerger
+from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 
 # 创建合并器
 merger = ChunkMerger(min_match_count=2)
