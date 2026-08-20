@@ -763,6 +763,8 @@ class SubtitleTask:
 
     # 输出 断句、优化、翻译 后的字幕文件
     output_path: Optional[str] = None
+    # Monolingual artifact for dubbing, independent from the display layout.
+    dubbing_subtitle_path: Optional[str] = None
 
     # 是否需要执行下一个任务（视频合成）
     need_next_task: bool = True
@@ -808,9 +810,12 @@ class DubbingTask:
     # Input
     video_path: Optional[str] = None
     subtitle_path: Optional[str] = None
+    display_subtitle_path: Optional[str] = None
 
     # Output — video with dubbed audio
     output_path: Optional[str] = None
+    report_path: Optional[str] = None
+    dubbing_report: Optional[dict] = None
 
     need_next_task: bool = False
 

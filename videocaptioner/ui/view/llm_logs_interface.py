@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
+    ComboBox,
     InfoBar,
     InfoBarPosition,
     MessageBox,
@@ -30,7 +31,12 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
-from videocaptioner.config import LLM_LOG_FILE, LOG_PATH
+from videocaptioner.config import LOG_PATH
+from videocaptioner.core.utils.log_files import (
+    LEGACY_LLM_LOG_KEY,
+    available_llm_log_days,
+    llm_log_files_for_day,
+)
 
 PAGE_SIZE = 50
 
@@ -152,8 +158,10 @@ class LLMLogsInterface(QWidget):
         self.all_logs: List[Dict[str, Any]] = []
         self.filtered_logs: List[Dict[str, Any]] = []
         self.current_page = 0
+        self._available_days: list[str] = []
 
         self._setup_ui()
+        self._refresh_day_options()
         self._connect_signals()
         self._load_logs()
         self._setup_file_watcher()
@@ -170,6 +178,11 @@ class LLMLogsInterface(QWidget):
     def _setup_toolbar(self):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
+
+        toolbar.addWidget(BodyLabel(self.tr("Ngày:")))
+        self.date_combo = ComboBox()
+        self.date_combo.setMinimumWidth(140)
+        toolbar.addWidget(self.date_combo)
 
         self.search_edit = SearchLineEdit()
         self.search_edit.setPlaceholderText(self.tr("搜索任务ID、文件名、模型..."))
@@ -270,29 +283,64 @@ class LLMLogsInterface(QWidget):
         self.table.doubleClicked.connect(self._show_detail)
         self.prev_btn.clicked.connect(self._prev_page)
         self.next_btn.clicked.connect(self._next_page)
+        self.date_combo.currentIndexChanged.connect(self._on_date_changed)
+
+    def _selected_day(self) -> str:
+        index = self.date_combo.currentIndex()
+        if 0 <= index < len(self._available_days):
+            return self._available_days[index]
+        return ""
+
+    def _refresh_day_options(self) -> None:
+        selected = self._selected_day()
+        days = available_llm_log_days(LOG_PATH)
+        self.date_combo.blockSignals(True)
+        self.date_combo.clear()
+        self._available_days = days
+        self.date_combo.addItems(
+            [self.tr("Cũ") if day == LEGACY_LLM_LOG_KEY else day for day in days]
+        )
+        if selected in days:
+            self.date_combo.setCurrentIndex(days.index(selected))
+        elif days:
+            self.date_combo.setCurrentIndex(0)
+        self.date_combo.blockSignals(False)
+
+    def _selected_log_files(self):
+        day = self._selected_day()
+        return llm_log_files_for_day(day, LOG_PATH) if day else []
+
+    def _watch_selected_files(self) -> None:
+        directory = str(LOG_PATH)
+        removable = [path for path in self.file_watcher.files() if path != directory]
+        if removable:
+            self.file_watcher.removePaths(removable)
+        paths = [str(path) for path in self._selected_log_files()]
+        if paths:
+            self.file_watcher.addPaths(paths)
+
+    def _on_date_changed(self, _index: int) -> None:
+        self._watch_selected_files()
+        self._load_logs()
 
     def _setup_file_watcher(self):
         """设置文件监控，日志文件变化时自动刷新"""
         self.file_watcher = QFileSystemWatcher(self)
-        if LLM_LOG_FILE.exists():
-            self.file_watcher.addPath(str(LLM_LOG_FILE))
-        # 同时监控目录，以便检测文件创建
         self.file_watcher.addPath(str(LOG_PATH))
+        self._watch_selected_files()
         self.file_watcher.fileChanged.connect(self._on_file_changed)
         self.file_watcher.directoryChanged.connect(self._on_dir_changed)
 
     def _on_file_changed(self, path: str):
         """日志文件内容变化时自动刷新"""
         self._load_logs()
-        # 文件变化后可能需要重新添加监控
-        if LLM_LOG_FILE.exists() and str(LLM_LOG_FILE) not in self.file_watcher.files():
-            self.file_watcher.addPath(str(LLM_LOG_FILE))
+        self._watch_selected_files()
 
     def _on_dir_changed(self, path: str):
-        """目录变化时检查日志文件是否创建"""
-        if LLM_LOG_FILE.exists() and str(LLM_LOG_FILE) not in self.file_watcher.files():
-            self.file_watcher.addPath(str(LLM_LOG_FILE))
-            self._load_logs()
+        """Refresh date choices and the selected day's file set."""
+        self._refresh_day_options()
+        self._watch_selected_files()
+        self._load_logs()
 
     def _on_refresh_clicked(self):
         """手动刷新按钮点击"""
@@ -309,19 +357,21 @@ class LLMLogsInterface(QWidget):
         """加载日志文件"""
         self.all_logs = []
 
-        if not LLM_LOG_FILE.exists():
+        log_files = self._selected_log_files()
+        if not log_files:
             self._update_table()
             return
 
         try:
-            with open(LLM_LOG_FILE, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            self.all_logs.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            continue
+            for log_file in log_files:
+                with open(log_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                self.all_logs.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                continue
         except Exception as e:
             InfoBar.error(
                 title=self.tr("错误"),
@@ -443,19 +493,23 @@ class LLMLogsInterface(QWidget):
             self._update_table()
 
     def _clear_logs(self):
-        """清空日志"""
+        """Clear only the currently selected day (or legacy files)."""
+        selected = self._selected_day()
+        label = self.tr("Cũ") if selected == LEGACY_LLM_LOG_KEY else selected
         w = MessageBox(
-            self.tr("确认清空"),
-            self.tr("确定要清空所有日志吗？此操作不可恢复。"),
+            self.tr("Xóa nhật ký ngày"),
+            self.tr("Xóa toàn bộ nhật ký của {0}? Không thể hoàn tác.").format(label),
             self,
         )
         if w.exec():
             try:
-                if LLM_LOG_FILE.exists():
-                    LLM_LOG_FILE.unlink()
+                for log_file in self._selected_log_files():
+                    log_file.unlink(missing_ok=True)
                 self.all_logs = []
                 self.filtered_logs = []
                 self._update_table()
+                self._refresh_day_options()
+                self._watch_selected_files()
                 InfoBar.success(
                     title="",
                     content=self.tr("日志已清空"),

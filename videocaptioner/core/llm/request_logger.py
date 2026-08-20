@@ -6,8 +6,12 @@ from typing import Any, Dict
 
 import httpx
 
-from videocaptioner.config import LLM_LOG_FILE, LOG_PATH
+from videocaptioner.config import LOG_PATH
 from videocaptioner.core.llm.context import get_task_context
+from videocaptioner.core.utils.log_files import (
+    daily_llm_log_path,
+    rotate_size_limited_file,
+)
 
 MAX_LOG_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -19,17 +23,9 @@ _pending_requests: Dict[int, Dict[str, Any]] = {}  # 暂存请求信息，等待
 # ==================== 日志写入 ====================
 
 
-def _rotate_if_needed() -> None:
-    """日志文件过大时轮转"""
-    if not LLM_LOG_FILE.exists():
-        return
-    if LLM_LOG_FILE.stat().st_size < MAX_LOG_SIZE:
-        return
-
-    backup = LLM_LOG_FILE.with_suffix(".jsonl.old")
-    if backup.exists():
-        backup.unlink()
-    LLM_LOG_FILE.rename(backup)
+def _rotate_if_needed(log_file) -> None:
+    """Keep at most two 10 MB backups for each day."""
+    rotate_size_limited_file(log_file, MAX_LOG_SIZE, backup_count=2)
 
 
 def _write_log(entry: Dict[str, Any]) -> None:
@@ -37,8 +33,9 @@ def _write_log(entry: Dict[str, Any]) -> None:
     try:
         LOG_PATH.mkdir(parents=True, exist_ok=True)
         with _log_lock:
-            _rotate_if_needed()
-            with open(LLM_LOG_FILE, "a", encoding="utf-8") as f:
+            log_file = daily_llm_log_path(LOG_PATH)
+            _rotate_if_needed(log_file)
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass

@@ -130,7 +130,7 @@ class SubtitlePipelineThread(QThread):
 
                 dubbing_task = DubbingTask(
                     video_path=self.task.file_path,
-                    subtitle_path=subtitle_task.output_path,
+                    subtitle_path=subtitle_task.dubbing_subtitle_path,
                     output_path=dubbed_video_path,
                     dubbing_config=self.task.dubbing_config,
                     queued_at=self.task.queued_at,
@@ -146,11 +146,14 @@ class SubtitlePipelineThread(QThread):
                 dubbing_thread.run()
 
                 if self.has_error:
-                    logger.info("Dubbing thất bại, tiếp tục dùng video gốc")
-                    self.has_error = False  # non-fatal: continue with original
+                    logger.info("Dubbing thất bại, dừng pipeline để tránh báo thành công sai")
+                    return
                 elif Path(dubbed_video_path).is_file():
                     video_for_synthesis = dubbed_video_path
                     logger.info("Dubbing thành công, dùng video dubbed cho synthesis")
+                else:
+                    handle_error("Dubbing không tạo artifact đầu ra")
+                    return
 
             # 4. 视频合成
             self.progress.emit(v_start, self.tr("开始合成视频"))

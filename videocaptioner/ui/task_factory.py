@@ -8,6 +8,11 @@ from videocaptioner.core.dubbing.config import (
     DubbingConfig,
     TTSProviderEnum,
 )
+from videocaptioner.core.dubbing.models import (
+    DubbingTextSource,
+    DubbingTimingMode,
+    UnresolvedFitPolicy,
+)
 from videocaptioner.core.entities import (
     LANGUAGES,
     DubbingTask,
@@ -140,7 +145,7 @@ class TaskFactory:
 
         if need_next_task:
             output_path = str(
-                Path(file_path).parent / f"【样式字幕】{output_name}{suffix}.ass"
+                Path(file_path).parent / f"【字幕】{output_name}{suffix}.srt"
             )
         else:
             output_path = str(
@@ -332,6 +337,49 @@ class TaskFactory:
             response_format="wav",
         )
 
+        llm_settings = {
+            LLMServiceEnum.OPENAI: (
+                cfg.openai_api_base.value,
+                cfg.openai_api_key.value,
+                cfg.openai_model.value,
+            ),
+            LLMServiceEnum.SILICON_CLOUD: (
+                cfg.silicon_cloud_api_base.value,
+                cfg.silicon_cloud_api_key.value,
+                cfg.silicon_cloud_model.value,
+            ),
+            LLMServiceEnum.DEEPSEEK: (
+                cfg.deepseek_api_base.value,
+                cfg.deepseek_api_key.value,
+                cfg.deepseek_model.value,
+            ),
+            LLMServiceEnum.OLLAMA: (
+                cfg.ollama_api_base.value,
+                cfg.ollama_api_key.value,
+                cfg.ollama_model.value,
+            ),
+            LLMServiceEnum.LM_STUDIO: (
+                cfg.lm_studio_api_base.value,
+                cfg.lm_studio_api_key.value,
+                cfg.lm_studio_model.value,
+            ),
+            LLMServiceEnum.GEMINI: (
+                cfg.gemini_api_base.value,
+                cfg.gemini_api_key.value,
+                cfg.gemini_model.value,
+            ),
+            LLMServiceEnum.CHATGLM: (
+                cfg.chatglm_api_base.value,
+                cfg.chatglm_api_key.value,
+                cfg.chatglm_model.value,
+            ),
+        }
+        rewrite_base, rewrite_key, rewrite_model = llm_settings.get(
+            cfg.llm_service.value, ("", "", "")
+        )
+        if not (rewrite_base and rewrite_key and rewrite_model):
+            rewrite_model = ""
+
         # Ngôn ngữ đích quyết định có lọc CJK trước khi gọi TTS hay không.
         # Bật cho đích hệ Latin (lọc phần dịch còn sót tiếng Trung), tắt khi
         # đích chính là CJK — nếu không mọi câu sẽ bị xóa trắng.
@@ -345,6 +393,16 @@ class TaskFactory:
             voice_volume=cfg.dubbing_voice_volume.value / 100.0,
             tts_concurrency=cfg.dubbing_tts_concurrency.value,
             max_speed=cfg.dubbing_max_speed.value / 10.0,
+            text_source=DubbingTextSource(cfg.dubbing_text_source.value),
+            timing_mode=DubbingTimingMode(cfg.dubbing_timing_mode.value),
+            natural_max_speed=cfg.dubbing_natural_max_speed.value / 100.0,
+            rewrite_enabled=cfg.dubbing_timing_rewrite.value,
+            cache_enabled=cfg.dubbing_tts_cache.value,
+            unresolved_policy=UnresolvedFitPolicy(cfg.dubbing_unresolved_policy.value),
+            target_language=str(cfg.target_language.value.value),
+            rewrite_model=rewrite_model,
+            rewrite_api_key=rewrite_key,
+            rewrite_api_base=rewrite_base,
             strip_cjk=strip_cjk,
             enabled=True,
         )
@@ -354,6 +412,7 @@ class TaskFactory:
         video_path: str,
         subtitle_path: str,
         task_id: Optional[str] = None,
+        display_subtitle_path: Optional[str] = None,
     ) -> DubbingTask:
         """Tạo dubbing task."""
         output_path = str(
@@ -365,6 +424,7 @@ class TaskFactory:
             queued_at=datetime.datetime.now(),
             video_path=video_path,
             subtitle_path=subtitle_path,
+            display_subtitle_path=display_subtitle_path or subtitle_path,
             output_path=output_path,
             dubbing_config=dubbing_config,
         )

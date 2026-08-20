@@ -213,6 +213,24 @@ class TestBaseTTS:
             assert seg.audio_duration == 1.0
             assert Path(seg.audio_path).exists()
 
+    def test_provider_error_is_exposed_but_api_key_is_redacted(self, tmp_path):
+        class FailingTTS(MockTTS):
+            def _synthesize(self, segment, output_path):
+                raise RuntimeError("HTTP 429: key test-secret-key was rate limited")
+
+        config = TTSConfig(
+            model="test-model",
+            api_key="test-secret-key",
+            base_url="https://test.api",
+            use_cache=False,
+        )
+        result = FailingTTS(config).synthesize(
+            TTSData.from_texts(["hello"]), str(tmp_path)
+        )
+        assert "HTTP 429" in result.segments[0].error
+        assert "rate limited" in result.segments[0].error
+        assert "test-secret-key" not in result.segments[0].error
+
     def test_synthesize_batch(self):
         """测试批量合成"""
         config = TTSConfig(

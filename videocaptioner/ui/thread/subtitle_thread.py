@@ -212,6 +212,18 @@ class SubtitleThread(QThread):
                         logger.info(f"翻译字幕保存到：{save_path}")
 
             # 5. 保存字幕
+            if self.task.need_next_task and self.task.video_path:
+                dubbing_path = (
+                    Path(self.task.output_path or self.task.subtitle_path).parent
+                    / f"{Path(self.task.video_path).stem}-dubbing-target.srt"
+                )
+                asr_data.to_srt(
+                    save_path=str(dubbing_path),
+                    layout=SubtitleLayoutEnum.ONLY_TRANSLATE,
+                )
+                self.task.dubbing_subtitle_path = str(dubbing_path)
+                logger.info("Dubbing target subtitle saved to: %s", dubbing_path)
+
             asr_data.save(
                 save_path=self.task.output_path or "",
                 ass_style=subtitle_config.subtitle_style or "",
@@ -221,21 +233,14 @@ class SubtitleThread(QThread):
 
             # 6. 文件移动与清理
             if self.task.need_next_task and self.task.video_path:
-                # 保存srt/ass文件到视频目录（对于全流程任务）
+                # Full pipeline persists SRT only. ASS remains an explicit
+                # export choice in SubtitleInterface's Save menu.
                 save_srt_path = (
                     Path(self.task.video_path).parent / f"{Path(self.task.video_path).stem}.srt"
                 )
                 asr_data.to_srt(
                     save_path=str(save_srt_path),
                     layout=subtitle_config.subtitle_layout,
-                )
-                save_ass_path = (
-                    Path(self.task.video_path).parent / f"{Path(self.task.video_path).stem}.ass"
-                )
-                asr_data.to_ass(
-                    save_path=str(save_ass_path),
-                    layout=subtitle_config.subtitle_layout,
-                    style_str=subtitle_config.subtitle_style,
                 )
 
             self.progress.emit(100, self.tr("优化完成"))

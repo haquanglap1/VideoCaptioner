@@ -7,6 +7,7 @@ Commands:
     transcribe   Transcribe audio/video to subtitles
     subtitle     Optimize and/or translate subtitle files
     synthesize   Burn subtitles into video
+    dub          Create a naturally timed dubbed video
     process      Full pipeline (transcribe → optimize → translate → synthesize)
     download     Download online video (YouTube, Bilibili, etc.)
     config       Manage configuration
@@ -77,6 +78,31 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     verbosity.add_argument("-q", "--quiet", action="store_true", help="Quiet mode (only output result path)")
+
+
+def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group("Dubbing options")
+    group.add_argument("--tts-provider", choices=["openai", "minimax", "local-ai"])
+    group.add_argument("--tts-api-key", metavar="KEY")
+    group.add_argument("--tts-api-base", metavar="URL")
+    group.add_argument("--tts-model", metavar="NAME")
+    group.add_argument("--voice", metavar="NAME")
+    group.add_argument("--tts-speed", type=float, metavar="RATE")
+    group.add_argument("--tts-concurrency", type=int, metavar="N")
+    group.add_argument("--text-source", choices=["auto", "translated", "original"])
+    group.add_argument("--timing-mode", choices=["natural", "legacy"])
+    group.add_argument("--natural-max-speed", type=float, metavar="RATE")
+    group.add_argument("--legacy-max-speed", type=float, metavar="RATE")
+    group.add_argument("--fit-ratio-limit", type=float, metavar="RATIO")
+    group.add_argument("--borrow-gap-ms", type=int, metavar="MS")
+    group.add_argument("--max-rewrite-attempts", type=int, metavar="N")
+    group.add_argument("--no-timing-rewrite", action="store_true")
+    group.add_argument("--no-tts-cache", action="store_true")
+    group.add_argument("--unresolved", choices=["review", "allow-overlap"])
+    group.add_argument("--mix-mode", choices=["keep", "reduce", "mute"])
+    group.add_argument("--original-volume", type=float, metavar="LEVEL")
+    group.add_argument("--voice-volume", type=float, metavar="LEVEL")
+    group.add_argument("--report", metavar="PATH")
 
 
 def _build_transcribe_parser(subparsers) -> None:
@@ -226,6 +252,21 @@ def _build_synthesize_parser(subparsers) -> None:
     p.set_defaults(func=_run_synthesize)
 
 
+def _build_dub_parser(subparsers) -> None:
+    p = subparsers.add_parser(
+        "dub",
+        help="Create a naturally timed dubbed video",
+        description="Synthesize subtitle speech, fit it to the measured timeline, and mix it into video.",
+    )
+    p.add_argument("video", help="Input video file path")
+    _add_common_options(p)
+    req = p.add_argument_group("Required")
+    req.add_argument("--subtitle", required=True, metavar="FILE", help="Subtitle file path")
+    p.add_argument("-o", "--output", metavar="PATH", help="Output dubbed video path")
+    _add_dubbing_options(p)
+    p.set_defaults(func=_run_dub)
+
+
 def _build_process_parser(subparsers) -> None:
     p = subparsers.add_parser(
         "process",
@@ -260,12 +301,14 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--prompt", metavar="TEXT", help="Custom prompt for LLM optimization/translation")
     pipe.add_argument("--thread-num", type=int, metavar="N", help="Concurrent threads (default: 4)")
     pipe.add_argument("--batch-size", type=int, metavar="N", help="Batch size (default: 20)")
+    pipe.add_argument("--dub", action="store_true", help="Add Natural/Legacy dubbing before synthesis")
     # Hidden options
     p.add_argument("--prompt-file", metavar="FILE", help=argparse.SUPPRESS)
     p.add_argument("--whisper-api-base", help=argparse.SUPPRESS)
     p.add_argument("--whisper-model", help=argparse.SUPPRESS)
 
     _add_style_options(p)
+    _add_dubbing_options(p)
 
     p.set_defaults(func=_run_process)
 
@@ -334,6 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_transcribe_parser(subparsers)
     _build_subtitle_parser(subparsers)
     _build_synthesize_parser(subparsers)
+    _build_dub_parser(subparsers)
     _build_process_parser(subparsers)
     _build_download_parser(subparsers)
     _build_config_parser(subparsers)
@@ -416,6 +460,30 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("synthesize.style_override", getattr(args, "style_override", None))
     _set("synthesize.font_file", getattr(args, "font_file", None))
 
+    # Dubbing
+    _set("dubbing.tts_provider", getattr(args, "tts_provider", None))
+    _set("dubbing.tts_api_key", getattr(args, "tts_api_key", None))
+    _set("dubbing.tts_api_base", getattr(args, "tts_api_base", None))
+    _set("dubbing.tts_model", getattr(args, "tts_model", None))
+    _set("dubbing.voice", getattr(args, "voice", None))
+    _set("dubbing.tts_speed", getattr(args, "tts_speed", None))
+    _set("dubbing.tts_concurrency", getattr(args, "tts_concurrency", None))
+    _set("dubbing.text_source", getattr(args, "text_source", None))
+    _set("dubbing.timing_mode", getattr(args, "timing_mode", None))
+    _set("dubbing.natural_max_speed", getattr(args, "natural_max_speed", None))
+    _set("dubbing.legacy_max_speed", getattr(args, "legacy_max_speed", None))
+    _set("dubbing.fit_ratio_limit", getattr(args, "fit_ratio_limit", None))
+    _set("dubbing.borrow_gap_ms", getattr(args, "borrow_gap_ms", None))
+    _set("dubbing.max_rewrite_attempts", getattr(args, "max_rewrite_attempts", None))
+    if getattr(args, "no_timing_rewrite", False):
+        _set("dubbing.timing_rewrite", False)
+    if getattr(args, "no_tts_cache", False):
+        _set("dubbing.tts_cache", False)
+    _set("dubbing.unresolved_policy", getattr(args, "unresolved", None))
+    _set("dubbing.mix_mode", getattr(args, "mix_mode", None))
+    _set("dubbing.original_volume", getattr(args, "original_volume", None))
+    _set("dubbing.voice_volume", getattr(args, "voice_volume", None))
+
     # Output
     _set("output.format", getattr(args, "format", None))
 
@@ -450,6 +518,12 @@ def _run_subtitle(args: argparse.Namespace) -> int:
 
 def _run_synthesize(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.synthesize import run
+    config = _load_config(args)
+    return run(args, config)
+
+
+def _run_dub(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.dub import run
     config = _load_config(args)
     return run(args, config)
 

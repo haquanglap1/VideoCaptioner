@@ -241,6 +241,13 @@ def run(args: Namespace, config: dict) -> int:
         # 4. Save
         from videocaptioner.cli.validators import resolve_layout
         layout = resolve_layout(layout_str)
+        dubbing_output = getattr(args, "dubbing_output", None)
+        if dubbing_output:
+            from videocaptioner.core.entities import SubtitleLayoutEnum
+            asr_data.to_srt(
+                save_path=dubbing_output,
+                layout=SubtitleLayoutEnum.ONLY_TRANSLATE,
+            )
         asr_data.save(save_path=output_path, layout=layout)
 
         if progress:

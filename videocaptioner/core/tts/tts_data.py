@@ -38,6 +38,7 @@ class TTSDataSeg:
     audio_path: str = ""  # 生成的音频文件路径
     audio_duration: float = 0.0  # 实际音频时长（秒）
     voice: Optional[str] = None  # 使用的音色
+    error: str = ""  # Sanitized provider failure summary
 
     # 声音克隆相关
     clone_audio_path: Optional[str] = None  # 参考音频文件路径

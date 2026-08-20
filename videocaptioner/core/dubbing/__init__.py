@@ -11,11 +11,29 @@ from .audio_mixer import (
 )
 from .config import AudioMixMode, DubbingConfig
 from .engine import DubbingEngine
+from .models import (
+    DubbingCue,
+    DubbingFitStatus,
+    DubbingGroup,
+    DubbingPlan,
+    DubbingReport,
+    DubbingTextSource,
+    DubbingTimingMode,
+    UnresolvedFitPolicy,
+)
 
 __all__ = [
     "DubbingEngine",
     "DubbingConfig",
     "AudioMixMode",
+    "DubbingCue",
+    "DubbingGroup",
+    "DubbingPlan",
+    "DubbingReport",
+    "DubbingTextSource",
+    "DubbingTimingMode",
+    "DubbingFitStatus",
+    "UnresolvedFitPolicy",
     "get_audio_duration",
     "adjust_audio_speed",
     "build_voice_track",

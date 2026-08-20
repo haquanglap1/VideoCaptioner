@@ -6,6 +6,8 @@ from typing import Optional
 
 from videocaptioner.core.tts.tts_data import TTSConfig
 
+from .models import DubbingTextSource, DubbingTimingMode, UnresolvedFitPolicy
+
 
 class AudioMixMode(Enum):
     """Chế độ xử lý audio gốc khi mix voice track."""
@@ -44,6 +46,25 @@ class DubbingConfig:
     # min chưa bao giờ được đọc.)
     max_speed: float = 1.5
 
+    # Natural timing and text routing
+    text_source: DubbingTextSource = DubbingTextSource.AUTO
+    timing_mode: DubbingTimingMode = DubbingTimingMode.NATURAL
+    natural_max_speed: float = 1.08
+    fit_ratio_limit: float = 1.05
+    borrow_gap_ms: int = 350
+    silence_guard_ms: int = 80
+    max_group_duration: float = 8.0
+    max_rewrite_attempts: int = 2
+    rewrite_enabled: bool = True
+    cache_enabled: bool = True
+    unresolved_policy: UnresolvedFitPolicy = UnresolvedFitPolicy.REVIEW
+    target_language: str = ""
+    rewrite_model: str = ""
+    rewrite_api_key: str = ""
+    rewrite_api_base: str = ""
+    rewrite_style_prompt: str = ""
+    report_path: str = ""
+
     # Text preprocessing
     # Xóa ký tự CJK khỏi text trước khi gọi TTS. Chỉ đúng khi ngôn ngữ đích là
     # hệ Latin (lọc phần dịch còn sót tiếng Trung). Phải đặt False khi lồng
@@ -65,6 +86,13 @@ class DubbingConfig:
             lines.append(f"Voice Volume: {self.voice_volume:.0%}")
             lines.append(f"TTS Concurrency: {self.tts_concurrency}")
             lines.append(f"Max Speed: {self.max_speed}x")
+            lines.append(f"Text Source: {self.text_source.value}")
+            lines.append(f"Timing Mode: {self.timing_mode.value}")
+            if self.timing_mode == DubbingTimingMode.NATURAL:
+                lines.append(f"Natural Max Speed: {self.natural_max_speed}x")
+                lines.append(f"Timing Rewrite: {self.rewrite_enabled}")
+                lines.append(f"Unresolved Policy: {self.unresolved_policy.value}")
+            lines.append(f"Persistent TTS Cache: {self.cache_enabled}")
             lines.append(f"Strip CJK: {self.strip_cjk}")
         lines.append("=" * 36)
         return "\n".join(lines)

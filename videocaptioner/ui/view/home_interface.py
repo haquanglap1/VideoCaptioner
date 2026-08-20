@@ -105,7 +105,14 @@ class HomeInterface(QWidget):
     def switch_to_dubbing(self, video_path, subtitle_path):
         # Tạo dubbing task
         dubbing_task = TaskFactory.create_dubbing_task(
-            video_path, subtitle_path, task_id=self._current_task_id
+            video_path,
+            subtitle_path,
+            display_subtitle_path=(
+                self.subtitle_optimization_interface.task.output_path
+                if self.subtitle_optimization_interface.task
+                else subtitle_path
+            ),
+            task_id=self._current_task_id,
         )
         self.dubbing_interface.set_task(dubbing_task)
         self.dubbing_interface.process()

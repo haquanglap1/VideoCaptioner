@@ -23,6 +23,11 @@ from videocaptioner.core.dubbing.audio_mixer import (
     mix_audio_tracks,
 )
 from videocaptioner.core.dubbing.config import DubbingConfig, TTSProviderEnum
+from videocaptioner.core.dubbing.models import (
+    DubbingCue,
+    DubbingTextSource,
+    resolve_dubbing_text,
+)
 from videocaptioner.core.tts import (
     BaseTTS,
     MiniMaxTTS,
@@ -69,6 +74,19 @@ class DubbingEngine:
     và mix vào video gốc.
     """
 
+    def __init__(
+        self,
+        *,
+        tts_provider_factory=None,
+        rewrite_service_factory=None,
+        cache_root: str | Path | None = None,
+    ):
+        self._tts_provider_factory = tts_provider_factory
+        self._rewrite_service_factory = rewrite_service_factory
+        self.cache_root = cache_root
+        self.last_report_path = ""
+        self.last_report: dict = {}
+
     def dub(
         self,
         video_path: str,
@@ -93,6 +111,24 @@ class DubbingEngine:
             ValueError: Nếu thiếu config hoặc file không tồn tại.
             RuntimeError: Nếu bất kỳ bước nào thất bại.
         """
+        if callback is None:
+            callback = _noop_progress
+
+        from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+
+        return DubbingOrchestrator(self).run(
+            video_path, subtitle_path, output_path, config, callback
+        )
+
+    def _dub_legacy_compat(
+        self,
+        video_path: str,
+        subtitle_path: str,
+        output_path: str,
+        config: DubbingConfig,
+        callback: Optional[Callable[[int, str], None]] = None,
+    ) -> str:
+        """Previous orchestration retained temporarily for compatibility reference."""
         if callback is None:
             callback = _noop_progress
 
@@ -137,7 +173,11 @@ class DubbingEngine:
 
             # --- Step 2: Tạo TTSData ---
             callback(10, "Đang chuẩn bị văn bản...")
-            tts_data = self._create_tts_data(segments, strip_cjk=config.strip_cjk)
+            tts_data = self._create_tts_data(
+                segments,
+                strip_cjk=config.strip_cjk,
+                source_mode=config.text_source,
+            )
             logger.info("Created TTSData with %d segments", len(tts_data))
 
             # --- Step 3: TTS Synthesize ---
@@ -218,7 +258,54 @@ class DubbingEngine:
             import shutil
             shutil.rmtree(str(work_dir), ignore_errors=True)
 
-    def _create_tts_data(self, segments, strip_cjk: bool = True) -> TTSData:
+    def _create_dubbing_cues(
+        self,
+        segments,
+        strip_cjk: bool = True,
+        source_mode: DubbingTextSource = DubbingTextSource.AUTO,
+    ) -> list[DubbingCue]:
+        """Create rich cues while keeping display and spoken text separate."""
+        cues: list[DubbingCue] = []
+        skipped_cjk = 0
+        for index, seg in enumerate(segments):
+            source_text = str(getattr(seg, "text", "") or "").strip()
+            translated_text = str(getattr(seg, "translated_text", "") or "").strip()
+            if not source_text and not translated_text:
+                continue
+            text = resolve_dubbing_text(seg, source_mode)
+            if strip_cjk:
+                cleaned = _strip_cjk(text)
+                if not cleaned:
+                    logger.debug("Bỏ qua câu chỉ chứa ký tự CJK: %.40s", text)
+                    skipped_cjk += 1
+                    continue
+                text = cleaned
+            cues.append(
+                DubbingCue(
+                    cue_id=index + 1,
+                    start_time=seg.start_time / 1000.0,
+                    end_time=seg.end_time / 1000.0,
+                    source_text=source_text,
+                    subtitle_text=translated_text or source_text,
+                    tts_text=text,
+                    original_index=index,
+                )
+            )
+
+        if strip_cjk and not cues and skipped_cjk:
+            raise ValueError(
+                f"Toàn bộ {skipped_cjk} câu bị lọc sạch vì chỉ chứa ký tự CJK. "
+                "Nếu ngôn ngữ đích là Trung/Nhật/Quảng, hãy tắt strip_cjk "
+                "trong cấu hình lồng tiếng."
+            )
+        return cues
+
+    def _create_tts_data(
+        self,
+        segments,
+        strip_cjk: bool = True,
+        source_mode: DubbingTextSource = DubbingTextSource.AUTO,
+    ) -> TTSData:
         """Chuyển ASRData segments thành TTSData.
 
         Args:
@@ -230,36 +317,18 @@ class DubbingEngine:
         Returns:
             TTSData instance.
         """
-        tts_segments = []
-        skipped_cjk = 0
-        for seg in segments:
-            text = seg.text.strip()
-            if not text:
-                continue
-            if strip_cjk:
-                # Lọc tiếng Trung/CJK còn sót để TTS không đọc nhầm
-                cleaned = _strip_cjk(text)
-                if not cleaned:
-                    logger.debug("Bỏ qua câu chỉ chứa ký tự CJK: %.40s", text)
-                    skipped_cjk += 1
-                    continue
-                text = cleaned
-            tts_seg = TTSDataSeg(
-                text=text,
-                start_time=seg.start_time / 1000.0,  # ms → seconds
-                end_time=seg.end_time / 1000.0,
-            )
-            tts_segments.append(tts_seg)
-
-        if strip_cjk and not tts_segments and skipped_cjk:
-            # Trường hợp điển hình: ngôn ngữ đích là Trung/Nhật nhưng strip_cjk
-            # vẫn bật. Nói rõ nguyên nhân thay vì để đổ ở "TTS thất bại".
-            raise ValueError(
-                f"Toàn bộ {skipped_cjk} câu bị lọc sạch vì chỉ chứa ký tự CJK. "
-                "Nếu ngôn ngữ đích là Trung/Nhật/Quảng, hãy tắt strip_cjk "
-                "trong cấu hình lồng tiếng."
-            )
-        return TTSData(tts_segments)
+        cues = self._create_dubbing_cues(segments, strip_cjk, source_mode)
+        return TTSData(
+            [
+                TTSDataSeg(
+                    text=cue.tts_text,
+                    start_time=cue.start_time,
+                    end_time=cue.end_time,
+                    voice=cue.voice or None,
+                )
+                for cue in cues
+            ]
+        )
 
     def _create_tts_provider(self, config: DubbingConfig) -> BaseTTS:
         """Tạo TTS provider instance từ config.
@@ -274,6 +343,9 @@ class DubbingEngine:
         if tts_config is None:
             raise ValueError("tts_config is required")
 
+        if self._tts_provider_factory is not None:
+            return self._tts_provider_factory(config)
+
         if config.tts_provider == TTSProviderEnum.MINIMAX:
             return MiniMaxTTS(tts_config)
         elif config.tts_provider == TTSProviderEnum.LOCAL_AI:
@@ -282,6 +354,17 @@ class DubbingEngine:
         else:
             # Default: OpenAI
             return OpenAITTS(tts_config)
+
+    def _create_rewrite_service(self, config: DubbingConfig):
+        if self._rewrite_service_factory is not None:
+            return self._rewrite_service_factory(config)
+        from videocaptioner.core.dubbing.rewrite_service import TimingRewriteService
+
+        return TimingRewriteService(config.rewrite_model)
+
+    @staticmethod
+    def _truncate_audio(input_path: str, output_path: str, max_duration: float) -> bool:
+        return _truncate_audio(input_path, output_path, max_duration)
 
     def _align_timeline(
         self,

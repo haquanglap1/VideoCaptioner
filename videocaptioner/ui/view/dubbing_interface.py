@@ -34,6 +34,7 @@ from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.audio_merge_thread import AudioMergeThread
 from videocaptioner.ui.thread.dubbing_thread import DubbingThread
@@ -108,6 +109,7 @@ class DubbingInterface(QWidget):
         self._task: DubbingTask | None = None
         self._thread: DubbingThread | None = None
         self._is_pipeline_mode = False
+        self._pending_report_data: dict = {}
         self._init_ui()
 
     def _init_ui(self):
@@ -197,6 +199,78 @@ class DubbingInterface(QWidget):
         row5.addWidget(self.model_edit)
         row5.addStretch()
         settings_layout.addLayout(row5)
+
+        # Spoken text routing
+        row5a = QHBoxLayout()
+        row5a.addWidget(BodyLabel(self.tr("Nguồn văn bản TTS:")))
+        self.text_source_combo = ComboBox()
+        self.text_source_combo.addItems(
+            [self.tr("Tự động"), self.tr("Bản dịch"), self.tr("Bản gốc")]
+        )
+        source_keys = ["auto", "translated", "original"]
+        self.text_source_combo.setCurrentIndex(
+            source_keys.index(cfg.dubbing_text_source.value)
+        )
+        row5a.addWidget(self.text_source_combo)
+        row5a.addStretch()
+        settings_layout.addLayout(row5a)
+
+        # Timing policy
+        row5b = QHBoxLayout()
+        row5b.addWidget(BodyLabel(self.tr("Chế độ timing:")))
+        self.timing_mode_combo = ComboBox()
+        self.timing_mode_combo.addItems([self.tr("Tự nhiên"), self.tr("Legacy")])
+        self.timing_mode_combo.setCurrentIndex(
+            0 if cfg.dubbing_timing_mode.value == "natural" else 1
+        )
+        self.timing_mode_combo.currentIndexChanged.connect(
+            self._update_timing_controls
+        )
+        row5b.addWidget(self.timing_mode_combo)
+        row5b.addStretch()
+        settings_layout.addLayout(row5b)
+
+        row5c = QHBoxLayout()
+        row5c.addWidget(BodyLabel(self.tr("Tốc độ Natural tối đa:")))
+        self.natural_speed_slider = Slider(Qt.Horizontal)
+        self.natural_speed_slider.setRange(100, 150)
+        self.natural_speed_slider.setValue(cfg.dubbing_natural_max_speed.value)
+        self.natural_speed_slider.setFixedWidth(200)
+        self.natural_speed_label = BodyLabel(
+            f"{cfg.dubbing_natural_max_speed.value / 100.0:.2f}x"
+        )
+        self.natural_speed_slider.valueChanged.connect(
+            lambda v: self.natural_speed_label.setText(f"{v / 100.0:.2f}x")
+        )
+        row5c.addWidget(self.natural_speed_slider)
+        row5c.addWidget(self.natural_speed_label)
+        row5c.addStretch()
+        settings_layout.addLayout(row5c)
+
+        row5d = QHBoxLayout()
+        row5d.addWidget(BodyLabel(self.tr("Viết lại để khớp timing:")))
+        self.rewrite_switch = SwitchButton()
+        self.rewrite_switch.setChecked(cfg.dubbing_timing_rewrite.value)
+        row5d.addWidget(self.rewrite_switch)
+        row5d.addWidget(BodyLabel(self.tr("Cache TTS:")))
+        self.tts_cache_switch = SwitchButton()
+        self.tts_cache_switch.setChecked(cfg.dubbing_tts_cache.value)
+        row5d.addWidget(self.tts_cache_switch)
+        row5d.addStretch()
+        settings_layout.addLayout(row5d)
+
+        row5e = QHBoxLayout()
+        row5e.addWidget(BodyLabel(self.tr("Khi vẫn vượt timing:")))
+        self.unresolved_combo = ComboBox()
+        self.unresolved_combo.addItems(
+            [self.tr("Yêu cầu xem lại"), self.tr("Cho phép chồng lấn")]
+        )
+        self.unresolved_combo.setCurrentIndex(
+            0 if cfg.dubbing_unresolved_policy.value == "review" else 1
+        )
+        row5e.addWidget(self.unresolved_combo)
+        row5e.addStretch()
+        settings_layout.addLayout(row5e)
 
         # Mix Mode
         row6 = QHBoxLayout()
@@ -412,6 +486,7 @@ class DubbingInterface(QWidget):
         self.status_label = BodyLabel("")
         self.status_label.setVisible(False)
         layout.addWidget(self.status_label)
+        self._update_timing_controls()
 
     # ==== Public API (called by HomeInterface pipeline) ====
 
@@ -615,9 +690,11 @@ class DubbingInterface(QWidget):
         self.status_label.setVisible(True)
         self.status_label.setText(self.tr("Đang bắt đầu lồng tiếng..."))
         self.manual_dub_btn.setEnabled(False)
+        self._pending_report_data = {}
 
         self._thread = DubbingThread(task)
         self._thread.progress.connect(self._on_progress)
+        self._thread.report_ready.connect(self._on_report_ready)
         self._thread.error.connect(self._on_error)
         self._thread.finished.connect(self._on_finished)
         self._thread.start()
@@ -743,23 +820,30 @@ class DubbingInterface(QWidget):
         self.progress_bar.setValue(value)
         self.status_label.setText(message)
 
+    def _on_report_ready(self, report_data: dict):
+        self._pending_report_data = report_data
+
+    def _show_report(self):
+        if self._pending_report_data:
+            DubbingReportDialog(self._pending_report_data, self.window()).exec_()
+
     def _on_error(self, error_msg: str):
         self.progress_bar.setVisible(False)
-        self.status_label.setText(self.tr("Lồng tiếng thất bại"))
+        self.status_label.setVisible(True)
+        self.status_label.setText(self.tr("Lồng tiếng thất bại") + ": " + error_msg)
         self.manual_dub_btn.setEnabled(True)
+        review_required = (
+            "timing review" in error_msg.lower()
+            or "chưa khớp thời gian" in error_msg.lower()
+        )
         InfoBar.error(
-            self.tr("Lỗi lồng tiếng"),
+            self.tr("Cần xem lại timing") if review_required else self.tr("Lỗi lồng tiếng"),
             error_msg,
-            duration=5000,
+            duration=-1,
             position=InfoBarPosition.BOTTOM,
             parent=self.window(),
         )
-        # In pipeline mode: emit finished with original video (non-fatal)
-        if self._is_pipeline_mode and self._task:
-            self.finished.emit(
-                self._task.video_path or "",
-                self._task.subtitle_path or "",
-            )
+        self._show_report()
 
     def _on_finished(self, task: DubbingTask):
         self.progress_bar.setValue(100)
@@ -773,12 +857,13 @@ class DubbingInterface(QWidget):
             position=InfoBarPosition.BOTTOM,
             parent=self.window(),
         )
+        self._show_report()
 
         # In pipeline mode: emit dubbed video for synthesis
         if self._is_pipeline_mode:
             self.finished.emit(
                 task.output_path or task.video_path or "",
-                task.subtitle_path or "",
+                task.display_subtitle_path or task.subtitle_path or "",
             )
 
     def _save_settings(self):
@@ -795,6 +880,19 @@ class DubbingInterface(QWidget):
         cfg.set(cfg.dubbing_original_volume, self.volume_slider.value())
         cfg.set(cfg.dubbing_tts_speed, self.speed_slider.value())
         cfg.set(cfg.dubbing_max_speed, self.max_speed_slider.value())
+        source_keys = ["auto", "translated", "original"]
+        cfg.set(cfg.dubbing_text_source, source_keys[self.text_source_combo.currentIndex()])
+        cfg.set(
+            cfg.dubbing_timing_mode,
+            "natural" if self.timing_mode_combo.currentIndex() == 0 else "legacy",
+        )
+        cfg.set(cfg.dubbing_natural_max_speed, self.natural_speed_slider.value())
+        cfg.set(cfg.dubbing_timing_rewrite, self.rewrite_switch.isChecked())
+        cfg.set(cfg.dubbing_tts_cache, self.tts_cache_switch.isChecked())
+        cfg.set(
+            cfg.dubbing_unresolved_policy,
+            "review" if self.unresolved_combo.currentIndex() == 0 else "allow-overlap",
+        )
 
         sr_idx = self.sample_rate_combo.currentIndex()
         if 0 <= sr_idx < len(self._sample_rates):
@@ -802,3 +900,12 @@ class DubbingInterface(QWidget):
 
         cfg.set(cfg.dubbing_voice_volume, self.voice_volume_slider.value())
         cfg.set(cfg.dubbing_tts_concurrency, self.concurrency_spinbox.value())
+
+    def _update_timing_controls(self):
+        natural = self.timing_mode_combo.currentIndex() == 0
+        self.natural_speed_slider.setEnabled(natural)
+        self.natural_speed_label.setEnabled(natural)
+        self.max_speed_slider.setEnabled(not natural)
+        self.max_speed_label.setEnabled(not natural)
+        self.rewrite_switch.setEnabled(natural)
+        self.unresolved_combo.setEnabled(natural)

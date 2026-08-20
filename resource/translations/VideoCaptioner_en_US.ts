@@ -2538,4 +2538,49 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <translation>Download or update Whisper CPP model.</translation>
     </message>
 </context>
+<context>
+    <name>DubbingInterface</name>
+    <message><source>Nguồn văn bản TTS:</source><translation>TTS text source:</translation></message>
+    <message><source>Tự động</source><translation>Auto</translation></message>
+    <message><source>Bản dịch</source><translation>Translation</translation></message>
+    <message><source>Bản gốc</source><translation>Original</translation></message>
+    <message><source>Chế độ timing:</source><translation>Timing mode:</translation></message>
+    <message><source>Tự nhiên</source><translation>Natural</translation></message>
+    <message><source>Legacy</source><translation>Legacy</translation></message>
+    <message><source>Tốc độ Natural tối đa:</source><translation>Natural maximum speed:</translation></message>
+    <message><source>Viết lại để khớp timing:</source><translation>Rewrite for timing:</translation></message>
+    <message><source>Cache TTS:</source><translation>TTS cache:</translation></message>
+    <message><source>Khi vẫn vượt timing:</source><translation>Unresolved timing:</translation></message>
+    <message><source>Yêu cầu xem lại</source><translation>Require review</translation></message>
+    <message><source>Cho phép chồng lấn</source><translation>Allow overlap</translation></message>
+    <message><source>Cần xem lại timing</source><translation>Timing review required</translation></message>
+</context>
+<context>
+    <name>DubbingReportDialog</name>
+    <message><source>Báo cáo lồng tiếng</source><translation>Dubbing report</translation></message>
+    <message><source>Tổng: {total} | Phù hợp: {fit} | Cache: {cache} | Viết lại: {rewrite} | Cần xem lại: {review} | Lỗi: {failed}</source><translation>Total: {total} | Fit: {fit} | Cache: {cache} | Rewritten: {rewrite} | Review: {review} | Failed: {failed}</translation></message>
+    <message><source>Report: </source><translation>Report: </translation></message>
+    <message><source>Group</source><translation>Group</translation></message>
+    <message><source>Thời gian</source><translation>Timeline</translation></message>
+    <message><source>Subtitle</source><translation>Subtitle</translation></message>
+    <message><source>TTS text</source><translation>TTS text</translation></message>
+    <message><source>Khả dụng</source><translation>Available</translation></message>
+    <message><source>Đã đo</source><translation>Measured</translation></message>
+    <message><source>Tỷ lệ</source><translation>Ratio</translation></message>
+    <message><source>Lần thử</source><translation>Attempts</translation></message>
+    <message><source>Hành động</source><translation>Action</translation></message>
+    <message><source>Trạng thái / cảnh báo</source><translation>Status / warnings</translation></message>
+    <message><source>Đóng</source><translation>Close</translation></message>
+</context>
+<context>
+    <name>LLMLogsInterface</name>
+    <message><source>Ngày:</source><translation>Date:</translation></message>
+    <message><source>Cũ</source><translation>Legacy</translation></message>
+    <message><source>Xóa nhật ký ngày</source><translation>Clear daily log</translation></message>
+    <message><source>Xóa toàn bộ nhật ký của {0}? Không thể hoàn tác.</source><translation>Clear every log for {0}? This cannot be undone.</translation></message>
+</context>
+<context>
+    <name>LogWindow</name>
+    <message><source>Chưa có nhật ký hôm nay</source><translation>No application log for today</translation></message>
+</context>
 </TS>

@@ -347,12 +347,22 @@ class BatchProcessThread(QThread):
         self, batch_task: BatchTask, video_path: str, subtitle_path: str
     ):
         """字幕完成后：bật lồng tiếng thì chèn bước lồng tiếng, không thì ghép video"""
+        subtitle_thread = batch_task.current_thread
+        dubbing_subtitle_path = (
+            subtitle_thread.task.dubbing_subtitle_path
+            if isinstance(subtitle_thread, SubtitleThread)
+            else None
+        )
         if batch_task.current_thread in self.threads:
             self.threads.remove(batch_task.current_thread)
 
         if cfg.dubbing_enabled.value:
             # Chèn bước lồng tiếng trước khi ghép video
-            dubbing_task = self.factory.create_dubbing_task(video_path, subtitle_path)
+            dubbing_task = self.factory.create_dubbing_task(
+                video_path,
+                dubbing_subtitle_path or subtitle_path,
+                display_subtitle_path=subtitle_path,
+            )
             thread = DubbingThread(dubbing_task)
             batch_task.current_thread = thread
 
@@ -393,7 +403,9 @@ class BatchProcessThread(QThread):
         if not dubbed_video:
             raise ValueError("Dubbing output_path is None")
         self._start_full_process_synthesis(
-            batch_task, dubbed_video, task.subtitle_path or ""
+            batch_task,
+            dubbed_video,
+            task.display_subtitle_path or task.subtitle_path or "",
         )
 
     def _start_full_process_synthesis(

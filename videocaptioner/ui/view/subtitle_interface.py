@@ -578,7 +578,10 @@ class SubtitleInterface(QWidget):
         self.cancel_button.hide()
         self.progress_bar.setValue(100)
         if self.task and self.task.need_next_task:
-            self.finished.emit(video_path, output_path)
+            self.finished.emit(
+                video_path,
+                self.task.dubbing_subtitle_path or output_path,
+            )
         InfoBar.success(
             self.tr("优化完成"),
             self.tr("优化完成字幕..."),
@@ -1034,7 +1037,6 @@ class SubtitleInterface(QWidget):
             video_dir = Path(video_path).parent
             stem = Path(video_path).stem
             targets.append(str(video_dir / f"{stem}.srt"))
-            targets.append(str(video_dir / f"{stem}.ass"))
 
         for target in dict.fromkeys(targets):
             if not target or not Path(target).exists():

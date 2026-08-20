@@ -25,7 +25,38 @@ videocaptioner process video.mp4 --asr bijian --translator bing --target-languag
 
 # 给视频加字幕
 videocaptioner synthesize video.mp4 -s subtitle.srt --subtitle-mode hard
+
+# 按实测音频时长进行自然配音
+videocaptioner dub video.mp4 --subtitle translated.srt --tts-api-key <key>
 ```
+
+---
+
+### `dub` — 自然时间轴配音
+
+```bash
+videocaptioner dub <视频> --subtitle <字幕> [选项]
+```
+
+默认使用 `natural`：优先译文、复用持久 TTS WAV 缓存、测量真实音频，只改写超时组，并且绝不静默
+截断语音。`legacy` 保留旧版最大加速和截断策略。默认不写 JSON report；只有显式传入
+`--report PATH` 才会保存。
+
+| 选项 | 说明 |
+|------|------|
+| `--tts-provider` | `openai` `minimax` `local-ai` |
+| `--tts-api-key` / `--tts-api-base` / `--tts-model` | TTS provider 配置 |
+| `--voice` / `--tts-speed` / `--tts-concurrency` | 声音、provider 原生速度和并发数 |
+| `--text-source` | `auto` `translated` `original` |
+| `--timing-mode` | `natural`（默认）或 `legacy` |
+| `--natural-max-speed` / `--legacy-max-speed` | 各模式的最大时间轴加速 |
+| `--no-timing-rewrite` / `--no-tts-cache` | 关闭时间改写或持久 TTS 缓存 |
+| `--unresolved` | `review`（默认）或 `allow-overlap` |
+| `--mix-mode` | `keep` `reduce` `mute` |
+| `--report PATH` | 自定义 JSON report 路径 |
+
+Natural review 返回退出码 `6`，TTS provider 失败返回 `7`。stderr 会直接说明失败原因；只有显式
+指定 `--report` 时才额外输出 report 路径。
 
 ---
 
@@ -142,6 +173,7 @@ videocaptioner process <音视频文件> [选项]
 | 选项 | 说明 |
 |------|------|
 | `--no-synthesize` | 跳过视频合成（只输出字幕） |
+| `--dub` | 在字幕合成前运行配音；内部使用独立 target-only SRT，不复用双语显示布局 |
 
 音频文件自动跳过合成步骤。
 
@@ -236,3 +268,5 @@ target_language = "zh-Hans"
 | 3 | 输入文件不存在 |
 | 4 | 依赖缺失（FFmpeg 等） |
 | 5 | 运行时错误（API 失败等） |
+| 6 | Natural timing 需要审核（report 已生成） |
+| 7 | TTS provider 失败（report 已生成） |

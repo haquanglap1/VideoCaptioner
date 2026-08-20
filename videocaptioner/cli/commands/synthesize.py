@@ -15,9 +15,10 @@ from videocaptioner.core.subtitle.style_manager import (
     available_style_names,
     load_style,
 )
+from videocaptioner.core.utils.video_utils import PresetType
 
 # Quality presets: name -> (crf, preset)
-_QUALITY_MAP = {
+_QUALITY_MAP: dict[str, tuple[int, PresetType]] = {
     "ultra": (18, "slow"),
     "high": (23, "medium"),
     "medium": (28, "medium"),

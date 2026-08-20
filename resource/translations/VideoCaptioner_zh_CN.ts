@@ -2521,4 +2521,49 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>DubbingInterface</name>
+    <message><source>Nguồn văn bản TTS:</source><translation>TTS 文本来源：</translation></message>
+    <message><source>Tự động</source><translation>自动</translation></message>
+    <message><source>Bản dịch</source><translation>译文</translation></message>
+    <message><source>Bản gốc</source><translation>原文</translation></message>
+    <message><source>Chế độ timing:</source><translation>时间模式：</translation></message>
+    <message><source>Tự nhiên</source><translation>自然</translation></message>
+    <message><source>Legacy</source><translation>传统</translation></message>
+    <message><source>Tốc độ Natural tối đa:</source><translation>自然模式最大速度：</translation></message>
+    <message><source>Viết lại để khớp timing:</source><translation>为时间匹配改写：</translation></message>
+    <message><source>Cache TTS:</source><translation>TTS 缓存：</translation></message>
+    <message><source>Khi vẫn vượt timing:</source><translation>仍超时：</translation></message>
+    <message><source>Yêu cầu xem lại</source><translation>需要审核</translation></message>
+    <message><source>Cho phép chồng lấn</source><translation>允许重叠</translation></message>
+    <message><source>Cần xem lại timing</source><translation>需要审核时间</translation></message>
+</context>
+<context>
+    <name>DubbingReportDialog</name>
+    <message><source>Báo cáo lồng tiếng</source><translation>配音报告</translation></message>
+    <message><source>Tổng: {total} | Phù hợp: {fit} | Cache: {cache} | Viết lại: {rewrite} | Cần xem lại: {review} | Lỗi: {failed}</source><translation>总计：{total} | 匹配：{fit} | 缓存：{cache} | 改写：{rewrite} | 待审核：{review} | 失败：{failed}</translation></message>
+    <message><source>Report: </source><translation>报告：</translation></message>
+    <message><source>Group</source><translation>组</translation></message>
+    <message><source>Thời gian</source><translation>时间</translation></message>
+    <message><source>Subtitle</source><translation>字幕</translation></message>
+    <message><source>TTS text</source><translation>TTS 文本</translation></message>
+    <message><source>Khả dụng</source><translation>可用时长</translation></message>
+    <message><source>Đã đo</source><translation>实测时长</translation></message>
+    <message><source>Tỷ lệ</source><translation>比例</translation></message>
+    <message><source>Lần thử</source><translation>尝试次数</translation></message>
+    <message><source>Hành động</source><translation>操作</translation></message>
+    <message><source>Trạng thái / cảnh báo</source><translation>状态 / 警告</translation></message>
+    <message><source>Đóng</source><translation>关闭</translation></message>
+</context>
+<context>
+    <name>LLMLogsInterface</name>
+    <message><source>Ngày:</source><translation>日期：</translation></message>
+    <message><source>Cũ</source><translation>旧日志</translation></message>
+    <message><source>Xóa nhật ký ngày</source><translation>清除当日日志</translation></message>
+    <message><source>Xóa toàn bộ nhật ký của {0}? Không thể hoàn tác.</source><translation>清除 {0} 的全部日志？此操作无法撤销。</translation></message>
+</context>
+<context>
+    <name>LogWindow</name>
+    <message><source>Chưa có nhật ký hôm nay</source><translation>今天还没有应用日志</translation></message>
+</context>
 </TS>

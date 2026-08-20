@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 from qfluentwidgets import FluentStyleSheet, PushButton, TextEdit, isDarkTheme
 
 from videocaptioner.config import LOG_PATH, RESOURCE_PATH
+from videocaptioner.core.utils.log_files import daily_app_log_path
 from videocaptioner.core.utils.platform_utils import reveal_in_explorer
 
 
@@ -50,19 +51,10 @@ class LogWindow(QWidget):
         self.timer.timeout.connect(self.update_log)
         self.timer.start(500)  # 每2秒更新一次
 
-        # 获取日志文件路径并打开文件
-        self.log_path = LOG_PATH / "app.log"
-        try:
-            self.log_file = open(self.log_path, "r", encoding="utf-8")
-            self.load_last_lines(20480)
-            self.log_text.moveCursor(QTextCursor.End)
-            self.log_text.insertPlainText(f"\n{'=' * 25}以上是历史日志{'=' * 25}\n\n")
-        except Exception as e:
-            self.log_file = None
-            self.log_text.setPlainText(f"打开日志文件失败: {str(e)}")
-
-        # 添加文件大小跟踪
-        self.last_position = self.log_file.tell()
+        self.log_path = daily_app_log_path(LOG_PATH)
+        self.log_file = None
+        self.last_position = 0
+        self._open_current_log()
         self.max_lines = 100  # 最多显示100行
 
         self.auto_scroll = True  # 添加自动滚动标志
@@ -73,33 +65,36 @@ class LogWindow(QWidget):
         # # 初始加载日志
         # self.update_log()
 
+    def _open_current_log(self):
+        if self.log_file:
+            self.log_file.close()
+        self.log_path = daily_app_log_path(LOG_PATH)
+        self.log_file = None
+        self.last_position = 0
+        if not self.log_path.exists():
+            self.log_text.setPlainText(self.tr("Chưa có nhật ký hôm nay"))
+            return
+        try:
+            self.log_file = open(self.log_path, "r", encoding="utf-8")
+            self.load_last_lines(20480)
+        except Exception as e:
+            self.log_file = None
+            self.log_text.setPlainText(f"打开日志文件失败: {str(e)}")
+
     def load_last_lines(self, read_size):
         """加载文件最后的内容
         Args:
             read_size: 要读取的字节数，比如102400表示读取最后100KB
         """
         try:
-            # 移动到文件末尾
+            file_size = self.log_path.stat().st_size
+            with open(self.log_path, "rb") as raw:
+                raw.seek(max(0, file_size - read_size))
+                content = raw.read().decode("utf-8", errors="replace")
+            if file_size > read_size:
+                content = content.partition("\n")[2]
             self.log_file.seek(0, 2)
-            file_size = self.log_file.tell()
-
-            # 向前读取指定大小或整个文件
-            read_size = min(read_size, file_size)
-
-            # 从文件开头读取以确保不会破坏UTF-8编码
-            self.log_file.seek(0)
-            content = self.log_file.read()
-
-            # 只保留最后一部分内容
-            if len(content) > read_size:
-                content = content[-read_size:]
-                # 找到第一个完整的行
-                newline_pos = content.find("\n")
-                if newline_pos != -1:
-                    content = content[newline_pos + 1 :]
-
             self.last_position = self.log_file.tell()
-            self.log_text.moveCursor(QTextCursor.End)
             self.log_text.setPlainText(content)
 
             # 滚动到底部
@@ -125,7 +120,16 @@ class LogWindow(QWidget):
 
     def update_log(self):
         """更新日志内容"""
-        if not self.log_file:
+        current_path = daily_app_log_path(LOG_PATH)
+        if current_path != self.log_path:
+            self._open_current_log()
+            return
+        if self.log_file is None:
+            if current_path.exists():
+                self._open_current_log()
+            return
+        if current_path.exists() and current_path.stat().st_size < self.last_position:
+            self._open_current_log()
             return
 
         try:
@@ -154,4 +158,4 @@ class LogWindow(QWidget):
 
     def open_log_folder(self):
         """打开日志文件所在文件夹"""
-        reveal_in_explorer(str(self.log_path))
+        reveal_in_explorer(str(LOG_PATH))

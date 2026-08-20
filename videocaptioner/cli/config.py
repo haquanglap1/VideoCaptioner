@@ -95,6 +95,29 @@ DEFAULTS: Dict[str, Any] = {
         "render_mode": "ass",
         "style": "default",
     },
+    "dubbing": {
+        "tts_provider": "openai",
+        "tts_api_key": "",
+        "tts_api_base": "https://api.openai.com/v1",
+        "tts_model": "tts-1",
+        "voice": "alloy",
+        "tts_speed": 1.0,
+        "tts_concurrency": 4,
+        "text_source": "auto",
+        "timing_mode": "natural",
+        "natural_max_speed": 1.08,
+        "legacy_max_speed": 1.5,
+        "fit_ratio_limit": 1.05,
+        "borrow_gap_ms": 350,
+        "max_rewrite_attempts": 2,
+        "timing_rewrite": True,
+        "tts_cache": True,
+        "unresolved_policy": "review",
+        "mix_mode": "reduce",
+        "original_volume": 0.4,
+        "voice_volume": 1.0,
+        "sample_rate": 32000,
+    },
     "output": {
         "format": "srt",
     },
@@ -216,7 +239,7 @@ def _parse_value(raw: str, key: str) -> Any:
 def save_config_value(key: str, value: str, config_path: Optional[Path] = None) -> None:
     """Set a single value in the config file. Creates the file if it doesn't exist."""
     path = config_path or CONFIG_FILE
-    ensure_config_dir()
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     existing = load_config_file(path)
     _set_nested(existing, key, _parse_value(value, key))

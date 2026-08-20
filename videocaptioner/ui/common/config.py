@@ -324,6 +324,27 @@ class Config(QConfig):
     dubbing_max_speed = RangeConfigItem(
         "Dubbing", "MaxSpeed", 20, RangeValidator(10, 30)
     )  # trần tăng tốc khi căn timeline, stored as 10x (2.0x = 20)
+    dubbing_text_source = OptionsConfigItem(
+        "Dubbing", "TextSource", "auto",
+        OptionsValidator(["auto", "translated", "original"]),
+    )
+    dubbing_timing_mode = OptionsConfigItem(
+        "Dubbing", "TimingMode", "natural",
+        OptionsValidator(["natural", "legacy"]),
+    )
+    dubbing_natural_max_speed = RangeConfigItem(
+        "Dubbing", "NaturalMaxSpeed", 108, RangeValidator(100, 150)
+    )  # stored as 100x (1.08x = 108)
+    dubbing_timing_rewrite = ConfigItem(
+        "Dubbing", "TimingRewrite", True, BoolValidator()
+    )
+    dubbing_tts_cache = ConfigItem(
+        "Dubbing", "PersistentTTSCache", True, BoolValidator()
+    )
+    dubbing_unresolved_policy = OptionsConfigItem(
+        "Dubbing", "UnresolvedPolicy", "review",
+        OptionsValidator(["review", "allow-overlap"]),
+    )
     dubbing_tts_sample_rate = OptionsConfigItem(
         "Dubbing", "TTSSampleRate", 32000,
         OptionsValidator([16000, 24000, 32000, 44100]),

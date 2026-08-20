@@ -17,6 +17,7 @@ def run(args: Namespace, config: dict) -> int:
     no_translate = not get(config, "subtitle.translate", False)
     no_split = not get(config, "subtitle.split", True)
     no_synthesize = getattr(args, "no_synthesize", False)
+    dubbing_enabled = getattr(args, "dub", False)
 
     # If user specified --translator or --target-language, enable translation
     if getattr(args, "translator", None) or getattr(args, "target_language", None):
@@ -42,6 +43,9 @@ def run(args: Namespace, config: dict) -> int:
         no_synthesize = True
         if not quiet:
             output.info("Audio file detected, skipping video synthesis")
+    if path.suffix.lstrip(".").lower() in audio_extensions and dubbing_enabled:
+        output.error("--dub requires a video input, not an audio-only file")
+        return EXIT.USAGE_ERROR
 
     # Pre-flight validation
     from videocaptioner.cli.validators import validate_process
@@ -56,10 +60,13 @@ def run(args: Namespace, config: dict) -> int:
     else:
         out_dir = path.parent
 
+    total_steps = 4 if dubbing_enabled else 3
+
     # Step 1: Transcribe
     if not quiet:
-        output.info("Step 1/3: Transcribing...")
+        output.info(f"Step 1/{total_steps}: Transcribing...")
     subtitle_path = str(out_dir / f"{path.stem}.srt")
+    dubbing_subtitle_path = str(out_dir / f"{path.stem}_dubbing-target.srt")
 
     # Only use word timestamps if subtitle processing (split/optimize) will run
     need_word_ts = not (no_optimize and no_translate and no_split)
@@ -81,7 +88,7 @@ def run(args: Namespace, config: dict) -> int:
     # Step 2: Subtitle (optimize + translate)
     if not no_optimize or not no_translate:
         if not quiet:
-            output.info("Step 2/3: Processing subtitles...")
+            output.info(f"Step 2/{total_steps}: Processing subtitles...")
 
         processed_path = str(out_dir / f"{path.stem}_processed.srt")
         sub_args = Namespace(
@@ -101,6 +108,7 @@ def run(args: Namespace, config: dict) -> int:
             thread_num=getattr(args, "thread_num", None),
             batch_size=getattr(args, "batch_size", None),
             layout=getattr(args, "layout", None),
+            dubbing_output=dubbing_subtitle_path if dubbing_enabled else None,
         )
         from videocaptioner.cli.commands.subtitle import run as subtitle_run
         ret = subtitle_run(sub_args, config)
@@ -109,15 +117,43 @@ def run(args: Namespace, config: dict) -> int:
         subtitle_path = processed_path
     else:
         if not quiet:
-            output.info("Step 2/3: Skipped (optimization and translation disabled)")
+            output.info(f"Step 2/{total_steps}: Skipped (optimization and translation disabled)")
+        if dubbing_enabled:
+            from videocaptioner.core.asr.asr_data import ASRData
+            from videocaptioner.core.entities import SubtitleLayoutEnum
+            ASRData.from_subtitle_file(subtitle_path).to_srt(
+                save_path=dubbing_subtitle_path,
+                layout=SubtitleLayoutEnum.ONLY_TRANSLATE,
+            )
+
+    video_for_synthesis = str(path)
+    if dubbing_enabled:
+        if not quiet:
+            output.info(f"Step 3/{total_steps}: Dubbing video...")
+        dubbed_path = str(out_dir / f"{path.stem}_dubbed{path.suffix}")
+        dub_args = Namespace(
+            video=str(path),
+            subtitle=dubbing_subtitle_path,
+            output=dubbed_path,
+            report=getattr(args, "report", None),
+            verbose=verbose,
+            quiet=quiet,
+            suppress_result=True,
+        )
+        from videocaptioner.cli.commands.dub import run as dub_run
+        ret = dub_run(dub_args, config)
+        if ret != 0:
+            return ret
+        video_for_synthesis = dubbed_path
 
     # Step 3: Synthesize
     if not no_synthesize:
         if not quiet:
-            output.info("Step 3/3: Synthesizing video...")
+            step = 4 if dubbing_enabled else 3
+            output.info(f"Step {step}/{total_steps}: Synthesizing video...")
 
         syn_args = Namespace(
-            video=str(path), subtitle=subtitle_path,
+            video=video_for_synthesis, subtitle=subtitle_path,
             output=str(out_dir / f"{path.stem}_captioned{path.suffix}"),
             subtitle_mode=getattr(args, "subtitle_mode", None),
             quality=getattr(args, "quality", None),
@@ -131,7 +167,8 @@ def run(args: Namespace, config: dict) -> int:
             return ret
     else:
         if not quiet:
-            output.info("Step 3/3: Skipped (synthesis disabled)")
+            step = 4 if dubbing_enabled else 3
+            output.info(f"Step {step}/{total_steps}: Skipped (synthesis disabled)")
 
     if not quiet:
         output.success("Pipeline complete!")

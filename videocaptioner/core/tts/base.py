@@ -1,6 +1,7 @@
 """TTS 基类 - 提供缓存、批量处理等通用功能"""
 
 import hashlib
+import re
 import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,8 +84,11 @@ class BaseTTS(ABC):
                 # 合成单 utterances（带缓存）— diskcache 线程安全
                 self._synthesize_segment(segment, str(audio_path))
             except Exception as e:
+                message = str(e).replace(self.config.api_key, "***") if self.config.api_key else str(e)
+                message = re.sub(r"(?i)bearer\s+\S+", "Bearer ***", message)
+                segment.error = " ".join(message.split())[:300]
                 logger.error(
-                    f"TTS 失败 [{idx+1}/{total}]: {segment.text[:50]}... - {str(e)}"
+                    f"TTS 失败 [{idx+1}/{total}]: {segment.text[:50]}... - {segment.error}"
                 )
                 # 失败时保持 segment，但不设置 audio_path
             finally:

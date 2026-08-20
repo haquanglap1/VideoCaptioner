@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import requests
 
 from tests.test_asr.conftest import assert_asr_result_valid
 from videocaptioner.core.asr import BcutASR
@@ -120,7 +121,15 @@ class TestBcutASR:
             need_word_time_stamp=need_word_ts,
         )
 
-        result: ASRData = asr.run()
+        try:
+            result: ASRData = asr.run()
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else 0
+            if status in {408, 412, 429} or status >= 500:
+                pytest.skip(f"Bcut public API temporarily unavailable (HTTP {status})")
+            raise
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            pytest.skip(f"Bcut public API temporarily unavailable: {type(exc).__name__}")
 
         print("\n" + "=" * 60)
         print(f"BcutASR - {lang.upper()} - {level.title()}-Level Results:")

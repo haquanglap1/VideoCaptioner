@@ -110,8 +110,16 @@ class TestTomlValue:
 
 
 class TestConfigRoundtrip:
-    def test_save_and_load(self, tmp_path):
-        config_file = tmp_path / "config.toml"
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        config_file = tmp_path / "custom" / "config.toml"
+
+        def fail_if_global_config_is_touched():
+            raise AssertionError("custom config path must not touch the global config directory")
+
+        monkeypatch.setattr(
+            "videocaptioner.cli.config.ensure_config_dir",
+            fail_if_global_config_is_touched,
+        )
 
         save_config_value("llm.model", "gpt-4o", config_path=config_file)
         save_config_value("subtitle.thread_num", "8", config_path=config_file)
