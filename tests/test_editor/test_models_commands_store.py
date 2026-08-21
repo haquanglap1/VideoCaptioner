@@ -155,6 +155,10 @@ def test_project_store_round_trip_is_relative_srt_only_and_keeps_three_text_fiel
 def test_explicit_ass_is_the_only_persistent_ass_route(tmp_path):
     project = make_project()
     project.video_path = str(tmp_path / "input.mp4")
+    for track in project.tracks:
+        for clip in track.clips:
+            if clip.source_path:
+                clip.source_path = project.video_path
     Path(project.video_path).write_bytes(b"x")
     store = EditorProjectStore()
     store.save(project, tmp_path / "demo.vceditor.json", subtitle_path=tmp_path / "demo.srt")

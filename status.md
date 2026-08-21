@@ -107,6 +107,78 @@
 - Giant physically single self-extracting EXE không được hỗ trợ; distribution contract là một MSI entry
   point + external CAB payload, một shortcut/app, với sidecar nội bộ. Publication đi qua feature branch
   để không ghi trực tiếp thêm một payload lớn lên `master`.
+## 2026-08-21 (Lazy tabs và Subtitle Style packaged closeout)
+
+### Đã sửa
+- `SegmentedWidget.clicked(bool)` trước đó đẩy `bool` vào tham số mặc định của lazy callback, làm mọi
+  Home tab sau tab đầu ném `TypeError` và giữ nguyên nội dung Task Creation. Callback nay nhận riêng
+  `_checked` và giữ đúng `route_key`.
+- Subtitle Style gọi transparent-background contract của QFluentWidgets cho ScrollArea/viewport/widget,
+  nên text dark-theme không còn trắng trên panel trắng.
+- ASS preview đặt temp `.ass` dưới `AppData/cache` của app và quote/escape đúng đường dẫn FFmpeg filter
+  có drive letter, khoảng trắng và dấu nháy; preview không còn fail `original_size` trên Windows.
+
+### Validation
+- Regression mới dùng click Qt thật, pixel render dark thật và FFmpeg thật: **8 passed**. Post-merge full
+  suite với VieNeu + Video Editor + startup/UI: **453 passed, 23 skipped, 0 failed** / 476 collected,
+  113.49 giây. Ruff pass; Pyright CLI + các module tích hợp: **0 errors, 0 warnings**; translation sync pass.
+- Computer Use click trực tiếp trên EXE ở `E:\Game\Translate video`: Transcription, Optimize/Translate,
+  Dubbing và Synthesis đều hiện đúng page riêng. Subtitle Style có panel dark và preview ASS hiển thị sau
+  4 giây; app đóng sạch, zero window/process. Settings giữ nguyên SHA-256
+  `DD880B4DFC002DAD90BB91B01E00E7B0E6D7FC868BE45B1ED29E78B320F97384`; log không có error mới sau
+  các marker cũ lúc 16:25, preview mới 3,801,434 bytes lúc 16:42:45.
+
+### Artifact cuối
+- Onedir EXE **30,883,355 bytes**, 565 file / 236,449,303 bytes; SHA-256
+  `23963B0B24D8E6FA8B578B62DD8204B22651DDD59BFB2C997D7118EAB28BEEEE`, `NotSigned`.
+- MSI **95,940,948 bytes**, SHA-256
+  `CFD055858C02BF99EB488A77A66B1B3CBC45ADD6E48ED0866D9BBF9D8DF4EC10`, `NotSigned`; filtered ICE
+  validation exit 0 với ba warning ICE60 TTF app-private như trước.
+- Deploy E dùng staged swap; backup runtime/EXE/settings timestamp `20260821-163844` được giữ nguyên.
+
+## 2026-08-21 (Startup responsiveness và Transcription UI không còn khóa)
+
+### Đã sửa
+- Đổi PyInstaller mặc định từ `onefile` sang `onedir`; EXE được gắn `logo.png`, installer source nhận
+  cả thư mục app và vẫn tạo một shortcut. Mỗi lần mở không còn giải nén hơn 100 MB vào `_MEI...`.
+- `MainWindow` và các page Home/Batch/Subtitle Style/Video Editor/Logs/Settings được tạo lazy. Trong
+  Home chỉ Task Creation được tạo ban đầu; Transcription/Subtitle/Dubbing/Synthesis chỉ load khi mở.
+- `core.asr`, `core.translate` và `core.llm` giữ nguyên public API nhưng chuyển sang lazy exports.
+  `yt_dlp` và ModelScope chỉ import trong worker khi thật sự tải video/model.
+- Transcription không còn dựng cả ba provider setting widget lúc mở. Kiểm tra FasterWhisper chạy trong
+  `QThread`; scan model/bin có giới hạn depth/entry, chịu lỗi permission và không còn tự xóa executable
+  nhỏ/hỏng trong một phép kiểm tra trạng thái.
+
+### Validation và số đo
+- Fresh-process import `MainWindow`: khoảng **3.300 ms -> 422 ms**. Constructor: **1.618 ms -> 106 ms**.
+  First frame + Home: **1.042 ms -> 217 ms**. Mở Transcription lần đầu: **920 ms -> 106 ms**.
+- Startup/ASR/thread/CLI/translate targeted: **186 passed, 14 skipped**. Offline suite trong phạm vi sạch:
+  **421 passed, 26 skipped, 1 deselected** / 448 collected, 90.94 giây. Ruff toàn source: pass; Pyright
+  startup/Transcription: **0 errors, 0 warnings**; translation sync: pass.
+- Sau khi merge `origin/master`, targeted VieNeu UI/CLI + lazy tabs + ASS preview đạt **12 passed**;
+  full merged suite đạt **453 passed, 23 skipped, 0 failed** trước publication.
+
+### Packaged artifact
+- PyInstaller 6.22.2 exit 0:
+  `dist/startup-fix/VideoCaptioner-StartupFix-20260821/VideoCaptioner-StartupFix-20260821.exe`,
+  **30,883,014 bytes**; toàn onedir **565 file / 236,448,962 bytes (225.50 MiB)**; SHA-256
+  `FE0235C18ED9A1BF33D30CE41280D4DD160025D9F5242C3999012F29B749BBEE`; `NotSigned`.
+- Warning file 614 dòng optional/transitive, 0 match startup/Transcription/VieNeu. Cold start đầu sau build
+  và Windows scan: **11.042 ms**; ba warm start: **863 / 828 / 905 ms**. Mỗi run đúng 1 process,
+  `CloseMainWindow` exit 0, zero process còn lại và app log không có exception/error.
+- WiX CLI **5.0.2** được cài project-local tại `.tools/wix`; Dotnet home, NuGet cache, temp và
+  intermediate đều nằm dưới repo trên ổ F (`.tools` được gitignore, 19.48 MiB). WiX 7 không được dùng
+  vì yêu cầu chấp nhận OSMF EULA; không có tool/app project nào được cài global hoặc vào ổ C.
+- MSI onedir: `dist/startup-fix/VideoCaptioner-StartupFix-20260821.msi`, **95,936,852 bytes**, SHA-256
+  `15B1F1DAD90154E896B4CCE939BEE851F3555509F8F13AACB2F73CE10EE59E19`, `NotSigned`. Decompile xác nhận
+  565 File rows và một Start Menu shortcut trỏ đúng EXE. ICE validation còn lại pass sau khi suppress
+  `ICE38/64/91` là ba rule WiX không tương thích với wildcard harvesting trong package per-user; chỉ còn
+  3 warning ICE60 đã map tới ba TTF app-private. MSI không được chạy cài và registry product vẫn bằng 0.
+- Portable onedir được deploy trực tiếp tới `E:\Game\Translate video` mà không chạy MSI; EXE cũ,
+  `AppData` và `work-dir` được giữ nguyên. Settings đích giữ đúng SHA-256
+  `DD880B4DFC002DAD90BB91B01E00E7B0E6D7FC868BE45B1ED29E78B320F97384` và có backup timestamp trước
+  test. Smoke từ E: cold Windows scan **13.096 ms**, warm **1.008 ms**, đúng 1 process, exit 0, zero
+  leftover, app log append 55 bytes và 0 error match.
 
 ## 2026-08-21 (Video Editor E0-E7)
 

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from PyQt5.QtCore import QStandardPaths, Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QStandardPaths, Qt, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -52,20 +52,37 @@ from videocaptioner.core.utils.platform_utils import (
 )
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
-from videocaptioner.ui.components.FasterWhisperSettingWidget import (
-    _model_config_for_enum,
-    check_faster_whisper_exists,
-    is_faster_whisper_model_downloaded,
-)
 from videocaptioner.ui.components.transcription_setting_card import TranscriptionSettingCard
 from videocaptioner.ui.components.TranscriptionSettingDialog import (
     TranscriptionSettingDialog,
 )
-from videocaptioner.ui.task_factory import TaskFactory
-from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 from videocaptioner.ui.thread.video_info_thread import VideoInfoThread
 
 DEFAULT_THUMBNAIL_PATH = RESOURCE_PATH / "assets" / "default_thumbnail.jpg"
+
+
+class FasterWhisperStatusThread(QThread):
+    """Probe optional local ASR files without blocking the Qt event loop."""
+
+    result = pyqtSignal(bool, bool, str)
+
+    def __init__(self, model, parent=None):
+        super().__init__(parent)
+        self.model = model
+
+    def run(self) -> None:
+        from videocaptioner.ui.components.FasterWhisperSettingWidget import (
+            _model_config_for_enum,
+            check_faster_whisper_exists,
+            is_faster_whisper_model_downloaded,
+        )
+
+        has_program, _ = check_faster_whisper_exists()
+        model_config = _model_config_for_enum(self.model)
+        has_model = bool(
+            model_config and is_faster_whisper_model_downloaded(model_config)
+        )
+        self.result.emit(has_program, has_model, self.model.value)
 
 
 class VideoInfoCard(CardWidget):
@@ -305,6 +322,8 @@ class VideoInfoCard(CardWidget):
             return False
 
         if need_create_task:
+            from videocaptioner.ui.task_factory import TaskFactory
+
             self.task = TaskFactory.create_transcribe_task(self.video_info.file_path)
 
         if not self.task:
@@ -319,6 +338,8 @@ class VideoInfoCard(CardWidget):
         # 将选中的音轨索引作为临时属性传递给 task
         self.task.selected_audio_track_index = self.selected_audio_track_index  # type: ignore
 
+        from videocaptioner.ui.thread.transcript_thread import TranscriptThread
+
         self.transcript_thread = TranscriptThread(self.task)
         self.transcript_thread.finished.connect(self.on_transcript_finished)
         self.transcript_thread.progress.connect(self.on_transcript_progress)
@@ -332,6 +353,12 @@ class VideoInfoCard(CardWidget):
             return False
         if config.transcribe_model != TranscribeModelEnum.FASTER_WHISPER:
             return True
+
+        from videocaptioner.ui.components.FasterWhisperSettingWidget import (
+            _model_config_for_enum,
+            check_faster_whisper_exists,
+            is_faster_whisper_model_downloaded,
+        )
 
         has_program, _ = check_faster_whisper_exists()
         if not has_program:
@@ -421,6 +448,8 @@ class TranscriptionInterface(QWidget):
         self.task: Optional[TranscribeTask] = None
         self.is_processing: bool = False
         self._pending_auto_start: bool = False
+        self._runtime_status_thread: FasterWhisperStatusThread | None = None
+        self._runtime_status_refresh_pending = False
 
         self._init_ui()
         self._setup_signals()
@@ -515,12 +544,15 @@ class TranscriptionInterface(QWidget):
     def _set_value(self) -> None:
         """设置转录模型"""
         model_name = cfg.get(cfg.transcribe_model).value
-        # self.model_button.setText(self.tr(model_name))
-        self.on_transcription_model_changed(model_name)
+        self.on_transcription_model_changed(model_name, load_settings=False)
 
-    def on_transcription_model_changed(self, model_name: str):
+    def on_transcription_model_changed(
+        self, model_name: str, *, load_settings: bool = True
+    ) -> None:
         """处理转录模型改变"""
-        self.transcription_setting_card.on_model_changed(model_name)
+        self.transcription_setting_card.on_model_changed(
+            model_name, load=load_settings
+        )
         for model in TranscribeModelEnum:
             if model.value == model_name:
                 cfg.set(cfg.transcribe_model, model)
@@ -530,16 +562,48 @@ class TranscriptionInterface(QWidget):
     def _refresh_model_button_status(self) -> None:
         model = cfg.transcribe_model.value
         if model != TranscribeModelEnum.FASTER_WHISPER:
+            self._runtime_status_refresh_pending = False
             self.model_button.setText(self.tr(model.value))
             self.model_button.setToolTip(self.tr("Chọn công cụ chuyển giọng nói"))
             self.model_button.setStyleSheet("")
             return
 
-        has_program, _ = check_faster_whisper_exists()
-        model_config = _model_config_for_enum(cfg.faster_whisper_model.value)
-        has_model = bool(
-            model_config and is_faster_whisper_model_downloaded(model_config)
+        self.model_button.setText(self.tr("正在检查 FasterWhisper..."))
+        self.model_button.setToolTip(
+            self.tr("正在后台检查 FasterWhisper 程序和模型。")
         )
+        self.model_button.setStyleSheet("")
+        if self._runtime_status_thread and self._runtime_status_thread.isRunning():
+            if self._runtime_status_thread.model != cfg.faster_whisper_model.value:
+                self._runtime_status_refresh_pending = True
+            return
+
+        self._runtime_status_refresh_pending = False
+        thread = FasterWhisperStatusThread(cfg.faster_whisper_model.value, self)
+        thread.result.connect(self._apply_faster_whisper_status)
+        thread.finished.connect(lambda: self._finish_runtime_status_probe(thread))
+        self._runtime_status_thread = thread
+        thread.start()
+
+    def _finish_runtime_status_probe(self, thread: FasterWhisperStatusThread) -> None:
+        if self._runtime_status_thread is thread:
+            self._runtime_status_thread = None
+        thread.deleteLater()
+        if (
+            self._runtime_status_refresh_pending
+            and cfg.transcribe_model.value == TranscribeModelEnum.FASTER_WHISPER
+        ):
+            self._runtime_status_refresh_pending = False
+            QTimer.singleShot(0, self._refresh_model_button_status)
+
+    def _apply_faster_whisper_status(
+        self, has_program: bool, has_model: bool, model_value: str
+    ) -> None:
+        if cfg.transcribe_model.value != TranscribeModelEnum.FASTER_WHISPER:
+            return
+        if cfg.faster_whisper_model.value.value != model_value:
+            self._runtime_status_refresh_pending = True
+            return
         if has_program and has_model:
             self.model_button.setText("FasterWhisper OK")
             self.model_button.setToolTip(
@@ -640,6 +704,7 @@ class TranscriptionInterface(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self.transcription_setting_card.activate_current_model()
         self._refresh_model_button_status()
 
     def dragEnterEvent(self, event):
@@ -688,6 +753,9 @@ class TranscriptionInterface(QWidget):
                 )
 
     def closeEvent(self, event):
+        if self._runtime_status_thread and self._runtime_status_thread.isRunning():
+            self._runtime_status_thread.requestInterruption()
+            self._runtime_status_thread.wait(1000)
         self.video_info_card.stop()
         super().closeEvent(event)
 

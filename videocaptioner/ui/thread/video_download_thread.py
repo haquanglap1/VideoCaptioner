@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 
 import requests
-import yt_dlp
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.config import APPDATA_PATH
@@ -43,12 +42,14 @@ class VideoDownloadThread(QThread):
         self.work_dir = work_dir
 
     def run(self):
+        from yt_dlp.utils import DownloadError
+
         try:
             video_file_path, subtitle_file_path, thumbnail_file_path, info_dict = (
                 self.download()
             )
             self.finished.emit(video_file_path or "")
-        except yt_dlp.utils.DownloadError as e:
+        except DownloadError as e:
             logger.exception("下载视频失败 (DownloadError): %s", str(e))
             self.error.emit(self._friendly_error(str(e)))
         except Exception as e:
@@ -181,6 +182,8 @@ class VideoDownloadThread(QThread):
 
     def download(self, need_subtitle: bool = True, need_thumbnail: bool = False):
         """下载视频"""
+        import yt_dlp
+
         logger.info("开始下载视频: %s", self.url)
 
         # Ensure the Deno JS runtime is available so yt-dlp can solve YouTube's

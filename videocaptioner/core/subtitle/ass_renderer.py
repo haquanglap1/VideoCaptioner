@@ -33,6 +33,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
+def _escape_filter_path(path: str | Path) -> str:
+    """Escape a path embedded in a quoted FFmpeg filter option."""
+    return str(path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+
+
 def _check_cuda_available() -> bool:
     """检查 CUDA 是否可用"""
     from videocaptioner.core.utils.video_utils import check_cuda_available
@@ -140,9 +145,14 @@ def render_ass_preview(
         video_height=height,
     )
 
-    # 创建临时 ASS 文件
+    # Keep runtime temp files beside the app data/cache instead of the OS drive.
+    CACHE_PATH.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".ass", delete=False, encoding="utf-8"
+        mode="w",
+        suffix=".ass",
+        delete=False,
+        encoding="utf-8",
+        dir=CACHE_PATH,
     ) as f:
         f.write(ass_content)
         temp_ass_path = f.name
@@ -184,11 +194,8 @@ def render_ass_preview(
         output_path = CACHE_PATH / "ass_preview.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 处理 ASS 文件路径（Windows 兼容）
-        ass_file_escaped = processed_ass.replace("\\", "/").replace(":", r"\:")
-
-        # 添加内置字体目录支持
-        fonts_dir_escaped = str(FONTS_PATH).replace("\\", "/").replace(":", r"\:")
+        ass_file_escaped = _escape_filter_path(processed_ass)
+        fonts_dir_escaped = _escape_filter_path(FONTS_PATH)
 
         cmd = [
             "ffmpeg",
@@ -196,7 +203,7 @@ def render_ass_preview(
             "-i",
             str(bg_path_obj),
             "-vf",
-            f"ass={ass_file_escaped}:fontsdir={fonts_dir_escaped}",
+            f"ass='{ass_file_escaped}':fontsdir='{fonts_dir_escaped}'",
             "-frames:v",
             "1",
             str(output_path),

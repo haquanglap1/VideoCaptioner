@@ -158,6 +158,11 @@ class SubtitleStyleInterface(QWidget):
         self.settingsLayout = QVBoxLayout(self.settingsWidget)
         self.settingsScrollArea.setWidget(self.settingsWidget)
         self.settingsScrollArea.setWidgetResizable(True)
+        self.settingsScrollArea.enableTransparentBackground()
+        self.settingsScrollArea.viewport().setAttribute(
+            Qt.WA_TranslucentBackground, True  # type: ignore
+        )
+        self.settingsWidget.setAttribute(Qt.WA_TranslucentBackground, True)  # type: ignore
 
         # 创建设置组 - 通用
         self.layoutGroup = SettingCardGroup(self.tr("字幕排布"), self.settingsWidget)

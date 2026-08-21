@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for the VideoCaptioner Windows GUI build.
+"""PyInstaller onedir spec for the VideoCaptioner Windows GUI build.
 
 Single spec for every build. The exe name comes from the VC_BUILD_NAME env var,
 so a dated/labelled build doesn't need its own copy of this file:
@@ -7,7 +7,9 @@ so a dated/labelled build doesn't need its own copy of this file:
     set VC_BUILD_NAME=VideoCaptioner-YouTubeFix-20260630
     uv run pyinstaller VideoCaptioner.spec --clean --noconfirm
 
-Without VC_BUILD_NAME the exe is just "VideoCaptioner".
+Without VC_BUILD_NAME the application directory is ``dist/VideoCaptioner``.
+The installer presents it as one app/shortcut while avoiding onefile extraction
+on every launch.
 """
 
 import os
@@ -58,9 +60,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name=BUILD_NAME,
     debug=False,
     bootloader_ignore_signals=False,
@@ -74,4 +75,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="resource\\assets\\logo.png",
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name=BUILD_NAME,
 )

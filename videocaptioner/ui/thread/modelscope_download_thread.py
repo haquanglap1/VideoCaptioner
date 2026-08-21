@@ -3,8 +3,6 @@ import logging
 import sys
 from typing import Callable
 
-from modelscope.hub.callback import ProgressCallback
-from modelscope.hub.snapshot_download import snapshot_download
 from PyQt5.QtCore import QThread, pyqtSignal
 
 
@@ -32,8 +30,9 @@ class SuppressOutput:
 
 def create_progress_callback_class(
     progress_callback: Callable[[int, str], None],
-) -> type[ProgressCallback]:
+) -> type:
     """创建一个自定义的 ProgressCallback 类，用于接收下载进度"""
+    from modelscope.hub.callback import ProgressCallback
 
     class CustomProgressCallback(ProgressCallback):
         def __init__(self, filename: str, file_size: int):
@@ -63,6 +62,8 @@ class ModelscopeDownloadThread(QThread):
 
     def run(self):
         try:
+            from modelscope.hub.snapshot_download import snapshot_download
+
             self.progress.emit(0, self.tr("开始下载..."))
 
             callback_class = create_progress_callback_class(self.progress.emit)

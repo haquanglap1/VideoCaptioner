@@ -1,5 +1,3 @@
-from typing import Optional
-
 from PyQt5.QtWidgets import (
     QStackedWidget,
     QVBoxLayout,
@@ -10,10 +8,6 @@ from videocaptioner.core.entities import (
     TranscribeModelEnum,
 )
 from videocaptioner.core.utils.platform_utils import is_macos
-
-from .FasterWhisperSettingWidget import FasterWhisperSettingWidget
-from .WhisperAPISettingWidget import WhisperAPISettingWidget
-from .WhisperCppSettingWidget import WhisperCppSettingWidget
 
 
 class TranscriptionSettingCard(QWidget):
@@ -28,31 +22,45 @@ class TranscriptionSettingCard(QWidget):
         # 设置界面堆叠
         self.stacked_widget = QStackedWidget(self)
 
-        # 添加各个设置界面
-        self.empty_widget = QWidget(self)  # 添加空白页面作为默认显示
-        self.whisper_cpp_widget = WhisperCppSettingWidget(self)
-        self.whisper_api_widget = WhisperAPISettingWidget(self)
-
-        # FasterWhisper 在 macOS 上不可用
-        self.faster_whisper_widget: Optional[FasterWhisperSettingWidget] = None
-        if not is_macos():
-            self.faster_whisper_widget = FasterWhisperSettingWidget(self)
-
-        self.stacked_widget.addWidget(self.empty_widget)  # 添加空白页面
-        self.stacked_widget.addWidget(self.whisper_cpp_widget)
-        self.stacked_widget.addWidget(self.whisper_api_widget)
-        if self.faster_whisper_widget is not None:
-            self.stacked_widget.addWidget(self.faster_whisper_widget)
+        # Provider setting widgets import network/model download stacks. Keep
+        # them out of application startup and create only the selected page.
+        self.empty_widget = QWidget(self)
+        self.stacked_widget.addWidget(self.empty_widget)
+        self._widgets: dict[str, QWidget] = {}
+        self._pending_model = ""
 
         self.main_layout.addWidget(self.stacked_widget)
 
-    def on_model_changed(self, value):
-        # 切换对应的设置界面
-        if value == TranscribeModelEnum.WHISPER_CPP.value:
-            self.stacked_widget.setCurrentWidget(self.whisper_cpp_widget)
-        elif value == TranscribeModelEnum.WHISPER_API.value:
-            self.stacked_widget.setCurrentWidget(self.whisper_api_widget)
-        elif value == TranscribeModelEnum.FASTER_WHISPER.value:
-            self.stacked_widget.setCurrentWidget(self.faster_whisper_widget)
-        else:
+    def on_model_changed(self, value: str, *, load: bool = True) -> None:
+        self._pending_model = value
+        if not load:
             self.stacked_widget.setCurrentWidget(self.empty_widget)
+            return
+        widget = self._ensure_widget(value)
+        self.stacked_widget.setCurrentWidget(widget or self.empty_widget)
+
+    def activate_current_model(self) -> None:
+        self.on_model_changed(self._pending_model, load=True)
+
+    def _ensure_widget(self, value: str) -> QWidget | None:
+        if value in self._widgets:
+            return self._widgets[value]
+
+        widget: QWidget | None = None
+        if value == TranscribeModelEnum.WHISPER_CPP.value:
+            from .WhisperCppSettingWidget import WhisperCppSettingWidget
+
+            widget = WhisperCppSettingWidget(self)
+        elif value == TranscribeModelEnum.WHISPER_API.value:
+            from .WhisperAPISettingWidget import WhisperAPISettingWidget
+
+            widget = WhisperAPISettingWidget(self)
+        elif value == TranscribeModelEnum.FASTER_WHISPER.value and not is_macos():
+            from .FasterWhisperSettingWidget import FasterWhisperSettingWidget
+
+            widget = FasterWhisperSettingWidget(self)
+
+        if widget is not None:
+            self._widgets[value] = widget
+            self.stacked_widget.addWidget(widget)
+        return widget

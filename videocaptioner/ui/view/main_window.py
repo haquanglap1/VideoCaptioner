@@ -2,9 +2,9 @@ import atexit
 import os
 
 import psutil
-from PyQt5.QtCore import QSize, QThread, QUrl
+from PyQt5.QtCore import QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt5.QtGui import QDesktopServices, QIcon
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import (
     FluentWindow,
@@ -20,72 +20,152 @@ from videocaptioner.core.constant import (
     INFOBAR_DURATION_FOREVER,
     INFOBAR_DURATION_SUCCESS,
 )
-from videocaptioner.core.utils.installer import ffmpeg_path
 from videocaptioner.ui.common.config import cfg
-from videocaptioner.ui.components.DonateDialog import DonateDialog
-from videocaptioner.ui.components.UpdateDialog import UpdateDialog
-from videocaptioner.ui.thread.ffmpeg_install_thread import FFmpegInstallThread
-from videocaptioner.ui.thread.version_checker_thread import VersionChecker
-from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
-from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
-from videocaptioner.ui.view.home_interface import HomeInterface
-from videocaptioner.ui.view.llm_logs_interface import LLMLogsInterface
-from videocaptioner.ui.view.setting_interface import SettingInterface
-from videocaptioner.ui.view.subtitle_style_interface import SubtitleStyleInterface
-from videocaptioner.ui.view.video_editor_interface import VideoEditorInterface
 
 LOGO_PATH = ASSETS_PATH / "logo.png"
+
+
+class LazyInterface(QWidget):
+    """Navigation page that constructs its real widget on first display."""
+
+    loaded = pyqtSignal(object)
+
+    def __init__(self, route_key: str, factory, parent=None):
+        super().__init__(parent)
+        self.setObjectName(route_key)
+        self._factory = factory
+        self._content: QWidget | None = None
+        self._loading = False
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._placeholder = QLabel(self.tr("正在加载界面..."), self)
+        self._placeholder.setAlignment(Qt.AlignCenter)  # type: ignore
+        self._layout.addWidget(self._placeholder)
+
+    @property
+    def content(self) -> QWidget | None:
+        return self._content
+
+    def load(self) -> QWidget:
+        if self._content is not None:
+            return self._content
+        if self._loading:
+            return self
+        self._loading = True
+        try:
+            content = self._factory()
+            self._content = content
+            self._layout.removeWidget(self._placeholder)
+            self._placeholder.deleteLater()
+            self._layout.addWidget(content)
+            self.loaded.emit(content)
+            return content
+        finally:
+            self._loading = False
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._content is None and not self._loading:
+            QTimer.singleShot(0, self._load_if_needed)
+
+    def _load_if_needed(self) -> None:
+        self.load()
 
 
 class MainWindow(FluentWindow):
     def __init__(self):
         super().__init__()
+        self.versionChecker = None
+        self.versionThread = None
+        self._vieneu_launch_thread = None
         self.initWindow()
-
-        # 创建子界面
-        self.homeInterface = HomeInterface(self)
-        self.settingInterface = SettingInterface(self)
-        self.subtitleStyleInterface = SubtitleStyleInterface(self)
-        self.videoEditorInterface = VideoEditorInterface(self)
-        self.batchProcessInterface = BatchProcessInterface(self)
-        self.llmLogsInterface = LLMLogsInterface(self)
-        self.homeInterface.subtitle_optimization_interface.openInVideoEditorRequested.connect(
-            self.openInVideoEditor
-        )
-        self.homeInterface.dubbing_interface.openInVideoEditorRequested.connect(
-            self.openInVideoEditor
-        )
-
-        # 初始化版本检查器
-        self.versionChecker = VersionChecker()
-        self.versionChecker.newVersionAvailable.connect(self.onNewVersion)
-        self.versionChecker.announcementAvailable.connect(self.onAnnouncement)
-
-        self.versionThread = QThread()
-        self.versionChecker.moveToThread(self.versionThread)
-        self.versionThread.started.connect(self.versionChecker.perform_check)
-        self.versionThread.start()
-
-        # 初始化导航界面
+        self._create_lazy_interfaces()
         self.initNavigation()
         self.splashScreen.finish()
-
-        # 检查系统依赖
-        self._check_ffmpeg()
-
-        # Lightweight remote SHA check runs outside the Qt main thread.
-        launch_action = "auto-update" if cfg.vieneu_auto_update.value else "check"
-        self._vieneu_launch_thread = VieNeuRuntimeThread(launch_action, parent=self)
-        self._vieneu_launch_thread.result.connect(
-            self.homeInterface.dubbing_interface._on_vieneu_result
-        )
-        self._vieneu_launch_thread.error.connect(
-            self.homeInterface.dubbing_interface._on_vieneu_error
-        )
-        self._vieneu_launch_thread.start()
+        QTimer.singleShot(500, self._start_background_services)
 
         # 注册退出处理， 清理进程
         atexit.register(self.stop)
+
+    def _create_lazy_interfaces(self) -> None:
+        self.homeInterface = LazyInterface(
+            "HomeInterface", self._create_home_interface, self
+        )
+        self.batchProcessInterface = LazyInterface(
+            "batchProcessInterface", self._create_batch_interface, self
+        )
+        self.subtitleStyleInterface = LazyInterface(
+            "subtitleStyleInterface", self._create_subtitle_style_interface, self
+        )
+        self.videoEditorInterface = LazyInterface(
+            "videoEditorInterface", self._create_video_editor_interface, self
+        )
+        self.llmLogsInterface = LazyInterface(
+            "llmLogsInterface", self._create_logs_interface, self
+        )
+        self.settingInterface = LazyInterface(
+            "settingInterface", self._create_setting_interface, self
+        )
+
+    def _create_home_interface(self) -> QWidget:
+        from videocaptioner.ui.view.home_interface import HomeInterface
+
+        interface = HomeInterface(self.homeInterface)
+        interface.openInVideoEditorRequested.connect(
+            self.openInVideoEditor
+        )
+        interface.dubbingInterfaceReady.connect(self._start_vieneu_runtime_thread)
+        return interface
+
+    def _start_vieneu_runtime_thread(self, dubbing_interface) -> None:
+        if self._vieneu_launch_thread is not None:
+            return
+        from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
+
+        launch_action = "auto-update" if cfg.vieneu_auto_update.value else "check"
+        thread = VieNeuRuntimeThread(launch_action, parent=self)
+        thread.result.connect(dubbing_interface._on_vieneu_result)
+        thread.error.connect(dubbing_interface._on_vieneu_error)
+        self._vieneu_launch_thread = thread
+        thread.start()
+
+    def _create_batch_interface(self) -> QWidget:
+        from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
+
+        return BatchProcessInterface(self.batchProcessInterface)
+
+    def _create_subtitle_style_interface(self) -> QWidget:
+        from videocaptioner.ui.view.subtitle_style_interface import SubtitleStyleInterface
+
+        return SubtitleStyleInterface(self.subtitleStyleInterface)
+
+    def _create_video_editor_interface(self) -> QWidget:
+        from videocaptioner.ui.view.video_editor_interface import VideoEditorInterface
+
+        return VideoEditorInterface(self.videoEditorInterface)
+
+    def _create_logs_interface(self) -> QWidget:
+        from videocaptioner.ui.view.llm_logs_interface import LLMLogsInterface
+
+        return LLMLogsInterface(self.llmLogsInterface)
+
+    def _create_setting_interface(self) -> QWidget:
+        from videocaptioner.ui.view.setting_interface import SettingInterface
+
+        return SettingInterface(self.settingInterface)
+
+    def _start_background_services(self) -> None:
+        if self.versionThread is None:
+            from videocaptioner.ui.thread.version_checker_thread import VersionChecker
+
+            self.versionChecker = VersionChecker()
+            self.versionChecker.newVersionAvailable.connect(self.onNewVersion)
+            self.versionChecker.announcementAvailable.connect(self.onAnnouncement)
+            self.versionThread = QThread(self)
+            self.versionChecker.moveToThread(self.versionThread)
+            self.versionThread.started.connect(self.versionChecker.perform_check)
+            self.versionThread.start()
+        self._check_ffmpeg()
 
     def initNavigation(self):
         """初始化导航栏"""
@@ -117,7 +197,8 @@ class MainWindow(FluentWindow):
         self.stackedWidget.setCurrentWidget(interface, popOut=False)
 
     def openInVideoEditor(self, video_path: str, subtitle_path: str) -> None:
-        self.videoEditorInterface.open_in_editor(video_path, subtitle_path)
+        editor = self.videoEditorInterface.load()
+        editor.open_in_editor(video_path, subtitle_path)  # type: ignore[attr-defined]
         self.switchTo(self.videoEditorInterface)
 
     def initWindow(self):
@@ -157,11 +238,15 @@ class MainWindow(FluentWindow):
             QDesktopServices.openUrl(QUrl(GITHUB_REPO_URL))
         else:
             # 点击"支持作者"按钮时打开捐赠对话框
+            from videocaptioner.ui.components.DonateDialog import DonateDialog
+
             donate_dialog = DonateDialog(self)
             donate_dialog.exec_()
 
     def onNewVersion(self, version, update_required, update_info, download_url):
         """新版本提示 — 显示 UpdateDialog cho phép tải và cài tự động."""
+        from videocaptioner.ui.components.UpdateDialog import UpdateDialog
+
         dialog = UpdateDialog(
             version=version,
             update_info=update_info,
@@ -204,7 +289,7 @@ class MainWindow(FluentWindow):
         # Stop background QThread (version checker) cleanly so it doesn't keep
         # the network call alive after the window is gone.
         try:
-            if hasattr(self, "versionThread") and self.versionThread.isRunning():
+            if self.versionThread is not None and self.versionThread.isRunning():
                 self.versionThread.quit()
                 self.versionThread.wait(2000)
         except Exception:
@@ -214,10 +299,7 @@ class MainWindow(FluentWindow):
             from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
             get_vieneu_service().cancel_pending()
-            if (
-                hasattr(self, "_vieneu_launch_thread")
-                and self._vieneu_launch_thread.isRunning()
-            ):
+            if self._vieneu_launch_thread is not None and self._vieneu_launch_thread.isRunning():
                 self._vieneu_launch_thread.requestInterruption()
                 self._vieneu_launch_thread.wait(11_000)
         except Exception:
@@ -255,7 +337,7 @@ class MainWindow(FluentWindow):
                 pass
 
         # Give them a moment to exit gracefully, then hard-kill survivors.
-        gone, alive = psutil.wait_procs(children, timeout=2)
+        _gone, alive = psutil.wait_procs(children, timeout=2)
         for child in alive:
             try:
                 child.kill()
@@ -264,6 +346,8 @@ class MainWindow(FluentWindow):
 
     def _check_ffmpeg(self):
         """Detect ffmpeg; if missing, offer one-click auto-install on Windows."""
+        from videocaptioner.core.utils.installer import ffmpeg_path
+
         # Honor managed install dir (already prepended to PATH on import) and
         # any user-installed ffmpeg.
         if ffmpeg_path() is not None:
@@ -301,7 +385,7 @@ class MainWindow(FluentWindow):
         bar.addWidget(progress)
 
         install_btn = QPushButton(self.tr("Cài tự động"))
-        install_btn.setCursor(Qt.PointingHandCursor)
+        install_btn.setCursor(Qt.PointingHandCursor)  # type: ignore
         install_btn.setStyleSheet(
             "QPushButton { padding: 4px 12px; border-radius: 4px;"
             " background: #28f08b; color: black; font-weight: 600; }"
@@ -311,6 +395,8 @@ class MainWindow(FluentWindow):
         bar.addWidget(install_btn)
 
         def _start_install():
+            from videocaptioner.ui.thread.ffmpeg_install_thread import FFmpegInstallThread
+
             install_btn.setEnabled(False)
             install_btn.setText(self.tr("Đang tải..."))
             progress.setVisible(True)

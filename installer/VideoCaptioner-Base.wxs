@@ -19,17 +19,15 @@
     </StandardDirectory>
 
     <Feature Id="BaseFeature" Title="VideoCaptioner" Level="1">
-      <ComponentRef Id="BaseExecutable" />
+      <ComponentGroupRef Id="BaseFiles" />
       <ComponentRef Id="ApplicationShortcut" />
     </Feature>
   </Package>
 
   <Fragment>
-    <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="BaseExecutable" Guid="BA8A142B-3A42-4FB0-81CA-22B77060DF92">
-        <File Id="VideoCaptionerExecutable" Source="$(var.ExePath)" KeyPath="yes" />
-      </Component>
-    </DirectoryRef>
+    <ComponentGroup Id="BaseFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.SourceDir)\**" />
+    </ComponentGroup>
   </Fragment>
 
   <Fragment>
@@ -39,7 +37,7 @@
             Id="StartMenuShortcut"
             Name="VideoCaptioner"
             Description="VideoCaptioner with managed VieNeu Local"
-            Target="[INSTALLFOLDER]VideoCaptioner-VieNeu-OneApp-20260821.exe"
+            Target="[INSTALLFOLDER]$(var.ExecutableName)"
             WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
         <RegistryValue

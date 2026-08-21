@@ -1,8 +1,24 @@
-"""LLM unified client module."""
+"""Public LLM API without importing the OpenAI SDK during GUI startup."""
 
-from .check_llm import check_llm_connection, get_available_models
-from .check_whisper import check_whisper_connection
-from .client import call_llm, get_llm_client, reset_llm_client
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .check_llm import check_llm_connection as check_llm_connection
+    from .check_llm import get_available_models as get_available_models
+    from .check_whisper import check_whisper_connection as check_whisper_connection
+    from .client import call_llm as call_llm
+    from .client import get_llm_client as get_llm_client
+    from .client import reset_llm_client as reset_llm_client
+
+_EXPORTS = {
+    "call_llm": (".client", "call_llm"),
+    "get_llm_client": (".client", "get_llm_client"),
+    "reset_llm_client": (".client", "reset_llm_client"),
+    "check_llm_connection": (".check_llm", "check_llm_connection"),
+    "get_available_models": (".check_llm", "get_available_models"),
+    "check_whisper_connection": (".check_whisper", "check_whisper_connection"),
+}
 
 __all__ = [
     "call_llm",
@@ -12,3 +28,17 @@ __all__ = [
     "get_available_models",
     "check_whisper_connection",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "request_logger":
+        value = import_module(".request_logger", __name__)
+        globals()[name] = value
+        return value
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value

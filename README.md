@@ -153,7 +153,10 @@ Project đã có file cấu hình PyInstaller:
 uv run pyinstaller VideoCaptioner.spec --clean --noconfirm
 ```
 
-File EXE được tạo trong thư mục `dist/`. Có thể chép file EXE đó sang máy Windows khác; nếu ứng dụng cần gọi FFmpeg bên ngoài, máy đích cũng cần có FFmpeg trong `PATH` hoặc đi kèm thư mục công cụ tương ứng.
+Build tạo thư mục `dist/VideoCaptioner/` chứa `VideoCaptioner.exe` và các runtime file. Phải phân phối
+nguyên thư mục hoặc đóng nó vào installer; không chép riêng file EXE. Chế độ `onedir` tránh bước tự giải
+nén hơn 100 MB vào `%TEMP%` ở mỗi lần mở app. Nếu ứng dụng cần gọi FFmpeg bên ngoài, máy đích cũng cần
+có FFmpeg trong `PATH` hoặc đi kèm thư mục công cụ tương ứng.
 
 Đặt tên build riêng mà không tạo thêm file spec:
 

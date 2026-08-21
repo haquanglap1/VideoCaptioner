@@ -126,6 +126,8 @@ FASTER_WHISPER_MODELS = [
 ]
 
 MIN_PROGRAM_SIZE = 1024 * 1024
+MAX_SCAN_DEPTH = 4
+MAX_SCAN_ENTRIES = 4096
 
 
 def _model_dir(model: dict) -> Path:
@@ -139,11 +141,7 @@ def is_faster_whisper_model_downloaded(model: dict) -> bool:
         return False
     if (model_path / "model.bin").exists():
         return True
-    return any(
-        model_file
-        for model_file in model_path.rglob("model.bin")
-        if not any(part.startswith("._____") for part in model_file.parts)
-    )
+    return _bounded_find_file(model_path, {"model.bin"}) is not None
 
 
 def _model_config_for_enum(model_enum: FasterWhisperModelEnum) -> dict | None:
@@ -171,9 +169,30 @@ def _is_valid_program_file(path: Path) -> bool:
     return path.exists() and path.is_file() and path.stat().st_size >= MIN_PROGRAM_SIZE
 
 
-def _remove_invalid_program(path: Path) -> None:
-    if path.exists() and not _is_valid_program_file(path):
-        path.unlink(missing_ok=True)
+def _bounded_find_file(root: Path, names: set[str]) -> Path | None:
+    """Find a file without allowing a malformed install tree to freeze Qt."""
+    stack = [(root, 0)]
+    visited = 0
+    while stack and visited < MAX_SCAN_ENTRIES:
+        directory, depth = stack.pop()
+        try:
+            entries = list(os.scandir(directory))
+        except OSError:
+            continue
+        for entry in entries:
+            visited += 1
+            if visited > MAX_SCAN_ENTRIES:
+                return None
+            if entry.name.startswith("._____"):
+                continue
+            try:
+                if entry.is_file(follow_symlinks=False) and entry.name in names:
+                    return Path(entry.path)
+                if depth < MAX_SCAN_DEPTH and entry.is_dir(follow_symlinks=False):
+                    stack.append((Path(entry.path), depth + 1))
+            except OSError:
+                continue
+    return None
 
 
 # 在类外添加这个工具函数
@@ -189,14 +208,11 @@ def _find_program_file(*relative_paths: str) -> Path | None:
     for root in _program_search_roots():
         for relative_path in relative_paths:
             candidate = root / relative_path
-            _remove_invalid_program(candidate)
             if _is_valid_program_file(candidate):
                 return candidate
-        for name in {Path(p).name for p in relative_paths}:
-            for candidate in root.rglob(name):
-                _remove_invalid_program(candidate)
-                if _is_valid_program_file(candidate):
-                    return candidate
+        candidate = _bounded_find_file(root, {Path(p).name for p in relative_paths})
+        if candidate is not None and _is_valid_program_file(candidate):
+            return candidate
     return None
 
 

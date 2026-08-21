@@ -1,26 +1,50 @@
-"""
-翻译模块
+"""Public translation API with provider modules loaded on demand."""
 
-提供多种翻译服务: OpenAI LLM、Google、Bing、DeepLX
-"""
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
 
-from videocaptioner.core.entities import SubtitleProcessData
-from videocaptioner.core.translate.base import BaseTranslator
-from videocaptioner.core.translate.bing_translator import BingTranslator
-from videocaptioner.core.translate.deeplx_translator import DeepLXTranslator
-from videocaptioner.core.translate.factory import TranslatorFactory
-from videocaptioner.core.translate.google_translator import GoogleTranslator
-from videocaptioner.core.translate.llm_translator import LLMTranslator
-from videocaptioner.core.translate.types import TargetLanguage, TranslatorType
+if TYPE_CHECKING:
+    from videocaptioner.core.entities import SubtitleProcessData as SubtitleProcessData
+
+    from .base import BaseTranslator as BaseTranslator
+    from .bing_translator import BingTranslator as BingTranslator
+    from .deeplx_translator import DeepLXTranslator as DeepLXTranslator
+    from .factory import TranslatorFactory as TranslatorFactory
+    from .google_translator import GoogleTranslator as GoogleTranslator
+    from .llm_translator import LLMTranslator as LLMTranslator
+    from .types import TargetLanguage as TargetLanguage
+    from .types import TranslatorType as TranslatorType
+
+_EXPORTS = {
+    "SubtitleProcessData": ("videocaptioner.core.entities", "SubtitleProcessData"),
+    "BaseTranslator": (".base", "BaseTranslator"),
+    "BingTranslator": (".bing_translator", "BingTranslator"),
+    "DeepLXTranslator": (".deeplx_translator", "DeepLXTranslator"),
+    "GoogleTranslator": (".google_translator", "GoogleTranslator"),
+    "LLMTranslator": (".llm_translator", "LLMTranslator"),
+    "TranslatorFactory": (".factory", "TranslatorFactory"),
+    "TargetLanguage": (".types", "TargetLanguage"),
+    "TranslatorType": (".types", "TranslatorType"),
+}
 
 __all__ = [
-    "BaseTranslator",
     "SubtitleProcessData",
-    "TranslatorFactory",
-    "TranslatorType",
-    "TargetLanguage",
+    "BaseTranslator",
     "BingTranslator",
     "DeepLXTranslator",
     "GoogleTranslator",
     "LLMTranslator",
+    "TranslatorFactory",
+    "TargetLanguage",
+    "TranslatorType",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value
