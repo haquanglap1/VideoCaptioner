@@ -322,6 +322,7 @@ class TaskFactory:
             "openai": TTSProviderEnum.OPENAI,
             "minimax": TTSProviderEnum.MINIMAX,
             "local_ai": TTSProviderEnum.LOCAL_AI,
+            "vieneu-local": TTSProviderEnum.VIENEU_LOCAL,
         }
         tts_provider = provider_map.get(
             cfg.dubbing_tts_provider.value, TTSProviderEnum.OPENAI

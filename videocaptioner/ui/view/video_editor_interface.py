@@ -16,7 +16,6 @@ from PyQt5.QtWidgets import (
     QLabel,
     QListWidget,
     QProgressBar,
-    QScrollArea,
     QShortcut,
     QSizePolicy,
     QSplitter,
@@ -69,6 +68,105 @@ from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.editor_media_thread import EditorMediaThread, EditorRenderThread
 from videocaptioner.ui.thread.editor_voice_thread import EditorVoiceThread
 
+EDITOR_DARK_STYLE = """
+QWidget#VideoEditorInterface {
+    background: #08111f;
+    color: #dbe7f5;
+}
+QWidget#EditorCommandScroll {
+    background: #0d1726;
+    border: 1px solid #20344d;
+    border-radius: 8px;
+}
+QSplitter#EditorVerticalSplitter::handle,
+QSplitter#EditorHorizontalSplitter::handle {
+    background: #17283e;
+}
+QSplitter#EditorVerticalSplitter::handle:hover,
+QSplitter#EditorHorizontalSplitter::handle:hover {
+    background: #2c4b6d;
+}
+QWidget#EditorVideoPreview {
+    background: #0b1421;
+    border: 1px solid #20344d;
+    border-radius: 9px;
+    padding: 8px;
+}
+QWidget#EditorVideoPreview QLabel {
+    color: #9fb0c5;
+}
+QWidget#EditorVideoPreview QSlider::groove:horizontal {
+    height: 4px;
+    background: #263b55;
+    border-radius: 2px;
+}
+QWidget#EditorVideoPreview QSlider::sub-page:horizontal {
+    background: #45cdb6;
+    border-radius: 2px;
+}
+QWidget#EditorVideoPreview QSlider::handle:horizontal {
+    background: #e8f4f3;
+    border: 2px solid #35a895;
+    width: 12px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QTabWidget#EditorContextTabs::pane {
+    background: #0d1726;
+    border: 1px solid #20344d;
+    border-radius: 8px;
+    top: -1px;
+}
+QTabWidget#EditorContextTabs QTabBar::tab {
+    color: #8fa3ba;
+    background: #0a1320;
+    border: 1px solid #20344d;
+    padding: 8px 14px;
+    min-width: 74px;
+}
+QTabWidget#EditorContextTabs QTabBar::tab:selected {
+    color: #e7f8f5;
+    background: #153149;
+    border-bottom: 2px solid #48d0b8;
+}
+QWidget#EditorTimelineShell {
+    background: #0b1421;
+    border: 1px solid #20344d;
+    border-radius: 8px;
+}
+QWidget#EditorStatusBar, QWidget#EditorStatusBar QLabel {
+    color: #91a6bd;
+    background: transparent;
+}
+QWidget#EditorStatusBar QProgressBar {
+    color: #dbe7f5;
+    background: #101d2e;
+    border: 1px solid #29405d;
+    border-radius: 5px;
+    text-align: center;
+}
+QWidget#EditorStatusBar QProgressBar::chunk {
+    background: #3ec6ad;
+    border-radius: 4px;
+}
+QWidget#EditorLayerPanel, QWidget#EditorLayerPanel QListWidget {
+    color: #dbe7f5;
+    background: #0d1726;
+    border: none;
+}
+QWidget#EditorLayerPanel QListWidget::item {
+    background: #101d2e;
+    border: 1px solid #263d58;
+    border-radius: 5px;
+    padding: 7px;
+    margin: 2px;
+}
+QWidget#EditorLayerPanel QListWidget::item:selected {
+    background: #1b4d57;
+    border-color: #48d0b8;
+}
+"""
+
 
 class VideoEditorInterface(QWidget):
     projectOpened = pyqtSignal(str, str)
@@ -76,6 +174,7 @@ class VideoEditorInterface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("VideoEditorInterface")
+        self.setWindowTitle(self.tr("Video Editor"))
         self.project: EditorProject | None = None
         self.project_path = ""
         self.command_stack = CommandStack()
@@ -104,44 +203,48 @@ class VideoEditorInterface(QWidget):
         for action in (
             self.open_action,
             self.save_action,
-            self.save_ass_action,
             self.undo_action,
             self.redo_action,
             self.preview_action,
             self.export_action,
         ):
             self.command_bar.addAction(action)
-        self.command_bar.addSeparator()
+        self.command_bar.addHiddenAction(self.save_ass_action)
         for kind, label in (
             (EditorLayerKind.BLUR, "Add Blur"),
             (EditorLayerKind.LOGO, "Add Logo"),
             (EditorLayerKind.MASK, "Add Mask"),
             (EditorLayerKind.TEXT, "Add Text"),
         ):
-            self.command_bar.addAction(
+            self.command_bar.addHiddenAction(
                 Action(
                     FIF.ADD,
                     self.tr(label),
                     triggered=lambda _checked=False, layer_kind=kind: self.add_visual_layer(layer_kind),
                 )
             )
-        self.command_bar.adjustSize()
+        self.command_bar.setMinimumHeight(42)
         self.command_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.command_scroll = QScrollArea(self)
-        self.command_scroll.setFrameShape(QScrollArea.NoFrame)
-        self.command_scroll.setWidgetResizable(True)
-        self.command_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.command_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.command_scroll = QWidget(self)
+        self.command_scroll.setObjectName("EditorCommandScroll")
         self.command_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.command_scroll.setFixedHeight(self.command_bar.sizeHint().height() + 14)
-        self.command_scroll.setWidget(self.command_bar)
+        self.command_scroll.setFixedHeight(54)
+        command_layout = QHBoxLayout(self.command_scroll)
+        command_layout.setContentsMargins(8, 5, 8, 5)
+        command_layout.addWidget(self.command_bar, 1)
         layout.addWidget(self.command_scroll)
 
         self.vertical_splitter = QSplitter(Qt.Vertical, self)
+        self.vertical_splitter.setObjectName("EditorVerticalSplitter")
+        self.vertical_splitter.setHandleWidth(6)
         self.horizontal_splitter = QSplitter(Qt.Horizontal, self.vertical_splitter)
+        self.horizontal_splitter.setObjectName("EditorHorizontalSplitter")
+        self.horizontal_splitter.setHandleWidth(6)
         self.preview = EditorVideoPreview(self.horizontal_splitter)
         self.preview.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.context_tabs = QTabWidget(self.horizontal_splitter)
+        self.context_tabs.setObjectName("EditorContextTabs")
+        self.context_tabs.setDocumentMode(True)
         self.inspector = SubtitleInspector(self.context_tabs)
         self.context_tabs.addTab(self.inspector, self.tr("Cue"))
         self.layer_panel = self._build_layer_panel()
@@ -153,6 +256,7 @@ class VideoEditorInterface(QWidget):
         self.horizontal_splitter.setSizes([760, 300])
 
         timeline_shell = QWidget(self.vertical_splitter)
+        timeline_shell.setObjectName("EditorTimelineShell")
         timeline_layout = QHBoxLayout(timeline_shell)
         timeline_layout.setContentsMargins(0, 0, 0, 0)
         timeline_layout.setSpacing(0)
@@ -167,7 +271,10 @@ class VideoEditorInterface(QWidget):
         self.vertical_splitter.setSizes([470, 260])
         layout.addWidget(self.vertical_splitter, 1)
 
-        status_row = QHBoxLayout()
+        status_bar = QWidget(self)
+        status_bar.setObjectName("EditorStatusBar")
+        status_row = QHBoxLayout(status_bar)
+        status_row.setContentsMargins(2, 2, 2, 2)
         self.status_label = QLabel("", self)
         self.status_label.setMinimumWidth(0)
         self.status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
@@ -185,10 +292,12 @@ class VideoEditorInterface(QWidget):
         status_row.addWidget(self.zoom_label)
         status_row.addWidget(self.zoom_in_button)
         status_row.addWidget(self.fit_button)
-        layout.addLayout(status_row)
+        layout.addWidget(status_bar)
+        self.setStyleSheet(EDITOR_DARK_STYLE)
 
     def _build_layer_panel(self) -> QWidget:
         panel = QWidget(self)
+        panel.setObjectName("EditorLayerPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 8, 8, 8)
         self.layer_list = QListWidget(panel)
@@ -308,6 +417,7 @@ class VideoEditorInterface(QWidget):
         elif action == "thumbnails":
             _fingerprint, items = data
             self.timeline.set_thumbnails(items)
+            self.preview.set_poster(items[0][1] if items else "")
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
 

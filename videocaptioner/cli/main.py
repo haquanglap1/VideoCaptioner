@@ -82,7 +82,9 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Dubbing options")
-    group.add_argument("--tts-provider", choices=["openai", "minimax", "local-ai"])
+    group.add_argument(
+        "--tts-provider", choices=["openai", "minimax", "local-ai", "vieneu-local"]
+    )
     group.add_argument("--tts-api-key", metavar="KEY")
     group.add_argument("--tts-api-base", metavar="URL")
     group.add_argument("--tts-model", metavar="NAME")
@@ -363,6 +365,23 @@ def _build_config_parser(subparsers) -> None:
     p.set_defaults(func=_run_config)
 
 
+def _build_vieneu_parser(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "vieneu", help="Manage the bundled VieNeu Local runtime and model"
+    )
+    model = parser.add_subparsers(dest="vieneu_action", metavar="model-action")
+    model.add_parser("status", help="Show active/candidate/previous model state")
+    update = model.add_parser("update", help="Check, download, validate and activate latest model")
+    update.add_argument("--retry-rejected", action="store_true")
+    update.add_argument(
+        "--revision",
+        metavar="SHA",
+        help="Validate a specific immutable revision (acceptance/manual recovery)",
+    )
+    model.add_parser("rollback", help="Swap active and previous known-good model")
+    parser.set_defaults(func=_run_vieneu)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="videocaptioner",
@@ -381,6 +400,7 @@ def build_parser() -> argparse.ArgumentParser:
     _build_process_parser(subparsers)
     _build_download_parser(subparsers)
     _build_config_parser(subparsers)
+    _build_vieneu_parser(subparsers)
     _build_style_parser(subparsers)
 
     return parser
@@ -544,6 +564,12 @@ def _run_config(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.config_cmd import run
     config = _load_config(args)
     return run(args, config)
+
+
+def _run_vieneu(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.vieneu import run
+
+    return run(args)
 
 
 def _run_style(args: argparse.Namespace) -> int:

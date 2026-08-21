@@ -15,6 +15,8 @@ VideoCaptioner là công cụ xử lý phụ đề video bằng AI, hỗ trợ n
   Vẫn có chế độ Legacy cho workflow cần giới hạn tốc độ/cắt âm thanh như bản cũ.
 - Có tab `Video Editor` native PyQt5 để chỉnh subtitle/TTS trên timeline V1/A1/TS1, xem trước,
   tạo lại đúng group giọng đã chọn và export từ editor state hiện tại.
+- Có provider `VieNeu Local` tích hợp: tự quản lý GPU sidecar ẩn, voice/model revision, update có kiểm
+  định và rollback; không cần chạy server, nhập API Base hay API key giả.
 - Có CLI cho tự động hóa và GUI cho người dùng Windows.
 
 ## Cài đặt để chạy từ mã nguồn
@@ -48,6 +50,15 @@ uv run videocaptioner synthesize video.mp4 -s subtitle.srt
 # Lồng tiếng Natural từ phụ đề đã dịch
 uv run videocaptioner dub video.mp4 --subtitle translated.srt \
   --tts-api-key <your-key> --tts-model tts-1 --voice alloy
+
+# Lồng tiếng bằng VieNeu Local được quản lý, không cần API key/server riêng
+uv run videocaptioner dub video.mp4 --subtitle translated.srt \
+  --tts-provider vieneu-local --voice "Minh Đức"
+
+# Kiểm tra/update/rollback model VieNeu theo commit SHA
+uv run videocaptioner vieneu status
+uv run videocaptioner vieneu update
+uv run videocaptioner vieneu rollback
 
 # Xử lý toàn bộ: nhận dạng -> tối ưu/dịch -> ghép video
 uv run videocaptioner process video.mp4 --target-language vi
@@ -89,11 +100,23 @@ báo. Natural không dùng đường truncate của Legacy.
 Cache dùng `AppData/cache/dubbing_tts/v1/` với key SHA-256 không chứa API key hay transcript trong tên
 file. GUI/full pipeline không ghi report JSON; dùng `--report PATH` ở CLI khi thực sự cần lưu report.
 
+### VieNeu Local
+
+Chọn `VieNeu Local` trong tab Lồng tiếng để ứng dụng tự khởi động sidecar ẩn khi tải voice hoặc synthesize.
+Model active được giữ offline sau lần download thành công; check/update chạy nền, candidate chỉ được
+activate sau health + voices + WAV 48 kHz smoke và không đổi revision giữa một dubbing job. `Local AI`
+vẫn giữ nguyên cho server bên ngoài. Chi tiết runtime, updater, build và acceptance nằm tại
+[`docs/dev/vieneu-one-app.md`](docs/dev/vieneu-one-app.md).
+
 ## Video Editor
 
 Tab `Video Editor` nằm ngay dưới `Kiểu phụ đề`. Chọn `Open` để mở video cùng SRT, hoặc dùng
 `Open in Video Editor` từ màn Tối ưu/Dịch phụ đề hay Lồng tiếng. Workspace gồm preview QtMultimedia,
 context inspector và timeline `V1 Video / A1 Original Audio / TS1 Subtitle + TTS`.
+
+Editor dùng dark workspace riêng cho cả widget Qt chuẩn và QFluent: empty preview không còn native white
+surface, loaded preview dùng thumbnail đầu làm poster trước khi Play, inspector/scrollbar/timeline cùng
+palette và command bar tự thu action phụ vào `More` khi chiều rộng hạn chế.
 
 Editor giữ riêng `source_text`, `display_text` và `tts_text`. Các thao tác text/timing, add, split,
 delete, drag, resize, voice settings, mute/lock và visual layer đều đi qua undo/redo. Waveform và
@@ -140,8 +163,18 @@ uv run pyinstaller VideoCaptioner.spec --clean --noconfirm
 Remove-Item Env:VC_BUILD_NAME
 ```
 
-`VideoCaptioner.spec` đã bundle các prompt Natural Dubbing và module report dialog. EXE là GUI windowed;
-CLI `dub --help` được nghiệm thu từ source, không phải qua EXE GUI.
+`VideoCaptioner.spec` đã bundle các prompt Natural Dubbing và module report dialog. EXE windowed vẫn định
+tuyến tham số sang CLI, nên cùng EXE hỗ trợ `dub` và `vieneu` mà không mở GUI.
+
+Gói VieNeu one-app cần runtime/model mutable cạnh EXE. Offline bundle dùng
+`scripts/build_vieneu_runtime.py`, `scripts/build_vieneu_one_app.py` và
+`installer/VideoCaptioner-VieNeu-OneApp.wxs`. Xem lệnh và layout tại
+[`docs/dev/vieneu-one-app.md`](docs/dev/vieneu-one-app.md).
+
+Để giảm file cài ban đầu, web installer dùng ba source trong `installer/`: base MSI được nhúng vào setup,
+còn VieNeu runtime/model MSI + CAB được tải qua WiX Burn `DownloadUrl` và verify trước khi cài. Build test
+loopback không phải artifact để phát hành cho máy khác; release phải rebuild với một `PayloadBaseUrl`
+HTTPS bất biến. Chi tiết nằm trong tài liệu VieNeu one-app ở trên.
 
 ## Kiểm thử
 

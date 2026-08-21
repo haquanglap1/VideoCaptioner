@@ -1,0 +1,20 @@
+{
+  "schema_version": "vieneu-runtime-manifest-v1",
+  "runtime_version": "vieneu-3.3.0-bridge-1.0.0",
+  "vieneu_version": "3.3.0",
+  "runtime_source_repository": "https://github.com/pnnbao97/VieNeu-TTS.git",
+  "runtime_source_revision": "36c4b501b0634a8f59805e6b529a058fbd30190b",
+  "bridge_version": "1.0.0",
+  "protocol_version": "vieneu-runtime-protocol-v1",
+  "python_version": "3.12",
+  "model_repository": "pnnbao-ump/VieNeu-TTS-v3-Turbo",
+  "model_revision": "2da0efab622a1722125991736524f080b751ef5b",
+  "model_license": "apache-2.0",
+  "model_subfolder": "update",
+  "tokenizer_repository": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
+  "tokenizer_revision": "6aa02b01e445cc585582cf0ba480bc3ea6c8dd68",
+  "codec_repository": "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano",
+  "codec_revision": "6aa02b01e445cc585582cf0ba480bc3ea6c8dd68",
+  "dependency_license": "apache-2.0",
+  "sample_rate": 48000
+}

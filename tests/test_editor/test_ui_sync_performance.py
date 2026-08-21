@@ -1,14 +1,14 @@
 # pyright: reportAttributeAccessIssue=false
 
-import sys
-import time
 import shutil
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
 from PyQt5.QtCore import QUrl
-from PyQt5.QtGui import QPainter, QPixmap
+from PyQt5.QtGui import QColor, QPainter, QPalette, QPixmap
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtTest import QTest
@@ -109,6 +109,38 @@ def test_editor_layout_remains_usable_at_700_pixel_page_width(qapp):
     assert page.context_tabs.width() >= 290
     assert page.timeline.width() >= 300
     assert page.command_scroll.geometry().bottom() < page.vertical_splitter.geometry().top()
+    page.close()
+
+
+def test_editor_empty_state_uses_dark_native_and_context_surfaces(qapp):
+    page = VideoEditorInterface()
+    page.resize(1050, 800)
+    page.show()
+    qapp.processEvents()
+    video_background = page.preview.surface.video.palette().color(QPalette.Window)
+    assert video_background == QColor("#05080d")
+    assert page.preview.surface.placeholder.isVisible()
+    assert page.preview.surface.video.isHidden()
+    assert page.command_scroll.height() >= 48
+    assert "background: #08111f" in page.styleSheet()
+    assert page.context_tabs.objectName() == "EditorContextTabs"
+    assert page.inspector.widget().objectName() == "EditorInspectorContent"
+    page.close()
+
+
+def test_editor_preview_uses_poster_until_playback_starts(qapp, tmp_path):
+    page = VideoEditorInterface()
+    poster_path = tmp_path / "poster.png"
+    poster = QPixmap(320, 180)
+    poster.fill(QColor("#234567"))
+    assert poster.save(str(poster_path))
+    page.preview.set_poster(str(poster_path))
+    assert page.preview.surface.video.isHidden()
+    assert not page.preview.surface.placeholder.isHidden()
+    assert not page.preview.surface.placeholder.pixmap().isNull()
+    page.preview.surface.show_video()
+    assert not page.preview.surface.video.isHidden()
+    assert page.preview.surface.placeholder.isHidden()
     page.close()
 
 

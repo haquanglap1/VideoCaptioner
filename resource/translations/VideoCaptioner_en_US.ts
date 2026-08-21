@@ -2595,4 +2595,14 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message><source>TTS text</source><translation>TTS text</translation></message>
     <message><source>Visual Layers</source><translation>Visual Layers</translation></message>
 </context>
+<context>
+    <name>DubbingInterface</name>
+    <message><source>VieNeu Local</source><translation>VieNeu Local</translation></message>
+    <message><source>VieNeu: Stopped</source><translation>VieNeu: Stopped</translation></message>
+    <message><source>Check for model update</source><translation>Check for model update</translation></message>
+    <message><source>Rollback</source><translation>Rollback</translation></message>
+    <message><source>Open model folder</source><translation>Open model folder</translation></message>
+    <message><source>Auto update</source><translation>Auto update</translation></message>
+    <message><source>VieNeu Local error</source><translation>VieNeu Local error</translation></message>
+</context>
 </TS>

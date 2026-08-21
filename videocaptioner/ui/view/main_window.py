@@ -26,6 +26,7 @@ from videocaptioner.ui.components.DonateDialog import DonateDialog
 from videocaptioner.ui.components.UpdateDialog import UpdateDialog
 from videocaptioner.ui.thread.ffmpeg_install_thread import FFmpegInstallThread
 from videocaptioner.ui.thread.version_checker_thread import VersionChecker
+from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
 from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
 from videocaptioner.ui.view.home_interface import HomeInterface
 from videocaptioner.ui.view.llm_logs_interface import LLMLogsInterface
@@ -71,6 +72,17 @@ class MainWindow(FluentWindow):
 
         # 检查系统依赖
         self._check_ffmpeg()
+
+        # Lightweight remote SHA check runs outside the Qt main thread.
+        launch_action = "auto-update" if cfg.vieneu_auto_update.value else "check"
+        self._vieneu_launch_thread = VieNeuRuntimeThread(launch_action, parent=self)
+        self._vieneu_launch_thread.result.connect(
+            self.homeInterface.dubbing_interface._on_vieneu_result
+        )
+        self._vieneu_launch_thread.error.connect(
+            self.homeInterface.dubbing_interface._on_vieneu_error
+        )
+        self._vieneu_launch_thread.start()
 
         # 注册退出处理， 清理进程
         atexit.register(self.stop)
@@ -198,7 +210,27 @@ class MainWindow(FluentWindow):
         except Exception:
             pass
 
+        try:
+            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+            get_vieneu_service().cancel_pending()
+            if (
+                hasattr(self, "_vieneu_launch_thread")
+                and self._vieneu_launch_thread.isRunning()
+            ):
+                self._vieneu_launch_thread.requestInterruption()
+                self._vieneu_launch_thread.wait(11_000)
+        except Exception:
+            pass
+
         self.videoEditorInterface.close()
+
+        try:
+            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+            get_vieneu_service().shutdown()
+        except Exception:
+            pass
 
         # Kill child processes (ffmpeg, aria2c, faster-whisper, etc.) BEFORE Qt
         # tears down — atexit alone is unreliable when the user X-closes the app

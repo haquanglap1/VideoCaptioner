@@ -2599,4 +2599,14 @@
     <message><source>TTS text</source><translation>TTS 文字</translation></message>
     <message><source>Visual Layers</source><translation>視覺圖層</translation></message>
 </context>
+<context>
+    <name>DubbingInterface</name>
+    <message><source>VieNeu Local</source><translation>VieNeu 本機</translation></message>
+    <message><source>VieNeu: Stopped</source><translation>VieNeu：已停止</translation></message>
+    <message><source>Check for model update</source><translation>檢查模型更新</translation></message>
+    <message><source>Rollback</source><translation>回復</translation></message>
+    <message><source>Open model folder</source><translation>開啟模型資料夾</translation></message>
+    <message><source>Auto update</source><translation>自動更新</translation></message>
+    <message><source>VieNeu Local error</source><translation>VieNeu 本機錯誤</translation></message>
+</context>
 </TS>

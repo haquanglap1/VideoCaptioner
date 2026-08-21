@@ -1,5 +1,113 @@
 # Project Status
 
+## 2026-08-21 (Video Editor dark UI và visual acceptance)
+
+### Đã sửa
+- Sửa nguyên nhân page trắng: `QVideoWidget`, `QTabWidget`, `QScrollArea` và spinbox Qt chuẩn trước đó
+  fallback về Windows light palette dù navigation QFluent đang dark. Editor giờ có local dark surfaces
+  cho command bar, preview, inspector, splitter, timeline shell, layer list, status/progress và scrollbar.
+- Empty state ẩn native video surface trắng và hiện dark placeholder. Loaded state dùng thumbnail đầu làm
+  poster trước khi Play; khi bắt đầu playback mới đưa `QVideoWidget` lên để giữ QtMultimedia behavior.
+- Thay command bar bọc trong `QScrollArea` (làm width không co và action chồng chữ) bằng responsive shell.
+  Chỉ giữ Open/Save/Undo/Redo/Fast Preview/Export trên hàng chính; Save as ASS và visual layers vào More.
+- Page đặt window title `Video Editor`; dark hierarchy giữ nguyên tại page width 700 px, không thay engine,
+  project schema, timeline model hoặc worker boundary.
+
+### Validation đã đo
+- Computer Use chụp ba trạng thái thật: packaged-before có preview/inspector trắng; source empty-state sau
+  patch; source loaded-state với video poster, V1 thumbnails, A1 waveform, 5 TS1 cues và inspector; exact
+  packaged-after không còn white surface hay toolbar overlap.
+- Editor suite: **25 passed, 0 failed**. Ruff toàn `videocaptioner/`: pass. Targeted Pyright editor:
+  **0 errors, 0 warnings**. Translation sync: pass.
+- PyInstaller 6.22.2 exit 0: EXE **119,560,723 bytes**, SHA-256
+  `7F9FBC771E8D41E9E71D31B64D27F6CA49EA40A538491B7155664B4D7399DD08`, 614 warning lines và
+  0 editor-warning match, `NotSigned`.
+- Web bundle/base bump `1.2.0`; setup SHA-256
+  `FFA45AE9072BF692C71786ECB934D4702D2DD6C08D91008426C748D5C53D8F04`. Upgrade apply `0x0`;
+  VieNeu runtime detect `Present / execute None`, không tải lại payload. Installed EXE hash khớp build và
+  settings hash trước/sau upgrade byte-identical.
+
+## 2026-08-21 (Thin web installer VieNeu)
+
+### Đã triển khai
+- Tách distribution thành base MSI chỉ chứa EXE và remote VieNeu MSI chứa runtime GPU + model seed.
+  WiX Burn `VideoCaptioner Web Setup` nhúng base nhưng lấy runtime MSI + 5 CAB qua `DownloadUrl`; Burn tự
+  tính/kiểm SHA-256 cho từng payload trước khi apply.
+- Web setup `1.1.0` dùng cùng base UpgradeCode với offline MSI `1.0.0`, nên đường migration là Windows
+  Installer major upgrade thay vì xóa/ghi đè file thô. Runtime là package riêng để bundle uninstall theo
+  thứ tự ngược và không trùng component ownership với base.
+- Source mới: `installer/VideoCaptioner-Base.wxs`, `VideoCaptioner-VieNeu-Runtime.wxs` và
+  `VideoCaptioner-Web-Bundle.wxs`. `PayloadBaseUrl` là build variable; build test hiện trỏ loopback
+  `http://127.0.0.1:8765`, cần đổi thành HTTPS CDN/object storage trước khi phát hành cho máy khác.
+
+### Validation đã đo
+- Setup EXE **119,974,725 bytes** (114.42 MiB), nhỏ hơn bộ offline nén khoảng 3.8 GiB. Base MSI nhúng
+  **118,919,168 bytes**; remote payload gồm runtime MSI + 5 CAB.
+- Đã xóa các payload copy cạnh setup để buộc remote path. Burn log xác nhận HTTP `HEAD/GET`,
+  `download from http://127.0.0.1:8765/...` và `Verified acquired payload` cho runtime MSI + đủ 5 CAB.
+- Quiet install pass: base apply `0x0`, runtime apply `0x0`, bundle apply/cleanup `0x0`. Installed EXE
+  SHA-256 `2CEC54842FD78FE34407C97E5E235DC632EAC5318B735140ACD29263D9CCBCCD`; runtime
+  `vieneu-3.3.0-bridge-1.0.0`, active model
+  `2da0efab622a1722125991736524f080b751ef5b`, `torch_cuda.dll` tồn tại và đúng một shortcut.
+- Runtime Burn cache dùng `Cache=remove` và đã được dọn sau install. Bản offline `1.0.0` user cài trước
+  đó được gỡ qua registered ProductCode với removal status 0 trước khi nghiệm thu web setup.
+
+## 2026-08-21 (VieNeu Local one-app V0-V5)
+
+### Đã triển khai
+- Thêm provider `VieNeu Local` riêng, giữ nguyên generic `Local AI`. GUI/manual/full/batch/editor và CLI
+  cùng dùng một managed service; app tự điền loopback endpoint, session token, model và sample rate.
+- Thêm domain Qt-independent `core/tts/vieneu`: protocol/state schema có version, locator không hardcode
+  checkout developer, hidden sidecar ownership, health identity/auth, timeout/retry/cancel, job lease pin
+  revision, graceful/forced owned-tree shutdown và cache/report identity đã sanitize.
+- Ship bridge FastAPI/OpenAI-compatible riêng trong runtime, bind `127.0.0.1`, không import CUDA/VieNeu vào
+  Qt, không log transcript/token; health báo runtime/backend/revision/48 kHz và scheduler batch an toàn.
+- Thêm updater theo Hugging Face commit SHA: resumable full snapshot, atomic state, pinned tokenizer/codec,
+  health + voices + WAV validation, deferred activation khi busy, rejected record, offline reuse và rollback.
+- GUI có status/start-stop/check-update/rollback/model folder/auto-update qua QThread. CLI có
+  `vieneu status|update|rollback` và `--tts-provider vieneu-local`; EXE windowed attach stdout/stderr vào
+  console/redirected pipe khi chạy CLI nhưng không mở console ở GUI mode.
+- Runtime build dùng uv-managed Python 3.12, pinned VieNeu source commit
+  `36c4b501b0634a8f59805e6b529a058fbd30190b`, hash-locked dependencies và notices/license. Builder bỏ
+  đúng static development `torch/lib/dnnl.lib`; `torch_cuda.dll` và inference runtime vẫn được giữ.
+
+### Validation đã đo
+- Full offline suite: **447 passed, 19 skipped, 0 failed** / 466 collected, 127.06 giây. VieNeu + CLI +
+  dubbing regression cuối: **142 passed, 0 failed**. Ruff toàn `videocaptioner/` và các script VieNeu:
+  pass; targeted Pyright: **0 errors, 0 warnings**; translation sync/parse và `git diff --check`: pass.
+- Real RTX/CUDA: cold **7.7161 s**, warm **0.001295 s**, 20 voices, 4 concurrent WAV mono 48 kHz,
+  dynamic batch observed, zero owned process sau shutdown. Clean pruned runtime chạy lại cold
+  **13.8077 s**, warm **0.001596 s**, 2 concurrent và dynamic batch pass.
+- Real update/rollback: activate `d0c7ea3951eaaca27bdcf53ff9fa9eaf8ed5893a`, update/activate
+  `2da0efab622a1722125991736524f080b751ef5b`, offline rollback chạy TTS thật, rồi trả lại latest. Forced
+  candidate `760c29661f7ae65c6a6e55abd9691d05613f82ec` bị reject; previous restart, snapshot giữ lại, lỗi
+  được sanitize và zero process.
+- Exact packaged EXE CLI `vieneu status`: stdout JSON 1.310 byte, stderr rỗng, exit 0. Real packaged
+  Natural Dubbing: exit 0, sidecar observed, video H.264/AAC **6.000 s**, mono **48 kHz**, zero EXE/sidecar.
+  GUI smoke có parent + child sống sau 15 giây, không eager-start sidecar, log không có startup exception;
+  sau đóng còn zero process.
+
+### Runtime, portable và installer
+- Clean runtime: **5,906,443,598 bytes / 29,245 files**; lock SHA-256
+  `079E23501EF943E355F411F18094992D1E9A25E7FEFD7022F37DA5DFAEF171AE`, VieNeu wheel SHA-256
+  `8D4CE3EEB6B645EC1AD03CDCA4AA5BE81906896DE16D531E50AF7387234C8424`.
+- Portable `dist/VideoCaptioner-VieNeu-OneApp-20260821/`: EXE **119,559,584 bytes**, SHA-256
+  `2CEC54842FD78FE34407C97E5E235DC632EAC5318B735140ACD29263D9CCBCCD`; model seed
+  **1,765,957,812 bytes / 42 files**, active latest + pinned MOSS dependency. Release tree được tái tạo
+  sau acceptance và xác nhận không chứa cache/log/work-dir/acceptance data.
+- WiX MSI entry point `dist/installer-wix6-release-final/VideoCaptioner-VieNeu-OneApp-20260821.msi`:
+  **5,345,404 bytes**, SHA-256 `0E64C755A1345F139817163EA8AB47310B4A52CD59215D02239EF3B81E5515DD`,
+  đi cùng 5 external CAB dưới giới hạn media và tạo đúng một Start Menu shortcut. MSI install status 0;
+  installed EXE hash/model/runtime khớp, installed `vieneu status` exit 0; uninstall status 0, shortcut,
+  registry, install dir và owned process đều về zero. EXE/MSI hiện `NotSigned`.
+
+### Acceptance boundary
+- Machine audio/container/content gates đã pass nhưng cảm nhận giọng tiếng Việt vẫn cần người nghe ký
+  duyệt; artifact là `AppData/vieneu-final-packaged-output.mp4` (không nằm trong release package).
+- Giant physically single self-extracting EXE không được hỗ trợ; distribution contract là một MSI entry
+  point + external CAB payload, một shortcut/app, với sidecar nội bộ. Publication đi qua feature branch
+  để không ghi trực tiếp thêm một payload lớn lên `master`.
+
 ## 2026-08-21 (Video Editor E0-E7)
 
 ### Đã triển khai

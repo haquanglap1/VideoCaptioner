@@ -1,8 +1,8 @@
 """Dubbing configuration data classes."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from videocaptioner.core.tts.tts_data import TTSConfig
 
@@ -23,6 +23,14 @@ class TTSProviderEnum(Enum):
     OPENAI = "OpenAI"
     MINIMAX = "MiniMax"
     LOCAL_AI = "Local AI"
+    VIENEU_LOCAL = "VieNeu Local"
+
+
+def tts_provider_key(provider: TTSProviderEnum) -> str:
+    if provider == TTSProviderEnum.VIENEU_LOCAL:
+        return "vieneu-local"
+    # Preserve existing cache/report identity for established providers.
+    return provider.name.lower()
 
 
 @dataclass
@@ -32,6 +40,7 @@ class DubbingConfig:
     # TTS provider
     tts_provider: TTSProviderEnum = TTSProviderEnum.OPENAI
     tts_config: Optional[TTSConfig] = None
+    managed_tts_identity: dict[str, Any] = field(default_factory=dict)
 
     # Audio mixing
     mix_mode: AudioMixMode = AudioMixMode.REDUCE_ORIGINAL

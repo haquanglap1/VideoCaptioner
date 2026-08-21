@@ -12,6 +12,7 @@ Pipeline:
 import os
 import re
 import tempfile
+from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
@@ -119,9 +120,10 @@ class DubbingEngine:
 
         from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
 
-        return DubbingOrchestrator(self).run(
-            video_path, subtitle_path, output_path, config, callback
-        )
+        with self._managed_runtime_context(config):
+            return DubbingOrchestrator(self).run(
+                video_path, subtitle_path, output_path, config, callback
+            )
 
     def regenerate_groups(
         self,
@@ -140,6 +142,19 @@ class DubbingEngine:
         cache key, performs one provider request per unique selected key and
         returns measured groups without mixing or touching unrelated audio.
         """
+        if (
+            config.tts_provider == TTSProviderEnum.VIENEU_LOCAL
+            and not config.managed_tts_identity
+        ):
+            with self._managed_runtime_context(config):
+                return self.regenerate_groups(
+                    cues,
+                    selected_cue_ids,
+                    video_duration=video_duration,
+                    config=config,
+                    output_dir=output_dir,
+                    callback=callback,
+                )
         if not config.tts_config:
             raise ValueError("TTS config chưa được cấu hình")
         if callback is None:
@@ -211,6 +226,14 @@ class DubbingEngine:
                 )
         callback(100, "Đã tạo lại giọng cho group được chọn")
         return targets
+
+    @staticmethod
+    def _managed_runtime_context(config: DubbingConfig):
+        if config.tts_provider != TTSProviderEnum.VIENEU_LOCAL:
+            return nullcontext()
+        from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+        return get_vieneu_service().acquire_for_dubbing(config)
 
     def _dub_legacy_compat(
         self,
@@ -442,6 +465,10 @@ class DubbingEngine:
             return MiniMaxTTS(tts_config)
         elif config.tts_provider == TTSProviderEnum.LOCAL_AI:
             # Local AI uses the standard OpenAI-compatible adapter
+            return OpenAITTS(tts_config)
+        elif config.tts_provider == TTSProviderEnum.VIENEU_LOCAL:
+            if not config.managed_tts_identity:
+                raise RuntimeError("VieNeu Local runtime identity was not resolved for this job")
             return OpenAITTS(tts_config)
         else:
             # Default: OpenAI

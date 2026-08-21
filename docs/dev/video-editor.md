@@ -39,6 +39,11 @@ QtMultimedia là backend preview hiện tại. FFmpeg vẫn là source of truth 
 Không thêm MPV: H.264/AAC play + seek có deterministic machine test; nếu codec thực tế ngoài backend
 Qt của máy user thất bại, UI giữ lỗi cụ thể thay vì báo thành công.
 
+Native `QVideoWidget` được ẩn ở empty/loading state để không fallback về Windows white palette. Thumbnail
+đầu từ media worker làm poster pause; `QVideoWidget` chỉ hiện khi playback bắt đầu. Editor áp local dark
+palette/QSS cho native Qt controls, context tabs, scrollbar, timeline shell và command bar. Action chính
+luôn nằm trên bar; Save as ASS và visual layers nằm trong `More`, để width 700 px không chồng chữ.
+
 ## Dubbing và export
 
 `DubbingEngine.regenerate_groups` dùng planner Natural/Legacy hiện có, tìm group chứa selected cue,

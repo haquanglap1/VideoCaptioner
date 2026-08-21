@@ -2578,4 +2578,14 @@
     <message><source>TTS text</source><translation>TTS 文本</translation></message>
     <message><source>Visual Layers</source><translation>视觉图层</translation></message>
 </context>
+<context>
+    <name>DubbingInterface</name>
+    <message><source>VieNeu Local</source><translation>VieNeu 本地</translation></message>
+    <message><source>VieNeu: Stopped</source><translation>VieNeu：已停止</translation></message>
+    <message><source>Check for model update</source><translation>检查模型更新</translation></message>
+    <message><source>Rollback</source><translation>回滚</translation></message>
+    <message><source>Open model folder</source><translation>打开模型文件夹</translation></message>
+    <message><source>Auto update</source><translation>自动更新</translation></message>
+    <message><source>VieNeu Local error</source><translation>VieNeu 本地错误</translation></message>
+</context>
 </TS>

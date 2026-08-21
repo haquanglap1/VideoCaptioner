@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix
+    xmlns="http://wixtoolset.org/schemas/v4/wxs"
+    xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle
+      Name="VideoCaptioner Web Setup"
+      Manufacturer="VideoCaptioner"
+      Version="1.2.0"
+      UpgradeCode="14A1653D-CF05-4F42-8A73-E81062F10E9D">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          Theme="hyperlinkLicense"
+          LicenseUrl="https://www.gnu.org/licenses/gpl-3.0.html"
+          ShowVersion="yes" />
+    </BootstrapperApplication>
+    <Chain>
+      <MsiPackage
+          Id="VideoCaptionerBase"
+          SourceFile="$(var.BaseMsi)"
+          Compressed="yes"
+          Cache="keep"
+          Vital="yes"
+          Visible="no" />
+      <MsiPackage
+          Id="VieNeuRuntime"
+          SourceFile="$(var.RuntimeMsi)"
+          Compressed="no"
+          DownloadUrl="$(var.PayloadBaseUrl)/{2}"
+          Cache="remove"
+          Vital="yes"
+          Visible="no">
+        <Payload SourceFile="$(var.PayloadDir)\VieNeuRuntime1.cab" Compressed="no" DownloadUrl="$(var.PayloadBaseUrl)/{2}" />
+        <Payload SourceFile="$(var.PayloadDir)\VieNeuRuntime2.cab" Compressed="no" DownloadUrl="$(var.PayloadBaseUrl)/{2}" />
+        <Payload SourceFile="$(var.PayloadDir)\VieNeuRuntime3.cab" Compressed="no" DownloadUrl="$(var.PayloadBaseUrl)/{2}" />
+        <Payload SourceFile="$(var.PayloadDir)\VieNeuRuntime4.cab" Compressed="no" DownloadUrl="$(var.PayloadBaseUrl)/{2}" />
+        <Payload SourceFile="$(var.PayloadDir)\VieNeuRuntime5.cab" Compressed="no" DownloadUrl="$(var.PayloadBaseUrl)/{2}" />
+      </MsiPackage>
+    </Chain>
+  </Bundle>
+</Wix>

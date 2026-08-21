@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="VideoCaptioner"
+      Manufacturer="VideoCaptioner"
+      Version="1.2.0"
+      UpgradeCode="2D3B48B7-6DE1-4A8D-B793-E6D2D489A279"
+      Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer VideoCaptioner version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="VideoCaptioner" />
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="VideoCaptioner" />
+    </StandardDirectory>
+
+    <Feature Id="BaseFeature" Title="VideoCaptioner" Level="1">
+      <ComponentRef Id="BaseExecutable" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="BaseExecutable" Guid="BA8A142B-3A42-4FB0-81CA-22B77060DF92">
+        <File Id="VideoCaptionerExecutable" Source="$(var.ExePath)" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+
+  <Fragment>
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="9F1B360E-D997-4475-9C2E-696B8EC8688D">
+        <Shortcut
+            Id="StartMenuShortcut"
+            Name="VideoCaptioner"
+            Description="VideoCaptioner with managed VieNeu Local"
+            Target="[INSTALLFOLDER]VideoCaptioner-VieNeu-OneApp-20260821.exe"
+            WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\VideoCaptioner\WebInstaller"
+            Name="baseInstalled"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

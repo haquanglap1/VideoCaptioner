@@ -46,6 +46,8 @@ if TYPE_CHECKING:
     from videocaptioner.core.dubbing.models import DubbingGroup
     from videocaptioner.core.tts import BaseTTS
 
+from videocaptioner.core.dubbing.config import tts_provider_key
+
 logger = setup_logger("dubbing.orchestrator")
 _CREATE_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
@@ -217,12 +219,13 @@ class DubbingOrchestrator:
         return DubbingPlan(
             source_path=subtitle_path,
             target_language=config.target_language,
-            provider=config.tts_provider.name.lower(),
+            provider=tts_provider_key(config.tts_provider),
             model=tts.model if tts else "",
             voice=(tts.voice or "") if tts else "",
             timing_mode=config.timing_mode,
             created_at=datetime.now(timezone.utc).isoformat(),
             groups=groups,
+            provider_identity=dict(config.managed_tts_identity),
         )
 
     @staticmethod
@@ -234,12 +237,13 @@ class DubbingOrchestrator:
         assert config.tts_config is not None
         return build_tts_cache_key(
             text=group.tts_text,
-            provider=config.tts_provider.name.lower(),
+            provider=tts_provider_key(config.tts_provider),
             api_base=config.tts_config.base_url,
             model=config.tts_config.model,
             voice=config.tts_config.voice or "",
             speed=config.tts_config.speed,
             sample_rate=config.tts_config.sample_rate,
+            runtime_identity=config.managed_tts_identity,
         )
 
     def _resolve_cache_hits(
@@ -312,10 +316,11 @@ class DubbingOrchestrator:
             cache.put(
                 group.cache_key,
                 audio_path,
-                provider=config.tts_provider.name.lower(),
+                provider=tts_provider_key(config.tts_provider),
                 model=config.tts_config.model,
                 voice=config.tts_config.voice or "",
                 sample_rate=config.tts_config.sample_rate,
+                runtime_identity=config.managed_tts_identity,
             )
             for duplicate in duplicates.get(group.cache_key, []):
                 duplicate.audio_path = group.audio_path

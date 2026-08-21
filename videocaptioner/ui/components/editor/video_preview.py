@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt5.QtCore import QRectF, Qt, QUrl, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QColor, QPainter, QPalette, QPen, QPixmap
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget
@@ -98,14 +98,87 @@ class EditorOverlay(QWidget):
 class PreviewSurface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("EditorPreviewSurface")
         self.video = QVideoWidget(self)
+        self.video.setObjectName("EditorNativeVideoSurface")
         self.overlay = EditorOverlay(self)
+        self.placeholder = QLabel(self.tr("Open a video to start previewing"), self)
+        self.placeholder.setAlignment(Qt.AlignCenter)
+        self.placeholder.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.placeholder.setStyleSheet(
+            "color:#71829a; background:transparent; font-size:14px; font-weight:600;"
+        )
+        self._poster = QPixmap()
         self.setMinimumSize(320, 180)
-        self.setStyleSheet("background:black;")
+        self.setStyleSheet(
+            "QWidget#EditorPreviewSurface {"
+            " background:#05080d; border:1px solid #1f3148; border-radius:8px; }"
+            "QVideoWidget#EditorNativeVideoSurface { background:#05080d; }"
+        )
+        surface_palette = self.palette()
+        surface_palette.setColor(QPalette.Window, QColor("#05080d"))
+        self.setPalette(surface_palette)
+        self.setAutoFillBackground(True)
+        palette = self.video.palette()
+        palette.setColor(QPalette.Window, QColor("#05080d"))
+        self.video.setPalette(palette)
+        self.video.setAutoFillBackground(True)
+        self.set_empty(True)
+
+    def set_empty(self, empty: bool) -> None:
+        self._poster = QPixmap()
+        self.placeholder.setPixmap(QPixmap())
+        self.placeholder.setText(self.tr("Open a video to start previewing"))
+        self.video.setVisible(not empty)
+        self.placeholder.setVisible(bool(empty))
+        if empty:
+            self.placeholder.raise_()
+            self.overlay.raise_()
+        else:
+            self.overlay.raise_()
+
+    def set_loading(self) -> None:
+        self._poster = QPixmap()
+        self.video.hide()
+        self.placeholder.setPixmap(QPixmap())
+        self.placeholder.setText(self.tr("Loading preview..."))
+        self.placeholder.show()
+        self.placeholder.raise_()
+        self.overlay.raise_()
+
+    def set_poster(self, path: str) -> None:
+        poster = QPixmap(str(path or ""))
+        if poster.isNull():
+            self.show_video()
+            return
+        self._poster = poster
+        self.video.hide()
+        self.placeholder.setText("")
+        self.placeholder.show()
+        self._scale_poster()
+        self.placeholder.raise_()
+        self.overlay.raise_()
+
+    def show_video(self) -> None:
+        self.placeholder.hide()
+        self.video.show()
+        self.overlay.raise_()
+
+    def _scale_poster(self) -> None:
+        if self._poster.isNull():
+            return
+        self.placeholder.setPixmap(
+            self._poster.scaled(
+                self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+        )
 
     def resizeEvent(self, event) -> None:
         self.video.setGeometry(self.rect())
+        self.placeholder.setGeometry(self.rect())
+        self._scale_poster()
         self.overlay.setGeometry(self.rect())
+        self.placeholder.raise_()
         self.overlay.raise_()
         super().resizeEvent(event)
 
@@ -117,6 +190,7 @@ class EditorVideoPreview(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("EditorVideoPreview")
         self.project: EditorProject | None = None
         self.surface = PreviewSurface(self)
         self.player = QMediaPlayer(self, QMediaPlayer.VideoSurface)
@@ -145,10 +219,13 @@ class EditorVideoPreview(QWidget):
     def set_project(self, project: EditorProject | None) -> None:
         self.project = project
         self.surface.overlay.set_state(project, 0)
-        if not project or not project.video_path or not Path(project.video_path).is_file():
+        has_video = bool(project and project.video_path and Path(project.video_path).is_file())
+        if not has_video:
+            self.surface.set_empty(True)
             self.player.setMedia(QMediaContent())
             self.slider.setRange(0, 0)
             return
+        self.surface.set_loading()
         self.player.setMedia(QMediaContent(QUrl.fromLocalFile(project.video_path)))
         self.slider.setRange(0, max(0, project.duration_ms))
         self.set_position(project.playhead_ms)
@@ -157,7 +234,11 @@ class EditorVideoPreview(QWidget):
         if self.player.state() == QMediaPlayer.PlayingState:
             self.player.pause()
         else:
+            self.surface.show_video()
             self.player.play()
+
+    def set_poster(self, path: str) -> None:
+        self.surface.set_poster(path)
 
     def set_position(self, position_ms: int) -> None:
         position_ms = int(position_ms)

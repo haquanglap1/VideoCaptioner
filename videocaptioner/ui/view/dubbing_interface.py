@@ -30,14 +30,17 @@ from qfluentwidgets import (
     SwitchButton,
 )
 
+from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.audio_merge_thread import AudioMergeThread
 from videocaptioner.ui.thread.dubbing_thread import DubbingThread
+from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
 
 logger = setup_logger("dubbing_interface")
 
@@ -111,6 +114,7 @@ class DubbingInterface(QWidget):
         self._thread: DubbingThread | None = None
         self._is_pipeline_mode = False
         self._pending_report_data: dict = {}
+        self._vieneu_threads: set[VieNeuRuntimeThread] = set()
         self._init_ui()
 
     def _init_ui(self):
@@ -139,8 +143,8 @@ class DubbingInterface(QWidget):
         row1 = QHBoxLayout()
         row1.addWidget(BodyLabel(self.tr("TTS Provider:")))
         self.provider_combo = ComboBox()
-        self.provider_combo.addItems(["OpenAI", "MiniMax", "Local AI"])
-        _provider_map = {"openai": 0, "minimax": 1, "local_ai": 2}
+        self.provider_combo.addItems(["OpenAI", "MiniMax", "Local AI", "VieNeu Local"])
+        _provider_map = {"openai": 0, "minimax": 1, "local_ai": 2, "vieneu-local": 3}
         self.provider_combo.setCurrentIndex(
             _provider_map.get(cfg.dubbing_tts_provider.value, 0)
         )
@@ -148,6 +152,39 @@ class DubbingInterface(QWidget):
         row1.addWidget(self.provider_combo)
         row1.addStretch()
         settings_layout.addLayout(row1)
+
+        self.vieneu_widget = QWidget(self.settings_widget)
+        vieneu_layout = QHBoxLayout(self.vieneu_widget)
+        vieneu_layout.setContentsMargins(0, 0, 0, 0)
+        self.vieneu_status_label = BodyLabel(self.tr("VieNeu: Stopped"))
+        self.vieneu_start_stop_btn = PushButton(self.tr("Start"))
+        self.vieneu_update_btn = PushButton(self.tr("Check for model update"))
+        self.vieneu_rollback_btn = PushButton(self.tr("Rollback"))
+        self.vieneu_folder_btn = PushButton(self.tr("Open model folder"))
+        self.vieneu_auto_update_switch = SwitchButton()
+        self.vieneu_auto_update_switch.setChecked(cfg.vieneu_auto_update.value)
+        self.vieneu_auto_update_switch.checkedChanged.connect(
+            lambda checked: cfg.set(cfg.vieneu_auto_update, checked)
+        )
+        self.vieneu_start_stop_btn.clicked.connect(self._toggle_vieneu_runtime)
+        self.vieneu_update_btn.clicked.connect(
+            lambda: self._start_vieneu_action("update")
+        )
+        self.vieneu_rollback_btn.clicked.connect(
+            lambda: self._start_vieneu_action("rollback")
+        )
+        self.vieneu_folder_btn.clicked.connect(
+            lambda: open_folder(str(MODEL_PATH / "vieneu"))
+        )
+        vieneu_layout.addWidget(self.vieneu_status_label)
+        vieneu_layout.addWidget(self.vieneu_start_stop_btn)
+        vieneu_layout.addWidget(self.vieneu_update_btn)
+        vieneu_layout.addWidget(self.vieneu_rollback_btn)
+        vieneu_layout.addWidget(self.vieneu_folder_btn)
+        vieneu_layout.addWidget(BodyLabel(self.tr("Auto update")))
+        vieneu_layout.addWidget(self.vieneu_auto_update_switch)
+        vieneu_layout.addStretch()
+        settings_layout.addWidget(self.vieneu_widget)
 
         # Voice
         row2 = QHBoxLayout()
@@ -342,7 +379,7 @@ class DubbingInterface(QWidget):
         row9 = QHBoxLayout()
         row9.addWidget(BodyLabel(self.tr("Chất lượng (Hz):")))
         self.sample_rate_combo = ComboBox()
-        self._sample_rates = [16000, 24000, 32000, 44100]
+        self._sample_rates = [16000, 24000, 32000, 44100, 48000]
         self.sample_rate_combo.addItems([str(r) for r in self._sample_rates])
         try:
             self.sample_rate_combo.setCurrentIndex(
@@ -492,6 +529,7 @@ class DubbingInterface(QWidget):
         self.status_label.setVisible(False)
         layout.addWidget(self.status_label)
         self._update_timing_controls()
+        self._update_provider_visibility()
 
     # ==== Public API (called by HomeInterface pipeline) ====
 
@@ -711,7 +749,7 @@ class DubbingInterface(QWidget):
         cfg.set(cfg.dubbing_enabled, checked)
 
     def _on_provider_changed(self, index: int):
-        provider_keys = ["openai", "minimax", "local_ai"]
+        provider_keys = ["openai", "minimax", "local_ai", "vieneu-local"]
         if not (0 <= index < len(provider_keys)):
             return
         provider = provider_keys[index]
@@ -741,6 +779,12 @@ class DubbingInterface(QWidget):
                 "api_base": "http://localhost:8000/v1",
                 "model": "",
             },
+            "vieneu-local": {
+                "voices": [],
+                "voice": "",
+                "api_base": "",
+                "model": "",
+            },
         }[provider]
 
         # Refresh danh sách gợi ý voice (giữ lại text hiện tại nếu có)
@@ -757,6 +801,83 @@ class DubbingInterface(QWidget):
             self.api_base_edit.setText(defaults["api_base"])
         if not self.model_edit.text().strip() and defaults["model"]:
             self.model_edit.setText(defaults["model"])
+        self._update_provider_visibility()
+
+    def _update_provider_visibility(self):
+        managed = self.provider_combo.currentIndex() == 3
+        self.vieneu_widget.setVisible(managed)
+        for editor in (self.api_key_edit, self.api_base_edit, self.model_edit):
+            editor.setEnabled(not managed)
+        self.sample_rate_combo.setEnabled(not managed)
+        if managed:
+            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+            service = get_vieneu_service()
+            state = service.manager.state.value.title()
+            model = service.model_state().active_revision[:12]
+            suffix = f" • {model}" if model else " • no active model"
+            self.vieneu_status_label.setText(f"VieNeu: {state}{suffix}")
+            self.vieneu_start_stop_btn.setText(
+                self.tr("Stop") if service.manager.process_id else self.tr("Start")
+            )
+
+    def _toggle_vieneu_runtime(self):
+        from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+        action = "stop" if get_vieneu_service().manager.process_id else "start"
+        self._start_vieneu_action(action)
+
+    def _start_vieneu_action(self, action: str):
+        thread = VieNeuRuntimeThread(action, parent=self)
+        self._vieneu_threads.add(thread)
+        thread.runtime_state.connect(self._on_vieneu_state)
+        thread.progress.connect(self._on_progress)
+        thread.result.connect(self._on_vieneu_result)
+        thread.error.connect(self._on_vieneu_error)
+        thread.finished.connect(
+            lambda current=thread: self._vieneu_threads.discard(current)
+        )
+        thread.start()
+
+    def _on_vieneu_state(self, state: str, message: str):
+        suffix = f" • {message}" if message else ""
+        self.vieneu_status_label.setText(f"VieNeu: {state.title()}{suffix}")
+
+    def _on_vieneu_result(self, action: str, result):
+        if action == "voices":
+            models = [str(item.get("id", "")) for item in result if item.get("id")]
+            self._on_fetch_voices_finished(models, "")
+        else:
+            self._update_provider_visibility()
+            self.progress_bar.setValue(100)
+            self.status_label.setVisible(True)
+            self.status_label.setText(self.tr("VieNeu operation completed"))
+
+    def _on_vieneu_error(self, action: str, error: str):
+        self.fetch_voice_btn.setEnabled(True)
+        self.fetch_voice_btn.setText(self.tr("Tải danh sách"))
+        self._update_provider_visibility()
+        from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+        has_active = bool(get_vieneu_service().model_state().active_revision)
+        if action in {"check", "auto-update"} and has_active:
+            InfoBar.warning(
+                self.tr("VieNeu update unavailable"),
+                error,
+                duration=5000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        self.status_label.setVisible(True)
+        self.status_label.setText(self.tr("VieNeu failed") + ": " + error)
+        InfoBar.error(
+            self.tr("VieNeu Local error"),
+            error,
+            duration=-1,
+            position=InfoBarPosition.BOTTOM,
+            parent=self.window(),
+        )
 
     def _fetch_voices(self):
         """Tải danh sách giọng nói từ API."""
@@ -774,6 +895,12 @@ class DubbingInterface(QWidget):
             )
             # Re-trigger the default list
             self._on_provider_changed(provider_idx)
+            return
+
+        if provider_idx == 3:
+            self.fetch_voice_btn.setEnabled(False)
+            self.fetch_voice_btn.setText(self.tr("Đang tải..."))
+            self._start_vieneu_action("voices")
             return
 
         self.fetch_voice_btn.setEnabled(False)
@@ -888,6 +1015,7 @@ class DubbingInterface(QWidget):
                 parent=self.window(),
             )
             return
+
         self.openInVideoEditorRequested.emit(str(video_path), str(subtitle_path))
 
     def _save_settings(self):
@@ -933,3 +1061,16 @@ class DubbingInterface(QWidget):
         self.max_speed_label.setEnabled(not natural)
         self.rewrite_switch.setEnabled(natural)
         self.unresolved_combo.setEnabled(natural)
+
+    def closeEvent(self, event):
+        try:
+            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+            get_vieneu_service().cancel_pending()
+        except Exception:
+            pass
+        for thread in tuple(self._vieneu_threads):
+            if thread.isRunning():
+                thread.requestInterruption()
+                thread.wait(10_000)
+        super().closeEvent(event)

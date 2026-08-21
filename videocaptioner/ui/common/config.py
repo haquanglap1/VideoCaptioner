@@ -303,7 +303,7 @@ class Config(QConfig):
     dubbing_enabled = ConfigItem("Dubbing", "Enabled", False, BoolValidator())
     dubbing_tts_provider = OptionsConfigItem(
         "Dubbing", "TTSProvider", "openai",
-        OptionsValidator(["openai", "minimax", "local_ai"]),
+        OptionsValidator(["openai", "minimax", "local_ai", "vieneu-local"]),
     )
     dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
     dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
@@ -347,13 +347,16 @@ class Config(QConfig):
     )
     dubbing_tts_sample_rate = OptionsConfigItem(
         "Dubbing", "TTSSampleRate", 32000,
-        OptionsValidator([16000, 24000, 32000, 44100]),
+        OptionsValidator([16000, 24000, 32000, 44100, 48000]),
     )
     dubbing_voice_volume = RangeConfigItem(
         "Dubbing", "VoiceVolume", 100, RangeValidator(50, 300)
     )  # stored as %, 100 = 1.0x
     dubbing_tts_concurrency = RangeConfigItem(
         "Dubbing", "TTSConcurrency", 4, RangeValidator(1, 48)
+    )
+    vieneu_auto_update = ConfigItem(
+        "VieNeu", "AutomaticallyUpdateModel", True, BoolValidator()
     )
 
     # ------------------- 保存配置 -------------------

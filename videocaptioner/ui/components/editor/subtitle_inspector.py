@@ -1,8 +1,9 @@
+# pyright: reportAttributeAccessIssue=false
 """Context inspector for independently editable source/display/TTS text."""
 
 from __future__ import annotations
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
@@ -26,18 +27,48 @@ class SubtitleInspector(QScrollArea):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("EditorSubtitleInspector")
         self.setWidgetResizable(True)
         self.setMinimumWidth(290)
+        self.setFrameShape(QScrollArea.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._cue_id = ""
         self._duration_ms = 0
         content = QWidget(self)
+        content.setObjectName("EditorInspectorContent")
         self.setWidget(content)
+        self.viewport().setObjectName("EditorInspectorViewport")
+        self.setStyleSheet(
+            "QScrollArea#EditorSubtitleInspector, QWidget#EditorInspectorViewport,"
+            " QWidget#EditorInspectorContent { background:#0d1726; border:none; }"
+            "QWidget#EditorInspectorContent QLabel { color:#dbe7f5; }"
+            "QWidget#EditorInspectorContent QDoubleSpinBox,"
+            " QWidget#EditorInspectorContent QLineEdit,"
+            " QWidget#EditorInspectorContent QTextEdit {"
+            " color:#e8f0fa; background:#101d2e; border:1px solid #29405d;"
+            " border-radius:6px; padding:5px; selection-background-color:#2a8f83; }"
+            "QWidget#EditorInspectorContent QDoubleSpinBox:disabled,"
+            " QWidget#EditorInspectorContent QLineEdit:disabled,"
+            " QWidget#EditorInspectorContent QTextEdit:disabled {"
+            " color:#64748b; background:#0b1421; border-color:#1d2c40; }"
+            "QWidget#EditorInspectorContent QScrollBar:vertical {"
+            " background:#0b1421; width:9px; margin:0; }"
+            "QWidget#EditorInspectorContent QScrollBar::handle:vertical {"
+            " background:#314967; min-height:28px; border-radius:4px; }"
+            "QScrollArea#EditorSubtitleInspector QScrollBar:vertical {"
+            " background:#0b1421; width:9px; margin:0; }"
+            "QScrollArea#EditorSubtitleInspector QScrollBar::handle:vertical {"
+            " background:#314967; min-height:28px; border-radius:4px; }"
+            "QScrollArea#EditorSubtitleInspector QScrollBar::add-line:vertical,"
+            " QScrollArea#EditorSubtitleInspector QScrollBar::sub-line:vertical {"
+            " height:0; background:transparent; }"
+        )
         layout = QVBoxLayout(content)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
         layout.addWidget(StrongBodyLabel(self.tr("Context Inspector"), content))
         self.empty_label = QLabel(self.tr("Select a TS1 cue to edit"), content)
-        self.empty_label.setStyleSheet("color:#64748b;")
+        self.empty_label.setStyleSheet("color:#71829a;")
         layout.addWidget(self.empty_label)
 
         self.form_widget = QWidget(content)

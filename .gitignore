@@ -47,3 +47,7 @@ docs/.vitepress/dist/
 .claude/
 CLAUDE.md
 videocaptioner/_version.py
+
+# Project-scoped build tool caches (recreated locally; never shipped as source)
+/.wix/
+/tools/

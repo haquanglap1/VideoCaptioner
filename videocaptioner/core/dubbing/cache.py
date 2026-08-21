@@ -10,6 +10,7 @@ import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from videocaptioner.config import CACHE_PATH
@@ -42,6 +43,7 @@ def build_tts_cache_key(
     voice: str,
     speed: float,
     sample_rate: int,
+    runtime_identity: dict[str, Any] | None = None,
 ) -> str:
     payload = {
         "schema_version": CACHE_SCHEMA_VERSION,
@@ -54,6 +56,8 @@ def build_tts_cache_key(
         "speed": round(float(speed), 4),
         "sample_rate": int(sample_rate),
     }
+    if runtime_identity:
+        payload["runtime_identity"] = dict(runtime_identity)
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -114,6 +118,7 @@ class PersistentTTSCache:
         model: str,
         voice: str,
         sample_rate: int,
+        runtime_identity: dict[str, Any] | None = None,
     ) -> TTSCacheEntry | None:
         if not self.enabled:
             return None
@@ -137,6 +142,8 @@ class PersistentTTSCache:
             "sample_rate": int(sample_rate),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        if runtime_identity:
+            metadata["runtime_identity"] = dict(runtime_identity)
         json_tmp.write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
         )

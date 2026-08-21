@@ -22,6 +22,20 @@ class DubbingReportDialog(MessageBoxBase):
             failed=summary.get("failed_groups", 0),
         )
         self.summaryLabel = BodyLabel(counters, self)
+        identity = data.get("provider_identity", {})
+        self.identityLabel = None
+        if identity:
+            identity_text = self.tr(
+                "Provider: {provider} | Runtime: {runtime} | Model: {revision} | "
+                "Backend: {backend} | Sample rate: {sample_rate} Hz"
+            ).format(
+                provider=data.get("provider", ""),
+                runtime=identity.get("runtime_version", ""),
+                revision=str(identity.get("model_revision", ""))[:12],
+                backend=identity.get("backend", ""),
+                sample_rate=identity.get("sample_rate", ""),
+            )
+            self.identityLabel = BodyLabel(identity_text, self)
 
         columns = [
             self.tr("Group"),
@@ -69,6 +83,8 @@ class DubbingReportDialog(MessageBoxBase):
 
         self.viewLayout.addWidget(self.titleLabel)
         self.viewLayout.addWidget(self.summaryLabel)
+        if self.identityLabel:
+            self.viewLayout.addWidget(self.identityLabel)
         self.viewLayout.addWidget(self.table)
         self.yesButton.hide()
         self.cancelButton.setText(self.tr("Đóng"))

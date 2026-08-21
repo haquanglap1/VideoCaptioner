@@ -112,6 +112,7 @@ class DubbingPlan:
     timing_mode: DubbingTimingMode
     created_at: str
     groups: list[DubbingGroup]
+    provider_identity: dict[str, Any] = field(default_factory=dict)
     summary: dict[str, Any] = field(default_factory=dict)
     schema_version: str = "dubbing-plan-v1"
 

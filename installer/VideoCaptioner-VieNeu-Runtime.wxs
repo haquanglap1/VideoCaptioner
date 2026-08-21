@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="VideoCaptioner VieNeu Runtime"
+      Manufacturer="VideoCaptioner"
+      Version="1.0.0"
+      UpgradeCode="80198CEC-284F-4AC5-B317-75908C93C685"
+      Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer VieNeu runtime is already installed." />
+    <MediaTemplate
+        EmbedCab="no"
+        CabinetTemplate="VieNeuRuntime{0}.cab"
+        MaximumUncompressedMediaSize="1800" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="LocalProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="VideoCaptioner">
+          <Directory Id="RuntimeRoot" Name="runtime">
+            <Directory Id="VieNeuRuntimeFolder" Name="vieneu" />
+          </Directory>
+          <Directory Id="BundledAppDataFolder" Name="AppData">
+            <Directory Id="ModelsFolder" Name="models">
+              <Directory Id="VieNeuModelFolder" Name="vieneu" />
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="RuntimeFeature" Title="VieNeu Local GPU runtime" Level="1">
+      <ComponentGroupRef Id="RuntimeFiles" />
+      <ComponentGroupRef Id="ModelFiles" />
+      <ComponentRef Id="RuntimeRegistration" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="RuntimeFiles" Directory="VieNeuRuntimeFolder">
+      <Files Include="$(var.RuntimeDir)\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="ModelFiles" Directory="VieNeuModelFolder">
+      <Files Include="$(var.ModelDir)\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="RuntimeRegistration" Guid="E56E7F08-F2A8-4ED5-9D38-EA709AA5918C">
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\VideoCaptioner\WebInstaller"
+            Name="vieneuRuntimeInstalled"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

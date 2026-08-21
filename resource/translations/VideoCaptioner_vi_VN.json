@@ -781,5 +781,18 @@
   "Loaded {count} cues — V1 / A1 / TS1": "Đã tải {count} câu — V1 / A1 / TS1",
   "Regenerated only the selected cue/group": "Chỉ tạo lại giọng cho câu/nhóm đã chọn",
   "Enable and configure Dubbing before regenerating voice": "Hãy bật và cấu hình Lồng tiếng trước khi tạo lại giọng",
-  "Video Editor error": "Lỗi Trình chỉnh sửa video"
+  "Video Editor error": "Lỗi Trình chỉnh sửa video",
+  "VieNeu Local": "VieNeu cục bộ",
+  "VieNeu: Stopped": "VieNeu: Đã dừng",
+  "Start": "Khởi động",
+  "Stop": "Dừng",
+  "Check for model update": "Kiểm tra cập nhật mô hình",
+  "Rollback": "Quay về mô hình trước",
+  "Open model folder": "Mở thư mục mô hình",
+  "Auto update": "Tự động cập nhật",
+  "VieNeu operation completed": "Thao tác VieNeu hoàn tất",
+  "VieNeu update unavailable": "Không thể cập nhật VieNeu",
+  "VieNeu failed": "VieNeu thất bại",
+  "VieNeu Local error": "Lỗi VieNeu cục bộ",
+  "Provider: {provider} | Runtime: {runtime} | Model: {revision} | Backend: {backend} | Sample rate: {sample_rate} Hz": "Provider: {provider} | Runtime: {runtime} | Mô hình: {revision} | Backend: {backend} | Tần số lấy mẫu: {sample_rate} Hz"
 }

@@ -30,6 +30,8 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
         "minimax": TTSProviderEnum.MINIMAX,
         "local-ai": TTSProviderEnum.LOCAL_AI,
         "local_ai": TTSProviderEnum.LOCAL_AI,
+        "vieneu-local": TTSProviderEnum.VIENEU_LOCAL,
+        "vieneu_local": TTSProviderEnum.VIENEU_LOCAL,
     }
     mix_map = {
         "keep": AudioMixMode.KEEP_ORIGINAL,
@@ -123,7 +125,10 @@ def run(args: Namespace, config: dict) -> int:
     report_path = str(getattr(args, "report", None) or "")
     dubbing_config = build_dubbing_config(config, report_path)
     assert dubbing_config.tts_config is not None
-    if not dubbing_config.tts_config.api_key:
+    if (
+        dubbing_config.tts_provider != TTSProviderEnum.VIENEU_LOCAL
+        and not dubbing_config.tts_config.api_key
+    ):
         output.config_missing_error(
             "TTS API key", "dubbing.tts_api_key", "VIDEOCAPTIONER_TTS_API_KEY", "--tts-api-key"
         )
@@ -183,3 +188,8 @@ def run(args: Namespace, config: dict) -> int:
             import traceback
             traceback.print_exc()
         return EXIT.RUNTIME_ERROR
+    finally:
+        if dubbing_config.tts_provider == TTSProviderEnum.VIENEU_LOCAL:
+            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+            get_vieneu_service().shutdown()
