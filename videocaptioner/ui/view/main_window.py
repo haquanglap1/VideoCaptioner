@@ -31,6 +31,7 @@ from videocaptioner.ui.view.home_interface import HomeInterface
 from videocaptioner.ui.view.llm_logs_interface import LLMLogsInterface
 from videocaptioner.ui.view.setting_interface import SettingInterface
 from videocaptioner.ui.view.subtitle_style_interface import SubtitleStyleInterface
+from videocaptioner.ui.view.video_editor_interface import VideoEditorInterface
 
 LOGO_PATH = ASSETS_PATH / "logo.png"
 
@@ -44,8 +45,15 @@ class MainWindow(FluentWindow):
         self.homeInterface = HomeInterface(self)
         self.settingInterface = SettingInterface(self)
         self.subtitleStyleInterface = SubtitleStyleInterface(self)
+        self.videoEditorInterface = VideoEditorInterface(self)
         self.batchProcessInterface = BatchProcessInterface(self)
         self.llmLogsInterface = LLMLogsInterface(self)
+        self.homeInterface.subtitle_optimization_interface.openInVideoEditorRequested.connect(
+            self.openInVideoEditor
+        )
+        self.homeInterface.dubbing_interface.openInVideoEditorRequested.connect(
+            self.openInVideoEditor
+        )
 
         # 初始化版本检查器
         self.versionChecker = VersionChecker()
@@ -73,6 +81,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(self.homeInterface, FIF.HOME, self.tr("主页"))
         self.addSubInterface(self.batchProcessInterface, FIF.VIDEO, self.tr("批量处理"))
         self.addSubInterface(self.subtitleStyleInterface, FIF.FONT, self.tr("字幕样式"))
+        self.addSubInterface(self.videoEditorInterface, FIF.EDIT, self.tr("Video Editor"))
         self.addSubInterface(self.llmLogsInterface, FIF.HISTORY, self.tr("请求日志"))
 
         self.navigationInterface.addSeparator()
@@ -94,6 +103,10 @@ class MainWindow(FluentWindow):
         else:
             self.setWindowTitle(self.tr("卡卡字幕助手 -- VideoCaptioner"))
         self.stackedWidget.setCurrentWidget(interface, popOut=False)
+
+    def openInVideoEditor(self, video_path: str, subtitle_path: str) -> None:
+        self.videoEditorInterface.open_in_editor(video_path, subtitle_path)
+        self.switchTo(self.videoEditorInterface)
 
     def initWindow(self):
         """初始化窗口"""
@@ -184,6 +197,8 @@ class MainWindow(FluentWindow):
                 self.versionThread.wait(2000)
         except Exception:
             pass
+
+        self.videoEditorInterface.close()
 
         # Kill child processes (ffmpeg, aria2c, faster-whisper, etc.) BEFORE Qt
         # tears down — atexit alone is unreliable when the user X-closes the app

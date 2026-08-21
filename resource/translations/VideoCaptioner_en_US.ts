@@ -2583,4 +2583,16 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <name>LogWindow</name>
     <message><source>Chưa có nhật ký hôm nay</source><translation>No application log for today</translation></message>
 </context>
+<context>
+    <name>VideoEditorInterface</name>
+    <message><source>Video Editor</source><translation>Video Editor</translation></message>
+    <message><source>Open in Video Editor</source><translation>Open in Video Editor</translation></message>
+    <message><source>Save project</source><translation>Save project</translation></message>
+    <message><source>Save as ASS</source><translation>Save as ASS</translation></message>
+    <message><source>Fast Preview</source><translation>Fast Preview</translation></message>
+    <message><source>Regenerate voice</source><translation>Regenerate voice</translation></message>
+    <message><source>Display subtitle</source><translation>Display subtitle</translation></message>
+    <message><source>TTS text</source><translation>TTS text</translation></message>
+    <message><source>Visual Layers</source><translation>Visual Layers</translation></message>
+</context>
 </TS>

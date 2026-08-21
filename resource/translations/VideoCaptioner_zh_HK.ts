@@ -2587,4 +2587,16 @@
     <name>LogWindow</name>
     <message><source>Chưa có nhật ký hôm nay</source><translation>今天還沒有應用日誌</translation></message>
 </context>
+<context>
+    <name>VideoEditorInterface</name>
+    <message><source>Video Editor</source><translation>影片編輯器</translation></message>
+    <message><source>Open in Video Editor</source><translation>在影片編輯器中開啟</translation></message>
+    <message><source>Save project</source><translation>儲存專案</translation></message>
+    <message><source>Save as ASS</source><translation>另存為 ASS</translation></message>
+    <message><source>Fast Preview</source><translation>快速預覽</translation></message>
+    <message><source>Regenerate voice</source><translation>重新產生語音</translation></message>
+    <message><source>Display subtitle</source><translation>顯示字幕</translation></message>
+    <message><source>TTS text</source><translation>TTS 文字</translation></message>
+    <message><source>Visual Layers</source><translation>視覺圖層</translation></message>
+</context>
 </TS>

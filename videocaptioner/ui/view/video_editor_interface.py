@@ -1,0 +1,780 @@
+# pyright: reportAttributeAccessIssue=false
+"""Native Video Editor navigation page and UI-thread orchestration."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from uuid import uuid4
+
+from PyQt5.QtCore import Qt, QUrl, pyqtSignal
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtMultimedia import QMediaContent
+from PyQt5.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QListWidget,
+    QProgressBar,
+    QScrollArea,
+    QShortcut,
+    QSizePolicy,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+from qfluentwidgets import (
+    Action,
+    CommandBar,
+    InfoBar,
+    InfoBarPosition,
+    PushButton,
+)
+from qfluentwidgets import (
+    FluentIcon as FIF,
+)
+
+from videocaptioner.config import CACHE_PATH
+from videocaptioner.core.editor.adapters import update_cues_from_groups
+from videocaptioner.core.editor.commands import (
+    AddCueCommand,
+    AddLayerCommand,
+    CommandStack,
+    CompositeCommand,
+    DeleteCueCommand,
+    DeleteLayerCommand,
+    EditCueSpeakerCommand,
+    EditCueTextCommand,
+    EditCueTimingCommand,
+    EditLayerCommand,
+    EditTrackStateCommand,
+    EditVoiceSettingsCommand,
+    SplitCueCommand,
+)
+from videocaptioner.core.editor.models import (
+    EditorCue,
+    EditorLayer,
+    EditorLayerKind,
+    EditorProject,
+)
+from videocaptioner.core.editor.project_store import EditorProjectStore
+from videocaptioner.ui.components.editor import (
+    EditorTimelineView,
+    EditorTrackHeader,
+    EditorVideoPreview,
+    SubtitleInspector,
+)
+from videocaptioner.ui.task_factory import TaskFactory
+from videocaptioner.ui.thread.editor_media_thread import EditorMediaThread, EditorRenderThread
+from videocaptioner.ui.thread.editor_voice_thread import EditorVoiceThread
+
+
+class VideoEditorInterface(QWidget):
+    projectOpened = pyqtSignal(str, str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("VideoEditorInterface")
+        self.project: EditorProject | None = None
+        self.project_path = ""
+        self.command_stack = CommandStack()
+        self.command_stack.add_changed_callback(self._refresh_from_model)
+        self._signatures: dict[str, str] = {}
+        self._threads: set = set()
+        self._build_ui()
+        self._connect_ui()
+        self._setup_shortcuts()
+        self._set_empty_state()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        self.command_bar = CommandBar(self)
+        self.command_bar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.open_action = Action(FIF.FOLDER_ADD, self.tr("Open"), triggered=self.open_dialog)
+        self.save_action = Action(FIF.SAVE, self.tr("Save project"), triggered=self.save_project)
+        self.save_ass_action = Action(FIF.DOCUMENT, self.tr("Save as ASS"), triggered=self.save_as_ass)
+        self.undo_action = Action(FIF.LEFT_ARROW, self.tr("Undo"), triggered=self.undo)
+        self.redo_action = Action(FIF.RIGHT_ARROW, self.tr("Redo"), triggered=self.redo)
+        self.preview_action = Action(FIF.PLAY, self.tr("Fast Preview"), triggered=self.fast_preview)
+        self.export_action = Action(FIF.VIDEO, self.tr("Export"), triggered=self.export_video)
+        for action in (
+            self.open_action,
+            self.save_action,
+            self.save_ass_action,
+            self.undo_action,
+            self.redo_action,
+            self.preview_action,
+            self.export_action,
+        ):
+            self.command_bar.addAction(action)
+        self.command_bar.addSeparator()
+        for kind, label in (
+            (EditorLayerKind.BLUR, "Add Blur"),
+            (EditorLayerKind.LOGO, "Add Logo"),
+            (EditorLayerKind.MASK, "Add Mask"),
+            (EditorLayerKind.TEXT, "Add Text"),
+        ):
+            self.command_bar.addAction(
+                Action(
+                    FIF.ADD,
+                    self.tr(label),
+                    triggered=lambda _checked=False, layer_kind=kind: self.add_visual_layer(layer_kind),
+                )
+            )
+        self.command_bar.adjustSize()
+        self.command_bar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.command_scroll = QScrollArea(self)
+        self.command_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.command_scroll.setWidgetResizable(True)
+        self.command_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.command_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.command_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.command_scroll.setFixedHeight(self.command_bar.sizeHint().height() + 14)
+        self.command_scroll.setWidget(self.command_bar)
+        layout.addWidget(self.command_scroll)
+
+        self.vertical_splitter = QSplitter(Qt.Vertical, self)
+        self.horizontal_splitter = QSplitter(Qt.Horizontal, self.vertical_splitter)
+        self.preview = EditorVideoPreview(self.horizontal_splitter)
+        self.preview.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        self.context_tabs = QTabWidget(self.horizontal_splitter)
+        self.inspector = SubtitleInspector(self.context_tabs)
+        self.context_tabs.addTab(self.inspector, self.tr("Cue"))
+        self.layer_panel = self._build_layer_panel()
+        self.context_tabs.addTab(self.layer_panel, self.tr("Layers"))
+        self.horizontal_splitter.addWidget(self.preview)
+        self.horizontal_splitter.addWidget(self.context_tabs)
+        self.horizontal_splitter.setStretchFactor(0, 3)
+        self.horizontal_splitter.setStretchFactor(1, 1)
+        self.horizontal_splitter.setSizes([760, 300])
+
+        timeline_shell = QWidget(self.vertical_splitter)
+        timeline_layout = QHBoxLayout(timeline_shell)
+        timeline_layout.setContentsMargins(0, 0, 0, 0)
+        timeline_layout.setSpacing(0)
+        self.track_header = EditorTrackHeader(timeline_shell)
+        self.timeline = EditorTimelineView(timeline_shell)
+        timeline_layout.addWidget(self.track_header)
+        timeline_layout.addWidget(self.timeline, 1)
+        self.vertical_splitter.addWidget(self.horizontal_splitter)
+        self.vertical_splitter.addWidget(timeline_shell)
+        self.vertical_splitter.setStretchFactor(0, 3)
+        self.vertical_splitter.setStretchFactor(1, 2)
+        self.vertical_splitter.setSizes([470, 260])
+        layout.addWidget(self.vertical_splitter, 1)
+
+        status_row = QHBoxLayout()
+        self.status_label = QLabel("", self)
+        self.status_label.setMinimumWidth(0)
+        self.status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.progress = QProgressBar(self)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setMaximumWidth(260)
+        self.zoom_out_button = PushButton("−", self)
+        self.zoom_in_button = PushButton("+", self)
+        self.fit_button = PushButton("Fit", self)
+        self.zoom_label = QLabel("100%", self)
+        status_row.addWidget(self.status_label, 1)
+        status_row.addWidget(self.progress)
+        status_row.addWidget(self.zoom_out_button)
+        status_row.addWidget(self.zoom_label)
+        status_row.addWidget(self.zoom_in_button)
+        status_row.addWidget(self.fit_button)
+        layout.addLayout(status_row)
+
+    def _build_layer_panel(self) -> QWidget:
+        panel = QWidget(self)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(8, 8, 8, 8)
+        self.layer_list = QListWidget(panel)
+        layout.addWidget(self.layer_list, 1)
+        buttons = QHBoxLayout()
+        self.edit_layer_button = PushButton(self.tr("Edit"), panel)
+        self.delete_layer_button = PushButton(self.tr("Delete"), panel)
+        self.edit_layer_button.clicked.connect(self.edit_selected_layer)
+        self.delete_layer_button.clicked.connect(self.delete_selected_layer)
+        buttons.addWidget(self.edit_layer_button)
+        buttons.addWidget(self.delete_layer_button)
+        layout.addLayout(buttons)
+        return panel
+
+    def _connect_ui(self) -> None:
+        self.timeline.cueSelected.connect(self.select_cue)
+        self.timeline.seekRequested.connect(self.preview.set_position)
+        self.timeline.cueTimingRequested.connect(self._apply_timeline_timing)
+        self.timeline.selectionRangeChanged.connect(self._on_selection_range)
+        self.timeline.zoomChanged.connect(lambda value: self.zoom_label.setText(f"{value}%"))
+        self.preview.positionChanged.connect(self.timeline.set_playhead)
+        self.preview.activeCueChanged.connect(self._on_active_cue)
+        self.preview.playbackError.connect(self._show_error)
+        self.inspector.applyRequested.connect(self._apply_inspector)
+        self.inspector.regenerateRequested.connect(self.regenerate_voice)
+        self.inspector.splitRequested.connect(self.split_cue)
+        self.inspector.deleteRequested.connect(self.delete_cue)
+        self.inspector.addRequested.connect(self.add_cue)
+        self.track_header.trackStateRequested.connect(self._apply_track_state)
+        self.zoom_in_button.clicked.connect(self.timeline.zoom_in)
+        self.zoom_out_button.clicked.connect(self.timeline.zoom_out)
+        self.fit_button.clicked.connect(self.timeline.fit_timeline)
+
+    def _setup_shortcuts(self) -> None:
+        for sequence, callback in (
+            (QKeySequence.Undo, self.undo),
+            (QKeySequence.Redo, self.redo),
+            (QKeySequence.Save, self.save_project),
+            (QKeySequence(Qt.Key_Space), self.preview.toggle_playback),
+            (QKeySequence(Qt.Key_Delete), lambda: self.delete_cue(self.inspector.cue_id)),
+            (QKeySequence("Ctrl++"), self.timeline.zoom_in),
+            (QKeySequence("Ctrl+-"), self.timeline.zoom_out),
+        ):
+            shortcut = QShortcut(sequence, self)
+            shortcut.activated.connect(callback)
+
+    def _set_empty_state(self) -> None:
+        self.status_label.setText(self.tr("Open a video and SRT to start editing"))
+        self.progress.setValue(0)
+        self._set_actions_enabled(False)
+
+    def _set_actions_enabled(self, enabled: bool) -> None:
+        for action in (
+            self.save_action,
+            self.save_ass_action,
+            self.preview_action,
+            self.export_action,
+        ):
+            action.setEnabled(enabled)
+        self._update_undo_redo()
+
+    def _update_undo_redo(self) -> None:
+        self.undo_action.setEnabled(self.command_stack.can_undo)
+        self.redo_action.setEnabled(self.command_stack.can_redo)
+
+    def open_dialog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Open video or editor project"),
+            "",
+            self.tr("Editor Project (*.vceditor.json);;Video (*.mp4 *.mkv *.mov *.avi *.webm)"),
+        )
+        if not path:
+            return
+        if path.lower().endswith(EditorProjectStore.project_suffix):
+            self._start_media("load-project", {"project_path": path})
+            return
+        subtitle, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Open SRT"),
+            str(Path(path).parent),
+            self.tr("SubRip Subtitle (*.srt)"),
+        )
+        if subtitle:
+            self.open_in_editor(path, subtitle)
+
+    def open_in_editor(self, video_path: str, subtitle_path: str) -> None:
+        self.project_path = ""
+        self._start_media(
+            "open",
+            {"video_path": str(video_path), "subtitle_path": str(subtitle_path)},
+        )
+
+    def _start_media(self, action: str, payload: dict) -> None:
+        signature = uuid4().hex
+        self._signatures[action] = signature
+        self.status_label.setText(self.tr("Loading editor media..."))
+        self.progress.setRange(0, 0)
+        thread = EditorMediaThread(signature, action, payload, self)
+        self._retain_thread(thread)
+        thread.completed.connect(lambda sig, data, name=action: self._on_media_completed(name, sig, data))
+        thread.failed.connect(lambda sig, error, name=action: self._on_worker_failed(name, sig, error))
+        thread.start()
+
+    def _retain_thread(self, thread) -> None:
+        self._threads.add(thread)
+        thread.finished.connect(lambda current=thread: self._threads.discard(current))
+
+    def _on_media_completed(self, action: str, signature: str, data) -> None:
+        if self._signatures.get(action) != signature:
+            return
+        if action in {"open", "load-project"}:
+            self._accept_project(data)
+        elif action == "waveform":
+            _fingerprint, samples, duration = data
+            self.timeline.set_waveform(samples, duration)
+        elif action == "thumbnails":
+            _fingerprint, items = data
+            self.timeline.set_thumbnails(items)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(100)
+
+    def _accept_project(self, project: EditorProject) -> None:
+        self.project = project
+        self.command_stack.clear()
+        self.preview.set_project(project)
+        self.timeline.set_project(project)
+        self.track_header.set_project(project)
+        self._refresh_layer_list()
+        self._set_actions_enabled(True)
+        self.status_label.setText(
+            self.tr("Loaded {count} cues — V1 / A1 / TS1").format(count=len(project.cues))
+        )
+        if project.cues:
+            self.select_cue(project.cues[0].id)
+        self.projectOpened.emit(project.video_path, project.subtitle_path)
+        cache_root = str(CACHE_PATH / "editor_media" / "v1")
+        self._start_media("waveform", {"video_path": project.video_path, "cache_root": cache_root})
+        self._start_media(
+            "thumbnails",
+            {
+                "video_path": project.video_path,
+                "duration_ms": project.duration_ms,
+                "cache_root": cache_root,
+            },
+        )
+
+    def _on_worker_failed(self, action: str, signature: str, error: str) -> None:
+        if self._signatures.get(action) != signature:
+            return
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self._show_error(error)
+
+    def _show_error(self, message: str) -> None:
+        message = str(message or self.tr("Unknown editor error"))
+        self.status_label.setText(message)
+        InfoBar.error(
+            title=self.tr("Video Editor error"),
+            content=message,
+            isClosable=True,
+            duration=-1,
+            position=InfoBarPosition.BOTTOM,
+            parent=self,
+        )
+
+    def _show_success(self, message: str) -> None:
+        self.status_label.setText(message)
+        InfoBar.success(
+            title=self.tr("Video Editor"),
+            content=message,
+            duration=4000,
+            position=InfoBarPosition.BOTTOM,
+            parent=self,
+        )
+
+    def select_cue(self, cue_id: str) -> None:
+        if not self.project or not cue_id:
+            return
+        try:
+            cue = self.project.cue_by_id(cue_id)
+        except KeyError:
+            return
+        self.timeline.select_cue(cue_id)
+        self.inspector.set_cue(cue, self.project.duration_ms)
+
+    def _on_active_cue(self, cue_id: str) -> None:
+        if cue_id and cue_id != self.inspector.cue_id:
+            self.select_cue(cue_id)
+
+    def _on_selection_range(self, start_ms: int, end_ms: int) -> None:
+        if self.project:
+            self.project.selection_start_ms = int(start_ms)
+            self.project.selection_end_ms = int(end_ms)
+            self.status_label.setText(
+                self.tr("Selected range: {start:.3f}s – {end:.3f}s").format(
+                    start=start_ms / 1000.0, end=end_ms / 1000.0
+                )
+            )
+
+    def _apply_timeline_timing(
+        self, cue_id: str, start_ms: int, end_ms: int, operation: str
+    ) -> None:
+        if not self.project:
+            return
+        try:
+            command = EditCueTimingCommand(self.project, cue_id, start_ms, end_ms)
+            command.description = "Move cue" if operation == "move" else "Resize cue"
+            self.command_stack.execute(command)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _apply_inspector(self, cue_id: str, values: dict) -> None:
+        if not self.project:
+            return
+        try:
+            cue = self.project.cue_by_id(cue_id)
+            commands = []
+            if (cue.start_ms, cue.end_ms) != (values["start_ms"], values["end_ms"]):
+                commands.append(
+                    EditCueTimingCommand(
+                        self.project, cue_id, values["start_ms"], values["end_ms"]
+                    )
+                )
+            for field_name in ("source_text", "display_text", "tts_text"):
+                if getattr(cue, field_name) != values[field_name]:
+                    commands.append(
+                        EditCueTextCommand(self.project, cue_id, field_name, values[field_name])
+                    )
+            if cue.speaker != values["speaker"]:
+                commands.append(EditCueSpeakerCommand(self.project, cue_id, values["speaker"]))
+            if cue.voice != values["voice"] or cue.voice_speed != values["voice_speed"]:
+                commands.append(
+                    EditVoiceSettingsCommand(
+                        self.project,
+                        cue_id,
+                        values["voice"],
+                        values["voice_speed"],
+                        dict(cue.voice_settings),
+                    )
+                )
+            if commands:
+                self.command_stack.execute(CompositeCommand(commands, "Edit cue in inspector"))
+            else:
+                self.status_label.setText(self.tr("No cue changes"))
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _apply_track_state(self, track_id: str, field_name: str, value: bool) -> None:
+        if not self.project:
+            return
+        try:
+            if field_name == "muted":
+                command = EditTrackStateCommand(self.project, track_id, muted=value)
+            elif field_name == "locked":
+                command = EditTrackStateCommand(self.project, track_id, locked=value)
+            else:
+                raise ValueError(f"Unsupported track state: {field_name}")
+            self.command_stack.execute(command)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def add_cue(self) -> None:
+        if not self.project:
+            return
+        position = self.project.playhead_ms
+        if self.project.active_cue_at(position):
+            self._show_error(self.tr("Playhead is inside an existing cue"))
+            return
+        previous_end = max((cue.end_ms for cue in self.project.cues if cue.end_ms <= position), default=0)
+        next_start = min(
+            (cue.start_ms for cue in self.project.cues if cue.start_ms >= position),
+            default=self.project.duration_ms,
+        )
+        start = max(position, previous_end)
+        end = min(next_start, start + 1000)
+        if end - start < 50:
+            self._show_error(self.tr("No free timeline space for a new cue"))
+            return
+        cue = EditorCue(f"cue-{uuid4().hex[:16]}", start, end, "", "New subtitle", "New subtitle")
+        try:
+            self.command_stack.execute(AddCueCommand(self.project, cue))
+            self.select_cue(cue.id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def split_cue(self, cue_id: str) -> None:
+        if not self.project or not cue_id:
+            return
+        cue = self.project.cue_by_id(cue_id)
+        split_ms = self.project.playhead_ms
+        if not cue.start_ms + 50 <= split_ms <= cue.end_ms - 50:
+            split_ms = cue.start_ms + cue.duration_ms // 2
+        try:
+            self.command_stack.execute(SplitCueCommand(self.project, cue_id, split_ms))
+            self.select_cue(cue_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def delete_cue(self, cue_id: str) -> None:
+        if not self.project or not cue_id:
+            return
+        try:
+            self.command_stack.execute(DeleteCueCommand(self.project, cue_id))
+            self.inspector.set_cue(None, self.project.duration_ms)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def undo(self) -> None:
+        self.command_stack.undo()
+
+    def redo(self) -> None:
+        self.command_stack.redo()
+
+    def _refresh_from_model(self) -> None:
+        if not self.project:
+            return
+        selected = self.inspector.cue_id
+        self.timeline.refresh_project()
+        self.track_header.set_project(self.project)
+        self.preview.surface.overlay.set_state(self.project, self.project.playhead_ms)
+        self._refresh_layer_list()
+        if selected:
+            try:
+                self.inspector.set_cue(self.project.cue_by_id(selected), self.project.duration_ms)
+            except KeyError:
+                self.inspector.set_cue(None, self.project.duration_ms)
+        self._update_undo_redo()
+
+    def save_project(self) -> None:
+        if not self.project:
+            return
+        path = self.project_path
+        if not path:
+            suggested = str(Path(self.project.video_path).with_suffix(EditorProjectStore.project_suffix))
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                self.tr("Save editor project"),
+                suggested,
+                self.tr("Editor Project (*.vceditor.json)"),
+            )
+        if not path:
+            return
+        try:
+            project_path, srt_path = EditorProjectStore().save(self.project, path)
+            self.project_path = project_path
+            self._show_success(self.tr("Saved project and SRT: ") + srt_path)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def save_as_ass(self) -> None:
+        if not self.project:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Explicit Save as ASS"),
+            str(Path(self.project.video_path).with_suffix(".ass")),
+            self.tr("Advanced SubStation Alpha (*.ass)"),
+        )
+        if not path:
+            return
+        try:
+            output = EditorProjectStore().save_as_ass(
+                self.project, path, style_str=TaskFactory.get_ass_style("default")
+            )
+            self._show_success(self.tr("Saved ASS explicitly: ") + output)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def fast_preview(self) -> None:
+        if not self.project:
+            return
+        signature = uuid4().hex
+        self._signatures["preview"] = signature
+        output_dir = CACHE_PATH / "editor_preview" / self.project.project_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output = output_dir / f"preview-{signature}.mp4"
+        thread = EditorRenderThread(signature, "preview", self.project, str(output), parent=self)
+        self._start_render_thread("preview", thread)
+
+    def export_video(self) -> None:
+        if not self.project:
+            return
+        output, _ = QFileDialog.getSaveFileName(
+            self,
+            self.tr("Export current editor state"),
+            str(Path(self.project.video_path).with_name(Path(self.project.video_path).stem + "-edited.mp4")),
+            self.tr("MP4 Video (*.mp4)"),
+        )
+        if not output:
+            return
+        signature = uuid4().hex
+        self._signatures["export"] = signature
+        dubbing_config = TaskFactory.create_dubbing_config()
+        thread = EditorRenderThread(
+            signature,
+            "export",
+            self.project,
+            output,
+            dubbing_config=dubbing_config,
+            parent=self,
+        )
+        self._start_render_thread("export", thread)
+
+    def _start_render_thread(self, action: str, thread: EditorRenderThread) -> None:
+        self._retain_thread(thread)
+        thread.progress.connect(self._on_progress)
+        thread.completed.connect(lambda sig, output, name=action: self._on_render_completed(name, sig, output))
+        thread.failed.connect(lambda sig, error, name=action: self._on_worker_failed(name, sig, error))
+        self.status_label.setText(self.tr("Rendering from current editor state..."))
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        thread.start()
+
+    def _on_progress(self, value: int, message: str) -> None:
+        self.progress.setValue(max(0, min(100, int(value))))
+        self.status_label.setText(str(message))
+
+    def _on_render_completed(self, action: str, signature: str, output: str) -> None:
+        if self._signatures.get(action) != signature:
+            return
+        self.progress.setValue(100)
+        if action == "preview":
+            self.preview.player.pause()
+            self.preview.player.setMedia(QMediaContent(QUrl.fromLocalFile(output)))
+            self.preview.player.play()
+            self._show_success(self.tr("Fast Preview uses current editor state: ") + output)
+        else:
+            self._show_success(self.tr("Export completed: ") + output)
+
+    def regenerate_voice(self, cue_id: str) -> None:
+        if not self.project or not cue_id:
+            return
+        config = TaskFactory.create_dubbing_config()
+        if config is None:
+            self._show_error(self.tr("Enable and configure Dubbing before regenerating voice"))
+            return
+        signature = uuid4().hex
+        self._signatures["voice"] = signature
+        output_dir = CACHE_PATH / "editor_voice" / "v1" / self.project.project_id
+        thread = EditorVoiceThread(
+            signature,
+            self.project,
+            {cue_id},
+            config,
+            output_dir,
+            self,
+        )
+        self._retain_thread(thread)
+        thread.progress.connect(self._on_progress)
+        thread.completed.connect(self._on_voice_completed)
+        thread.failed.connect(lambda sig, error: self._on_worker_failed("voice", sig, error))
+        thread.start()
+
+    def _on_voice_completed(self, signature: str, groups) -> None:
+        if self._signatures.get("voice") != signature or not self.project:
+            return
+        update_cues_from_groups(self.project, groups)
+        self._refresh_from_model()
+        self.progress.setValue(100)
+        self._show_success(self.tr("Regenerated only the selected cue/group"))
+
+    def _layer_range(self) -> tuple[int, int]:
+        assert self.project is not None
+        if (
+            self.project.selection_start_ms is not None
+            and self.project.selection_end_ms is not None
+            and self.project.selection_end_ms > self.project.selection_start_ms
+        ):
+            return self.project.selection_start_ms, self.project.selection_end_ms
+        start = self.project.playhead_ms
+        return start, min(self.project.duration_ms, start + 5000)
+
+    def add_visual_layer(self, kind: EditorLayerKind) -> None:
+        if not self.project:
+            return
+        start_ms, end_ms = self._layer_range()
+        if end_ms <= start_ms:
+            self._show_error(self.tr("Visual layer range is empty"))
+            return
+        properties = {}
+        name = kind.value.title()
+        if kind == EditorLayerKind.TEXT:
+            text, ok = QInputDialog.getText(self, self.tr("Add Text"), self.tr("Text:"))
+            if not ok:
+                return
+            properties = {"text": text, "font_size": 42, "font_color": "white", "outline_width": 2}
+        elif kind == EditorLayerKind.LOGO:
+            path, _ = QFileDialog.getOpenFileName(
+                self, self.tr("Add Logo"), "", self.tr("Image (*.png *.jpg *.jpeg *.webp)")
+            )
+            if not path:
+                return
+            properties = {"path": path}
+        elif kind == EditorLayerKind.MASK:
+            modes = ["solid", "pixelate", "blur"]
+            mode, ok = QInputDialog.getItem(self, self.tr("Add Mask"), self.tr("Mode:"), modes, 0, False)
+            if not ok:
+                return
+            properties = {"mode": mode, "color": "black", "strength": 12}
+        else:
+            strength, ok = QInputDialog.getInt(
+                self, self.tr("Add Blur"), self.tr("Strength:"), 12, 1, 50
+            )
+            if not ok:
+                return
+            properties = {"strength": strength}
+        layer = EditorLayer(
+            f"layer-{uuid4().hex[:12]}",
+            kind,
+            start_ms,
+            end_ms,
+            name=name,
+            properties=properties,
+        )
+        try:
+            self.command_stack.execute(AddLayerCommand(self.project, layer))
+            self.context_tabs.setCurrentWidget(self.layer_panel)
+            self.layer_list.setCurrentRow(len(self.project.layers) - 1)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _selected_layer(self):
+        if not self.project:
+            return None
+        row = self.layer_list.currentRow()
+        return self.project.layers[row] if 0 <= row < len(self.project.layers) else None
+
+    def edit_selected_layer(self) -> None:
+        layer = self._selected_layer()
+        if not layer or not self.project:
+            return
+        changes = {}
+        if layer.kind == EditorLayerKind.TEXT:
+            text, ok = QInputDialog.getText(
+                self,
+                self.tr("Edit Text"),
+                self.tr("Text:"),
+                text=str(layer.properties.get("text", "")),
+            )
+            if not ok:
+                return
+            properties = dict(layer.properties)
+            properties["text"] = text
+            changes["properties"] = properties
+        elif layer.kind in {EditorLayerKind.BLUR, EditorLayerKind.MASK}:
+            strength, ok = QInputDialog.getInt(
+                self,
+                self.tr("Edit effect"),
+                self.tr("Strength:"),
+                int(layer.properties.get("strength", 12)),
+                1,
+                50,
+            )
+            if not ok:
+                return
+            properties = dict(layer.properties)
+            properties["strength"] = strength
+            changes["properties"] = properties
+        else:
+            opacity, ok = QInputDialog.getDouble(
+                self, self.tr("Edit Logo"), self.tr("Opacity:"), layer.opacity, 0.0, 1.0, 2
+            )
+            if not ok:
+                return
+            changes["opacity"] = opacity
+        self.command_stack.execute(EditLayerCommand(self.project, layer.id, changes))
+
+    def delete_selected_layer(self) -> None:
+        layer = self._selected_layer()
+        if layer and self.project:
+            self.command_stack.execute(DeleteLayerCommand(self.project, layer.id))
+
+    def _refresh_layer_list(self) -> None:
+        self.layer_list.clear()
+        if not self.project:
+            return
+        for layer in self.project.layers:
+            self.layer_list.addItem(
+                f"{layer.kind.value.upper()}  {layer.start_ms / 1000:.2f}s–{layer.end_ms / 1000:.2f}s  {layer.name}"
+            )
+
+    def closeEvent(self, event) -> None:
+        self.preview.player.stop()
+        for thread in tuple(self._threads):
+            if thread.isRunning():
+                thread.requestInterruption()
+                thread.wait(1500)
+        super().closeEvent(event)

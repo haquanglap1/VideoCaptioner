@@ -91,6 +91,20 @@ class PersistentTTSCache:
             return None
         return TTSCacheEntry(key, str(wav_path), duration, str(metadata_path))
 
+    def invalidate(self, key: str) -> bool:
+        """Remove exactly one cache entry and leave every other key untouched."""
+        if not self.enabled or not key:
+            return False
+        removed = False
+        for suffix in (".wav", ".json"):
+            path = self.root / f"{key}{suffix}"
+            try:
+                path.unlink()
+                removed = True
+            except FileNotFoundError:
+                continue
+        return removed
+
     def put(
         self,
         key: str,

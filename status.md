@@ -1,5 +1,51 @@
 # Project Status
 
+## 2026-08-21 (Video Editor E0-E7)
+
+### Đã triển khai
+- Thêm tab `Video Editor` native PyQt5/QFluentWidgets ngay dưới `Kiểu phụ đề` và trên `Nhật ký yêu
+  cầu`; page co được tới 700 px, command bar overflow vào More thay vì overlap.
+- Thêm domain `editor-project-v1` với stable cue/layer IDs, milliseconds canonical, relative paths,
+  atomic project + SRT save và ba trường riêng `source_text` / `display_text` / `tts_text`. Normal save
+  không persist ASS; chỉ explicit `Save as ASS` tạo ASS.
+- Preview QtMultimedia, inspector và timeline V1/A1/TS1 đồng bộ playhead/selection/overlay. Timeline có
+  zoom/scroll/range, add/split/delete, drag/resize, track mute/lock và undo/redo; waveform/thumbnails chạy
+  QThread, cache theo media fingerprint và bỏ kết quả stale.
+- `Regenerate voice` dùng `DubbingEngine`, force-refresh đúng cache key của selected group, đo WAV và
+  giữ nguyên cache/audio group khác. Fast Preview dùng WAV live đã regenerate; final export dùng cùng
+  editor snapshot và Natural/Legacy config hiện có, không tạo report JSON mặc định.
+- Blur/Logo/Mask/Text có core model, layer panel, timeline clip, preview, FFmpeg export, command undo,
+  serialization và round-trip. Không thêm PySide6, MPV hay dependency mới.
+- Thêm `Open in Video Editor` từ Subtitle và Dubbing workflow; cập nhật translation sources/fallback,
+  README, tài liệu dev và plan. `VideoCaptioner.spec` không cần đổi vì đã collect toàn bộ submodule.
+
+### Validation đã đo
+- Editor targeted: **23 passed, 0 failed**. Dubbing/thread/CLI/subtitle/translate regression:
+  **151 passed, 10 skipped, 0 failed**. Full offline suite cuối với AppData/cache cô lập:
+  **419 passed, 23 skipped, 0 failed** / 442 collected, 107.01 giây.
+- Real FFmpeg H.264/AAC + SRT/WAV fixtures pass Fast Preview 1.5 giây, live display/TTS routing,
+  regenerated voice mix, Blur/Logo/Mask/Text render và final export giữ duration trong ±120 ms. Không
+  có ASS ngoài explicit export.
+- QtMultimedia H.264/AAC playback tiến được và seek 1.7 giây trong tolerance. Layout 700 px, stale-result
+  discard, preview/inspector/timeline sync và worker isolation đều pass.
+- Timeline 60 phút/1.000 cue tại viewport giữa chỉ paint **3 cue**; 100 paint = **21.958 ms**
+  (**0.220 ms/frame**), 5.000 query = **1.801 ms** (**0.360 µs/query**).
+- Ruff toàn `videocaptioner/`: pass. Pyright CLI + toàn bộ editor module: **0 errors, 0 warnings**.
+  Translation JSON/TS parse và sync `--check`: pass.
+
+### Packaged artifact
+- PyInstaller 6.22.2 exit 0: `dist/VideoCaptioner-VideoEditor-20260821.exe`, **113,104,947 bytes**,
+  timestamp `2026-08-21 04:08:23 +07:00`, SHA-256
+  `23836F039A3C4E7CC2C2257352E2AC1A150901BFE8B8D707176A4BA486F119E7`, `NotSigned`.
+- Warning file có 569 dòng optional/transitive; 0 match editor/QtMultimedia. Archive chứa QtMultimedia,
+  toàn bộ `core.editor`, UI components, media/voice thread, interface và Vietnamese translation.
+- Exact packaged smoke: parent PID 52244 + child PID 79816 sống sau 15 giây; daily log append 55 bytes,
+  0 startup exception match; đã đóng đúng owned tree và xác nhận 0 process còn lại.
+
+### Còn chờ user/provider thật
+- Chưa nghiệm thu cảm nhận UX, codec/video thực tế đa dạng, chất lượng nghe tiếng Việt, provider TTS thật,
+  rate-limit hoặc video thật dài. Machine acceptance không dùng API key/live provider.
+
 ## 2026-08-21 (Dubbing report in-memory và lỗi có nguyên nhân)
 
 ### Đã sửa

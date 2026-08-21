@@ -12,6 +12,7 @@ Pipeline:
 import os
 import re
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -25,6 +26,8 @@ from videocaptioner.core.dubbing.audio_mixer import (
 from videocaptioner.core.dubbing.config import DubbingConfig, TTSProviderEnum
 from videocaptioner.core.dubbing.models import (
     DubbingCue,
+    DubbingFitStatus,
+    DubbingProviderError,
     DubbingTextSource,
     resolve_dubbing_text,
 )
@@ -119,6 +122,95 @@ class DubbingEngine:
         return DubbingOrchestrator(self).run(
             video_path, subtitle_path, output_path, config, callback
         )
+
+    def regenerate_groups(
+        self,
+        cues: list[DubbingCue],
+        selected_cue_ids: set[int | str],
+        *,
+        video_duration: float,
+        config: DubbingConfig,
+        output_dir: str | Path,
+        callback: Optional[Callable[[int, str], None]] = None,
+    ):
+        """Force-refresh only groups intersecting ``selected_cue_ids``.
+
+        This is the editor-facing regeneration path. It plans with the same
+        Natural/Legacy grouping rules, invalidates only each selected group's
+        cache key, performs one provider request per unique selected key and
+        returns measured groups without mixing or touching unrelated audio.
+        """
+        if not config.tts_config:
+            raise ValueError("TTS config chưa được cấu hình")
+        if callback is None:
+            callback = _noop_progress
+        selected = {str(cue_id) for cue_id in selected_cue_ids}
+        if not selected:
+            raise ValueError("Chưa chọn cue/group để tạo lại giọng")
+
+        from videocaptioner.core.dubbing.cache import PersistentTTSCache
+        from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+        from videocaptioner.core.dubbing.planner import plan_dubbing_groups
+
+        natural = config.timing_mode.value == "natural"
+        groups = plan_dubbing_groups(
+            cues,
+            video_duration=max(0.0, float(video_duration)),
+            borrow_gap_ms=config.borrow_gap_ms if natural else -1,
+            silence_guard_ms=config.silence_guard_ms if natural else 0,
+            max_group_duration=config.max_group_duration,
+            target_language=config.target_language,
+        )
+        targets = [
+            group for group in groups if selected.intersection(str(item) for item in group.cue_ids)
+        ]
+        if not targets:
+            raise ValueError("Không tìm thấy group chứa cue đã chọn")
+
+        cue_map = {str(cue.cue_id): cue for cue in cues}
+        orchestrator = DubbingOrchestrator(self)
+        cache = PersistentTTSCache(self.cache_root, enabled=config.cache_enabled)
+        root = Path(output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        for index, group in enumerate(targets):
+            group_config = deepcopy(config)
+            first_cue = next((cue_map.get(str(cue_id)) for cue_id in group.cue_ids), None)
+            if first_cue and group_config.tts_config:
+                if first_cue.voice:
+                    group_config.tts_config.voice = first_cue.voice
+                requested_speed = first_cue.metadata.get("voice_speed")
+                if requested_speed is not None:
+                    group_config.tts_config.speed = float(requested_speed)
+            group.cache_key = orchestrator._cache_key(group, group_config)
+            cache.invalidate(group.cache_key)
+            group.audio_path = ""
+            group.fit_status = DubbingFitStatus.PENDING
+            provider = self._create_tts_provider(group_config)
+            callback(10 + int(index * 70 / max(1, len(targets))), "Đang tạo lại giọng đã chọn...")
+            orchestrator._synthesize_missing_groups(
+                [group],
+                group_config,
+                provider,
+                cache,
+                root / group.group_id,
+                callback,
+            )
+            orchestrator._measure_groups([group])
+            if group.fit_status == DubbingFitStatus.FAILED:
+                raise DubbingProviderError(reason=orchestrator._provider_failure_reason([group]))
+            fit_limit = max(0.01, float(group_config.fit_ratio_limit))
+            if group.fit_ratio <= fit_limit:
+                group.fit_status = DubbingFitStatus.FIT
+                group.action_taken = "editor_force_refresh"
+            else:
+                group.fit_status = DubbingFitStatus.NEEDS_REVIEW
+                group.needs_review = True
+                group.action_taken = "editor_force_refresh_needs_review"
+                group.warnings.append(
+                    f"Regenerated audio exceeds available duration ({group.fit_ratio:.2f}x)"
+                )
+        callback(100, "Đã tạo lại giọng cho group được chọn")
+        return targets
 
     def _dub_legacy_compat(
         self,

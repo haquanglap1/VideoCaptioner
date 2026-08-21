@@ -1,7 +1,8 @@
 # Video Editor Tab Integration Plan
 
-Current status: PLANNED ONLY. The SRT-only output and merged-TTS boundary-overlap fixes are implemented;
-the editor tab itself has not started.
+Current status: COMPLETED on 2026-08-21. E0-E7 and every machine-verifiable acceptance criterion below
+passed; subjective UX, real-provider audio quality and diverse user-video evaluation remain outside the
+machine acceptance boundary.
 
 Reference UI: the two user-provided screenshots from 2026-08-21. Reference implementation inspected
 read-only at `F:\CppClone\CapCap`.
@@ -163,3 +164,44 @@ the installed QFluentWidgets version.
 - Piper/Edge TTS, Sherpa-ONNX diarization, automatic per-speaker assignment, OCR range re-transcription,
   remote engine server, and bundled MPV remain separate dependency/license campaigns.
 - ImageGen mockups do not count as editor implementation or runtime acceptance.
+
+## 8. Delivery record — 2026-08-21
+
+### Phase results
+
+- **E0 pass:** `editor-project-v1`, stable IDs, millisecond timing, SRT-only contract, deterministic
+  H.264/AAC/SRT/WAV fixtures and 60-minute/1,000-cue fixture. CapCap is Apache-2.0; implementation was
+  rewritten as VideoCaptioner-owned GPL-3.0 code.
+- **E1 pass:** exact navigation order, command bar, empty/loading/error states, responsive splitters and
+  700-pixel page-width acceptance.
+- **E2 pass:** QtMultimedia H.264/AAC playback + seek, SRT import, overlay/playhead/selection/inspector
+  synchronization and independent source/display/TTS state.
+- **E3 pass:** V1/A1/TS1 ruler, zoom/scroll, range, waveform, thumbnails, drag/resize, add/split/delete,
+  mute/lock and undo/redo. Stale media results are discarded by request signature.
+- **E4 pass:** timing/text/speaker/voice inspector and selected-group force refresh through
+  `DubbingEngine`; unrelated cache entries remain byte-identical.
+- **E5 pass:** Fast Preview and final export use the same live snapshot, mix regenerated WAV, reuse
+  Natural/Legacy Dubbing and preserve duration. Normal completion writes SRT/project only.
+- **E6 pass:** Blur/Logo/Mask/Text have models, UI editing, timeline clips, preview/export renderers,
+  undo commands and round-trip tests; no placeholder controls are exposed.
+- **E7 pass:** Subtitle/Dubbing handoff, translations/docs, full quality gates, labelled EXE archive
+  inspection and exact packaged smoke.
+
+### Acceptance evidence
+
+1. Navigation order and 700 px layout: pass.
+2. One V1/A1/TS1 model without source mutation: pass.
+3. Preview/timeline/inspector/overlay synchronization: pass.
+4. Independent display/TTS project and export round-trip: pass.
+5. Undo/redo for text, timing, split/delete/add, move/resize and voice settings: pass.
+6. One selected group regeneration/cache refresh; unrelated cache untouched: pass.
+7. Boundary overlap repair and intentional full-cue repetition regression: pass.
+8. SRT/project-only normal save; explicit ASS-only persistence: pass.
+9. Shared current state and duration-preserving FFmpeg preview/export: pass (±120 ms fixture tolerance).
+10. 60 minutes/1,000 cues: 3 visible cues painted; 0.220 ms average measured paint.
+11. Worker/widget isolation, no PySide6/MPV/new dependency: pass.
+12. Editor 23/23; full offline 419 passed/23 skipped; Ruff/Pyright/translations/build/archive/smoke:
+    pass.
+
+Final artifact: `dist/VideoCaptioner-VideoEditor-20260821.exe`, 113,104,947 bytes,
+SHA-256 `23836F039A3C4E7CC2C2257352E2AC1A150901BFE8B8D707176A4BA486F119E7`, `NotSigned`.

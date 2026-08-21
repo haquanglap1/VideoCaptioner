@@ -102,6 +102,7 @@ class DubbingInterface(QWidget):
     """
 
     finished = pyqtSignal(str, str)  # (video_path, subtitle_path) cho next step
+    openInVideoEditorRequested = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -424,6 +425,10 @@ class DubbingInterface(QWidget):
         self.manual_dub_btn.setFixedWidth(160)
         self.manual_dub_btn.clicked.connect(self._start_manual_dub)
         settings_layout.addWidget(self.manual_dub_btn, alignment=Qt.AlignCenter)
+        self.open_editor_btn = PushButton(self.tr("Open in Video Editor"))
+        self.open_editor_btn.setFixedWidth(180)
+        self.open_editor_btn.clicked.connect(self._open_in_video_editor)
+        settings_layout.addWidget(self.open_editor_btn, alignment=Qt.AlignCenter)
 
         # --- Separator ---
         settings_layout.addSpacing(10)
@@ -865,6 +870,25 @@ class DubbingInterface(QWidget):
                 task.output_path or task.video_path or "",
                 task.display_subtitle_path or task.subtitle_path or "",
             )
+
+    def _open_in_video_editor(self):
+        task = self._task
+        if task:
+            video_path = task.output_path if task.output_path and Path(task.output_path).is_file() else task.video_path
+            subtitle_path = task.display_subtitle_path or task.subtitle_path
+        else:
+            video_path = self.video_path_edit.text().strip()
+            subtitle_path = self.subtitle_path_edit.text().strip()
+        if not video_path or not Path(video_path).is_file() or not subtitle_path or not Path(subtitle_path).is_file():
+            InfoBar.warning(
+                self.tr("Chưa thể mở Video Editor"),
+                self.tr("Cần video và file phụ đề hợp lệ."),
+                duration=4000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        self.openInVideoEditorRequested.emit(str(video_path), str(subtitle_path))
 
     def _save_settings(self):
         """Lưu settings hiện tại vào persistent config."""

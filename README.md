@@ -13,6 +13,8 @@ VideoCaptioner là công cụ xử lý phụ đề video bằng AI, hỗ trợ n
   cache WAV bền vững, viết lại câu vượt khung khi có LLM và không âm thầm cắt lời.
 - Giữ report review trong RAM để GUI giải thích lỗi; chỉ xuất JSON khi CLI được truyền `--report`.
   Vẫn có chế độ Legacy cho workflow cần giới hạn tốc độ/cắt âm thanh như bản cũ.
+- Có tab `Video Editor` native PyQt5 để chỉnh subtitle/TTS trên timeline V1/A1/TS1, xem trước,
+  tạo lại đúng group giọng đã chọn và export từ editor state hiện tại.
 - Có CLI cho tự động hóa và GUI cho người dùng Windows.
 
 ## Cài đặt để chạy từ mã nguồn
@@ -86,6 +88,26 @@ báo. Natural không dùng đường truncate của Legacy.
 
 Cache dùng `AppData/cache/dubbing_tts/v1/` với key SHA-256 không chứa API key hay transcript trong tên
 file. GUI/full pipeline không ghi report JSON; dùng `--report PATH` ở CLI khi thực sự cần lưu report.
+
+## Video Editor
+
+Tab `Video Editor` nằm ngay dưới `Kiểu phụ đề`. Chọn `Open` để mở video cùng SRT, hoặc dùng
+`Open in Video Editor` từ màn Tối ưu/Dịch phụ đề hay Lồng tiếng. Workspace gồm preview QtMultimedia,
+context inspector và timeline `V1 Video / A1 Original Audio / TS1 Subtitle + TTS`.
+
+Editor giữ riêng `source_text`, `display_text` và `tts_text`. Các thao tác text/timing, add, split,
+delete, drag, resize, voice settings, mute/lock và visual layer đều đi qua undo/redo. Waveform và
+thumbnail được tạo ở background và cache theo fingerprint media; timeline chỉ paint cue nằm trong
+viewport.
+
+`Save project` ghi atomically `editor-project-v1` cùng một file SRT cạnh project; đường dẫn trong JSON
+là relative và không chứa API key. Normal save không persist ASS. Chỉ `Save as ASS` tạo file ASS lâu
+dài; Fast Preview/export dùng SRT tạm từ live editor state và tự cleanup.
+
+Nếu Dubbing đang bật, final export dùng Natural/Legacy config hiện có. `Regenerate voice` force-refresh
+đúng cache key của cue/group được chọn; Fast Preview dùng ngay WAV đã regenerate và giữ riêng semantics
+mute của A1 (audio gốc) với TS1 (subtitle/TTS). Blur, Logo, Mask và Text có model, timeline clip,
+preview, export và project round-trip; không cần PySide6 hoặc MPV.
 
 ## Các module chính
 

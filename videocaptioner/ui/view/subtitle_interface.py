@@ -33,6 +33,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
+from videocaptioner.config import CACHE_PATH
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.constant import (
     INFOBAR_DURATION_ERROR,
@@ -194,6 +195,7 @@ class SubtitleTableModel(QAbstractTableModel):
 
 class SubtitleInterface(QWidget):
     finished = pyqtSignal(str, str)
+    openInVideoEditorRequested = pyqtSignal(str, str)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -351,6 +353,16 @@ class SubtitleInterface(QWidget):
         # 添加打开文件夹按钮
         self.command_bar.addAction(
             Action(FIF.FOLDER, "", triggered=self.on_open_folder_clicked)
+        )
+
+        self.command_bar.addSeparator()
+
+        self.command_bar.addAction(
+            Action(
+                FIF.VIDEO,
+                self.tr("Open in Video Editor"),
+                triggered=self.on_open_in_video_editor,
+            )
         )
 
         self.command_bar.addSeparator()
@@ -1049,6 +1061,35 @@ class SubtitleInterface(QWidget):
                     asr_data.save(target, layout=layout)
             except Exception:
                 continue
+
+    def on_open_in_video_editor(self) -> None:
+        """Hand off the current editable table without mutating its source SRT."""
+        video_path = str(getattr(self.task, "video_path", "") or "") if self.task else ""
+        if not video_path or not Path(video_path).is_file() or not self.model._data:
+            InfoBar.warning(
+                self.tr("Chưa thể mở Video Editor"),
+                self.tr("Cần video và dữ liệu phụ đề hiện tại."),
+                duration=4000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        try:
+            handoff_dir = CACHE_PATH / "editor_handoff"
+            handoff_dir.mkdir(parents=True, exist_ok=True)
+            task_id = str(getattr(self.task, "task_id", "") or Path(video_path).stem)
+            subtitle_path = handoff_dir / f"{task_id}.srt"
+            ASRData.from_json(self.model._data).to_srt(save_path=str(subtitle_path))
+        except Exception as exc:
+            InfoBar.error(
+                self.tr("Không thể chuẩn bị Video Editor"),
+                str(exc),
+                duration=-1,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        self.openInVideoEditorRequested.emit(video_path, str(subtitle_path))
 
 
 class PromptDialog(MessageBoxBase):
