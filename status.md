@@ -1,5 +1,35 @@
 # Project Status
 
+## 2026-08-22 (Nghiệm thu Video Editor trên EXE và sửa lỗi phát hiện khi chạy thật)
+
+### Nguyên nhân và thay đổi
+- `Thoát xem trước` làm hỏng playback: `setMedia` rồi `setPosition` ngay lập tức nên backend Windows
+  báo `QtMultimedia playback failed` và `QVideoWidget` rơi về surface trắng. Nay seek được hoãn tới
+  `LoadedMedia`, position tạm thời trong lúc chờ bị bỏ qua, và poster được hiện lại thay cho surface rỗng.
+- Danh sách layer rỗng render trắng vì app stylesheet của QFluentWidgets thắng selector cũ. Dùng ID
+  selector `QListWidget#EditorLayerList` cộng palette `Base`; không dùng viewport translucent vì nó để
+  lộ nội dung tab bên cạnh.
+- Status bar kẹt ở `Loading editor media...` sau khi worker xong; nay khôi phục thành số cue đã tải khi
+  không còn media request nào đang chạy.
+- Bổ sung 22 chuỗi dịch Việt còn thiếu của editor (`TTS text`, placeholder preview, các thông báo
+  render/lưu/xuất và tiêu đề hộp thoại).
+
+### Validation và artifact
+- Editor suite: **54 passed** (thêm regression cho exit-preview deferred seek và status label). Ruff
+  `videocaptioner/`: pass. Pyright module editor: **0 errors, 0 warnings**. Translation sync: pass.
+- PyInstaller 6.22.2 exit 0 với `--workpath` riêng: `build/VideoCaptioner/` cũ thuộc account sandbox
+  `CodexSandboxOffline` nên `--clean` không xóa được (WinError 5); đây là ACL của máy, không phải lỗi spec.
+- Artifact cuối `dist/VideoCaptioner-EditorLayers-20260822c/`: 585 file / 236.713.006 bytes; EXE
+  **30.921.908 bytes**, SHA-256
+  `BA400A39D2C82DF3D9410669D4EFBF1687DEA5CAFC1EA96F570AF67DE27537B6`, `NotSigned`. Warning file 614
+  dòng, 0 match module editor. `resource/fonts` có trong bundle nên `drawtext` dùng đúng font đã ghim.
+  Ba lần build vì hai lỗi chỉ lộ ra khi chạy thật; bản `-20260822` và `-20260822b` là bước trung gian.
+- Chạy thật trên EXE (click-through + screenshot từng bước): mở video 12 giây + SRT tiếng Việt qua hộp
+  thoại thật, V1 có thumbnail, A1 có waveform, TS1 có 3 cue, thêm layer Văn bản và Mặt nạ, `Xem trước
+  nhanh` render và phát với playhead giữ đúng `00:05.023 / 00:12.000` theo timeline dự án, `Thoát xem
+  trước` trả về video gốc đúng vị trí và không còn báo lỗi.
+- Chưa nghiệm thu: export video đầy đủ, dubbing với provider thật, và các codec ngoài H.264/AAC.
+
 ## 2026-08-22 (Video Editor: sửa lỗi visual layer, preview và render)
 
 ### Nguyên nhân và thay đổi

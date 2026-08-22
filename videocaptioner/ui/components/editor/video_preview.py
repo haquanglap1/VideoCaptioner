@@ -261,7 +261,9 @@ class EditorVideoPreview(QWidget):
         self.project: EditorProject | None = None
         # Non-None while a rendered Fast Preview clip is loaded; holds its timeline offset.
         self._rendered_offset_ms: int | None = None
-        self._source_media = QMediaContent()
+        # Seeking right after setMedia fails on the Windows backend; wait for LoadedMedia.
+        self._pending_seek_ms: int | None = None
+        self._poster_path = ""
         self._playback_started = False
         self.surface = PreviewSurface(self)
         self.player = QMediaPlayer(self, QMediaPlayer.VideoSurface)
@@ -269,6 +271,7 @@ class EditorVideoPreview(QWidget):
         self.player.positionChanged.connect(self._on_position_changed)
         self.player.durationChanged.connect(self._on_duration_changed)
         self.player.stateChanged.connect(self._on_state_changed)
+        self.player.mediaStatusChanged.connect(self._on_media_status)
         self.player.error.connect(self._on_error)
 
         layout = QVBoxLayout(self)
@@ -290,21 +293,42 @@ class EditorVideoPreview(QWidget):
     def set_project(self, project: EditorProject | None) -> None:
         self.project = project
         self._rendered_offset_ms = None
+        self._pending_seek_ms = None
+        self._poster_path = ""
         self._playback_started = False
         self.surface.overlay.set_state(project, 0)
         self.surface.overlay.set_selected_layer("")
         has_video = bool(project and project.video_path and Path(project.video_path).is_file())
         if not has_video:
             self.surface.set_empty(True)
-            self._source_media = QMediaContent()
             self.player.setMedia(QMediaContent())
             self.slider.setRange(0, 0)
             return
         self.surface.set_loading()
-        self._source_media = QMediaContent(QUrl.fromLocalFile(project.video_path))
-        self.player.setMedia(self._source_media)
-        self.slider.setRange(0, max(0, project.duration_ms))
-        self.set_position(project.playhead_ms)
+        self._load_source_media(seek_ms=project.playhead_ms)
+
+    def _load_source_media(self, *, seek_ms: int) -> None:
+        """Load the project video and defer the seek until the backend reports it ready."""
+        if not self.project:
+            return
+        self.slider.setRange(0, max(0, self.project.duration_ms))
+        position = max(0, min(int(seek_ms), self.project.duration_ms))
+        self._pending_seek_ms = position
+        self.project.playhead_ms = position
+        self._sync_position(position)
+        self.player.setMedia(QMediaContent(QUrl.fromLocalFile(self.project.video_path)))
+
+    def _on_media_status(self, status: int) -> None:
+        ready = (
+            QMediaPlayer.LoadedMedia,
+            QMediaPlayer.BufferingMedia,
+            QMediaPlayer.BufferedMedia,
+        )
+        if self._pending_seek_ms is not None and status in ready:
+            position = self._pending_seek_ms
+            self._pending_seek_ms = None
+            self.player.setPosition(position)
+            self._sync_position(position)
 
     @property
     def is_rendered_preview(self) -> bool:
@@ -325,11 +349,14 @@ class EditorVideoPreview(QWidget):
             self._timeline_position(self.player.position()) if resume_ms is None else int(resume_ms)
         )
         self._rendered_offset_ms = None
-        self.player.pause()
-        self.player.setMedia(self._source_media)
-        if self.project:
-            self.slider.setRange(0, max(0, self.project.duration_ms))
-            self.set_position(max(0, min(resume, self.project.duration_ms)))
+        self.player.stop()
+        self._playback_started = False
+        # Show the poster again: a stopped QVideoWidget paints the native white surface.
+        if self._poster_path:
+            self.surface.set_poster(self._poster_path)
+        else:
+            self.surface.set_loading()
+        self._load_source_media(seek_ms=resume)
         self.renderedPreviewChanged.emit(False)
 
     def _timeline_position(self, player_position_ms: int) -> int:
@@ -343,6 +370,7 @@ class EditorVideoPreview(QWidget):
             self.player.play()
 
     def set_poster(self, path: str) -> None:
+        self._poster_path = str(path or "")
         # A late thumbnail must never hide a surface the user already started playing.
         if self.is_rendered_preview or self._playback_started:
             return
@@ -370,6 +398,8 @@ class EditorVideoPreview(QWidget):
         self._sync_position(position_ms)
 
     def _on_position_changed(self, position_ms: int) -> None:
+        if self._pending_seek_ms is not None:
+            return  # setMedia resets the clock to 0; keep the requested position
         timeline_ms = self._timeline_position(position_ms)
         if self.project:
             timeline_ms = max(0, min(timeline_ms, self.project.duration_ms))

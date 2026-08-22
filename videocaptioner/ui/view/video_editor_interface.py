@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QKeySequence
+from PyQt5.QtGui import QColor, QKeySequence, QPalette
 from PyQt5.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -153,19 +153,19 @@ QWidget#EditorStatusBar QProgressBar::chunk {
     background: #3ec6ad;
     border-radius: 4px;
 }
-QWidget#EditorLayerPanel, QWidget#EditorLayerPanel QListWidget {
+QWidget#EditorLayerPanel, QListWidget#EditorLayerList {
     color: #dbe7f5;
     background: #0d1726;
     border: none;
 }
-QWidget#EditorLayerPanel QListWidget::item {
+QListWidget#EditorLayerList::item {
     background: #101d2e;
     border: 1px solid #263d58;
     border-radius: 5px;
     padding: 7px;
     margin: 2px;
 }
-QWidget#EditorLayerPanel QListWidget::item:selected {
+QListWidget#EditorLayerList::item:selected {
     background: #1b4d57;
     border-color: #48d0b8;
 }
@@ -184,6 +184,7 @@ class VideoEditorInterface(QWidget):
         self.command_stack = CommandStack()
         self.command_stack.add_changed_callback(self._refresh_from_model)
         self._signatures: dict[str, str] = {}
+        self._pending_media: set[str] = set()
         self._threads: set = set()
         self._render_thread: EditorRenderThread | None = None
         self._selected_layer_id = ""
@@ -346,7 +347,16 @@ class VideoEditorInterface(QWidget):
             self.add_layer_buttons[kind] = button
         layout.addLayout(add_row)
         self.layer_list = QListWidget(panel)
+        # An ID selector outranks the QFluentWidgets app stylesheet, which otherwise
+        # leaves the viewport white; a translucent viewport would leak the sibling tab.
+        self.layer_list.setObjectName("EditorLayerList")
         self.layer_list.setMaximumHeight(132)
+        self.layer_list.setFrameShape(QListWidget.NoFrame)
+        list_palette = self.layer_list.palette()
+        list_palette.setColor(QPalette.Base, QColor("#0d1726"))
+        list_palette.setColor(QPalette.Text, QColor("#dbe7f5"))
+        self.layer_list.setPalette(list_palette)
+        self.layer_list.viewport().setAutoFillBackground(True)
         layout.addWidget(self.layer_list)
         self.layer_inspector.setParent(panel)
         layout.addWidget(self.layer_inspector, 1)
@@ -468,6 +478,7 @@ class VideoEditorInterface(QWidget):
     def _start_media(self, action: str, payload: dict) -> None:
         signature = uuid4().hex
         self._signatures[action] = signature
+        self._pending_media.add(action)
         self.status_label.setText(self.tr("Loading editor media..."))
         self.progress.setRange(0, 0)
         thread = EditorMediaThread(signature, action, payload, self)
@@ -481,7 +492,9 @@ class VideoEditorInterface(QWidget):
         thread.finished.connect(lambda current=thread: self._threads.discard(current))
 
     def _on_media_completed(self, action: str, signature: str, data) -> None:
+        self._pending_media.discard(action)
         if self._signatures.get(action) != signature:
+            self._restore_project_status()
             return
         if action in {"open", "load-project"}:
             self._accept_project(data)
@@ -495,6 +508,15 @@ class VideoEditorInterface(QWidget):
                 self.preview.set_poster(items[0][1])
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
+        self._restore_project_status()
+
+    def _restore_project_status(self) -> None:
+        """The loading text used to stay up forever once the workers finished."""
+        if self._pending_media or not self.project:
+            return
+        self.status_label.setText(
+            self.tr("Loaded {count} cues — V1 / A1 / TS1").format(count=len(self.project.cues))
+        )
 
     def _accept_project(self, project: EditorProject) -> None:
         self.project = project
@@ -526,6 +548,7 @@ class VideoEditorInterface(QWidget):
         )
 
     def _on_worker_failed(self, action: str, signature: str, error: str) -> None:
+        self._pending_media.discard(action)
         if self._signatures.get(action) != signature:
             return
         self.progress.setRange(0, 100)

@@ -341,3 +341,37 @@ def _ffmpeg_sample(video: Path) -> int:
         ],
         capture_output=True,
     ).returncode
+
+
+def test_exit_rendered_preview_reloads_the_source_and_defers_the_seek(qapp):
+    """Seeking immediately after setMedia made the packaged player report a failure."""
+    from PyQt5.QtMultimedia import QMediaPlayer
+
+    page = VideoEditorInterface()
+    project = _project()
+    page._accept_project(project)
+    preview = page.preview
+    preview._rendered_offset_ms = 0
+    preview._playback_started = True
+
+    preview.exit_rendered_preview(resume_ms=5_000)
+    assert preview.is_rendered_preview is False
+    assert preview._pending_seek_ms == 5_000  # not applied until the backend is ready
+    assert project.playhead_ms == 5_000
+    assert page.preview.slider.maximum() == project.duration_ms
+
+    preview._on_media_status(QMediaPlayer.LoadedMedia)
+    assert preview._pending_seek_ms is None
+    page.close()
+
+
+def test_status_label_stops_saying_loading_once_workers_finish(qapp):
+    page = VideoEditorInterface()
+    project = _project()
+    page._accept_project(project)
+    page._pending_media.clear()
+    page.status_label.setText("Loading editor media...")
+    page._restore_project_status()
+    assert "Loading editor media" not in page.status_label.text()
+    assert str(len(project.cues)) in page.status_label.text()
+    page.close()
