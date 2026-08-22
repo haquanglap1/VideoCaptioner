@@ -12,17 +12,22 @@ MPV hoặc module từ CapCap. CapCap chỉ là Apache-2.0 reference cho các kh
   audio đã tạo. Project JSON chỉ persist voice identity không nhạy cảm; credential nằm trong runtime
   `DubbingConfig`, không đi vào project.
 - Track mặc định là `V1 Video`, `A1 Original Audio`, `TS1 Subtitle + TTS`; `FX1 Visual Layers` xuất
-  hiện khi có Blur/Logo/Mask/Text.
-- `EditorProjectStore` ghi JSON và SRT bằng temp-file + `os.replace`. Mọi path được serialize relative.
-  Normal save luôn tạo SRT cạnh project và không sửa source SRT đã mở. ASS chỉ qua explicit
-  `save_as_ass`; render/export không persist ASS.
+  hiện khi có Blur/Logo/Mask/Text. Track header có V/M/L; V chỉ bật cho TS1 (burn phụ đề) và FX1
+  (render visual layer) vì V1/A1 không đổi output khi ẩn.
+- `EditorProjectStore` ghi JSON và SRT bằng temp-file + `os.replace`. Video/subtitle path phải relative
+  so với project. Asset vệ tinh (ảnh logo, WAV TTS trong cache) giữ absolute khi không tính được
+  relative — thường là khác ổ đĩa — thay vì làm hỏng cả thao tác save. Normal save luôn tạo SRT cạnh
+  project và không sửa source SRT đã mở. ASS chỉ qua explicit `save_as_ass`; render/export không
+  persist ASS.
 
 ## Mutation và synchronization
 
 `CommandStack` là write path cho text, timing, add/split/delete, move/resize, speaker, voice settings,
 track state và visual layers. Inspector dùng composite command để một lần Apply không để lại mutation
 một phần khi validation fail. Timing phải không âm, dài ít nhất 50 ms, không overlap và không vượt
-duration video.
+duration video. Visual layer được phép overlap nhau nên chỉ bị chặn bởi biên media; `LayerInspector`
+gom geometry, timing, opacity, visible/lock và property theo kind vào một `EditLayerCommand`. Tab
+`Layers` chứa cả nút add, danh sách và inspector nên context panel chỉ có hai tab ở width hẹp.
 
 Playback position cập nhật playhead, active cue, subtitle overlay và inspector trên Qt main thread.
 Timeline click cập nhật selection và seek preview. Worker chỉ emit data/error/progress; widget update
@@ -34,6 +39,12 @@ luôn nằm trong slot của UI thread. Mọi media request có signature và sl
 `O(log n + visible cues)`; paint không duyệt toàn TS1. Waveform dùng FFmpeg PCM mono 800 Hz và envelope
 bị chặn kích thước. Thumbnail tối đa 120 frame. Cả hai cache dưới
 `AppData/cache/editor_media/v1/<media fingerprint>` với fingerprint từ resolved path, size và mtime.
+
+Fast Preview phát clip đã render trong preview mode riêng: vị trí local của clip được cộng offset về
+timeline project nên playhead, cue active và inspector không bị ghi đè, và `Exit preview` trả player về
+video gốc đúng vị trí. Poster thumbnail đến muộn không ẩn surface đã bắt đầu phát. Render có `Cancel`:
+worker poll cancel flag và kill FFmpeg child, đồng thời page tự dừng worker khi app quit vì navigation
+page không nhận `closeEvent`.
 
 QtMultimedia là backend preview hiện tại. FFmpeg vẫn là source of truth cho Fast Preview và export.
 Không thêm MPV: H.264/AAC play + seek có deterministic machine test; nếu codec thực tế ngoài backend
@@ -55,9 +66,14 @@ và WAV đã regenerate đều lấy từ live project. A1 mute làm im audio g�
 TTS. Final export có thể chạy full Natural/Legacy Dubbing từ live TTS SRT rồi render subtitle/layers từ
 cùng snapshot editor. Dubbing report vẫn in-memory trừ khi caller CLI yêu cầu `--report`.
 
-Blur/Logo/Mask/Text dùng cùng filter-graph builder cho preview/export. Text dùng temporary `textfile`,
-Logo là image input + overlay, Mask hỗ trợ solid/pixelate/blur và Blur dùng crop/effect/overlay theo
-range. Temporary run directory được cleanup sau success hoặc failure.
+Blur/Logo/Mask/Text dùng cùng filter-graph builder cho preview/export. Text dùng temporary `textfile`
+với `fontfile` ghim từ `resource/fonts/` (fontconfig mặc định khác nhau theo máy) và được canh giữa
+trong box của layer đúng như overlay preview. Logo là image input + overlay, scale theo frame width
+thật lấy từ probe chứ không đoán 1920. Mask hỗ trợ solid/pixelate/blur và Blur dùng crop/effect/overlay
+theo range, với bán kính boxblur clamp theo kích thước vùng và opacity áp qua `colorchannelmixer`. Box
+của layer bị clamp trong khung để `crop`/`drawbox` không vượt biên. Overlay preview dùng đúng rect video
+đã letterbox và scale font theo tỉ lệ video/widget. Temporary run directory được cleanup sau success
+hoặc failure; file Fast Preview cũ trong cache bị dọn trước mỗi lần render mới.
 
 ## Acceptance boundary
 

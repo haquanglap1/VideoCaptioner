@@ -123,14 +123,22 @@ delete, drag, resize, voice settings, mute/lock và visual layer đều đi qua 
 thumbnail được tạo ở background và cache theo fingerprint media; timeline chỉ paint cue nằm trong
 viewport.
 
-`Save project` ghi atomically `editor-project-v1` cùng một file SRT cạnh project; đường dẫn trong JSON
-là relative và không chứa API key. Normal save không persist ASS. Chỉ `Save as ASS` tạo file ASS lâu
+`Save project` ghi atomically `editor-project-v1` cùng một file SRT cạnh project; đường dẫn video/phụ đề
+trong JSON là relative, asset phụ như ảnh logo hoặc WAV cache giữ absolute khi nằm khác ổ đĩa, và JSON
+không chứa API key. Normal save không persist ASS. Chỉ `Save as ASS` tạo file ASS lâu
 dài; Fast Preview/export dùng SRT tạm từ live editor state và tự cleanup.
 
 Nếu Dubbing đang bật, final export dùng Natural/Legacy config hiện có. `Regenerate voice` force-refresh
 đúng cache key của cue/group được chọn; Fast Preview dùng ngay WAV đã regenerate và giữ riêng semantics
-mute của A1 (audio gốc) với TS1 (subtitle/TTS). Blur, Logo, Mask và Text có model, timeline clip,
-preview, export và project round-trip; không cần PySide6 hoặc MPV.
+mute của A1 (audio gốc) với TS1 (subtitle/TTS). Fast Preview phát trong chế độ xem trước riêng và có
+`Exit preview` để quay lại video gốc; `Cancel render` dừng được cả preview lẫn export đang chạy.
+
+Tab `Lớp hình ảnh` có sẵn bốn nút thêm layer Blur/Logo/Mask/Text, danh sách layer và bảng thuộc tính
+ngay bên dưới. Layer mới phủ đúng vùng đang chọn trên timeline, hoặc 5 giây tính từ playhead nếu chưa
+chọn vùng; bảng thuộc tính chỉnh vị trí, kích thước, thời gian, opacity, ẩn/khóa và thuộc tính riêng
+theo loại. Layer cũng chọn và kéo/resize được ngay trên track FX1. Nút V ở track header ẩn phụ đề (TS1)
+hoặc toàn bộ visual layer (FX1) khi render. Preview và export dùng chung một filter graph, không cần
+PySide6 hoặc MPV.
 
 ## Các module chính
 

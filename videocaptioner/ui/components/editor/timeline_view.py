@@ -12,8 +12,10 @@ from videocaptioner.core.editor.models import EditorProject, TimelineIndex
 
 class EditorTimelineView(QGraphicsView):
     cueSelected = pyqtSignal(str)
+    layerSelected = pyqtSignal(str)
     seekRequested = pyqtSignal(int)
     cueTimingRequested = pyqtSignal(str, int, int, str)
+    layerTimingRequested = pyqtSignal(str, int, int, str)
     selectionRangeChanged = pyqtSignal(int, int)
     zoomChanged = pyqtSignal(int)
 
@@ -43,6 +45,7 @@ class EditorTimelineView(QGraphicsView):
         self.pixels_per_second = self.DEFAULT_PPS
         self.playhead_ms = 0
         self.selected_cue_id = ""
+        self.selected_layer_id = ""
         self.waveform: list[float] = []
         self.waveform_duration_s = 0.0
         self.thumbnails: list[tuple[float, QPixmap]] = []
@@ -56,6 +59,7 @@ class EditorTimelineView(QGraphicsView):
         self._rebuild_index()
         self.playhead_ms = project.playhead_ms if project else 0
         self.selected_cue_id = ""
+        self.selected_layer_id = ""
         self._update_scene()
         self.viewport().update()
 
@@ -89,6 +93,28 @@ class EditorTimelineView(QGraphicsView):
     def select_cue(self, cue_id: str) -> None:
         self.selected_cue_id = str(cue_id or "")
         self.viewport().update()
+
+    def select_layer(self, layer_id: str) -> None:
+        self.selected_layer_id = str(layer_id or "")
+        self.viewport().update()
+
+    def _layer_row_rect(self, layer) -> QRectF:
+        top = self.RULER_HEIGHT + 3 * self.TRACK_HEIGHT + 5
+        x = self._x_for_ms(layer.start_ms)
+        width = max(4.0, layer.duration_ms / 1000.0 * self.pixels_per_second)
+        return QRectF(x, top, width, self.VISUAL_TRACK_HEIGHT - 10)
+
+    def _layer_at(self, point: QPoint):
+        if not self.project or self._track_count() != 4:
+            return None
+        top = self.RULER_HEIGHT + 3 * self.TRACK_HEIGHT
+        if not top <= point.y() < top + self.VISUAL_TRACK_HEIGHT:
+            return None
+        for layer in reversed(self.project.layers):
+            rect = self._layer_row_rect(layer)
+            if rect.left() - 1 <= point.x() <= rect.right() + 1:
+                return layer
+        return None
 
     def set_waveform(self, samples: list[float], duration_s: float) -> None:
         self.waveform = [max(0.0, min(1.0, float(value))) for value in samples]
@@ -282,18 +308,19 @@ class EditorTimelineView(QGraphicsView):
     def _draw_visual_track(self, painter: QPainter) -> None:
         if not self.project:
             return
-        top = self.RULER_HEIGHT + 3 * self.TRACK_HEIGHT + 5
         for layer in self.project.layers:
-            x = self._x_for_ms(layer.start_ms)
-            width = max(4.0, layer.duration_ms / 1000.0 * self.pixels_per_second)
-            rect = QRectF(x, top, width, self.VISUAL_TRACK_HEIGHT - 10)
+            rect = self._layer_row_rect(layer)
             if rect.right() < 0 or rect.left() > self.viewport().width():
                 continue
-            painter.setPen(QColor("#ae7ef5"))
-            painter.setBrush(QColor("#573f78"))
+            selected = layer.id == self.selected_layer_id
+            painter.setPen(QPen(QColor("#d9c6ff") if selected else QColor("#ae7ef5"), 2 if selected else 1))
+            painter.setBrush(QColor("#6d4f96") if selected else QColor("#573f78"))
             painter.drawRoundedRect(rect, 3, 3)
-            painter.setPen(Qt.white)
-            painter.drawText(rect.adjusted(4, 0, -4, 0), Qt.AlignVCenter, layer.name or layer.kind.value)
+            painter.setPen(Qt.white if layer.visible else QColor("#a5b4c8"))
+            caption = layer.name or layer.kind.value
+            if not layer.visible:
+                caption = f"{caption} (hidden)"
+            painter.drawText(rect.adjusted(4, 0, -4, 0), Qt.AlignVCenter, caption)
 
     def _draw_ruler(self, painter: QPainter, width: int) -> None:
         painter.fillRect(0, 0, width, self.RULER_HEIGHT, QColor("#0b1018"))
@@ -328,6 +355,28 @@ class EditorTimelineView(QGraphicsView):
             self.project.selection_end_ms = position_ms
             self.viewport().update()
             return
+        layer = self._layer_at(event.pos())
+        if layer:
+            self.selected_layer_id = layer.id
+            self.layerSelected.emit(layer.id)
+            if not self._track_locked("track-fx1"):
+                rect = self._layer_row_rect(layer)
+                if abs(event.pos().x() - rect.left()) <= self.HANDLE_WIDTH:
+                    mode = "resize-left"
+                elif abs(event.pos().x() - rect.right()) <= self.HANDLE_WIDTH:
+                    mode = "resize-right"
+                else:
+                    mode = "move"
+                self._drag = {
+                    "target": "layer",
+                    "cue_id": layer.id,
+                    "mode": mode,
+                    "anchor_ms": position_ms,
+                    "start_ms": layer.start_ms,
+                    "end_ms": layer.end_ms,
+                }
+            self.viewport().update()
+            return
         cue = self._cue_at(event.pos())
         if cue:
             self.selected_cue_id = cue.id
@@ -342,6 +391,7 @@ class EditorTimelineView(QGraphicsView):
                 else:
                     mode = "move"
                 self._drag = {
+                    "target": "cue",
                     "cue_id": cue.id,
                     "mode": mode,
                     "anchor_ms": position_ms,
@@ -372,7 +422,12 @@ class EditorTimelineView(QGraphicsView):
                 start = min(end - 50, max(0, start + delta))
             else:
                 end = max(start + 50, min(self.project.duration_ms, end + delta))
-            start, end = self._clamp_timing(str(self._drag["cue_id"]), start, end)
+            if self._drag.get("target") == "layer":
+                # Visual layers may overlap each other, so only the media bounds apply.
+                start = max(0, min(start, self.project.duration_ms - 50))
+                end = max(start + 50, min(end, self.project.duration_ms))
+            else:
+                start, end = self._clamp_timing(str(self._drag["cue_id"]), start, end)
             self._drag["preview"] = (start, end)
             self.viewport().update()
             return
@@ -389,7 +444,12 @@ class EditorTimelineView(QGraphicsView):
         if self._drag:
             preview = self._drag.get("preview")
             if preview:
-                self.cueTimingRequested.emit(
+                signal = (
+                    self.layerTimingRequested
+                    if self._drag.get("target") == "layer"
+                    else self.cueTimingRequested
+                )
+                signal.emit(
                     str(self._drag["cue_id"]),
                     int(preview[0]),
                     int(preview[1]),

@@ -23,6 +23,7 @@ class EditorOverlay(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.project: EditorProject | None = None
         self.position_ms = 0
+        self.selected_layer_id = ""
         self._pixmaps: dict[str, QPixmap] = {}
 
     def set_state(self, project: EditorProject | None, position_ms: int) -> None:
@@ -30,28 +31,72 @@ class EditorOverlay(QWidget):
         self.position_ms = int(position_ms)
         self.update()
 
+    def set_selected_layer(self, layer_id: str) -> None:
+        self.selected_layer_id = str(layer_id or "")
+        self.update()
+
+    def video_rect(self) -> QRectF:
+        """Letterboxed video area: layers are positioned against the frame, not the widget."""
+        width, height = float(self.width()), float(self.height())
+        project = self.project
+        if not project or not (project.width and project.height):
+            return QRectF(0, 0, width, height)
+        scale = min(width / project.width, height / project.height)
+        frame_width, frame_height = project.width * scale, project.height * scale
+        return QRectF((width - frame_width) / 2, (height - frame_height) / 2, frame_width, frame_height)
+
+    def _font_scale(self, frame: QRectF) -> float:
+        """Map video pixels to widget pixels so preview text matches drawtext output."""
+        if self.project and self.project.height:
+            return frame.height() / float(self.project.height)
+        return 1.0
+
+    @staticmethod
+    def _draw_outlined_text(
+        painter: QPainter, rect: QRectF, text: str, flags: int, fill: QColor, outline: QColor, width: int
+    ) -> None:
+        if width > 0:
+            painter.setPen(outline)
+            for dx, dy in ((-width, 0), (width, 0), (0, -width), (0, width)):
+                painter.drawText(rect.translated(dx, dy), flags, text)
+        painter.setPen(fill)
+        painter.drawText(rect, flags, text)
+
     def paintEvent(self, event) -> None:
         if not self.project:
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        for layer in self.project.layers:
+        frame = self.video_rect()
+        font_scale = self._font_scale(frame)
+        visual_track = next(
+            (track for track in self.project.tracks if track.id == "track-fx1"), None
+        )
+        layers = [] if visual_track is not None and not visual_track.visible else self.project.layers
+        for layer in layers:
             if not layer.visible or not layer.start_ms <= self.position_ms < layer.end_ms:
                 continue
             rect = QRectF(
-                self.width() * layer.x,
-                self.height() * layer.y,
-                self.width() * layer.width,
-                self.height() * layer.height,
+                frame.x() + frame.width() * layer.x,
+                frame.y() + frame.height() * layer.y,
+                frame.width() * layer.width,
+                frame.height() * layer.height,
             )
             if layer.kind == EditorLayerKind.TEXT:
                 painter.setOpacity(layer.opacity)
-                painter.setPen(QColor(str(layer.properties.get("font_color", "white"))))
                 font = painter.font()
-                font.setPixelSize(max(8, int(layer.properties.get("font_size", 32))))
+                font.setPixelSize(max(6, int(int(layer.properties.get("font_size", 42)) * font_scale)))
                 font.setBold(bool(layer.properties.get("bold", False)))
                 painter.setFont(font)
-                painter.drawText(rect, Qt.AlignCenter | Qt.TextWordWrap, str(layer.properties.get("text", "")))
+                self._draw_outlined_text(
+                    painter,
+                    rect,
+                    str(layer.properties.get("text", "")),
+                    Qt.AlignCenter | Qt.TextWordWrap,
+                    QColor(str(layer.properties.get("font_color", "white"))),
+                    QColor(str(layer.properties.get("outline_color", "black"))),
+                    max(0, int(round(int(layer.properties.get("outline_width", 2)) * font_scale))),
+                )
                 painter.setOpacity(1.0)
             elif layer.kind == EditorLayerKind.LOGO:
                 path = str(layer.properties.get("path", ""))
@@ -60,8 +105,15 @@ class EditorOverlay(QWidget):
                     pixmap = QPixmap(path)
                     self._pixmaps[path] = pixmap
                 if not pixmap.isNull():
+                    # Export scales the logo by width and keeps its aspect ratio.
+                    target = QRectF(
+                        rect.x(),
+                        rect.y(),
+                        rect.width(),
+                        rect.width() * pixmap.height() / max(1, pixmap.width()),
+                    )
                     painter.setOpacity(layer.opacity)
-                    painter.drawPixmap(rect, pixmap, QRectF(pixmap.rect()))
+                    painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
                     painter.setOpacity(1.0)
             elif layer.kind == EditorLayerKind.MASK:
                 mode = str(layer.properties.get("mode", "solid"))
@@ -77,21 +129,35 @@ class EditorOverlay(QWidget):
                 painter.fillRect(rect, QColor(130, 90, 180, int(90 * layer.opacity)))
                 painter.setPen(QPen(QColor("#c4b5fd"), 1, Qt.DashLine))
                 painter.drawText(rect, Qt.AlignCenter, "Blur")
+            if layer.id == self.selected_layer_id:
+                painter.setPen(QPen(QColor("#48d0b8"), 2, Qt.DashLine))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(rect)
 
         cue = self.project.active_cue_at(self.position_ms)
         subtitle_track = next(
             (track for track in self.project.tracks if track.id == "track-ts1"), None
         )
         if cue and (subtitle_track is None or subtitle_track.visible):
-            subtitle_rect = QRectF(20, self.height() * 0.70, max(1, self.width() - 40), self.height() * 0.25)
-            painter.setPen(QPen(Qt.black, 5))
+            subtitle_rect = QRectF(
+                frame.x() + 20,
+                frame.y() + frame.height() * 0.70,
+                max(1.0, frame.width() - 40),
+                frame.height() * 0.25,
+            )
             font = painter.font()
-            font.setPixelSize(max(18, min(42, self.width() // 24)))
+            font.setPixelSize(max(12, min(42, int(frame.width() // 24))))
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(subtitle_rect, Qt.AlignHCenter | Qt.AlignBottom | Qt.TextWordWrap, cue.display_text)
-            painter.setPen(Qt.white)
-            painter.drawText(subtitle_rect, Qt.AlignHCenter | Qt.AlignBottom | Qt.TextWordWrap, cue.display_text)
+            self._draw_outlined_text(
+                painter,
+                subtitle_rect,
+                cue.display_text,
+                Qt.AlignHCenter | Qt.AlignBottom | Qt.TextWordWrap,
+                QColor(Qt.white),
+                QColor(Qt.black),
+                2,
+            )
         painter.end()
 
 
@@ -187,11 +253,16 @@ class EditorVideoPreview(QWidget):
     positionChanged = pyqtSignal(int)
     activeCueChanged = pyqtSignal(str)
     playbackError = pyqtSignal(str)
+    renderedPreviewChanged = pyqtSignal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("EditorVideoPreview")
         self.project: EditorProject | None = None
+        # Non-None while a rendered Fast Preview clip is loaded; holds its timeline offset.
+        self._rendered_offset_ms: int | None = None
+        self._source_media = QMediaContent()
+        self._playback_started = False
         self.surface = PreviewSurface(self)
         self.player = QMediaPlayer(self, QMediaPlayer.VideoSurface)
         self.player.setVideoOutput(self.surface.video)
@@ -218,17 +289,51 @@ class EditorVideoPreview(QWidget):
 
     def set_project(self, project: EditorProject | None) -> None:
         self.project = project
+        self._rendered_offset_ms = None
+        self._playback_started = False
         self.surface.overlay.set_state(project, 0)
+        self.surface.overlay.set_selected_layer("")
         has_video = bool(project and project.video_path and Path(project.video_path).is_file())
         if not has_video:
             self.surface.set_empty(True)
+            self._source_media = QMediaContent()
             self.player.setMedia(QMediaContent())
             self.slider.setRange(0, 0)
             return
         self.surface.set_loading()
-        self.player.setMedia(QMediaContent(QUrl.fromLocalFile(project.video_path)))
+        self._source_media = QMediaContent(QUrl.fromLocalFile(project.video_path))
+        self.player.setMedia(self._source_media)
         self.slider.setRange(0, max(0, project.duration_ms))
         self.set_position(project.playhead_ms)
+
+    @property
+    def is_rendered_preview(self) -> bool:
+        return self._rendered_offset_ms is not None
+
+    def play_rendered_preview(self, path: str, offset_ms: int) -> None:
+        """Play a rendered clip without letting its local clock rewrite project state."""
+        self._rendered_offset_ms = max(0, int(offset_ms))
+        self.surface.show_video()
+        self.player.setMedia(QMediaContent(QUrl.fromLocalFile(str(path))))
+        self.player.play()
+        self.renderedPreviewChanged.emit(True)
+
+    def exit_rendered_preview(self, *, resume_ms: int | None = None) -> None:
+        if self._rendered_offset_ms is None:
+            return
+        resume = (
+            self._timeline_position(self.player.position()) if resume_ms is None else int(resume_ms)
+        )
+        self._rendered_offset_ms = None
+        self.player.pause()
+        self.player.setMedia(self._source_media)
+        if self.project:
+            self.slider.setRange(0, max(0, self.project.duration_ms))
+            self.set_position(max(0, min(resume, self.project.duration_ms)))
+        self.renderedPreviewChanged.emit(False)
+
+    def _timeline_position(self, player_position_ms: int) -> int:
+        return int(player_position_ms) + (self._rendered_offset_ms or 0)
 
     def toggle_playback(self) -> None:
         if self.player.state() == QMediaPlayer.PlayingState:
@@ -238,6 +343,11 @@ class EditorVideoPreview(QWidget):
             self.player.play()
 
     def set_poster(self, path: str) -> None:
+        # A late thumbnail must never hide a surface the user already started playing.
+        if self.is_rendered_preview or self._playback_started:
+            return
+        if self.player.state() == QMediaPlayer.PlayingState:
+            return
         self.surface.set_poster(path)
 
     def set_position(self, position_ms: int) -> None:
@@ -245,15 +355,27 @@ class EditorVideoPreview(QWidget):
         if self.project:
             position_ms = max(0, min(position_ms, self.project.duration_ms))
             self.project.playhead_ms = position_ms
+        if self._rendered_offset_ms is not None:
+            local = position_ms - self._rendered_offset_ms
+            duration = self.player.duration()
+            if local < 0 or (duration > 0 and local > duration):
+                self.exit_rendered_preview(resume_ms=position_ms)
+                return
+            if abs(self.player.position() - local) > 5:
+                self.player.setPosition(local)
+            self._sync_position(position_ms)
+            return
         if abs(self.player.position() - position_ms) > 5:
             self.player.setPosition(position_ms)
         self._sync_position(position_ms)
 
     def _on_position_changed(self, position_ms: int) -> None:
+        timeline_ms = self._timeline_position(position_ms)
         if self.project:
-            self.project.playhead_ms = int(position_ms)
-        self._sync_position(int(position_ms))
-        self.positionChanged.emit(int(position_ms))
+            timeline_ms = max(0, min(timeline_ms, self.project.duration_ms))
+            self.project.playhead_ms = timeline_ms
+        self._sync_position(timeline_ms)
+        self.positionChanged.emit(timeline_ms)
 
     def _sync_position(self, position_ms: int) -> None:
         self.slider.blockSignals(True)
@@ -267,9 +389,14 @@ class EditorVideoPreview(QWidget):
             self.activeCueChanged.emit(cue.id if cue else "")
 
     def _on_duration_changed(self, duration_ms: int) -> None:
+        if self.project and self._rendered_offset_ms is not None:
+            return  # keep the slider on the project timeline while a clip is previewing
         self.slider.setRange(0, max(0, int(duration_ms)))
 
     def _on_state_changed(self, state: int) -> None:
+        if state == QMediaPlayer.PlayingState:
+            self._playback_started = True
+            self.surface.show_video()
         self.play_button.setText(
             self.tr("Pause") if state == QMediaPlayer.PlayingState else self.tr("Play")
         )

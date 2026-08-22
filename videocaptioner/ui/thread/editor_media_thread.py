@@ -9,6 +9,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.core.editor.media import (
     EditorMediaCache,
+    EditorRenderCancelled,
     build_thumbnails,
     build_waveform,
     export_editor_video,
@@ -76,6 +77,7 @@ class EditorRenderThread(QThread):
     progress = pyqtSignal(int, str)
     completed = pyqtSignal(str, str)
     failed = pyqtSignal(str, str)
+    cancelled = pyqtSignal(str)
 
     def __init__(
         self,
@@ -93,6 +95,15 @@ class EditorRenderThread(QThread):
         self.project = deepcopy(project)
         self.output_path = str(output_path)
         self.dubbing_config = deepcopy(dubbing_config)
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Ask the FFmpeg child to stop; safe to call from the UI thread."""
+        self._cancelled = True
+        self.requestInterruption()
+
+    def _should_cancel(self) -> bool:
+        return self._cancelled or self.isInterruptionRequested()
 
     def run(self) -> None:
         try:
@@ -100,18 +111,26 @@ class EditorRenderThread(QThread):
                 self.progress.emit(int(value), str(message))
 
             if self.action == "preview":
-                output = render_fast_preview(self.project, self.output_path, callback=callback)
+                output = render_fast_preview(
+                    self.project,
+                    self.output_path,
+                    callback=callback,
+                    should_cancel=self._should_cancel,
+                )
             elif self.action == "export":
                 output = export_editor_video(
                     self.project,
                     self.output_path,
                     dubbing_config=self.dubbing_config,
                     callback=callback,
+                    should_cancel=self._should_cancel,
                 )
             else:
                 raise ValueError(f"Unsupported editor render action: {self.action}")
             if not Path(output).is_file():
                 raise RuntimeError("Editor render did not create an output file")
             self.completed.emit(self.request_signature, output)
+        except EditorRenderCancelled:
+            self.cancelled.emit(self.request_signature)
         except Exception as exc:
             self.failed.emit(self.request_signature, str(exc))

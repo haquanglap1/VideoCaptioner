@@ -10,13 +10,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from array import array
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from videocaptioner.config import CACHE_PATH
+from videocaptioner.config import CACHE_PATH, FONTS_PATH
 from videocaptioner.core.dubbing.audio_mixer import build_voice_track, mix_audio_tracks
 from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.dubbing.engine import DubbingEngine
@@ -34,6 +35,13 @@ _CREATE_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" el
 
 class EditorMediaError(RuntimeError):
     pass
+
+
+class EditorRenderCancelled(EditorMediaError):
+    """Raised when the caller asked to stop a preview/export run."""
+
+
+CancelCheck = Callable[[], bool]
 
 
 @dataclass(frozen=True)
@@ -62,22 +70,68 @@ def _tool_path(name: str) -> str:
     raise EditorMediaError(f"Không tìm thấy {name}. Hãy cài FFmpeg và thêm vào PATH.")
 
 
-def _run(command: list[str], *, cwd: Path | None = None, timeout: float = 300) -> subprocess.CompletedProcess:
+def _stop_process(process: subprocess.Popen) -> None:
+    """Kill an FFmpeg child that outlived its timeout or was cancelled."""
+    for stop in (process.terminate, process.kill):
+        try:
+            stop()
+            process.wait(timeout=5)
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+
+
+def _run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    timeout: float = 300,
+    should_cancel: CancelCheck | None = None,
+) -> subprocess.CompletedProcess:
+    """Run FFmpeg, polling ``should_cancel`` so long renders stay interruptible."""
+    poll_interval = 0.2 if should_cancel else timeout
+    deadline = time.monotonic() + timeout
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             command,
             cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            check=False,
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             creationflags=_CREATE_FLAGS,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise EditorMediaError(f"FFmpeg quá thời gian chờ sau {timeout:.0f} giây") from exc
-    if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace").strip()
-        raise EditorMediaError(stderr[-4000:] or f"FFmpeg exit code {result.returncode}")
-    return result
+    except OSError as exc:
+        raise EditorMediaError(f"Không chạy được {Path(command[0]).name}: {exc}") from exc
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _stop_process(process)
+            raise EditorMediaError(f"FFmpeg quá thời gian chờ sau {timeout:.0f} giây")
+        try:
+            # Retrying communicate() after TimeoutExpired keeps the buffered output.
+            stdout, stderr = process.communicate(timeout=min(poll_interval, remaining))
+            break
+        except subprocess.TimeoutExpired:
+            if should_cancel and should_cancel():
+                _stop_process(process)
+                raise EditorRenderCancelled("Đã hủy render theo yêu cầu")
+    if process.returncode != 0:
+        message = (stderr or b"").decode("utf-8", errors="replace").strip()
+        raise EditorMediaError(message[-4000:] or f"FFmpeg exit code {process.returncode}")
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _raise_if_cancelled(should_cancel: CancelCheck | None) -> None:
+    if should_cancel and should_cancel():
+        raise EditorRenderCancelled("Đã hủy render theo yêu cầu")
+
+
+def editor_font_file() -> str:
+    """Pin drawtext to a bundled font: fontconfig defaults vary per machine."""
+    for name in ("NotoSansSC-Regular.ttf", "LXGWWenKai-Regular.ttf"):
+        candidate = FONTS_PATH / name
+        if candidate.is_file():
+            return str(candidate)
+    return ""
 
 
 def probe_media(path: str | Path) -> MediaInfo:
@@ -284,8 +338,17 @@ def build_visual_filter_graph(
     *,
     include_subtitles: bool = True,
     offset_ms: int = 0,
+    frame_width: int = 0,
+    frame_height: int = 0,
 ) -> tuple[list[str], str, str]:
-    """Return extra input args, filter graph and output label for preview/export."""
+    """Return extra input args, filter graph and output label for preview/export.
+
+    ``frame_width``/``frame_height`` come from the rendered source so logo scaling
+    and blur radii never fall back to a guessed resolution.
+    """
+    frame_width = int(frame_width or project.width or 1920)
+    frame_height = int(frame_height or project.height or 1080)
+    font_file = editor_font_file()
     filters: list[str] = []
     current = "v0"
     subtitle_track = next((track for track in project.tracks if track.id == "track-ts1"), None)
@@ -297,21 +360,31 @@ def build_visual_filter_graph(
 
     extra_inputs: list[str] = []
     logo_input_index = 1
-    for layer_index, layer in enumerate(project.layers):
+    visual_track = next((track for track in project.tracks if track.id == "track-fx1"), None)
+    layers = [] if visual_track is not None and not visual_track.visible else project.layers
+    for layer_index, layer in enumerate(layers):
         if not layer.visible:
             continue
         next_label = f"v{layer_index + 1}"
         enable = _enable(layer, offset_ms=offset_ms)
+        # Keep the box inside the frame: crop/drawbox reject regions that run past the edge.
+        box_x = min(max(0.0, layer.x), 0.999)
+        box_y = min(max(0.0, layer.y), 0.999)
+        box_w = max(0.001, min(layer.width, 1.0 - box_x))
+        box_h = max(0.001, min(layer.height, 1.0 - box_y))
         if layer.kind == EditorLayerKind.TEXT:
             text_file = run_dir / f"text-{layer.id}.txt"
             text_file.write_text(str(layer.properties.get("text", "")), encoding="utf-8")
             size = max(8, int(layer.properties.get("font_size", 42)))
             color = _escape_filter_value(str(layer.properties.get("font_color", "white")))
             outline = _escape_filter_value(str(layer.properties.get("outline_color", "black")))
-            x_expr = f"(w-text_w)*{layer.x:.6f}"
-            y_expr = f"(h-text_h)*{layer.y:.6f}"
+            # Centre the text inside the layer box so export matches the preview overlay.
+            x_expr = f"(w*{box_x:.6f})+(w*{box_w:.6f}-text_w)/2"
+            y_expr = f"(h*{box_y:.6f})+(h*{box_h:.6f}-text_h)/2"
+            font_arg = f"fontfile='{_escape_filter_path(font_file)}':" if font_file else ""
             filters.append(
-                f"[{current}]drawtext=textfile='{_escape_filter_path(str(text_file))}':"
+                f"[{current}]drawtext={font_arg}"
+                f"textfile='{_escape_filter_path(str(text_file))}':"
                 f"fontsize={size}:fontcolor={color}@{layer.opacity:.3f}:"
                 f"borderw={max(0, int(layer.properties.get('outline_width', 2)))}:"
                 f"bordercolor={outline}:x='{x_expr}':y='{y_expr}':enable='{enable}'[{next_label}]"
@@ -322,21 +395,21 @@ def build_visual_filter_graph(
                 raise EditorMediaError(f"Logo layer thiếu file ảnh: {layer.name or layer.id}")
             extra_inputs.extend(["-loop", "1", "-i", image_path])
             logo_label = f"logo{layer_index}"
-            target_width = max(1, int((project.width or 1920) * layer.width))
+            target_width = max(1, int(frame_width * box_w))
             filters.append(
                 f"[{logo_input_index}:v]scale={target_width}:-1,format=rgba,"
                 f"colorchannelmixer=aa={layer.opacity:.3f}[{logo_label}]"
             )
             filters.append(
-                f"[{current}][{logo_label}]overlay=x='main_w*{layer.x:.6f}':"
-                f"y='main_h*{layer.y:.6f}':enable='{enable}':shortest=1[{next_label}]"
+                f"[{current}][{logo_label}]overlay=x='main_w*{box_x:.6f}':"
+                f"y='main_h*{box_y:.6f}':enable='{enable}':shortest=1[{next_label}]"
             )
             logo_input_index += 1
         elif layer.kind == EditorLayerKind.MASK and str(layer.properties.get("mode", "solid")) == "solid":
             color = _escape_filter_value(str(layer.properties.get("color", "black")))
             filters.append(
-                f"[{current}]drawbox=x='iw*{layer.x:.6f}':y='ih*{layer.y:.6f}':"
-                f"w='iw*{layer.width:.6f}':h='ih*{layer.height:.6f}':"
+                f"[{current}]drawbox=x='iw*{box_x:.6f}':y='ih*{box_y:.6f}':"
+                f"w='iw*{box_w:.6f}':h='ih*{box_h:.6f}':"
                 f"color={color}@{layer.opacity:.3f}:t=fill:enable='{enable}'[{next_label}]"
             )
         else:
@@ -347,20 +420,27 @@ def build_visual_filter_graph(
             crop_label = f"crop{layer_index}"
             effect_label = f"effect{layer_index}"
             filters.append(f"[{current}]split=2[{base_label}][{crop_label}]")
+            region_w = max(2, int(frame_width * box_w))
+            region_h = max(2, int(frame_height * box_h))
+            # boxblur caps each plane at half its size, and 4:2:0 chroma is half again,
+            # so the usable radius is region/4 - 1. Going over aborts the whole render.
+            radius = max(0, min(int(layer.properties.get("strength", 12)), min(region_w, region_h) // 4 - 1))
             effect = (
                 "scale='max(1,iw/12)':'max(1,ih/12)':flags=neighbor,"
                 "scale='iw*12':'ih*12':flags=neighbor"
                 if pixelate
-                else f"boxblur={max(1, int(layer.properties.get('strength', 12)))}:1"
+                else f"boxblur={radius}:1"
             )
+            if layer.opacity < 0.999:
+                effect += f",format=rgba,colorchannelmixer=aa={layer.opacity:.3f}"
             filters.append(
-                f"[{crop_label}]crop='trunc(iw*{layer.width:.6f}/2)*2':"
-                f"'trunc(ih*{layer.height:.6f}/2)*2':'iw*{layer.x:.6f}':'ih*{layer.y:.6f}',"
+                f"[{crop_label}]crop='trunc(iw*{box_w:.6f}/2)*2':"
+                f"'trunc(ih*{box_h:.6f}/2)*2':'iw*{box_x:.6f}':'ih*{box_y:.6f}',"
                 f"{effect}[{effect_label}]"
             )
             filters.append(
-                f"[{base_label}][{effect_label}]overlay=x='main_w*{layer.x:.6f}':"
-                f"y='main_h*{layer.y:.6f}':enable='{enable}'[{next_label}]"
+                f"[{base_label}][{effect_label}]overlay=x='main_w*{box_x:.6f}':"
+                f"y='main_h*{box_y:.6f}':enable='{enable}'[{next_label}]"
             )
         current = next_label
     return extra_inputs, ";".join(filters), current
@@ -389,6 +469,7 @@ def _render_from_project(
     source_video: str | None = None,
     force_audio_map: bool = False,
     callback: Callable[[int, str], None] | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> str:
     callback = callback or (lambda _progress, _message: None)
     output = Path(output_path).resolve()
@@ -400,6 +481,11 @@ def _render_from_project(
     source = str(source_video or project.video_path)
     if Path(source).resolve() == output:
         raise ValueError("Editor export cannot overwrite the input video")
+    _raise_if_cancelled(should_cancel)
+    frame_width, frame_height = project.width, project.height
+    if project.layers and not (frame_width and frame_height):
+        probed = probe_media(source)
+        frame_width, frame_height = probed.width, probed.height
     with tempfile.TemporaryDirectory(prefix="vc_editor_render_") as temp_dir:
         run_dir = Path(temp_dir)
         EditorProjectStore._atomic_write(
@@ -411,6 +497,8 @@ def _render_from_project(
             run_dir,
             include_subtitles=include_subtitles,
             offset_ms=start_ms,
+            frame_width=frame_width,
+            frame_height=frame_height,
         )
         command = [_tool_path("ffmpeg"), "-v", "error", "-y"]
         if start_ms:
@@ -434,7 +522,12 @@ def _render_from_project(
             ]
         )
         callback(20, "Đang render từ editor state hiện tại...")
-        _run(command, cwd=run_dir, timeout=max(120, (end_ms - start_ms) / 1000.0 * 4))
+        _run(
+            command,
+            cwd=run_dir,
+            timeout=max(120, (end_ms - start_ms) / 1000.0 * 4),
+            should_cancel=should_cancel,
+        )
     if not output.is_file() or output.stat().st_size <= 0:
         raise EditorMediaError("FFmpeg không tạo video đầu ra")
     callback(100, "Render hoàn tất")
@@ -455,11 +548,30 @@ def fast_preview_range(project: EditorProject, *, window_ms: int = 5000) -> tupl
     return start, end
 
 
+def cleanup_preview_files(directory: str | Path, *, keep: str = "") -> int:
+    """Drop stale Fast Preview renders; the player may still lock the newest one."""
+    folder = Path(directory)
+    if not folder.is_dir():
+        return 0
+    keep_path = Path(keep).resolve() if keep else None
+    removed = 0
+    for candidate in folder.glob("preview-*.mp4"):
+        if keep_path and candidate.resolve() == keep_path:
+            continue
+        try:
+            candidate.unlink()
+            removed += 1
+        except OSError:
+            continue  # still open in the player; the next run retries
+    return removed
+
+
 def render_fast_preview(
     project: EditorProject,
     output_path: str | Path,
     *,
     callback: Callable[[int, str], None] | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> str:
     start_ms, end_ms = fast_preview_range(project)
     voice_segments = _existing_voice_segments(project, start_ms, end_ms)
@@ -470,6 +582,7 @@ def render_fast_preview(
             start_ms=start_ms,
             end_ms=end_ms,
             callback=callback,
+            should_cancel=should_cancel,
         )
     with tempfile.TemporaryDirectory(prefix="vc_editor_preview_audio_") as temp_dir:
         base_video = Path(temp_dir) / "preview-base.mp4"
@@ -481,7 +594,9 @@ def render_fast_preview(
             callback=lambda progress, message: (callback or (lambda *_: None))(
                 int(progress * 0.7), message
             ),
+            should_cancel=should_cancel,
         )
+        _raise_if_cancelled(should_cancel)
         return _mix_existing_editor_voice(
             project,
             str(base_video),
@@ -499,9 +614,11 @@ def export_editor_video(
     dubbing_config: "DubbingConfig | None" = None,
     callback: Callable[[int, str], None] | None = None,
     engine: DubbingEngine | None = None,
+    should_cancel: CancelCheck | None = None,
 ) -> str:
     """Export from live state, optionally reusing Natural/Legacy dubbing first."""
     callback = callback or (lambda _progress, _message: None)
+    _raise_if_cancelled(should_cancel)
     source_video = project.video_path
     with tempfile.TemporaryDirectory(prefix="vc_editor_export_") as temp_dir:
         run_dir = Path(temp_dir)
@@ -530,6 +647,7 @@ def export_editor_video(
                 lambda progress, message: callback(min(70, 5 + int(progress * 0.65)), message),
             )
             source_video = str(dubbed_video)
+        _raise_if_cancelled(should_cancel)
         existing_voice = [] if dubbing_enabled else _existing_voice_segments(
             project, 0, project.duration_ms
         )
@@ -542,8 +660,10 @@ def export_editor_video(
             callback=lambda progress, message: callback(
                 progress if not dubbing_enabled else 70 + int(progress * 0.3), message
             ),
+            should_cancel=should_cancel,
         )
         if existing_voice:
+            _raise_if_cancelled(should_cancel)
             return _mix_existing_editor_voice(
                 project,
                 rendered,

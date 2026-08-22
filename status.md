@@ -1,5 +1,96 @@
 # Project Status
 
+## 2026-08-22 (Video Editor: sửa lỗi visual layer, preview và render)
+
+### Nguyên nhân và thay đổi
+- Fast Preview trước đây `setMedia` clip đã render vào chính player, nên vị trí local của clip bị ghi
+  thẳng vào `playhead_ms`: playhead nhảy về đầu range, inspector tự chọn nhầm cue và không có đường về
+  video gốc. Preview nay chạy ở mode riêng có offset, cộng lại về timeline project, kèm action
+  `Exit preview`.
+- Mở `.vceditor.json` không gán `project_path` nên Ctrl+S luôn hỏi lại chỗ lưu; nay giữ đúng file đã mở.
+- `_refresh_layer_list()` clear list ở mỗi command nên selection về -1 và nút Chỉnh sửa/Xóa im lặng
+  không làm gì. Selection nay theo layer id và list được rebuild có block signal.
+- Thumbnail đến muộn gọi `set_poster` vô điều kiện, ẩn `QVideoWidget` giữa lúc đang phát. Poster nay chỉ
+  áp khi playback chưa bắt đầu.
+- Không có cảnh báo mất dữ liệu: `is_dirty` có trong model nhưng UI không đọc. Mở project khác nay hỏi
+  trước khi bỏ thay đổi.
+- Render không hủy được và `closeEvent` không chạy cho navigation page. `_run` đổi sang `Popen` + poll
+  cancel, kill FFmpeg child; có action `Cancel render`, và page dừng worker qua `aboutToQuit`.
+- `AppData/cache/editor_preview/` không bao giờ được dọn; nay xóa bản render cũ trước mỗi lần preview.
+- Asset khác ổ đĩa (logo, WAV cache) làm hỏng toàn bộ `save()`; path vệ tinh nay fallback absolute, còn
+  video/subtitle vẫn bắt buộc relative.
+- Visual layer chỉ chỉnh được một thuộc tính qua `QInputDialog` và không đổi được vị trí/kích thước.
+  Thêm `LayerInspector` (geometry, timing, opacity, visible/lock, property theo kind) trong cùng tab
+  `Layers` với nút add và danh sách; layer chọn/kéo/resize được trên track FX1; track header có nút V
+  cho TS1 và FX1.
+- Parity preview/export: `drawtext` ghim `fontfile` từ `resource/fonts/` và canh giữa trong box layer,
+  logo scale theo frame width thật lấy từ probe, opacity áp cho blur/mask qua `colorchannelmixer`, box
+  clamp trong khung, overlay preview dùng rect video đã letterbox và scale font theo tỉ lệ video/widget.
+- `boxblur` radius clamp theo `min(w,h)/4 - 1`: giới hạn thật đến từ plane chroma 4:2:0, và render thật
+  đã bắt được lỗi `Invalid chroma_param radius value 35` mà assert chuỗi không thấy.
+
+### Validation và artifact
+- Editor suite: **52 passed** (thêm `tests/test_editor/test_visual_layers.py`, 17 test). Dubbing +
+  thread suite: **69 passed, 2 skipped**. Ruff `videocaptioner/`: pass. Pyright bốn module editor:
+  **0 errors, 0 warnings**. Translation sync: pass.
+- Có render FFmpeg thật cho blur translucent + text tiếng Việt, và test hủy `_run` bằng FFmpeg đang chạy.
+- Kiểm tra layout bằng ảnh render offscreen của page: hai tab vừa khung 1050 px, không còn ô nhập bị cắt.
+- Chưa build EXE, chưa click-through GUI thủ công và chưa nghiệm thu video/provider thật cho các thay đổi
+  này.
+
+## 2026-08-22 (VieNeu base-build guard và khôi phục one-app onedir)
+
+### Nguyên nhân và thay đổi
+- Ảnh lỗi `runtime manifest is unavailable` đến từ việc chạy base onedir ~236 MB; build này không có
+  `runtime/vieneu/python.exe`, bridge, runtime manifest hoặc model seed. Lỗi `no active model` là hệ quả.
+- Base build nay không tự chạy VieNeu auto-update, không cho lặp action/thread khi runtime vắng, disable
+  Start/Update/Fetch và hiển thị hướng dẫn dùng VieNeu One-App thay vì spam InfoBar có đường dẫn lỗi.
+- `build_vieneu_one_app.py` trước đó vẫn giả định PyInstaller onefile rồi xóa nhầm output onedir mới tạo.
+  Builder nay chạy PyInstaller bằng Python environment hiện tại, giữ toàn bộ `_internal`, ghép runtime +
+  model seed vào đúng thư mục onedir và chỉ replace managed VieNeu data khi có `--overwrite`.
+- Thêm regression cho base build thiếu runtime và builder augment onedir; đồng bộ bản dịch Việt.
+
+### Validation và artifact
+- VieNeu suite: **26 passed**. Startup/UI regression: **10 passed**. Ruff phạm vi source/scripts/tests:
+  pass. Pyright service/main-window/builder: **0 errors, 0 warnings**. Translation sync: pass.
+- Sáu MSI/CAB input đều khớp SHA-256 ledger. Admin-extract đích dài fail/rollback do MAX_PATH; đích ngắn
+  `build/v22` hoàn tất với MSI status 0: runtime **29.245 file / 5.906.443.598 bytes**, model seed
+  **42 file / 1.765.957.812 bytes** và active revision `2da0efab622a1722125991736524f080b751ef5b`.
+- Exact EXE `vieneu status` exit 0; `vieneu update` exit 0 và báo `current`. Exact packaged Natural Dubbing
+  cold-start PyTorch/CUDA, load 20 voices, tạo video 4 giây H.264/AAC mono 48 kHz và exit 0; zero process.
+- Computer Use lần đầu phát hiện thêm ACL sandbox làm GUI auto-update gặp WinError 5. Chỉ `AppData` của
+  artifact được cấp Modify cho user `Lap-4090`; atomic state replace nay có đúng quyền. Không dùng lại
+  Computer Use sau khi binding nhầm sang Codex; hậu-ACL được kiểm bằng ACE/state và test, không gọi là
+  visual acceptance lần hai.
+- Artifact sạch: `dist/VideoCaptioner-VieNeu-Fixed-20260822/`, **29.853 file / 7.908.872.539 bytes**;
+  EXE **30.899.994 bytes**, SHA-256
+  `06FC34FA34931E65986EA5B21DBB1D916F120501167788C44276A90E3247DC44`, `NotSigned`. Runtime/model khớp
+  distribution manifest; không còn cache/log/work-dir test. Artifact chưa deploy, commit hoặc push.
+
+## 2026-08-21 (Cài đặt và màn tải model không còn nền trắng)
+
+### Đã sửa
+- `SettingInterface` nay áp transparent-background contract cho cả `ScrollArea`, native viewport và
+  content widget. Dark theme không còn render viewport Windows màu `#efefef` che gần hết chữ/card.
+- Hai trang cấu hình FasterWhisper/WhisperCpp cũng đánh dấu native viewport và container là translucent,
+  tránh model settings/download flow rơi về palette sáng trên Windows.
+- Khi chọn FasterWhisper trong Cài đặt, một card `Quản lý mô hình` hiện ngay bên dưới và mở trực tiếp
+  `FasterWhisperDownloadDialog`; dialog vẫn được import lazy. Chọn lại provider đang active không còn là
+  ngõ cụt UX vì user có action riêng để tải chương trình/model.
+- Thêm regression offscreen cho pixel nền Cài đặt, thuộc tính transparent của cả hai model page, click
+  Qt thật từ card mới tới callback mở manager và cả hai nút tải chương trình/model trong dialog.
+
+### Validation và artifact
+- Startup/UI targeted: **10 passed**. Ruff các file sửa: pass. Pyright ba module UI: **0 errors, 0
+  warnings**. Pixel probe Cài đặt đổi từ `#efefef` sang `#202020` tại toàn bộ điểm nền đã đo.
+- PyInstaller 6.22.2 exit 0: `dist/VideoCaptioner-FasterWhisperClickFix-20260821/`, 565 file /
+  236,468,546 bytes; EXE **30,898,675 bytes**, SHA-256
+  `C89176C89693BA69221EA64FA788644A1F90FE8281445F35A9268FEB70DA4D5D`, `NotSigned`. Warning file
+  614 dòng optional/transitive và 0 match ba module sửa.
+- Computer Use mở đúng EXE mới và click xuyên suốt Cài đặt → FasterWhisper → Quản lý mô hình → dialog
+  tải; toàn bộ flow nhận click và giữ dark surface. Không bắt đầu download thật; đã đóng đúng bản test và
+  xác nhận zero process. Artifact chưa được deploy đè lên bản user.
+
 ## 2026-08-21 (Video Editor dark UI và visual acceptance)
 
 ### Đã sửa

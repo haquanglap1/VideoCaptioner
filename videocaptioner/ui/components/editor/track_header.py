@@ -17,9 +17,12 @@ class EditorTrackHeader(QFrame):
     TRACK_HEIGHT = 54
     VISUAL_TRACK_HEIGHT = 44
 
+    # Only these tracks change the rendered output when hidden.
+    VISIBILITY_TRACKS = ("track-ts1", "track-fx1")
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(170)
+        self.setFixedWidth(196)
         self.setFrameShape(QFrame.NoFrame)
         self.setStyleSheet("EditorTrackHeader { background:#111827; border-right:1px solid #334155; }")
         self._layout = QVBoxLayout(self)
@@ -54,11 +57,12 @@ class EditorTrackHeader(QFrame):
         label = QLabel(text, row)
         label.setStyleSheet("color:#e2e8f0; font-size:11px; font-weight:600;")
         layout.addWidget(label, 1)
-        for field_name, caption in (("muted", "M"), ("locked", "L")):
+        tips = {"visible": self.tr("Show"), "muted": self.tr("Mute"), "locked": self.tr("Lock")}
+        for field_name, caption in (("visible", "V"), ("muted", "M"), ("locked", "L")):
             button = PushButton(caption, row)
             button.setCheckable(True)
-            button.setFixedSize(27, 27)
-            button.setToolTip("Mute" if field_name == "muted" else "Lock")
+            button.setFixedSize(26, 26)
+            button.setToolTip(tips[field_name])
             button.toggled.connect(
                 lambda checked, tid=track_id, field=field_name: self.trackStateRequested.emit(
                     tid, field, checked
@@ -66,6 +70,11 @@ class EditorTrackHeader(QFrame):
             )
             layout.addWidget(button)
             self._buttons[(track_id, field_name)] = button
+        visible_button = self._buttons[(track_id, "visible")]
+        visible_button.blockSignals(True)
+        visible_button.setChecked(True)
+        visible_button.blockSignals(False)
+        visible_button.setEnabled(track_id in self.VISIBILITY_TRACKS)
         if track_id == "track-v1":
             self._buttons[(track_id, "muted")].setEnabled(False)
         self._rows[track_id] = row
@@ -77,7 +86,7 @@ class EditorTrackHeader(QFrame):
         if not project:
             return
         for track in project.tracks:
-            for field_name in ("muted", "locked"):
+            for field_name in ("visible", "muted", "locked"):
                 button = self._buttons.get((track.id, field_name))
                 if button:
                     button.blockSignals(True)

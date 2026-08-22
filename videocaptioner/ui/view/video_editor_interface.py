@@ -6,15 +6,16 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-from PyQt5.QtCore import Qt, QUrl, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QKeySequence
-from PyQt5.QtMultimedia import QMediaContent
 from PyQt5.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QProgressBar,
     QShortcut,
     QSizePolicy,
@@ -28,6 +29,7 @@ from qfluentwidgets import (
     CommandBar,
     InfoBar,
     InfoBarPosition,
+    MessageBox,
     PushButton,
 )
 from qfluentwidgets import (
@@ -51,6 +53,7 @@ from videocaptioner.core.editor.commands import (
     EditVoiceSettingsCommand,
     SplitCueCommand,
 )
+from videocaptioner.core.editor.media import cleanup_preview_files, fast_preview_range
 from videocaptioner.core.editor.models import (
     EditorCue,
     EditorLayer,
@@ -62,6 +65,7 @@ from videocaptioner.ui.components.editor import (
     EditorTimelineView,
     EditorTrackHeader,
     EditorVideoPreview,
+    LayerInspector,
     SubtitleInspector,
 )
 from videocaptioner.ui.task_factory import TaskFactory
@@ -181,10 +185,18 @@ class VideoEditorInterface(QWidget):
         self.command_stack.add_changed_callback(self._refresh_from_model)
         self._signatures: dict[str, str] = {}
         self._threads: set = set()
+        self._render_thread: EditorRenderThread | None = None
+        self._selected_layer_id = ""
+        self._pending_project_path = ""
+        self._preview_offset_ms = 0
         self._build_ui()
         self._connect_ui()
         self._setup_shortcuts()
         self._set_empty_state()
+        application = QApplication.instance()
+        if application is not None:
+            # Navigation pages never get closeEvent when the window quits.
+            application.aboutToQuit.connect(self.shutdown)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -200,6 +212,10 @@ class VideoEditorInterface(QWidget):
         self.redo_action = Action(FIF.RIGHT_ARROW, self.tr("Redo"), triggered=self.redo)
         self.preview_action = Action(FIF.PLAY, self.tr("Fast Preview"), triggered=self.fast_preview)
         self.export_action = Action(FIF.VIDEO, self.tr("Export"), triggered=self.export_video)
+        self.cancel_action = Action(FIF.CANCEL, self.tr("Cancel render"), triggered=self.cancel_render)
+        self.exit_preview_action = Action(
+            FIF.RETURN, self.tr("Exit preview"), triggered=self.exit_rendered_preview
+        )
         for action in (
             self.open_action,
             self.save_action,
@@ -207,8 +223,13 @@ class VideoEditorInterface(QWidget):
             self.redo_action,
             self.preview_action,
             self.export_action,
+            self.cancel_action,
+            self.exit_preview_action,
         ):
             self.command_bar.addAction(action)
+        self.cancel_action.setEnabled(False)
+        self.exit_preview_action.setEnabled(False)
+        self.exit_preview_action.setVisible(False)
         self.command_bar.addHiddenAction(self.save_ass_action)
         for kind, label in (
             (EditorLayerKind.BLUR, "Add Blur"),
@@ -247,6 +268,7 @@ class VideoEditorInterface(QWidget):
         self.context_tabs.setDocumentMode(True)
         self.inspector = SubtitleInspector(self.context_tabs)
         self.context_tabs.addTab(self.inspector, self.tr("Cue"))
+        self.layer_inspector = LayerInspector(self.context_tabs)
         self.layer_panel = self._build_layer_panel()
         self.context_tabs.addTab(self.layer_panel, self.tr("Layers"))
         self.horizontal_splitter.addWidget(self.preview)
@@ -300,20 +322,40 @@ class VideoEditorInterface(QWidget):
         panel.setObjectName("EditorLayerPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        hint = QLabel(
+            self.tr("Layers cover the selected range, or 5s from the playhead."), panel
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#8fa3ba; font-size:11px;")
+        layout.addWidget(hint)
+        add_row = QHBoxLayout()
+        add_row.setSpacing(4)
+        self.add_layer_buttons: dict[EditorLayerKind, PushButton] = {}
+        for kind, label in (
+            (EditorLayerKind.BLUR, self.tr("Blur")),
+            (EditorLayerKind.LOGO, self.tr("Logo")),
+            (EditorLayerKind.MASK, self.tr("Mask")),
+            (EditorLayerKind.TEXT, self.tr("Text")),
+        ):
+            button = PushButton(label, panel)
+            button.clicked.connect(
+                lambda _checked=False, layer_kind=kind: self.add_visual_layer(layer_kind)
+            )
+            add_row.addWidget(button)
+            self.add_layer_buttons[kind] = button
+        layout.addLayout(add_row)
         self.layer_list = QListWidget(panel)
-        layout.addWidget(self.layer_list, 1)
-        buttons = QHBoxLayout()
-        self.edit_layer_button = PushButton(self.tr("Edit"), panel)
-        self.delete_layer_button = PushButton(self.tr("Delete"), panel)
-        self.edit_layer_button.clicked.connect(self.edit_selected_layer)
-        self.delete_layer_button.clicked.connect(self.delete_selected_layer)
-        buttons.addWidget(self.edit_layer_button)
-        buttons.addWidget(self.delete_layer_button)
-        layout.addLayout(buttons)
+        self.layer_list.setMaximumHeight(132)
+        layout.addWidget(self.layer_list)
+        self.layer_inspector.setParent(panel)
+        layout.addWidget(self.layer_inspector, 1)
         return panel
 
     def _connect_ui(self) -> None:
         self.timeline.cueSelected.connect(self.select_cue)
+        self.timeline.layerSelected.connect(self.select_layer)
+        self.timeline.layerTimingRequested.connect(self._apply_layer_timeline_timing)
         self.timeline.seekRequested.connect(self.preview.set_position)
         self.timeline.cueTimingRequested.connect(self._apply_timeline_timing)
         self.timeline.selectionRangeChanged.connect(self._on_selection_range)
@@ -327,6 +369,10 @@ class VideoEditorInterface(QWidget):
         self.inspector.deleteRequested.connect(self.delete_cue)
         self.inspector.addRequested.connect(self.add_cue)
         self.track_header.trackStateRequested.connect(self._apply_track_state)
+        self.preview.renderedPreviewChanged.connect(self._on_rendered_preview_changed)
+        self.layer_inspector.applyRequested.connect(self._apply_layer_inspector)
+        self.layer_inspector.deleteRequested.connect(self.delete_layer)
+        self.layer_list.currentRowChanged.connect(self._on_layer_row_changed)
         self.zoom_in_button.clicked.connect(self.timeline.zoom_in)
         self.zoom_out_button.clicked.connect(self.timeline.zoom_out)
         self.fit_button.clicked.connect(self.timeline.fit_timeline)
@@ -337,12 +383,19 @@ class VideoEditorInterface(QWidget):
             (QKeySequence.Redo, self.redo),
             (QKeySequence.Save, self.save_project),
             (QKeySequence(Qt.Key_Space), self.preview.toggle_playback),
-            (QKeySequence(Qt.Key_Delete), lambda: self.delete_cue(self.inspector.cue_id)),
+            (QKeySequence(Qt.Key_Delete), self._delete_selection),
             (QKeySequence("Ctrl++"), self.timeline.zoom_in),
             (QKeySequence("Ctrl+-"), self.timeline.zoom_out),
         ):
             shortcut = QShortcut(sequence, self)
             shortcut.activated.connect(callback)
+
+    def _delete_selection(self) -> None:
+        """Delete follows the active context tab so it never removes the wrong object."""
+        if self.context_tabs.currentWidget() is self.layer_panel:
+            self.delete_selected_layer()
+            return
+        self.delete_cue(self.inspector.cue_id)
 
     def _set_empty_state(self) -> None:
         self.status_label.setText(self.tr("Open a video and SRT to start editing"))
@@ -357,13 +410,30 @@ class VideoEditorInterface(QWidget):
             self.export_action,
         ):
             action.setEnabled(enabled)
+        for button in self.add_layer_buttons.values():
+            button.setEnabled(enabled)
         self._update_undo_redo()
 
     def _update_undo_redo(self) -> None:
         self.undo_action.setEnabled(self.command_stack.can_undo)
         self.redo_action.setEnabled(self.command_stack.can_redo)
 
+    def _confirm_discard_changes(self) -> bool:
+        """Ask before dropping edits; ``is_dirty`` is the model's own flag."""
+        if not self.project or not self.project.is_dirty:
+            return True
+        box = MessageBox(
+            self.tr("Unsaved editor changes"),
+            self.tr("The current project has unsaved changes. Discard them?"),
+            self.window(),
+        )
+        box.yesButton.setText(self.tr("Discard"))
+        box.cancelButton.setText(self.tr("Keep editing"))
+        return bool(box.exec())
+
     def open_dialog(self) -> None:
+        if not self._confirm_discard_changes():
+            return
         path, _ = QFileDialog.getOpenFileName(
             self,
             self.tr("Open video or editor project"),
@@ -373,6 +443,7 @@ class VideoEditorInterface(QWidget):
         if not path:
             return
         if path.lower().endswith(EditorProjectStore.project_suffix):
+            self._pending_project_path = path
             self._start_media("load-project", {"project_path": path})
             return
         subtitle, _ = QFileDialog.getOpenFileName(
@@ -385,7 +456,10 @@ class VideoEditorInterface(QWidget):
             self.open_in_editor(path, subtitle)
 
     def open_in_editor(self, video_path: str, subtitle_path: str) -> None:
+        if not self._confirm_discard_changes():
+            return
         self.project_path = ""
+        self._pending_project_path = ""
         self._start_media(
             "open",
             {"video_path": str(video_path), "subtitle_path": str(subtitle_path)},
@@ -417,17 +491,22 @@ class VideoEditorInterface(QWidget):
         elif action == "thumbnails":
             _fingerprint, items = data
             self.timeline.set_thumbnails(items)
-            self.preview.set_poster(items[0][1] if items else "")
+            if items:
+                self.preview.set_poster(items[0][1])
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
 
     def _accept_project(self, project: EditorProject) -> None:
         self.project = project
+        self.project_path = getattr(self, "_pending_project_path", "")
+        self._pending_project_path = ""
+        self._selected_layer_id = ""
         self.command_stack.clear()
         self.preview.set_project(project)
         self.timeline.set_project(project)
         self.track_header.set_project(project)
         self._refresh_layer_list()
+        self.layer_inspector.set_layer(None, project.duration_ms)
         self._set_actions_enabled(True)
         self.status_label.setText(
             self.tr("Loaded {count} cues — V1 / A1 / TS1").format(count=len(project.cues))
@@ -555,6 +634,8 @@ class VideoEditorInterface(QWidget):
                 command = EditTrackStateCommand(self.project, track_id, muted=value)
             elif field_name == "locked":
                 command = EditTrackStateCommand(self.project, track_id, locked=value)
+            elif field_name == "visible":
+                command = EditTrackStateCommand(self.project, track_id, visible=value)
             else:
                 raise ValueError(f"Unsupported track state: {field_name}")
             self.command_stack.execute(command)
@@ -626,7 +707,16 @@ class VideoEditorInterface(QWidget):
                 self.inspector.set_cue(self.project.cue_by_id(selected), self.project.duration_ms)
             except KeyError:
                 self.inspector.set_cue(None, self.project.duration_ms)
+        self._refresh_layer_inspector()
         self._update_undo_redo()
+
+    def _refresh_layer_inspector(self) -> None:
+        if not self.project:
+            return
+        layer = self._selected_layer()
+        self.layer_inspector.set_layer(layer, self.project.duration_ms)
+        self.preview.surface.overlay.set_selected_layer(layer.id if layer else "")
+        self.timeline.select_layer(layer.id if layer else "")
 
     def save_project(self) -> None:
         if not self.project:
@@ -669,18 +759,22 @@ class VideoEditorInterface(QWidget):
             self._show_error(str(exc))
 
     def fast_preview(self) -> None:
-        if not self.project:
+        if not self.project or self._render_thread is not None:
             return
         signature = uuid4().hex
         self._signatures["preview"] = signature
         output_dir = CACHE_PATH / "editor_preview" / self.project.project_id
         output_dir.mkdir(parents=True, exist_ok=True)
+        # Every run used to leave an mp4 behind; drop the ones no player holds.
+        self.preview.exit_rendered_preview()
+        cleanup_preview_files(output_dir)
+        self._preview_offset_ms = fast_preview_range(self.project)[0]
         output = output_dir / f"preview-{signature}.mp4"
         thread = EditorRenderThread(signature, "preview", self.project, str(output), parent=self)
         self._start_render_thread("preview", thread)
 
     def export_video(self) -> None:
-        if not self.project:
+        if not self.project or self._render_thread is not None:
             return
         output, _ = QFileDialog.getSaveFileName(
             self,
@@ -705,13 +799,44 @@ class VideoEditorInterface(QWidget):
 
     def _start_render_thread(self, action: str, thread: EditorRenderThread) -> None:
         self._retain_thread(thread)
+        self._render_thread = thread
         thread.progress.connect(self._on_progress)
         thread.completed.connect(lambda sig, output, name=action: self._on_render_completed(name, sig, output))
         thread.failed.connect(lambda sig, error, name=action: self._on_worker_failed(name, sig, error))
+        thread.cancelled.connect(lambda _sig, name=action: self._on_render_cancelled(name))
+        thread.finished.connect(lambda current=thread: self._on_render_finished(current))
         self.status_label.setText(self.tr("Rendering from current editor state..."))
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
+        self.cancel_action.setEnabled(True)
+        self.preview_action.setEnabled(False)
+        self.export_action.setEnabled(False)
         thread.start()
+
+    def exit_rendered_preview(self) -> None:
+        self.preview.exit_rendered_preview()
+
+    def cancel_render(self) -> None:
+        thread = self._render_thread
+        if thread is None or not thread.isRunning():
+            return
+        self.cancel_action.setEnabled(False)
+        self.status_label.setText(self.tr("Cancelling render..."))
+        thread.cancel()
+
+    def _on_render_finished(self, thread) -> None:
+        if self._render_thread is thread:
+            self._render_thread = None
+        self.cancel_action.setEnabled(False)
+        if self.project is not None:
+            self.preview_action.setEnabled(True)
+            self.export_action.setEnabled(True)
+
+    def _on_render_cancelled(self, action: str) -> None:
+        self.progress.setValue(0)
+        self.status_label.setText(
+            self.tr("Fast Preview cancelled") if action == "preview" else self.tr("Export cancelled")
+        )
 
     def _on_progress(self, value: int, message: str) -> None:
         self.progress.setValue(max(0, min(100, int(value))))
@@ -722,12 +847,17 @@ class VideoEditorInterface(QWidget):
             return
         self.progress.setValue(100)
         if action == "preview":
-            self.preview.player.pause()
-            self.preview.player.setMedia(QMediaContent(QUrl.fromLocalFile(output)))
-            self.preview.player.play()
+            # Played through the offset-aware preview mode so the playhead stays project-local.
+            self.preview.play_rendered_preview(output, getattr(self, "_preview_offset_ms", 0))
             self._show_success(self.tr("Fast Preview uses current editor state: ") + output)
         else:
             self._show_success(self.tr("Export completed: ") + output)
+
+    def _on_rendered_preview_changed(self, active: bool) -> None:
+        self.exit_preview_action.setVisible(active)
+        self.exit_preview_action.setEnabled(active)
+        if active:
+            self.status_label.setText(self.tr("Playing rendered preview — Exit preview to resume"))
 
     def regenerate_voice(self, cue_id: str) -> None:
         if not self.project or not cue_id:
@@ -775,6 +905,9 @@ class VideoEditorInterface(QWidget):
     def add_visual_layer(self, kind: EditorLayerKind) -> None:
         if not self.project:
             return
+        if self._track_locked("track-fx1"):
+            self._show_error(self.tr("FX1 track is locked"))
+            return
         start_ms, end_ms = self._layer_range()
         if end_ms <= start_ms:
             self._show_error(self.tr("Visual layer range is empty"))
@@ -811,80 +944,151 @@ class VideoEditorInterface(QWidget):
             kind,
             start_ms,
             end_ms,
-            name=name,
+            name=self._unique_layer_name(name),
             properties=properties,
         )
         try:
             self.command_stack.execute(AddLayerCommand(self.project, layer))
+            self.select_layer(layer.id)
             self.context_tabs.setCurrentWidget(self.layer_panel)
-            self.layer_list.setCurrentRow(len(self.project.layers) - 1)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _unique_layer_name(self, base: str) -> str:
+        assert self.project is not None
+        existing = {layer.name for layer in self.project.layers}
+        if base not in existing:
+            return base
+        index = 2
+        while f"{base} {index}" in existing:
+            index += 1
+        return f"{base} {index}"
+
+    def _track_locked(self, track_id: str) -> bool:
+        if not self.project:
+            return False
+        try:
+            return self.project.track_by_id(track_id).locked
+        except KeyError:
+            return False
+
+    def select_layer(self, layer_id: str) -> None:
+        if not self.project or not layer_id:
+            return
+        try:
+            index = next(
+                position
+                for position, layer in enumerate(self.project.layers)
+                if layer.id == layer_id
+            )
+        except StopIteration:
+            return
+        self._selected_layer_id = layer_id
+        self.layer_list.blockSignals(True)
+        self.layer_list.setCurrentRow(index)
+        self.layer_list.blockSignals(False)
+        self._refresh_layer_inspector()
+
+    def _on_layer_row_changed(self, row: int) -> None:
+        if not self.project:
+            return
+        self._selected_layer_id = (
+            self.project.layers[row].id if 0 <= row < len(self.project.layers) else ""
+        )
+        self._refresh_layer_inspector()
+
+    def _apply_layer_timeline_timing(
+        self, layer_id: str, start_ms: int, end_ms: int, operation: str
+    ) -> None:
+        if not self.project:
+            return
+        try:
+            command = EditLayerCommand(
+                self.project, layer_id, {"start_ms": int(start_ms), "end_ms": int(end_ms)}
+            )
+            command.description = "Move layer" if operation == "move" else "Resize layer"
+            self.command_stack.execute(command)
+            self.select_layer(layer_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _apply_layer_inspector(self, layer_id: str, changes: dict) -> None:
+        if not self.project:
+            return
+        try:
+            layer = self.project.layer_by_id(layer_id)
+            pending = {
+                key: value
+                for key, value in changes.items()
+                if getattr(layer, key, None) != value
+            }
+            if not pending:
+                self.status_label.setText(self.tr("No layer changes"))
+                return
+            self.command_stack.execute(EditLayerCommand(self.project, layer_id, pending))
+            self.select_layer(layer_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def delete_layer(self, layer_id: str) -> None:
+        if not self.project or not layer_id:
+            return
+        try:
+            self.command_stack.execute(DeleteLayerCommand(self.project, layer_id))
+            self._selected_layer_id = ""
+            self._refresh_layer_inspector()
         except Exception as exc:
             self._show_error(str(exc))
 
     def _selected_layer(self):
-        if not self.project:
+        if not self.project or not self._selected_layer_id:
             return None
-        row = self.layer_list.currentRow()
-        return self.project.layers[row] if 0 <= row < len(self.project.layers) else None
-
-    def edit_selected_layer(self) -> None:
-        layer = self._selected_layer()
-        if not layer or not self.project:
-            return
-        changes = {}
-        if layer.kind == EditorLayerKind.TEXT:
-            text, ok = QInputDialog.getText(
-                self,
-                self.tr("Edit Text"),
-                self.tr("Text:"),
-                text=str(layer.properties.get("text", "")),
-            )
-            if not ok:
-                return
-            properties = dict(layer.properties)
-            properties["text"] = text
-            changes["properties"] = properties
-        elif layer.kind in {EditorLayerKind.BLUR, EditorLayerKind.MASK}:
-            strength, ok = QInputDialog.getInt(
-                self,
-                self.tr("Edit effect"),
-                self.tr("Strength:"),
-                int(layer.properties.get("strength", 12)),
-                1,
-                50,
-            )
-            if not ok:
-                return
-            properties = dict(layer.properties)
-            properties["strength"] = strength
-            changes["properties"] = properties
-        else:
-            opacity, ok = QInputDialog.getDouble(
-                self, self.tr("Edit Logo"), self.tr("Opacity:"), layer.opacity, 0.0, 1.0, 2
-            )
-            if not ok:
-                return
-            changes["opacity"] = opacity
-        self.command_stack.execute(EditLayerCommand(self.project, layer.id, changes))
+        try:
+            return self.project.layer_by_id(self._selected_layer_id)
+        except KeyError:
+            return None
 
     def delete_selected_layer(self) -> None:
         layer = self._selected_layer()
-        if layer and self.project:
-            self.command_stack.execute(DeleteLayerCommand(self.project, layer.id))
+        if layer:
+            self.delete_layer(layer.id)
 
     def _refresh_layer_list(self) -> None:
+        # Rebuilding the list used to drop the selection and silently disable Edit/Delete.
+        self.layer_list.blockSignals(True)
         self.layer_list.clear()
-        if not self.project:
-            return
-        for layer in self.project.layers:
-            self.layer_list.addItem(
-                f"{layer.kind.value.upper()}  {layer.start_ms / 1000:.2f}s–{layer.end_ms / 1000:.2f}s  {layer.name}"
-            )
+        selected_row = -1
+        if self.project:
+            for index, layer in enumerate(self.project.layers):
+                item = QListWidgetItem(
+                    f"{layer.kind.value.upper()}  {layer.start_ms / 1000:.2f}s–"
+                    f"{layer.end_ms / 1000:.2f}s  {layer.name}"
+                    + ("" if layer.visible else "  ·")
+                )
+                item.setData(Qt.UserRole, layer.id)
+                self.layer_list.addItem(item)
+                if layer.id == self._selected_layer_id:
+                    selected_row = index
+        if selected_row < 0:
+            self._selected_layer_id = ""
+        self.layer_list.setCurrentRow(selected_row)
+        self.layer_list.blockSignals(False)
 
-    def closeEvent(self, event) -> None:
+    def shutdown(self) -> None:
+        """Stop playback and workers; also runs on app quit, where closeEvent never fires."""
         self.preview.player.stop()
         for thread in tuple(self._threads):
-            if thread.isRunning():
+            if not thread.isRunning():
+                continue
+            cancel = getattr(thread, "cancel", None)
+            if callable(cancel):
+                cancel()
+            else:
                 thread.requestInterruption()
-                thread.wait(1500)
+            thread.wait(5000)
+        self._threads.clear()
+        self._render_thread = None
+
+    def closeEvent(self, event) -> None:
+        self.shutdown()
         super().closeEvent(event)

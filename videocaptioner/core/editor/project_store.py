@@ -30,18 +30,28 @@ class EditorProjectStore:
             temp_path.unlink(missing_ok=True)
 
     @staticmethod
-    def _relative_path(path: str, base_dir: Path) -> str:
+    def _relative_path(path: str, base_dir: Path, *, required: bool = True) -> str:
+        """Serialize relative when possible.
+
+        ``required=False`` keeps an absolute path for satellite assets (logo images,
+        cached TTS WAVs) that legitimately live on another drive — losing the whole
+        save because a decoration is on ``C:`` is worse than one absolute entry.
+        """
         if not path:
             return ""
         resolved = Path(path).resolve()
         try:
             relative = os.path.relpath(resolved, base_dir.resolve())
         except ValueError as exc:
-            raise ValueError(
-                "Editor project and referenced media must be on the same drive for relative paths"
-            ) from exc
+            if required:
+                raise ValueError(
+                    "Editor project and referenced media must be on the same drive for relative paths"
+                ) from exc
+            return resolved.as_posix()
         if Path(relative).is_absolute():
-            raise ValueError("Editor project paths must be relative")
+            if required:
+                raise ValueError("Editor project paths must be relative")
+            return resolved.as_posix()
         return Path(relative).as_posix()
 
     @staticmethod
@@ -103,12 +113,16 @@ class EditorProjectStore:
                 clip["source_path"] = self._relative_path(source_path, project_file.parent)
         for cue in payload.get("cues", []):
             audio_path = str(cue.get("audio_path", ""))
-            cue["audio_path"] = self._relative_path(audio_path, project_file.parent)
+            cue["audio_path"] = self._relative_path(
+                audio_path, project_file.parent, required=False
+            )
         for layer in payload.get("layers", []):
             properties = layer.get("properties", {})
             asset_path = str(properties.get("path", ""))
             if asset_path:
-                properties["path"] = self._relative_path(asset_path, project_file.parent)
+                properties["path"] = self._relative_path(
+                    asset_path, project_file.parent, required=False
+                )
         payload["schema_version"] = EDITOR_PROJECT_SCHEMA
         serialized = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 

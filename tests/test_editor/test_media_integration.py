@@ -105,7 +105,7 @@ def test_blur_logo_mask_text_share_one_preview_export_filter_builder(editor_medi
     assert "boxblur=6:1" in graph
     assert "colorchannelmixer" in graph
     assert "flags=neighbor" in graph
-    assert "drawtext=textfile=" in graph
+    assert "drawtext=fontfile=" in graph and ":textfile=" in graph
     assert output_label.startswith("v")
     rendered = export_editor_video(project, tmp_path / "all-layers.mp4")
     assert Path(rendered).is_file() and Path(rendered).stat().st_size > 0
