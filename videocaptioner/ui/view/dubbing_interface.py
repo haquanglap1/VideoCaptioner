@@ -809,17 +809,39 @@ class DubbingInterface(QWidget):
         for editor in (self.api_key_edit, self.api_base_edit, self.model_edit):
             editor.setEnabled(not managed)
         self.sample_rate_combo.setEnabled(not managed)
+        if not managed:
+            self.fetch_voice_btn.setEnabled(True)
         if managed:
             from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
             service = get_vieneu_service()
+            runtime_error = service.update_prerequisite_error()
             state = service.manager.state.value.title()
             model = service.model_state().active_revision[:12]
-            suffix = f" • {model}" if model else " • no active model"
-            self.vieneu_status_label.setText(f"VieNeu: {state}{suffix}")
+            if runtime_error:
+                self.vieneu_status_label.setText(
+                    self.tr("VieNeu: Runtime not installed — use the VieNeu One-App package")
+                )
+            else:
+                suffix = f" • {model}" if model else " • no active model"
+                self.vieneu_status_label.setText(f"VieNeu: {state}{suffix}")
             self.vieneu_start_stop_btn.setText(
                 self.tr("Stop") if service.manager.process_id else self.tr("Start")
             )
+            self.vieneu_start_stop_btn.setEnabled(
+                not runtime_error and bool(model or service.manager.process_id)
+            )
+            self.vieneu_update_btn.setEnabled(not runtime_error)
+            self.vieneu_rollback_btn.setEnabled(
+                not runtime_error and bool(service.model_state().previous_revision)
+            )
+            self.fetch_voice_btn.setEnabled(not runtime_error and bool(model))
+            for button in (
+                self.vieneu_start_stop_btn,
+                self.vieneu_update_btn,
+                self.fetch_voice_btn,
+            ):
+                button.setToolTip(runtime_error)
 
     def _toggle_vieneu_runtime(self):
         from videocaptioner.core.tts.vieneu.service import get_vieneu_service
@@ -828,6 +850,14 @@ class DubbingInterface(QWidget):
         self._start_vieneu_action(action)
 
     def _start_vieneu_action(self, action: str):
+        from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+        runtime_error = get_vieneu_service().update_prerequisite_error()
+        if runtime_error and action in {"start", "voices", "check", "update", "auto-update"}:
+            self._on_vieneu_error(action, runtime_error)
+            return
+        if any(thread.isRunning() for thread in self._vieneu_threads):
+            return
         thread = VieNeuRuntimeThread(action, parent=self)
         self._vieneu_threads.add(thread)
         thread.runtime_state.connect(self._on_vieneu_state)

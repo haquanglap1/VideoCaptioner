@@ -433,6 +433,15 @@ class SettingInterface(ScrollArea):
         )
         self.transcribeModelCard.comboBox.setMinimumWidth(150)
 
+        self.fasterWhisperManagerCard = PushSettingCard(
+            self.tr("管理模型"),
+            FIF.DOWNLOAD,
+            self.tr("模型管理"),
+            self.tr("下载或更新 Faster Whisper 模型"),
+            self.transcribeGroup,
+        )
+        self.fasterWhisperManagerCard.setVisible(False)
+
         # API Base URL
         self.whisperApiBaseCard = LineEditSettingCard(
             cfg.whisper_api_base,
@@ -554,6 +563,9 @@ class SettingInterface(ScrollArea):
         self.setViewportMargins(0, 80, 0, 20)
         self.setWidget(self.scrollWidget)
         self.setWidgetResizable(True)
+        self.enableTransparentBackground()
+        self.viewport().setAttribute(Qt.WA_TranslucentBackground, True)  # type: ignore
+        self.scrollWidget.setAttribute(Qt.WA_TranslucentBackground, True)  # type: ignore
         self.setObjectName("settingInterface")
 
         # 初始化样式表
@@ -591,6 +603,7 @@ class SettingInterface(ScrollArea):
 
         # 添加转录配置卡片
         self.transcribeGroup.addSettingCard(self.transcribeModelCard)
+        self.transcribeGroup.addSettingCard(self.fasterWhisperManagerCard)
         # 添加 Whisper API 配置卡片
         self.transcribeGroup.addSettingCard(self.whisperApiBaseCard)
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
@@ -635,6 +648,9 @@ class SettingInterface(ScrollArea):
         # 转录模型切换
         self.transcribeModelCard.comboBox.currentTextChanged.connect(
             self.__onTranscribeModelChanged
+        )
+        self.fasterWhisperManagerCard.clicked.connect(
+            self.__showFasterWhisperManager
         )
 
         # 检查 LLM 连接
@@ -950,12 +966,24 @@ class SettingInterface(ScrollArea):
         except ValueError:
             current = None
         is_whisper_api = current is TranscribeModelEnum.WHISPER_API
+        self.fasterWhisperManagerCard.setVisible(
+            current is TranscribeModelEnum.FASTER_WHISPER
+        )
         for card in whisper_api_cards:
             card.setVisible(is_whisper_api)
 
         # 更新布局
         self.transcribeGroup.adjustSize()
         self.expandLayout.update()
+
+    def __showFasterWhisperManager(self):
+        """Open the program/model manager from the global Settings page."""
+        from videocaptioner.ui.components.FasterWhisperSettingWidget import (
+            FasterWhisperDownloadDialog,
+        )
+
+        dialog = FasterWhisperDownloadDialog(self.window())
+        dialog.exec_()
 
     def checkWhisperConnection(self):
         """检查 Whisper API 连接"""

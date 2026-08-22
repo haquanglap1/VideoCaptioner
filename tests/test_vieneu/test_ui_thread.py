@@ -9,8 +9,10 @@ from PyQt5.QtWidgets import QApplication
 
 from videocaptioner.core.tts.vieneu.model_updater import VieNeuModelPaths, VieNeuStateStore
 from videocaptioner.core.tts.vieneu.models import VieNeuModelState
+from videocaptioner.core.tts.vieneu.runtime_locator import VieNeuRuntimeLocator
 from videocaptioner.core.tts.vieneu.runtime_manager import VieNeuRuntimeManager
 from videocaptioner.core.tts.vieneu.service import (
+    VIENEU_RUNTIME_INSTALL_MESSAGE,
     VieNeuManagedService,
     set_vieneu_service_for_tests,
 )
@@ -98,6 +100,30 @@ def test_gui_managed_provider_hides_api_configuration_and_keeps_local_ai(qapp, t
         assert widget.vieneu_widget.isVisible() is True
         widget.provider_combo.setCurrentIndex(2)
         assert widget.api_base_edit.isEnabledTo(widget.settings_widget) is True
+    finally:
+        widget.close()
+        service.shutdown()
+        set_vieneu_service_for_tests(None)
+
+
+def test_gui_disables_vieneu_actions_when_base_build_has_no_runtime(qapp, tmp_path):
+    store = VieNeuStateStore(VieNeuModelPaths.under(tmp_path / "models"))
+    service = VieNeuManagedService(
+        manager=VieNeuRuntimeManager(locator=VieNeuRuntimeLocator(app_root=tmp_path / "app")),
+        store=store,
+    )
+    set_vieneu_service_for_tests(service)
+    widget = DubbingInterface()
+    try:
+        widget.provider_combo.setCurrentIndex(3)
+        widget.show()
+        qapp.processEvents()
+        assert service.update_prerequisite_error() == VIENEU_RUNTIME_INSTALL_MESSAGE
+        assert widget.vieneu_update_btn.isEnabled() is False
+        assert widget.vieneu_start_stop_btn.isEnabled() is False
+        assert widget.fetch_voice_btn.isEnabled() is False
+        assert "Runtime not installed" in widget.vieneu_status_label.text()
+        assert widget.vieneu_update_btn.toolTip() == VIENEU_RUNTIME_INSTALL_MESSAGE
     finally:
         widget.close()
         service.shutdown()

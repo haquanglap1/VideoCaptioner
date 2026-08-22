@@ -120,6 +120,11 @@ class MainWindow(FluentWindow):
     def _start_vieneu_runtime_thread(self, dubbing_interface) -> None:
         if self._vieneu_launch_thread is not None:
             return
+        from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+        if get_vieneu_service().update_prerequisite_error():
+            dubbing_interface._update_provider_visibility()
+            return
         from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
 
         launch_action = "auto-update" if cfg.vieneu_auto_update.value else "check"

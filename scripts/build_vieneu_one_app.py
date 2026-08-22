@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -99,9 +100,6 @@ def main() -> int:
     parser.add_argument("--skip-exe-build", action="store_true")
     args = parser.parse_args()
 
-    uv = shutil.which("uv")
-    if not uv:
-        raise RuntimeError("uv is required")
     runtime = Path(args.runtime).resolve()
     runtime_python = runtime / "python.exe"
     runtime_bridge = runtime / "bridge" / "vieneu_bridge.py"
@@ -111,24 +109,50 @@ def main() -> int:
             raise RuntimeError(f"Built VieNeu runtime is incomplete: {required.name}")
     runtime_manifest = json.loads(runtime_manifest_path.read_text(encoding="utf-8"))
 
-    exe = PROJECT_ROOT / "dist" / f"{args.name}.exe"
+    package = PROJECT_ROOT / "dist" / args.name
     if not args.skip_exe_build:
         environment = os.environ.copy()
         environment["VC_BUILD_NAME"] = args.name
         run(
-            [uv, "run", "--frozen", "pyinstaller", "VideoCaptioner.spec", "--clean", "--noconfirm"],
+            [
+                sys.executable,
+                "-m",
+                "PyInstaller",
+                "VideoCaptioner.spec",
+                "--clean",
+                "--noconfirm",
+            ],
             env=environment,
         )
+    exe = package / f"{args.name}.exe"
     if not exe.is_file():
-        raise RuntimeError(f"VideoCaptioner EXE was not built: {exe}")
+        legacy_exe = PROJECT_ROOT / "dist" / f"{args.name}.exe"
+        if not legacy_exe.is_file():
+            raise RuntimeError(f"VideoCaptioner onedir build is incomplete: {exe}")
+        if package.exists():
+            if not args.overwrite:
+                raise RuntimeError(f"Distribution already exists: {package}")
+            safe_remove_distribution(package)
+        package.mkdir(parents=True)
+        exe = package / legacy_exe.name
+        shutil.copy2(legacy_exe, exe)
 
-    package = PROJECT_ROOT / "dist" / args.name
-    if package.exists():
-        if not args.overwrite:
-            raise RuntimeError(f"Distribution already exists: {package}")
-        safe_remove_distribution(package)
-    package.mkdir(parents=True)
-    shutil.copy2(exe, package / exe.name)
+    runtime_target = package / "runtime" / "vieneu"
+    model_target = package / "AppData" / "models" / "vieneu"
+    manifest_target = package / "distribution-manifest.json"
+    existing_managed = [
+        path for path in (runtime_target, model_target, manifest_target) if path.exists()
+    ]
+    if existing_managed and not args.overwrite:
+        raise RuntimeError(
+            "Distribution already contains managed VieNeu data; pass --overwrite to replace it"
+        )
+    for path in existing_managed:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
     shutil.copytree(runtime, package / "runtime" / "vieneu")
     packaged_state = copy_model_seed(Path(args.model_root).resolve(), package)
     runtime_count, runtime_bytes = tree_stats(package / "runtime" / "vieneu")

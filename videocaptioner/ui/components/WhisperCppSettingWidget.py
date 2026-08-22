@@ -589,6 +589,11 @@ class WhisperCppSettingWidget(QWidget):
         # 设置滚动区域
         self.scrollArea.setWidget(self.container)
         self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.enableTransparentBackground()
+        self.scrollArea.viewport().setAttribute(
+            Qt.WA_TranslucentBackground, True  # type: ignore
+        )
+        self.container.setAttribute(Qt.WA_TranslucentBackground, True)  # type: ignore
 
         # 将滚动区域添加到主布局
         self.main_layout.addWidget(self.scrollArea)

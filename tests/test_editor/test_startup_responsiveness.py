@@ -113,6 +113,114 @@ assert max(color.red(), color.green(), color.blue()) < 100, color.name()
     assert result.returncode == 0, result.stderr
 
 
+def test_settings_scroll_surface_inherits_dark_background():
+    result = _run_script(
+        """
+from PyQt5.QtWidgets import QApplication, QVBoxLayout, QWidget
+from qfluentwidgets import Theme, setTheme
+from videocaptioner.ui.view.setting_interface import SettingInterface
+app = QApplication([])
+setTheme(Theme.DARK)
+root = QWidget()
+root.setObjectName('DarkRoot')
+root.setStyleSheet('QWidget#DarkRoot{background:#202020;}')
+layout = QVBoxLayout(root)
+layout.setContentsMargins(0, 0, 0, 0)
+page = SettingInterface(root)
+layout.addWidget(page)
+root.resize(1000, 800)
+root.show()
+for _ in range(4):
+    app.processEvents()
+image = root.grab().toImage()
+for x, y in ((20, 100), (100, 220), (980, 400)):
+    color = image.pixelColor(x, y)
+    assert max(color.red(), color.green(), color.blue()) < 100, (x, y, color.name())
+""",
+        offscreen=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_transcription_model_scroll_surfaces_are_transparent():
+    result = _run_script(
+        """
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication
+from videocaptioner.ui.components.FasterWhisperSettingWidget import FasterWhisperSettingWidget
+from videocaptioner.ui.components.WhisperCppSettingWidget import WhisperCppSettingWidget
+app = QApplication([])
+pages = [FasterWhisperSettingWidget(), WhisperCppSettingWidget()]
+for page in pages:
+    assert page.scrollArea.viewport().testAttribute(Qt.WA_TranslucentBackground)
+    assert page.container.testAttribute(Qt.WA_TranslucentBackground)
+""",
+        offscreen=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_settings_exposes_clickable_faster_whisper_model_manager():
+    result = _run_script(
+        """
+from PyQt5.QtCore import Qt
+from PyQt5.QtTest import QTest
+from PyQt5.QtWidgets import QApplication
+from videocaptioner.core.entities import TranscribeModelEnum
+from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.view.setting_interface import SettingInterface
+app = QApplication([])
+cfg.transcribe_model.value = TranscribeModelEnum.FASTER_WHISPER
+opened = []
+SettingInterface._SettingInterface__showFasterWhisperManager = lambda self: opened.append(True)
+page = SettingInterface()
+page.resize(1000, 800)
+page.show()
+for _ in range(4):
+    app.processEvents()
+card = page.fasterWhisperManagerCard
+assert card.isVisible()
+assert card.button.isEnabled()
+QTest.mouseClick(card.button, Qt.LeftButton)
+app.processEvents()
+assert opened == [True]
+""",
+        offscreen=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_faster_whisper_download_dialog_buttons_are_clickable():
+    result = _run_script(
+        """
+from PyQt5.QtCore import Qt
+from PyQt5.QtTest import QTest
+from PyQt5.QtWidgets import QApplication, QWidget
+from qfluentwidgets import HyperlinkButton
+import videocaptioner.ui.components.FasterWhisperSettingWidget as module
+app = QApplication([])
+root = QWidget()
+root.resize(1000, 800)
+module.check_faster_whisper_exists = lambda: (False, [])
+clicked = []
+module.FasterWhisperDownloadDialog._start_download = lambda self: clicked.append('program')
+dialog = module.FasterWhisperDownloadDialog(root)
+dialog.show()
+for _ in range(4):
+    app.processEvents()
+QTest.mouseClick(dialog.program_download_btn, Qt.LeftButton)
+dialog._download_model = lambda row: clicked.append(('model', row))
+model_button = dialog.model_table.cellWidget(0, 3).findChild(HyperlinkButton)
+assert model_button is not None and model_button.isEnabled()
+QTest.mouseClick(model_button, Qt.LeftButton)
+app.processEvents()
+assert clicked == ['program', ('model', 0)]
+""",
+        offscreen=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_faster_whisper_probe_is_bounded_and_read_only(tmp_path, monkeypatch):
     import videocaptioner.ui.components.FasterWhisperSettingWidget as module
 

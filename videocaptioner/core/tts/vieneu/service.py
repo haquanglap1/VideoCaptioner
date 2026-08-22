@@ -19,6 +19,12 @@ from .runtime_manager import (
     VieNeuRuntimeManager,
 )
 
+VIENEU_RUNTIME_INSTALL_MESSAGE = (
+    "VieNeu Local runtime is not installed in this base build. "
+    "Use the VideoCaptioner VieNeu One-App package, which includes the managed runtime "
+    "required to download and validate models."
+)
+
 if TYPE_CHECKING:
     from videocaptioner.core.dubbing.config import DubbingConfig
 
@@ -60,11 +66,28 @@ class VieNeuManagedService:
             / "vieneu"
             / "runtime-manifest.json",
         )
-        manifest = next((path for path in candidates if path.is_file()), candidates[0])
+        manifest = next((path for path in candidates if path.is_file()), None)
+        if manifest is None:
+            raise VieNeuRuntimeError(VIENEU_RUNTIME_INSTALL_MESSAGE)
         try:
             return dict(json.loads(manifest.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError) as exc:
-            raise VieNeuRuntimeError(f"VieNeu runtime manifest is unavailable: {exc}") from exc
+            raise VieNeuRuntimeError("VieNeu runtime manifest is invalid") from exc
+
+    def update_prerequisite_error(self) -> str:
+        """Return one actionable error when this distribution cannot manage VieNeu models."""
+        try:
+            self.runtime_manifest()
+            runtime = self.explicit_runtime or os.environ.get(
+                "VIDEOCAPTIONER_VIENEU_RUNTIME", ""
+            )
+            bridge = self.explicit_bridge or os.environ.get(
+                "VIDEOCAPTIONER_VIENEU_BRIDGE", ""
+            )
+            self.manager.locator.locate(runtime or None, bridge or None)
+        except Exception:
+            return VIENEU_RUNTIME_INSTALL_MESSAGE
+        return ""
 
     def prepare_update_prerequisites(
         self,
