@@ -103,6 +103,20 @@
   chưa chạm khác chưa đếm.
 - Validation: ruff pass, pyright 0 errors, test translate/subtitle/utils/ui/llm/cli **210 passed**.
 
+### CI: job offline fail từ run đầu tiên vì thiếu libpulse cho QtMultimedia
+- Sau khi push 7 commit lên `origin/master`, job "Lint, type check, CLI tests" pass (gate
+  `pyright videocaptioner/` xanh trên Linux) nhưng "Offline test suite" fail với pytest exit code 2, giống
+  run của `a893800` trước đó. Log job cần đăng nhập nên không đọc được từ máy dev; soi wheel
+  `PyQt5_Qt5-5.15.2 manylinux2014` cho thấy `libQt5Multimedia.so.5` cần `libpulse.so.0` và
+  `libpulse-mainloop-glib.so.0`, trong khi job chỉ cài libGL/xkb/dbus. Hai file `tests/test_editor/`
+  import `PyQt5.QtMultimedia` nên collection fail.
+- Sửa `.github/workflows/ci.yml`: cài thêm `libpulse0 libpulse-mainloop-glib0` và gstreamer
+  (base/good/libav) cho backend playback; giữ log pytest qua `tee` và thêm bước `Annotate failures` phát
+  dòng `FAILED/ERROR` thành annotation `::error` để API public đọc được nguyên nhân mà không cần token.
+- Chưa nghiệm thu: kết quả run sau khi sửa phải xem trên GitHub; test layout editor dưới Qt offscreen
+  (`test_editor_layout_remains_usable_at_700_pixel_page_width`, preview 306 px < 320 trên máy dev) có
+  thể vẫn fail trên Ubuntu.
+
 ### Tài liệu kiến trúc, gộp snapshot cũ, đồng bộ AGENTS/CLAUDE (mục 7)
 - `docs/dev/architecture.md` viết lại theo hiện trạng (tiếng Việt như các dev doc mới): sơ đồ CLI/core/GUI,
   cấu trúc thư mục, chế độ đường dẫn, lớp cấu hình, pipeline phụ đề, LLM client, dubbing, VieNeu Local,
