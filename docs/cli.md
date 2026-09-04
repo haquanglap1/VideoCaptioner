@@ -213,7 +213,11 @@ videocaptioner config init              # 交互式初始化
 
 ## 配置
 
-配置优先级：命令行参数 > 环境变量 > 配置文件 > 默认值。
+配置优先级：命令行参数 > 环境变量 > 配置文件 > GUI 设置 > 默认值。
+
+GUI 设置指桌面版保存的 `AppData/settings.json`。CLI 只从中读取凭据和端点（当前 LLM 服务的
+API Key / Base / Model、Whisper API、DeepLX 端点、配音 TTS），因此在 GUI 里填过一次 API Key 后
+CLI 无需再填；行为开关（optimize/translate 等）不会从 GUI 继承。
 
 ### 环境变量
 

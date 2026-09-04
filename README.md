@@ -87,7 +87,10 @@ uv run videocaptioner config set llm.api_base https://api.openai.com/v1
 uv run videocaptioner config set llm.model gpt-4o-mini
 ```
 
-Thứ tự ưu tiên cấu hình: tham số CLI, biến môi trường `VIDEOCAPTIONER_*`, file cấu hình, giá trị mặc định.
+Thứ tự ưu tiên cấu hình: tham số CLI, biến môi trường `VIDEOCAPTIONER_*`, file cấu hình, cấu hình GUI,
+giá trị mặc định. Cấu hình GUI là `AppData/settings.json` của bản desktop: CLI chỉ đọc từ đó API key,
+base URL, model của dịch vụ LLM đang chọn, Whisper API, DeepLX endpoint và TTS lồng tiếng, nên nhập key
+một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate...) không được kế thừa.
 
 ## Lồng tiếng Natural
 

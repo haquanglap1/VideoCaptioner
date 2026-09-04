@@ -13,6 +13,7 @@ from videocaptioner.cli.config import (
     ensure_config_dir,
     format_config,
     get,
+    gui_settings_file,
     save_config_value,
 )
 
@@ -47,6 +48,9 @@ def _path() -> int:
     exists = CONFIG_FILE.exists()
     if not exists:
         output.hint("File does not exist yet. Run 'videocaptioner config init' to create it.")
+    gui_settings = gui_settings_file()
+    if gui_settings.is_file():
+        output.hint(f"GUI settings used as fallback for API keys: {gui_settings}")
     return EXIT.SUCCESS
 
 

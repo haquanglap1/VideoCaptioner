@@ -4,9 +4,11 @@ Config priority (highest to lowest):
   1. Command-line arguments
   2. Environment variables (VIDEOCAPTIONER_*)
   3. User config file (~/.config/videocaptioner/config.toml)
-  4. Built-in defaults
+  4. GUI settings (AppData/settings.json), credentials and endpoints only
+  5. Built-in defaults
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -43,6 +45,34 @@ ENV_MAP: Dict[str, str] = {
     "VIDEOCAPTIONER_WHISPER_API_BASE": "whisper_api.api_base",
     "VIDEOCAPTIONER_DEEPLX_ENDPOINT": "translate.deeplx_endpoint",
     "VIDEOCAPTIONER_TARGET_LANG": "translate.target_language",
+}
+
+# GUI settings.json -> CLI dotted key. Only credentials and endpoints are mirrored:
+# behaviour toggles (optimize/translate/...) have different defaults per front-end
+# and pulling them across would silently change what a CLI run does.
+GUI_KEY_MAP: Dict[str, str] = {
+    "WhisperAPI.WhisperApiKey": "whisper_api.api_key",
+    "WhisperAPI.WhisperApiBase": "whisper_api.api_base",
+    "WhisperAPI.WhisperApiModel": "whisper_api.model",
+    "WhisperAPI.WhisperApiPrompt": "whisper_api.prompt",
+    "Translate.DeeplxEndpoint": "translate.deeplx_endpoint",
+    "Dubbing.TTSProvider": "dubbing.tts_provider",
+    "Dubbing.TTSApiKey": "dubbing.tts_api_key",
+    "Dubbing.TTSApiBase": "dubbing.tts_api_base",
+    "Dubbing.TTSModel": "dubbing.tts_model",
+    "Dubbing.Voice": "dubbing.voice",
+}
+
+# LLM.LLMService (serialized LLMServiceEnum value) -> prefix of the GUI's
+# per-service ConfigItem names (LLM.<prefix>_API_Key / _API_Base / _Model).
+GUI_LLM_SERVICE_PREFIX: Dict[str, str] = {
+    "OpenAI 兼容": "OpenAI",
+    "SiliconCloud": "SiliconCloud",
+    "DeepSeek": "DeepSeek",
+    "Ollama": "Ollama",
+    "LM Studio": "LmStudio",
+    "Gemini": "Gemini",
+    "ChatGLM": "ChatGLM",
 }
 
 DEFAULTS: Dict[str, Any] = {
@@ -170,6 +200,65 @@ def load_config_file(path: Optional[Path] = None) -> dict:
         return {}
 
 
+def gui_settings_file() -> Path:
+    """Location of the GUI's ``settings.json``.
+
+    Imported lazily: ``videocaptioner.config`` creates the AppData directories
+    and edits PATH on import, which ``config show`` should not trigger.
+    """
+    from videocaptioner.config import SETTINGS_PATH
+
+    return SETTINGS_PATH
+
+
+def load_gui_settings(path: Optional[Path] = None) -> dict:
+    """Map the GUI's settings.json onto CLI config keys.
+
+    Sits below ``config.toml`` so keys typed once into the GUI are reused by the
+    CLI. Only string values are copied and blanks are skipped, so CLI defaults
+    such as ``llm.api_base`` survive an unset GUI field.
+    """
+    path = path or gui_settings_file()
+    try:
+        if not path.is_file():
+            return {}
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"! Warning: Failed to read GUI settings {path}: {e}", file=sys.stderr)
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    overrides: Dict[str, Any] = {}
+
+    def _copy(group: str, name: str, dotted_key: str) -> None:
+        section = raw.get(group)
+        value = section.get(name) if isinstance(section, dict) else None
+        if isinstance(value, str) and value.strip():
+            _set_nested(overrides, dotted_key, value)
+
+    llm = raw.get("LLM")
+    if isinstance(llm, dict):
+        # A settings.json written before LLMService existed means the GUI default.
+        service = llm.get("LLMService", "OpenAI 兼容")
+        prefix = GUI_LLM_SERVICE_PREFIX.get(service) if isinstance(service, str) else None
+        if prefix:
+            _copy("LLM", f"{prefix}_API_Key", "llm.api_key")
+            _copy("LLM", f"{prefix}_API_Base", "llm.api_base")
+            _copy("LLM", f"{prefix}_Model", "llm.model")
+
+    for gui_key, dotted_key in GUI_KEY_MAP.items():
+        group, name = gui_key.split(".", 1)
+        _copy(group, name, dotted_key)
+
+    # GUI stores "local_ai"; the CLI choice list uses "local-ai".
+    provider = _get_nested(overrides, "dubbing.tts_provider")
+    if isinstance(provider, str):
+        _set_nested(overrides, "dubbing.tts_provider", provider.replace("_", "-"))
+    return overrides
+
+
 def load_env_overrides() -> dict:
     """Read environment variables and map them to config keys.
 
@@ -187,9 +276,15 @@ def load_env_overrides() -> dict:
 def build_config(
     cli_overrides: Optional[dict] = None,
     config_path: Optional[Path] = None,
+    gui_settings_path: Optional[Path] = None,
 ) -> dict:
-    """Build final config by merging all sources (priority: cli > env > file > defaults)."""
+    """Build final config by merging all sources.
+
+    Priority: cli > env > config file > GUI settings > defaults.
+    """
     config = DEFAULTS.copy()
+    # Layer 0: GUI settings.json (credentials only)
+    config = _deep_merge(config, load_gui_settings(gui_settings_path))
     # Layer 1: config file
     file_config = load_config_file(config_path)
     config = _deep_merge(config, file_config)

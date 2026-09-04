@@ -1,5 +1,7 @@
 """Tests for CLI config system — TOML read/write, merging, type safety."""
 
+import json
+
 import pytest
 
 from videocaptioner.cli.config import (
@@ -11,8 +13,15 @@ from videocaptioner.cli.config import (
     _toml_value,
     build_config,
     load_config_file,
+    load_gui_settings,
     save_config_value,
 )
+
+
+def _write_gui_settings(path, **groups):
+    """Write a settings.json shaped like qfluentwidgets' QConfig output."""
+    path.write_text(json.dumps(groups, ensure_ascii=False), encoding="utf-8")
+    return path
 
 
 class TestDeepMerge:
@@ -149,3 +158,118 @@ class TestBuildConfig:
         monkeypatch.setenv("VIDEOCAPTIONER_LLM_MODEL", "env-model")
         config = build_config(cli_overrides={"llm": {"model": "cli-model"}})
         assert config["llm"]["model"] == "cli-model"
+
+
+class TestGuiSettingsFallback:
+    """The CLI reuses credentials typed into the GUI (AppData/settings.json)."""
+
+    def test_active_llm_service_credentials_are_mapped(self, tmp_path):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={
+                "LLMService": "DeepSeek",
+                "OpenAI_API_Key": "sk-openai-should-be-ignored",
+                "OpenAI_Model": "gpt-4o-mini",
+                "DeepSeek_API_Key": "sk-deepseek",
+                "DeepSeek_API_Base": "https://api.deepseek.com/v1",
+                "DeepSeek_Model": "deepseek-chat",
+            },
+        )
+        assert load_gui_settings(settings) == {
+            "llm": {
+                "api_key": "sk-deepseek",
+                "api_base": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+            }
+        }
+
+    def test_missing_service_key_means_gui_default_openai(self, tmp_path):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={"OpenAI_API_Key": "sk-openai", "OpenAI_Model": "gpt-4o"},
+        )
+        loaded = load_gui_settings(settings)
+        assert loaded["llm"] == {"api_key": "sk-openai", "model": "gpt-4o"}
+
+    def test_unknown_service_is_skipped(self, tmp_path):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={"LLMService": "FutureProvider", "OpenAI_API_Key": "sk-openai"},
+        )
+        assert load_gui_settings(settings) == {}
+
+    def test_blank_and_non_string_values_are_skipped(self, tmp_path):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={"LLMService": "OpenAI 兼容", "OpenAI_API_Key": "   ", "OpenAI_Model": 7},
+            WhisperAPI={"WhisperApiKey": ""},
+        )
+        assert load_gui_settings(settings) == {}
+
+    def test_other_credentials_and_provider_normalisation(self, tmp_path):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            WhisperAPI={"WhisperApiKey": "wk", "WhisperApiBase": "https://w.example/v1"},
+            Translate={"DeeplxEndpoint": "http://127.0.0.1:1188/translate"},
+            Dubbing={"TTSProvider": "local_ai", "TTSApiKey": "tk", "Voice": "vi-female"},
+        )
+        loaded = load_gui_settings(settings)
+        assert loaded["whisper_api"] == {"api_key": "wk", "api_base": "https://w.example/v1"}
+        assert loaded["translate"] == {"deeplx_endpoint": "http://127.0.0.1:1188/translate"}
+        assert loaded["dubbing"] == {
+            "tts_provider": "local-ai",
+            "tts_api_key": "tk",
+            "voice": "vi-female",
+        }
+
+    def test_missing_file_is_empty(self, tmp_path):
+        assert load_gui_settings(tmp_path / "nope.json") == {}
+
+    def test_corrupt_file_warns_and_is_empty(self, tmp_path, capsys):
+        broken = tmp_path / "settings.json"
+        broken.write_text("{not json", encoding="utf-8")
+        assert load_gui_settings(broken) == {}
+        assert "GUI settings" in capsys.readouterr().err
+
+    def test_gui_sits_below_file_env_and_cli(self, tmp_path, monkeypatch):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={
+                "LLMService": "OpenAI 兼容",
+                "OpenAI_API_Key": "sk-gui",
+                "OpenAI_API_Base": "https://gui.example/v1",
+                "OpenAI_Model": "gui-model",
+            },
+        )
+        config_file = tmp_path / "config.toml"
+        save_config_value("llm.model", "file-model", config_path=config_file)
+        monkeypatch.setenv("VIDEOCAPTIONER_LLM_API_BASE", "https://env.example/v1")
+
+        config = build_config(
+            cli_overrides={"llm": {"api_key": "sk-cli"}},
+            config_path=config_file,
+            gui_settings_path=settings,
+        )
+        assert config["llm"] == {
+            "api_key": "sk-cli",
+            "api_base": "https://env.example/v1",
+            "model": "file-model",
+        }
+
+    def test_gui_fills_gaps_above_defaults(self, tmp_path):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={"LLMService": "OpenAI 兼容", "OpenAI_API_Key": "sk-gui"},
+        )
+        config = build_config(gui_settings_path=settings)
+        assert config["llm"]["api_key"] == "sk-gui"
+        assert config["llm"]["api_base"] == DEFAULTS["llm"]["api_base"]
+        assert config["llm"]["model"] == DEFAULTS["llm"]["model"]
+
+    def test_default_path_is_the_gui_settings_file(self, tmp_path, monkeypatch):
+        settings = _write_gui_settings(
+            tmp_path / "settings.json",
+            LLM={"LLMService": "Gemini", "Gemini_API_Key": "gk"},
+        )
+        monkeypatch.setattr("videocaptioner.cli.config.gui_settings_file", lambda: settings)
+        assert build_config()["llm"]["api_key"] == "gk"
