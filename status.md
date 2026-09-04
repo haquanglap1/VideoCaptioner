@@ -82,6 +82,31 @@
   (`-m "not integration and not slow and not llm"`, basetemp ngắn) với FFmpeg/Whisper thật: **636 passed,
   4 skipped (TTS cần API key), 51 deselected** trong 1:15; hash `AppData/settings.json` không đổi.
 
+### VieNeu Local: dựng runtime, kích hoạt model và one-app (2026-09-05)
+- Yêu cầu: máy chưa có model lồng tiếng VieNeu. Clone `pnnbao97/VieNeu-TTS` vào `D:\AI-Work\VieNeu-TTS` đúng commit
+  pin `36c4b501`, build runtime bằng `scripts/build_vieneu_runtime.py` → `build/vieneu-runtime-20260904` (5.6 GB,
+  Python 3.12 + torch 2.8.0+cu128, smoke `ok 2.8.0+cu128 True`).
+- Lỗi 1: `uv pip install --require-hashes` trong builder (uv 0.11.6) kéo `[tool.uv] override-dependencies`
+  PyQt5-Qt5 của workspace vào và fail vì thiếu hash. Builder nay truyền `--no-config` cho cả hai lần `uv pip install`.
+- Lỗi 2: huggingface_hub 1.28 dò symlink theo thư mục cache một cách lười và không khóa; với nhiều thread tải,
+  thread thứ hai qua mặt probe và `os.symlink` ném WinError 1314 trên máy không có quyền symlink (Developer
+  Mode tắt). `HuggingFaceVieNeuClient.snapshot_download` nay ép `HF_HUB_DISABLE_SYMLINKS` (env + `constants`)
+  trên win32 để cache luôn là file thường; 2 test mới trong `tests/test_vieneu/test_model_updater.py`.
+- Model: tokenizer/codec MOSS `6aa02b01` và `pnnbao-ump/VieNeu-TTS-v3-Turbo` revision pin `2da0efab` (HF main đã
+  là `19dd1cc`) tải vào `AppData/models/vieneu/hf` (1.7 GB); `videocaptioner vieneu update --revision 2da0efab…`
+  với `VIDEOCAPTIONER_VIENEU_RUNTIME` trỏ runtime vừa build: sidecar khởi động trên RTX 5070, health/voices/WAV
+  pass, active revision `2da0efab`, sidecar tắt sạch (0 process sót).
+- Lồng tiếng thật từ source: `dub smoke.mp4 --subtitle smoke_vi.srt --tts-provider vieneu-local --voice "Minh Đức"
+  --timing-mode natural --mix-mode mute`: 3 nhóm TTS thành công (0 failed). Lần 1 dừng đúng policy `review`
+  (exit 6: câu 1 audio 4.75 s / khung 3.22 s, tỷ lệ 1.48); lần 2 `--unresolved allow-overlap` ra
+  `smoke_dubbed.mp4` h264 + AAC 48 kHz 14.32 s, report `output_created: true`.
+- One-app: `scripts/build_vieneu_one_app.py --name VideoCaptioner-VieNeu-OneApp-20260905` từ HEAD `ed2c3a4` + hai
+  fix trên: EXE 30,941,586 byte SHA-256 `3822ED7E…B600FC`, runtime 29,256 file / 5.91 GB, model seed 42 file /
+  1.77 GB (tổng 7.7 GB), `distribution-manifest.json` ghi đủ revision. Locator/store của app đọc được runtime và
+  ba snapshot trong gói. Smoke EXE one-app 30 s: cửa sổ chính hiện, không spawn process con, không lỗi log.
+- Chưa nghiệm thu: bấm Start/Update/lồng tiếng từ chính GUI one-app, auto-update nền lên `19dd1cc` (chưa chạy
+  vì smoke chỉ 30 s), installer WiX, nghe thủ công chất lượng giọng.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi

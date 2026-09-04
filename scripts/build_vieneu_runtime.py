@@ -136,6 +136,9 @@ def main() -> int:
                 uv,
                 "pip",
                 "install",
+                # The workspace pyproject carries uv override-dependencies (PyQt5-Qt5);
+                # they have no hashes and must not leak into the sidecar install.
+                "--no-config",
                 "--python",
                 str(runtime_python),
                 "--break-system-packages",
@@ -155,6 +158,9 @@ def main() -> int:
                 uv,
                 "pip",
                 "install",
+                # The workspace pyproject carries uv override-dependencies (PyQt5-Qt5);
+                # they have no hashes and must not leak into the sidecar install.
+                "--no-config",
                 "--python",
                 str(runtime_python),
                 "--break-system-packages",

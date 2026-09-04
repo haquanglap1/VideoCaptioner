@@ -156,3 +156,59 @@ def test_manual_rollback_swaps_known_good_revisions_without_deleting_snapshots(t
     assert rolled.previous_revision == "a" * 40
     assert previous.is_dir()
     assert active_path.is_dir()
+
+
+def test_hub_client_disables_symlinks_on_windows(monkeypatch, tmp_path):
+    """Windows machines without the symlink privilege must get plain-file caches.
+
+    huggingface_hub probes symlink support lazily per cache dir; a second
+    download thread can pass the probe before it finishes and fail with
+    WinError 1314, so the client forces the copy path up front.
+    """
+    import os
+    import sys
+
+    from huggingface_hub import constants as hf_constants
+
+    from videocaptioner.core.tts.vieneu.model_updater import HuggingFaceVieNeuClient
+
+    calls = []
+
+    def fake_snapshot_download(**kwargs):
+        calls.append(kwargs)
+        snapshot = tmp_path / "snapshot"
+        snapshot.mkdir(exist_ok=True)
+        return str(snapshot)
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
+    monkeypatch.setattr(hf_constants, "HF_HUB_DISABLE_SYMLINKS", False)
+    monkeypatch.delenv("HF_HUB_DISABLE_SYMLINKS", raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    result = HuggingFaceVieNeuClient().snapshot_download("org/repo", "c" * 40, tmp_path / "hf")
+
+    assert result == (tmp_path / "snapshot").resolve()
+    assert hf_constants.HF_HUB_DISABLE_SYMLINKS is True
+    assert os.environ["HF_HUB_DISABLE_SYMLINKS"] == "1"
+    assert calls[0]["repo_id"] == "org/repo"
+    assert calls[0]["revision"] == "c" * 40
+    assert calls[0]["cache_dir"] == str(tmp_path / "hf")
+
+
+def test_hub_client_leaves_symlink_setting_alone_elsewhere(monkeypatch, tmp_path):
+    import os
+    import sys
+
+    from huggingface_hub import constants as hf_constants
+
+    from videocaptioner.core.tts.vieneu.model_updater import HuggingFaceVieNeuClient
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", lambda **kwargs: str(tmp_path))
+    monkeypatch.setattr(hf_constants, "HF_HUB_DISABLE_SYMLINKS", False)
+    monkeypatch.delenv("HF_HUB_DISABLE_SYMLINKS", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    HuggingFaceVieNeuClient().snapshot_download("org/repo", "c" * 40, tmp_path / "hf")
+
+    assert hf_constants.HF_HUB_DISABLE_SYMLINKS is False
+    assert "HF_HUB_DISABLE_SYMLINKS" not in os.environ

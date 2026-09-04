@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import wave
 from dataclasses import dataclass
@@ -137,8 +138,17 @@ class HuggingFaceVieNeuClient:
         progress_callback: Callable[[int, int, str], None] | None = None,
         cancel_event: threading.Event | None = None,
     ) -> Path:
+        from huggingface_hub import constants as hf_constants
         from huggingface_hub import snapshot_download
         from tqdm.auto import tqdm
+
+        if sys.platform == "win32":
+            # huggingface_hub probes symlink support lazily per cache dir; with
+            # several download threads a second thread can pass the probe before
+            # it finishes and hit WinError 1314 on machines without the symlink
+            # privilege. Windows caches are always materialised as plain files.
+            os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+            hf_constants.HF_HUB_DISABLE_SYMLINKS = True
 
         class ProgressTqdm(tqdm):
             def update(self, value=1):
