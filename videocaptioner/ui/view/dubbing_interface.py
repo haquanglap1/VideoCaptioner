@@ -31,7 +31,7 @@ from qfluentwidgets import (
 )
 
 from videocaptioner.config import MODEL_PATH
-from videocaptioner.core.dubbing.config import AudioMixMode
+from videocaptioner.core.dubbing import presets
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
@@ -379,7 +379,7 @@ class DubbingInterface(QWidget):
         row9 = QHBoxLayout()
         row9.addWidget(BodyLabel(self.tr("Chất lượng (Hz):")))
         self.sample_rate_combo = ComboBox()
-        self._sample_rates = [16000, 24000, 32000, 44100, 48000]
+        self._sample_rates = list(presets.SAMPLE_RATES)
         self.sample_rate_combo.addItems([str(r) for r in self._sample_rates])
         try:
             self.sample_rate_combo.setCurrentIndex(
@@ -660,20 +660,10 @@ class DubbingInterface(QWidget):
         # Lưu cài đặt (dùng chung các slider âm thanh phía trên)
         self._save_settings()
 
-        mix_mode_map = {
-            "keep": AudioMixMode.KEEP_ORIGINAL,
-            "reduce": AudioMixMode.REDUCE_ORIGINAL,
-            "mute": AudioMixMode.MUTE_ORIGINAL,
-        }
-        mix_mode = mix_mode_map.get(
-            cfg.dubbing_mix_mode.value, AudioMixMode.REDUCE_ORIGINAL
-        )
+        mix_mode = presets.mix_mode_from_key(cfg.dubbing_mix_mode.value)
         original_volume = cfg.dubbing_original_volume.value / 100.0
         voice_volume = cfg.dubbing_voice_volume.value / 100.0
-
-        output_path = str(
-            Path(video_path).parent / f"{Path(video_path).stem}_merged.mp4"
-        )
+        output_path = presets.merged_output_path(video_path)
 
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
@@ -749,62 +739,36 @@ class DubbingInterface(QWidget):
         cfg.set(cfg.dubbing_enabled, checked)
 
     def _on_provider_changed(self, index: int):
-        provider_keys = ["openai", "minimax", "local_ai", "vieneu-local"]
-        if not (0 <= index < len(provider_keys)):
+        if not (0 <= index < len(presets.TTS_PROVIDER_KEYS)):
             return
-        provider = provider_keys[index]
+        provider = presets.TTS_PROVIDER_KEYS[index]
         cfg.set(cfg.dubbing_tts_provider, provider)
 
-        # Gợi ý voice + default API Base/Model theo provider.
-        # Chỉ điền vào ô đang trống — không ghi đè giá trị user đã nhập.
-        defaults = {
-            "openai": {
-                "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-                "voice": "alloy",
-                "api_base": "https://api.openai.com/v1",
-                "model": "tts-1",
-            },
-            "minimax": {
-                "voices": [
-                    "male-qn-qingse", "female-shaonv", "female-yujie",
-                    "male-tiehan", "speech-01-nova", "speech-01-turbo",
-                ],
-                "voice": "male-qn-qingse",
-                "api_base": "https://api.minimax.chat/v1/t2a_v2",
-                "model": "speech-01-turbo",
-            },
-            "local_ai": {
-                "voices": [],
-                "voice": "",
-                "api_base": "http://localhost:8000/v1",
-                "model": "",
-            },
-            "vieneu-local": {
-                "voices": [],
-                "voice": "",
-                "api_base": "",
-                "model": "",
-            },
-        }[provider]
-
-        # Refresh danh sách gợi ý voice (giữ lại text hiện tại nếu có)
-        current_voice = self.voice_combo.text().strip()
+        # Suggest voices and endpoint defaults for the provider; only blank
+        # fields are filled so nothing the user typed is overwritten.
+        preset = presets.TTS_PROVIDER_PRESETS[provider]
+        voice, api_base, model = presets.fill_provider_defaults(
+            preset,
+            self.voice_combo.text(),
+            self.api_base_edit.text(),
+            self.model_edit.text(),
+        )
         self.voice_combo.clear()
-        if defaults["voices"]:
-            self.voice_combo.addItems(defaults["voices"])
-        if current_voice:
-            self.voice_combo.setText(current_voice)
-        elif defaults["voice"]:
-            self.voice_combo.setText(defaults["voice"])
-
-        if not self.api_base_edit.text().strip() and defaults["api_base"]:
-            self.api_base_edit.setText(defaults["api_base"])
-        if not self.model_edit.text().strip() and defaults["model"]:
-            self.model_edit.setText(defaults["model"])
+        if preset.voices:
+            self.voice_combo.addItems(list(preset.voices))
+        if voice:
+            self.voice_combo.setText(voice)
+        if api_base:
+            self.api_base_edit.setText(api_base)
+        if model:
+            self.model_edit.setText(model)
         self._update_provider_visibility()
 
     def _update_provider_visibility(self):
-        managed = self.provider_combo.currentIndex() == 3
+        index = self.provider_combo.currentIndex()
+        managed = 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.is_managed_provider(
+            presets.TTS_PROVIDER_KEYS[index]
+        )
         self.vieneu_widget.setVisible(managed)
         for editor in (self.api_key_edit, self.api_base_edit, self.model_edit):
             editor.setEnabled(not managed)
@@ -1055,25 +1019,26 @@ class DubbingInterface(QWidget):
         cfg.set(cfg.dubbing_tts_api_base, self.api_base_edit.text())
         cfg.set(cfg.dubbing_tts_model, self.model_edit.text())
 
-        mix_keys = ["keep", "reduce", "mute"]
         idx = self.mix_combo.currentIndex()
-        if 0 <= idx < len(mix_keys):
-            cfg.set(cfg.dubbing_mix_mode, mix_keys[idx])
+        if 0 <= idx < len(presets.MIX_MODE_KEYS):
+            cfg.set(cfg.dubbing_mix_mode, presets.MIX_MODE_KEYS[idx])
         cfg.set(cfg.dubbing_original_volume, self.volume_slider.value())
         cfg.set(cfg.dubbing_tts_speed, self.speed_slider.value())
         cfg.set(cfg.dubbing_max_speed, self.max_speed_slider.value())
-        source_keys = ["auto", "translated", "original"]
-        cfg.set(cfg.dubbing_text_source, source_keys[self.text_source_combo.currentIndex()])
+        cfg.set(
+            cfg.dubbing_text_source,
+            presets.TEXT_SOURCE_KEYS[self.text_source_combo.currentIndex()],
+        )
         cfg.set(
             cfg.dubbing_timing_mode,
-            "natural" if self.timing_mode_combo.currentIndex() == 0 else "legacy",
+            presets.TIMING_MODE_KEYS[0 if self.timing_mode_combo.currentIndex() == 0 else 1],
         )
         cfg.set(cfg.dubbing_natural_max_speed, self.natural_speed_slider.value())
         cfg.set(cfg.dubbing_timing_rewrite, self.rewrite_switch.isChecked())
         cfg.set(cfg.dubbing_tts_cache, self.tts_cache_switch.isChecked())
         cfg.set(
             cfg.dubbing_unresolved_policy,
-            "review" if self.unresolved_combo.currentIndex() == 0 else "allow-overlap",
+            presets.UNRESOLVED_POLICY_KEYS[0 if self.unresolved_combo.currentIndex() == 0 else 1],
         )
 
         sr_idx = self.sample_rate_combo.currentIndex()

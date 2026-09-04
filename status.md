@@ -65,6 +65,32 @@
   thread/ui/dubbing engine: pass; 20 fail trong `tests/test_asr/test_chunk*` là pydub gọi ffmpeg không có
   trên máy (đã ghi từ đợt trước), không liên quan thay đổi này.
 
+### Tách logic khỏi view lớn: subtitle_interface và dubbing_interface (mục 5, đợt 1)
+- `core/subtitle/editing.py` (không import Qt) nhận toàn bộ thao tác trên dict phụ đề dạng
+  `ASRData.to_json()`: `merge_rows`, `delete_rows`, `select_rows`, `replace_text`, `playback_range`,
+  `find_supported_subtitle`, `export_subtitle`, `pipeline_reexport_targets`/`reexport_pipeline_outputs`,
+  `task_folder`, `write_editor_handoff`. `SubtitleInterface` giữ nguyên `SubtitleTableModel`, chỉ gọi vào
+  các hàm này; thêm `_selected_rows()` dùng chung cho menu chuột phải và phím tắt.
+- Hành vi đổi có chủ đích: gộp hàng khi chọn cách quãng (Ctrl+click) nay gộp cả các hàng nằm giữa; code cũ
+  âm thầm xóa những hàng không được chọn trong khoảng đó.
+- `core/dubbing/presets.py` gom bảng provider (thứ tự combo, voice gợi ý, API base/model mặc định), key
+  mix mode/text source/timing/unresolved, sample rate, `provider_from_key` (nhận cả `local_ai`/`local-ai`),
+  `mix_mode_from_key`, `fill_provider_defaults` (chỉ điền ô trống), `merged_output_path`.
+  `DubbingInterface` và CLI `dub.py` dùng chung, bỏ hai bản map trùng.
+- Test: `tests/test_subtitle/test_editing.py` (20), `tests/test_dubbing/test_presets.py` (6),
+  `tests/test_ui/test_subtitle_interface.py` (4, view offscreen: load, merge, delete, click hàng phát
+  trước cue end 50 ms). Dubbing view kiểm offscreen: đổi provider điền preset, giữ voice đã gõ, ẩn/hiện
+  khối VieNeu, `_save_settings` lưu đúng key.
+- Fixture autouse mới ở root conftest trỏ `cfg.file` sang tmp: trước đó dựng `DubbingInterface` trong test
+  (`test_vieneu/test_ui_thread.py`) và smoke thủ công ghi thẳng vào `AppData/settings.json` của máy dev;
+  trong phiên này smoke đã ghi đè TTSApiBase/TTSModel/Voice và được trả về mặc định (`alloy`,
+  `https://api.openai.com/v1`, `tts-1`), TTSProvider hiện là `vieneu-local` do test cũ đặt.
+- Còn lại của mục 5: `subtitle_style_interface.py` (1281 dòng), `setting_interface.py` (1120),
+  `video_editor_interface.py` (1117) chưa tách; `subtitle_interface.py` còn ~1000 dòng chủ yếu là dựng
+  layout.
+- Validation: ruff pass; pyright `videocaptioner/` 0 errors; test_ui + test_vieneu UI thread + test_cli +
+  editing + presets: **pass**, hash `settings.json` không đổi sau khi chạy.
+
 ## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
 
 ### Nguyên nhân và thay đổi

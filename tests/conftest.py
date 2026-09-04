@@ -19,6 +19,28 @@ from videocaptioner.core.utils.text_utils import count_words, is_mainly_cjk
 cache.disable_cache()
 
 
+@pytest.fixture(autouse=True)
+def isolated_gui_settings(tmp_path):
+    """Point QConfig saves at a scratch file.
+
+    Views call ``cfg.set(...)`` while wiring combos and ``qconfig.save()`` would
+    otherwise rewrite the developer's real ``AppData/settings.json``. The GUI
+    stack is optional for CLI-only environments, so a failed import just
+    skips the redirect.
+    """
+    try:
+        from videocaptioner.ui.common.config import cfg
+    except Exception:
+        yield
+        return
+    original = cfg.file
+    cfg.file = tmp_path / "settings.json"
+    try:
+        yield
+    finally:
+        cfg.file = original
+
+
 @pytest.fixture
 def sample_asr_data():
     """Create sample ASR data for translation testing."""

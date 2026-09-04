@@ -8,8 +8,8 @@ from pathlib import Path
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
 from videocaptioner.cli.config import get
+from videocaptioner.core.dubbing import presets
 from videocaptioner.core.dubbing.config import (
-    AudioMixMode,
     DubbingConfig,
     TTSProviderEnum,
 )
@@ -24,20 +24,7 @@ from videocaptioner.core.tts import TTSConfig
 
 
 def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
-    provider = get(config, "dubbing.tts_provider", "openai")
-    provider_map = {
-        "openai": TTSProviderEnum.OPENAI,
-        "minimax": TTSProviderEnum.MINIMAX,
-        "local-ai": TTSProviderEnum.LOCAL_AI,
-        "local_ai": TTSProviderEnum.LOCAL_AI,
-        "vieneu-local": TTSProviderEnum.VIENEU_LOCAL,
-        "vieneu_local": TTSProviderEnum.VIENEU_LOCAL,
-    }
-    mix_map = {
-        "keep": AudioMixMode.KEEP_ORIGINAL,
-        "reduce": AudioMixMode.REDUCE_ORIGINAL,
-        "mute": AudioMixMode.MUTE_ORIGINAL,
-    }
+    provider = str(get(config, "dubbing.tts_provider", "openai"))
     target_language = str(get(config, "translate.target_language", ""))
     strip_cjk = not target_language.lower().startswith(("zh", "ja", "yue"))
     rewrite_key = str(get(config, "llm.api_key", ""))
@@ -47,7 +34,7 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
         rewrite_model = ""
     return DubbingConfig(
         enabled=True,
-        tts_provider=provider_map.get(provider, TTSProviderEnum.OPENAI),
+        tts_provider=presets.provider_from_key(provider),
         tts_config=TTSConfig(
             model=str(get(config, "dubbing.tts_model", "tts-1")),
             api_key=str(get(config, "dubbing.tts_api_key", "")),
@@ -70,9 +57,7 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
         unresolved_policy=UnresolvedFitPolicy(
             get(config, "dubbing.unresolved_policy", "review")
         ),
-        mix_mode=mix_map.get(
-            get(config, "dubbing.mix_mode", "reduce"), AudioMixMode.REDUCE_ORIGINAL
-        ),
+        mix_mode=presets.mix_mode_from_key(str(get(config, "dubbing.mix_mode", "reduce"))),
         original_volume=float(get(config, "dubbing.original_volume", 0.4)),
         voice_volume=float(get(config, "dubbing.voice_volume", 1.0)),
         target_language=target_language,
