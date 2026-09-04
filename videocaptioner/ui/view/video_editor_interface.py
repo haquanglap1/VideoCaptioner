@@ -27,6 +27,7 @@ from PyQt5.QtWidgets import (
 from qfluentwidgets import (
     Action,
     CommandBar,
+    FlowLayout,
     InfoBar,
     InfoBarPosition,
     MessageBox,
@@ -345,8 +346,12 @@ class VideoEditorInterface(QWidget):
         hint.setWordWrap(True)
         hint.setStyleSheet("color:#8fa3ba; font-size:11px;")
         layout.addWidget(hint)
-        add_row = QHBoxLayout()
-        add_row.setSpacing(4)
+        # FlowLayout reports one button as its minimum, so a large default font
+        # (offscreen Qt, accessibility scaling) wraps the row instead of widening
+        # the tab and starving the video preview.
+        add_row = FlowLayout(needAni=False)
+        add_row.setHorizontalSpacing(4)
+        add_row.setVerticalSpacing(4)
         self.add_layer_buttons: dict[EditorLayerKind, PushButton] = {}
         for kind, label in (
             (EditorLayerKind.BLUR, self.tr("Blur")),

@@ -71,6 +71,17 @@
   `FULL_PROCESS` mặc định, dùng ở 5 chỗ đọc task type.
 - Validation: pyright `videocaptioner/` **0 errors, 0 warnings**; ruff pass.
 
+### Test layout editor ổn định dưới offscreen trên Windows (mục 5)
+- Nguyên nhân: offscreen Qt trên máy Windows dùng font Helvetica 12pt (native là MS Shell Dlg 2 7pt) nên hàng bốn
+  nút Blur/Logo/Mask/Text trong `QHBoxLayout` đẩy `minimumSizeHint` của tab Layers lên 356 px; `QSplitter` tôn
+  trọng min đó nên preview chỉ còn 306 px. Sửa: hàng nút dùng `FlowLayout` của qfluentwidgets (min bằng một nút,
+  tự xuống dòng khi hẹp hoặc font lớn); test giữ nguyên ngưỡng 320/290/300. Đo lại offscreen: preview 372,
+  tabs 294.
+- Validation: `test_ui_sync_performance.py` offscreen 6 passed 1 skipped (QtMultimedia); native
+  `test_ui_sync_performance` + `test_visual_layers` 26 passed. Full suite offline cuối cùng
+  (`-m "not integration and not slow and not llm"`, basetemp ngắn) với FFmpeg/Whisper thật: **636 passed,
+  4 skipped (TTS cần API key), 51 deselected** trong 1:15; hash `AppData/settings.json` không đổi.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi
