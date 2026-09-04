@@ -20,6 +20,7 @@ class DeepLXTranslator(BaseTranslator):
         target_language: TargetLanguage,
         timeout: int,
         update_callback: Optional[Callable],
+        endpoint: str = "",
     ):
         super().__init__(
             thread_num=thread_num,
@@ -29,7 +30,12 @@ class DeepLXTranslator(BaseTranslator):
         )
         self.timeout = timeout
         self.session = requests.Session()
-        self.endpoint = os.getenv("DEEPLX_ENDPOINT", "https://api.deeplx.org/translate")
+        # Explicit endpoint first; DEEPLX_ENDPOINT is only read, never written.
+        self.endpoint = (
+            (endpoint or "").strip()
+            or os.getenv("DEEPLX_ENDPOINT", "").strip()
+            or "https://api.deeplx.org/translate"
+        )
 
     def _translate_chunk(
         self, subtitle_chunk: List[SubtitleProcessData]

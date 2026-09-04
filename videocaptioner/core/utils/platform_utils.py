@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from videocaptioner.core.entities import TranscribeModelEnum
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +46,15 @@ def open_folder(path):
         if hasattr(os, "startfile"):
             getattr(os, "startfile")(path)
         else:
-            subprocess.Popen(["explorer", path])
+            subprocess.Popen(["explorer", path], env=child_environment())
     elif system == "Darwin":  # macOS
-        subprocess.Popen(["open", path])
+        subprocess.Popen(["open", path], env=child_environment())
     elif system == "Linux":
-        subprocess.Popen(["xdg-open", path])
+        subprocess.Popen(["xdg-open", path], env=child_environment())
     else:
         # 其他系统，尝试使用默认方式
         try:
-            subprocess.Popen(["xdg-open", path])
+            subprocess.Popen(["xdg-open", path], env=child_environment())
         except (OSError, subprocess.SubprocessError):
             logger.warning(f"Cannot open folder on current system: {path}")
 
@@ -63,12 +64,12 @@ def reveal_in_explorer(file_path):
     system = platform.system()
     try:
         if system == "Windows":
-            subprocess.Popen(["explorer", "/select,", os.path.normpath(file_path)])
+            subprocess.Popen(["explorer", "/select,", os.path.normpath(file_path)], env=child_environment())
         elif system == "Darwin":
-            subprocess.Popen(["open", "-R", file_path])
+            subprocess.Popen(["open", "-R", file_path], env=child_environment())
         else:
             # Linux 没有统一的选中文件方式，打开父文件夹
-            subprocess.Popen(["xdg-open", os.path.dirname(file_path)])
+            subprocess.Popen(["xdg-open", os.path.dirname(file_path)], env=child_environment())
     except (OSError, subprocess.SubprocessError):
         logger.warning(f"can not reveal in explorer: {file_path}")
 
@@ -86,15 +87,15 @@ def open_file(path):
         if hasattr(os, "startfile"):
             getattr(os, "startfile")(path)
         else:
-            subprocess.Popen(["cmd", "/c", "start", "", path])
+            subprocess.Popen(["cmd", "/c", "start", "", path], env=child_environment())
     elif system == "Darwin":  # macOS
-        subprocess.Popen(["open", path])
+        subprocess.Popen(["open", path], env=child_environment())
     elif system == "Linux":
-        subprocess.Popen(["xdg-open", path])
+        subprocess.Popen(["xdg-open", path], env=child_environment())
     else:
         # 其他系统，尝试使用默认方式
         try:
-            subprocess.Popen(["xdg-open", path])
+            subprocess.Popen(["xdg-open", path], env=child_environment())
         except (OSError, subprocess.SubprocessError):
             logger.warning(f"Cannot open file on current system: {path}")
 

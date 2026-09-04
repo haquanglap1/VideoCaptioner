@@ -16,6 +16,7 @@ from videocaptioner.cli.config import (
     gui_settings_file,
     save_config_value,
 )
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 
 def run(args: Namespace, config: dict) -> int:
@@ -150,5 +151,5 @@ def _edit() -> int:
         else:
             editor = "vi"
 
-    subprocess.run([editor, str(CONFIG_FILE)])
+    subprocess.run([editor, str(CONFIG_FILE)], env=child_environment())
     return EXIT.SUCCESS

@@ -20,6 +20,7 @@ from typing import List, Optional
 
 from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 logger = setup_logger("dubbing.audio_mixer")
 
@@ -59,7 +60,7 @@ def get_audio_duration(audio_path: str) -> float:
                 "-show_entries", "format=duration",
                 "-of", "csv=p=0",
                 audio_path,
-            ],
+            ], env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -121,7 +122,7 @@ def adjust_audio_speed(
 
     try:
         result = subprocess.run(
-            cmd,
+            cmd, env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -337,7 +338,7 @@ def mix_audio_tracks(
 
     try:
         process = subprocess.Popen(
-            cmd,
+            cmd, env=child_environment(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -377,7 +378,7 @@ def _filter_complex_file_flag() -> str:
                 "ffmpeg", "-hide_banner",
                 "-filter_complex_script", os.devnull,
                 "-f", "null", "-",
-            ],
+            ], env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -410,7 +411,7 @@ def _has_audio_stream(media_path: str) -> bool:
                 "-show_entries", "stream=index",
                 "-of", "csv=p=0",
                 media_path,
-            ],
+            ], env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -470,7 +471,7 @@ def _measure_loudnorm(audio_path: str) -> dict | None:
     ]
     try:
         result = subprocess.run(
-            cmd,
+            cmd, env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -582,7 +583,7 @@ def _render_voice_track(
             output_path,
         ]
         result = subprocess.run(
-            cmd,
+            cmd, env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -638,7 +639,7 @@ def _mix_full_tracks(
     ]
     try:
         result = subprocess.run(
-            cmd,
+            cmd, env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",

@@ -58,14 +58,8 @@ def run(args: Namespace, config: dict) -> int:
         output.info(f"ASR engine: {asr_engine}")
         output.info(f"Language: {language}")
 
-    # Setup environment for Whisper API
-    if asr_engine == "whisper-api":
-        whisper_key = get(config, "whisper_api.api_key", "")
-        whisper_base = get(config, "whisper_api.api_base", "")
-        if whisper_key:
-            os.environ["OPENAI_API_KEY"] = whisper_key
-        if whisper_base:
-            os.environ["OPENAI_BASE_URL"] = whisper_base
+    # Whisper API credentials reach WhisperAPI through TranscribeConfig below;
+    # they are deliberately not exported to os.environ.
 
     # Build TranscribeConfig
     from videocaptioner.core.entities import (

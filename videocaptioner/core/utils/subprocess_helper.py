@@ -1,10 +1,10 @@
-"""子进程输出流处理工具模块"""
+"""Subprocess helpers: scrubbed child environment and async stream reading."""
 
 import os
 import queue
 import subprocess
 import threading
-from typing import Callable, Optional, Tuple
+from typing import Callable, Dict, Mapping, Optional, Tuple
 
 from ..utils.logger import setup_logger
 
@@ -13,6 +13,29 @@ logger = setup_logger("subprocess_helper")
 # Suppress the conhost.exe console window that subprocess.Popen would
 # otherwise spawn for every child on Windows.
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+
+# Variables that must never reach a child process: the app's own credential
+# names and anything the OpenAI SDK would pick up implicitly. Matched
+# case-insensitively because Windows environment names are.
+SECRET_ENV_PREFIXES: Tuple[str, ...] = ("OPENAI_", "VIDEOCAPTIONER_")
+
+
+def child_environment(overrides: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """Copy of ``os.environ`` for subprocesses with credential variables removed.
+
+    PATH additions made at import time (bundled FFmpeg, Faster-Whisper, Deno)
+    are kept because they live in ``os.environ``; only ``OPENAI_*`` and
+    ``VIDEOCAPTIONER_*`` are dropped so FFmpeg, whisper, yt-dlp and the VieNeu
+    sidecar never inherit an API key. ``overrides`` are applied last.
+    """
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith(SECRET_ENV_PREFIXES)
+    }
+    if overrides:
+        env.update(overrides)
+    return env
 
 
 class StreamReader:
@@ -126,14 +149,14 @@ def run_process_with_stream_reader(
         process.wait()
         ```
     """
-    # 设置默认参数
     default_kwargs = {
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
         "text": True,
         "encoding": "utf-8",
-        "bufsize": 1,  # 行缓冲
+        "bufsize": 1,  # line buffered
         "creationflags": _NO_WINDOW,
+        "env": child_environment(),
     }
     default_kwargs.update(popen_kwargs)
 

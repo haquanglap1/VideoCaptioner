@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from videocaptioner.core.tts import BaseTTS
 
 from videocaptioner.core.dubbing.config import tts_provider_key
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 logger = setup_logger("dubbing.orchestrator")
 _CREATE_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
@@ -81,8 +82,15 @@ class DubbingOrchestrator:
                 raise ValueError("Phụ đề trống, không có gì để lồng tiếng")
 
             if config.rewrite_model and config.rewrite_api_key and config.rewrite_api_base:
-                os.environ["OPENAI_API_KEY"] = config.rewrite_api_key
-                os.environ["OPENAI_BASE_URL"] = config.rewrite_api_base
+                # Lazy: keeps the OpenAI SDK out of the import path of builds
+                # that never rewrite. Credentials stay out of os.environ.
+                from videocaptioner.core.llm.client import LLMCredentials, configure_llm_client
+
+                configure_llm_client(
+                    LLMCredentials(
+                        api_key=config.rewrite_api_key, base_url=config.rewrite_api_base
+                    )
+                )
             rewrite_service = self.engine._create_rewrite_service(config)
             if config.timing_mode == DubbingTimingMode.NATURAL:
                 self._pre_rewrite_hard_outliers(plan.groups, config, rewrite_service)
@@ -347,7 +355,7 @@ class DubbingOrchestrator:
             [
                 "ffmpeg", "-v", "error", "-i", source_path,
                 "-ac", "1", "-ar", str(sample_rate or 24000), "-y", str(destination),
-            ],
+            ], env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",

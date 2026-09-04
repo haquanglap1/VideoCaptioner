@@ -197,10 +197,19 @@ def mock_llm_client(monkeypatch, tmp_path):
     ):
         monkeypatch.setattr(target, fake_call_llm)
 
-    # Credential giả: get_llm_client() vẫn đòi env var dù call_llm đã bị patch,
-    # và SubtitleConfig của test đọc trực tiếp từ env.
+    # Credential giả: SubtitleConfig của một số test đọc trực tiếp từ env, còn
+    # get_llm_client() nhận credentials dạng object như GUI/CLI thật.
     monkeypatch.setenv("OPENAI_BASE_URL", "https://mock.invalid/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "mock-key")
+    from videocaptioner.core.llm.client import (
+        LLMCredentials,
+        configure_llm_client,
+        reset_llm_client,
+    )
+
+    configure_llm_client(
+        LLMCredentials(api_key="mock-key", base_url="https://mock.invalid/v1")
+    )
 
     # SubtitleThread verify kết nối LLM thật trước khi chạy — bỏ qua khi dùng mock.
     # Import trong try: root conftest không được phụ thuộc PyQt5 (test CLI chạy
@@ -231,3 +240,5 @@ def mock_llm_client(monkeypatch, tmp_path):
         else:
             cache.disable_cache()
         isolated_cache.close()
+        configure_llm_client(None)
+        reset_llm_client()

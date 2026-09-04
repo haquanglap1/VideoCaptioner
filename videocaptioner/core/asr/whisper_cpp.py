@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
 
+from videocaptioner.core.utils.subprocess_helper import child_environment
+
 from ...config import MODEL_PATH
 from ..utils.logger import setup_logger
 from ..utils.subprocess_helper import StreamReader
@@ -149,7 +151,7 @@ class WhisperCppASR(BaseASR):
 
                 # Start process
                 self.process = subprocess.Popen(
-                    whisper_params,
+                    whisper_params, env=child_environment(),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -242,7 +244,7 @@ class WhisperCppASR(BaseASR):
         try:
             cmd = ["ffmpeg", "-i", filepath]
             result = subprocess.run(
-                cmd,
+                cmd, env=child_environment(),
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

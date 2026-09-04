@@ -2,7 +2,8 @@
 
 import os
 import threading
-from typing import Any, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, List, Optional
 from urllib.parse import urlparse, urlunparse
 
 import openai
@@ -21,7 +22,8 @@ from videocaptioner.core.utils.logger import setup_logger
 from .request_logger import create_logging_http_client, log_llm_response
 
 _global_client: Optional[OpenAI] = None
-_client_credentials: Optional[Tuple[str, str]] = None
+_client_credentials: Optional["LLMCredentials"] = None
+_configured_credentials: Optional["LLMCredentials"] = None
 _client_lock = threading.Lock()
 
 logger = setup_logger("llm_client")
@@ -50,6 +52,58 @@ def normalize_base_url(base_url: str) -> str:
     return normalized
 
 
+@dataclass(frozen=True)
+class LLMCredentials:
+    """Credentials for an OpenAI-compatible endpoint.
+
+    Passed around explicitly instead of through ``os.environ`` so an API key
+    never leaks into child processes (FFmpeg, whisper, the VieNeu sidecar).
+    """
+
+    api_key: str = field(repr=False)
+    base_url: str = ""
+
+    def __post_init__(self) -> None:
+        api_key = (self.api_key or "").strip()
+        base_url = (self.base_url or "").strip()
+        object.__setattr__(self, "api_key", api_key)
+        object.__setattr__(
+            self, "base_url", normalize_base_url(base_url) if base_url else ""
+        )
+
+    @property
+    def is_complete(self) -> bool:
+        return bool(self.api_key and self.base_url)
+
+    @classmethod
+    def from_environment(cls) -> "LLMCredentials":
+        """Read-only fallback for shells that export ``OPENAI_*``; nothing is written back."""
+        return cls(
+            api_key=os.getenv("OPENAI_API_KEY", ""),
+            base_url=os.getenv("OPENAI_BASE_URL", ""),
+        )
+
+
+def configure_llm_client(credentials: Optional[LLMCredentials]) -> None:
+    """Set the credentials ``get_llm_client()`` uses when none are passed.
+
+    ``None`` clears them, leaving only the ``OPENAI_*`` environment fallback.
+    The cached client is rebuilt lazily on the next call.
+    """
+    global _configured_credentials
+    with _client_lock:
+        _configured_credentials = credentials
+
+
+def get_llm_credentials() -> LLMCredentials:
+    """Configured credentials, else the read-only ``OPENAI_*`` environment fallback."""
+    with _client_lock:
+        configured = _configured_credentials
+    if configured is not None and configured.is_complete:
+        return configured
+    return LLMCredentials.from_environment()
+
+
 def reset_llm_client() -> None:
     """Force the next get_llm_client() to build a fresh OpenAI client.
 
@@ -62,32 +116,29 @@ def reset_llm_client() -> None:
         _client_credentials = None
 
 
-def get_llm_client() -> OpenAI:
-    """Get global LLM client instance (thread-safe, credential-aware).
+def get_llm_client(credentials: Optional[LLMCredentials] = None) -> OpenAI:
+    """Get the shared LLM client (thread-safe, credential-aware).
 
-    The client is rebuilt automatically when OPENAI_BASE_URL or
-    OPENAI_API_KEY change between calls, so updates from the UI take effect
-    without restarting the app.
+    ``credentials`` overrides the configured ones for this call. The client is
+    rebuilt whenever the effective credentials change, so updates from the UI
+    take effect without restarting the app.
     """
     global _global_client, _client_credentials
 
-    base_url = normalize_base_url(os.getenv("OPENAI_BASE_URL", "").strip())
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-
-    if not base_url or not api_key:
+    current = credentials if credentials is not None else get_llm_credentials()
+    if not current.is_complete:
         raise ValueError(
-            "OPENAI_BASE_URL and OPENAI_API_KEY environment variables must be set"
+            "LLM credentials are not configured: set the API key and base URL "
+            "in settings, or export OPENAI_BASE_URL and OPENAI_API_KEY"
         )
-
-    current = (base_url, api_key)
 
     with _client_lock:
         if _global_client is None or _client_credentials != current:
             if _global_client is not None:
                 logger.info("LLM credentials changed, rebuilding OpenAI client")
             _global_client = OpenAI(
-                base_url=base_url,
-                api_key=api_key,
+                base_url=current.base_url,
+                api_key=current.api_key,
                 http_client=create_logging_http_client(),
             )
             _client_credentials = current

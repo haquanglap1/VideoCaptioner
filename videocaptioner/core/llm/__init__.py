@@ -7,13 +7,19 @@ if TYPE_CHECKING:
     from .check_llm import check_llm_connection as check_llm_connection
     from .check_llm import get_available_models as get_available_models
     from .check_whisper import check_whisper_connection as check_whisper_connection
+    from .client import LLMCredentials as LLMCredentials
     from .client import call_llm as call_llm
+    from .client import configure_llm_client as configure_llm_client
     from .client import get_llm_client as get_llm_client
+    from .client import get_llm_credentials as get_llm_credentials
     from .client import reset_llm_client as reset_llm_client
 
 _EXPORTS = {
+    "LLMCredentials": (".client", "LLMCredentials"),
     "call_llm": (".client", "call_llm"),
+    "configure_llm_client": (".client", "configure_llm_client"),
     "get_llm_client": (".client", "get_llm_client"),
+    "get_llm_credentials": (".client", "get_llm_credentials"),
     "reset_llm_client": (".client", "reset_llm_client"),
     "check_llm_connection": (".check_llm", "check_llm_connection"),
     "get_available_models": (".check_llm", "get_available_models"),
@@ -21,8 +27,11 @@ _EXPORTS = {
 }
 
 __all__ = [
+    "LLMCredentials",
     "call_llm",
+    "configure_llm_client",
     "get_llm_client",
+    "get_llm_credentials",
     "reset_llm_client",
     "check_llm_connection",
     "get_available_models",

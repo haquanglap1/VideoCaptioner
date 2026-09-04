@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal, Optional
 
+from videocaptioner.core.utils.subprocess_helper import child_environment
+
 from ..entities import (
     AudioStreamInfo,
     SubtitleLayoutEnum,
@@ -182,7 +184,7 @@ def video2audio(input_file: str, output: str = "", audio_track_index: int = 0) -
 
     try:
         result = subprocess.run(
-            cmd,
+            cmd, env=child_environment(),
             capture_output=True,
             check=True,
             encoding="utf-8",
@@ -216,7 +218,7 @@ def check_cuda_available() -> bool:
     try:
         # 首先检查ffmpeg是否支持cuda
         result = subprocess.run(
-            ["ffmpeg", "-hwaccels"],
+            ["ffmpeg", "-hwaccels"], env=child_environment(),
             capture_output=True,
             text=True,
             creationflags=(
@@ -229,7 +231,7 @@ def check_cuda_available() -> bool:
 
         # 进一步检查CUDA设备信息
         result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-init_hw_device", "cuda"],
+            ["ffmpeg", "-hide_banner", "-init_hw_device", "cuda"], env=child_environment(),
             capture_output=True,
             text=True,
             creationflags=(
@@ -309,7 +311,7 @@ def add_subtitles(
             logger.debug(f"FFmpeg soft subtitle cmd: {' '.join(cmd)}")
             try:
                 subprocess.run(
-                    cmd,
+                    cmd, env=child_environment(),
                     capture_output=True,
                     check=True,
                     text=True,
@@ -378,7 +380,7 @@ def add_subtitles(
             process = None
             try:
                 process = subprocess.Popen(
-                    cmd,
+                    cmd, env=child_environment(),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -468,7 +470,7 @@ def get_video_info(
     try:
         # 执行 ffmpeg 获取视频信息
         result = subprocess.run(
-            ["ffmpeg", "-i", file_path],
+            ["ffmpeg", "-i", file_path], env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -592,7 +594,7 @@ def _extract_thumbnail(video_path: str, seek_time: float, thumbnail_path: str) -
                 "2",
                 "-y",
                 Path(thumbnail_path).as_posix(),
-            ],
+            ], env=child_environment(),
             capture_output=True,
             text=True,
             encoding="utf-8",

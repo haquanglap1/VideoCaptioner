@@ -22,6 +22,7 @@ from videocaptioner.core.dubbing.audio_mixer import build_voice_track, mix_audio
 from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.dubbing.engine import DubbingEngine
 from videocaptioner.core.utils.installer import ffmpeg_path
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 from .adapters import project_to_tts_asr
 from .models import EditorLayer, EditorLayerKind, EditorProject
@@ -93,7 +94,7 @@ def _run(
     deadline = time.monotonic() + timeout
     try:
         process = subprocess.Popen(
-            command,
+            command, env=child_environment(),
             cwd=str(cwd) if cwd else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

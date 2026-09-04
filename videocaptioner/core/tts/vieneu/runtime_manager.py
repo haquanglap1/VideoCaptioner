@@ -19,6 +19,7 @@ import psutil
 import requests
 
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 from .client_identity import VieNeuClientIdentity
 from .models import (
@@ -227,8 +228,9 @@ class VieNeuRuntimeManager:
         return command
 
     def _environment(self, config: VieNeuRuntimeLaunchConfig) -> dict[str, str]:
-        environment = os.environ.copy()
-        environment.update(config.extra_env)
+        # Scrubbed copy: the sidecar runs third-party model code and must not
+        # inherit the LLM API key or other app credentials.
+        environment = child_environment(config.extra_env)
         environment[_TOKEN_ENV] = self._session_token
         environment["PYTHONUNBUFFERED"] = "1"
         # Runtime receives immutable local snapshots and must not follow mutable main.

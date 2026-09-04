@@ -1,6 +1,5 @@
 """subtitle command — optimize and/or translate subtitle files."""
 
-import os
 from argparse import Namespace
 from pathlib import Path
 
@@ -136,14 +135,15 @@ def run(args: Namespace, config: dict) -> int:
     if err is not None:
         return err
 
-    # Setup LLM environment
+    # Credentials travel as an object: exporting them to os.environ would hand
+    # the key to every FFmpeg/whisper child process.
     llm_api_key = get(config, "llm.api_key", "")
     llm_api_base = get(config, "llm.api_base", "")
     llm_model = get(config, "llm.model", "")
-    if llm_api_key:
-        os.environ["OPENAI_API_KEY"] = llm_api_key
-    if llm_api_base:
-        os.environ["OPENAI_BASE_URL"] = llm_api_base
+    if needs_llm:
+        from videocaptioner.core.llm.client import LLMCredentials, configure_llm_client
+
+        configure_llm_client(LLMCredentials(api_key=llm_api_key, base_url=llm_api_base))
 
     # Load custom prompt (only if LLM features are needed)
     custom_prompt = getattr(args, "prompt", None) or ""

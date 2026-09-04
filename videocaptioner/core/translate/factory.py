@@ -26,6 +26,7 @@ class TranslatorFactory:
         custom_prompt: str = "",
         is_reflect: bool = False,
         update_callback: Optional[Callable] = None,
+        deeplx_endpoint: str = "",
     ) -> BaseTranslator:
         """创建翻译器实例"""
         try:
@@ -68,6 +69,7 @@ class TranslatorFactory:
                     target_language=target_language,
                     timeout=20,
                     update_callback=update_callback,
+                    endpoint=deeplx_endpoint,
                 )
         except Exception as e:
             logger.error(f"Failed to create translator: {str(e)}")

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 
 def run(args: Namespace, config: dict) -> int:
@@ -68,7 +69,7 @@ def run(args: Namespace, config: dict) -> int:
         if quiet:
             cmd.append("--quiet")
 
-        result = subprocess.run(cmd, capture_output=quiet, text=True)
+        result = subprocess.run(cmd, env=child_environment(), capture_output=quiet, text=True)
 
         if result.returncode != 0:
             if progress:

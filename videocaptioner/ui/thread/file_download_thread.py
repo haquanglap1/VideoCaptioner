@@ -10,6 +10,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from videocaptioner.config import CACHE_PATH
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import get_subprocess_kwargs
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 logger = setup_logger("download_thread")
 
@@ -79,7 +80,7 @@ class Aria2Downloader(BaseDownloader):
         }
 
         logger.info(f"使用 aria2c 下载: {self.url}")
-        self.process = subprocess.Popen(cmd, **subprocess_args)
+        self.process = subprocess.Popen(cmd, env=child_environment(), **subprocess_args)
 
         while True:
             if self._cancelled:

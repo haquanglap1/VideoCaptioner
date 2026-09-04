@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import List
 
@@ -13,6 +12,7 @@ from videocaptioner.core.entities import (
     TranslatorServiceEnum,
 )
 from videocaptioner.core.llm.check_llm import check_llm_connection
+from videocaptioner.core.llm.client import LLMCredentials, configure_llm_client
 from videocaptioner.core.llm.context import (
     clear_task_context,
     generate_task_id,
@@ -45,9 +45,6 @@ def create_translator_from_config(
     if translator_service not in SERVICE_TO_TYPE:
         raise ValueError(f"不支持的翻译服务: {translator_service}")
 
-    if translator_service == TranslatorServiceEnum.DEEPLX:
-        os.environ["DEEPLX_ENDPOINT"] = config.deeplx_endpoint or ""
-
     return TranslatorFactory.create_translator(
         translator_type=SERVICE_TO_TYPE[translator_service],
         thread_num=config.thread_num,
@@ -57,6 +54,7 @@ def create_translator_from_config(
         custom_prompt=custom_prompt,
         is_reflect=config.need_reflect,
         update_callback=callback,
+        deeplx_endpoint=config.deeplx_endpoint or "",
     )
 
 
@@ -79,7 +77,7 @@ class SubtitleThread(QThread):
         self.custom_prompt_text = text
 
     def _setup_llm_config(self) -> SubtitleConfig:
-        """验证 LLM 配置并设置环境变量，返回 SubtitleConfig"""
+        """Verify the LLM config, register its credentials and return it."""
         config = self.task.subtitle_config
         if not config:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
@@ -91,8 +89,9 @@ class SubtitleThread(QThread):
             )
             if not success:
                 raise Exception(f"{self.tr('LLM API 测试失败: ')}{message or ''}")
-            os.environ["OPENAI_BASE_URL"] = config.base_url
-            os.environ["OPENAI_API_KEY"] = config.api_key
+            configure_llm_client(
+                LLMCredentials(api_key=config.api_key, base_url=config.base_url)
+            )
             return config
         else:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
@@ -341,12 +340,13 @@ class RetranslateThread(QThread):
             if not config.target_language:
                 raise Exception("目标语言未配置")
 
-            # 设置 LLM 环境变量（LLM 翻译需要）
+            # LLM translation needs credentials registered for get_llm_client().
             if config.translator_service == TranslatorServiceEnum.OPENAI:
                 if not (config.base_url and config.api_key and config.llm_model):
                     raise Exception("LLM API 未配置，请检查 LLM 配置")
-                os.environ["OPENAI_BASE_URL"] = config.base_url
-                os.environ["OPENAI_API_KEY"] = config.api_key
+                configure_llm_client(
+                    LLMCredentials(api_key=config.api_key, base_url=config.base_url)
+                )
 
             # 构建仅含选中行的 ASRData
             asr_data = ASRData.from_json(self.selected_data)

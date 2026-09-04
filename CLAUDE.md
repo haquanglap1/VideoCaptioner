@@ -95,6 +95,9 @@ business logic mới vào view khi logic có thể nằm trong `core/`.
 - Với ngôn ngữ CJK, không bật lọc CJK theo cách làm rỗng toàn bộ câu TTS.
 - Cache translator phải phụ thuộc nội dung/config tất định; không đưa output LLM ngẫu nhiên vào cache key.
 - Không gửi absolute local path vào prompt LLM; chỉ gửi metadata tối thiểu cần thiết.
+- Không ghi API key vào `os.environ`: LLM dùng `LLMCredentials` + `configure_llm_client()` trong
+  `core/llm/client.py`; mọi `subprocess.run/Popen` truyền `env=child_environment()` từ
+  `core/utils/subprocess_helper.py` để child process không kế thừa `OPENAI_*`/`VIDEOCAPTIONER_*`.
 - Video Editor: schema `editor-project-v1`, millisecond là timing canonical, cue ID ổn định sau import.
   Mọi mutation đi qua `CommandStack`; normal save chỉ persist JSON + SRT, ASS chỉ qua `Save as ASS`.
   Preview và export dùng chung `build_visual_filter_graph`. Không thêm PySide6 hoặc MPV vào editor.

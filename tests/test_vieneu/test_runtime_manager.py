@@ -49,6 +49,24 @@ def test_runtime_acquire_pins_revision_and_defers_stop(runtime_config):
     manager.shutdown(force=True)
 
 
+def test_sidecar_environment_never_inherits_app_credentials(runtime_config, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-leak")
+    monkeypatch.setenv("VIDEOCAPTIONER_LLM_API_KEY", "sk-leak-2")
+    monkeypatch.setenv("VC_TEST_KEEP", "1")
+    manager = VieNeuRuntimeManager()
+    manager._session_token = "session-token"
+
+    env = manager._environment(runtime_config())
+
+    assert "OPENAI_API_KEY" not in env
+    assert "VIDEOCAPTIONER_LLM_API_KEY" not in env
+    assert "sk-leak" not in env.values()
+    assert env["VC_TEST_KEEP"] == "1"
+    # The sidecar's own session token is added after the scrub.
+    assert env["VIDEOCAPTIONER_VIENEU_SESSION_TOKEN"] == "session-token"
+    assert env["HF_HUB_OFFLINE"] == "1"
+
+
 def test_port_collision_never_kills_or_adopts_listener(runtime_config):
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))

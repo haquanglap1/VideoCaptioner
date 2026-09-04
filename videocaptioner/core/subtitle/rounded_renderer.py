@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from videocaptioner.core.entities import SubtitleLayoutEnum
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 from .font_utils import FontType, get_font
 from .styles import RoundedBgStyle
@@ -26,7 +27,7 @@ logger = setup_logger("subtitle.rounded")
 def _get_video_info(video_path: str) -> Tuple[int, int, float]:
     """获取视频分辨率和时长"""
     result = subprocess.run(
-        ["ffmpeg", "-i", video_path],
+        ["ffmpeg", "-i", video_path], env=child_environment(),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -439,7 +440,7 @@ def render_rounded_video(
                 logger.debug(f"FFmpeg cmd: {cmd_str}")
 
             result = subprocess.run(
-                cmd,
+                cmd, env=child_environment(),
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

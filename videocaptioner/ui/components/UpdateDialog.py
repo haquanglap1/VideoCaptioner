@@ -19,6 +19,7 @@ from videocaptioner.core.utils.platform_utils import (
     is_onedir_frozen_build,
     reveal_in_explorer,
 )
+from videocaptioner.core.utils.subprocess_helper import child_environment
 from videocaptioner.ui.thread.auto_update_thread import AutoUpdateThread
 
 logger = setup_logger("update_dialog")
@@ -178,7 +179,7 @@ class UpdateDialog(MessageBoxBase):
 
                 logger.info("Running update batch: %s", batch_path)
                 subprocess.Popen(
-                    ["cmd", "/c", str(batch_path)],
+                    ["cmd", "/c", str(batch_path)], env=child_environment(),
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
             else:
@@ -198,7 +199,7 @@ class UpdateDialog(MessageBoxBase):
                 os.chmod(str(script_path), 0o755)
 
                 logger.info("Running update script: %s", script_path)
-                subprocess.Popen([str(script_path)])
+                subprocess.Popen([str(script_path)], env=child_environment())
 
             # Quit the app so the script can overwrite the exe
             self._quit_application()

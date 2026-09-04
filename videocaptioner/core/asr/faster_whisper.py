@@ -12,6 +12,8 @@ try:
 except ImportError:
     GPUtil = None  # type: ignore[assignment]
 
+from videocaptioner.core.utils.subprocess_helper import child_environment
+
 from ..utils.logger import setup_logger
 from ..utils.subprocess_helper import StreamReader
 from .asr_data import ASRData, ASRDataSeg
@@ -277,7 +279,7 @@ class FasterWhisperASR(BaseASR):
             callback(*ASRStatus.TRANSCRIBING.with_progress(5))
 
             self.process = subprocess.Popen(
-                cmd,
+                cmd, env=child_environment(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

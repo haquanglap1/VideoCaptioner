@@ -1,5 +1,36 @@
 # Project Status
 
+## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
+
+### Nguyên nhân và thay đổi
+- CLI và GUI giữ hai bộ cấu hình riêng (`config.toml` trong `user_config_dir` và `AppData/settings.json`)
+  nên LLM key phải nhập hai lần. `build_config()` thêm lớp `load_gui_settings()` nằm dưới `config.toml`:
+  chỉ mirror credentials/endpoint (key/base/model của dịch vụ LLM đang chọn trong GUI, Whisper API, DeepLX
+  endpoint, TTS lồng tiếng; `local_ai` chuẩn hóa thành `local-ai`), bỏ qua giá trị rỗng, không đổi tên key.
+  Thứ tự ưu tiên vẫn CLI > env > file > GUI > default; `config path` in thêm file GUI đang làm fallback.
+  Test CLI nay cô lập `CONFIG_FILE`, `settings.json` và biến `OPENAI_*`/`VIDEOCAPTIONER_*` của máy dev.
+- 10 điểm ghi `OPENAI_API_KEY`/`OPENAI_BASE_URL` (và `DEEPLX_ENDPOINT`) vào `os.environ` làm key rò sang
+  mọi child process. `get_llm_client()` nay nhận `LLMCredentials` (dataclass frozen, key ẩn khỏi repr,
+  base URL chuẩn hóa) hoặc dùng bộ đã đăng ký qua `configure_llm_client()`; env `OPENAI_*` chỉ còn là
+  fallback đọc. CLI subtitle, dubbing orchestrator, `SubtitleThread`/`RetranslateThread` đăng ký object;
+  CLI transcribe bỏ hẳn vì Whisper API đã nhận key qua `TranscribeConfig`; DeepLX endpoint đi qua
+  `TranslatorFactory.create_translator(deeplx_endpoint=...)`.
+- Thêm `child_environment()` trong `subprocess_helper`: copy `os.environ` bỏ prefix `OPENAI_`/
+  `VIDEOCAPTIONER_` (không phân biệt hoa thường), giữ PATH đã prepend ffmpeg/whisper/deno. Áp cho 44 call
+  site `subprocess.run/Popen` trong `videocaptioner/` (ffmpeg/ffprobe, faster-whisper, whisper.cpp, yt-dlp,
+  editor render, 7z/tar, updater, explorer/open), default của `run_process_with_stream_reader` và
+  `_environment()` của sidecar VieNeu (token session đặt sau khi lọc).
+
+### Validation
+- Test CLI **70 passed** (10 test GUI fallback, regression key không vào env). Mới: `test_llm/test_client.py`
+  (8), `test_utils/test_subprocess_helper.py` (5, gồm child process Python thật qua `env=` và qua
+  `run_process_with_stream_reader`), test VieNeu `_environment`. Bộ offline test_llm/test_utils/test_cli/
+  test_translate/test_subtitle/test_dubbing/test_thread/test_editor/test_ui: **227 passed, 12 skipped,
+  9 errors**; 9 error là fixture `silent_video` của `test_natural_dubbing_integration` gọi ffmpeg không có
+  trên PATH máy này. Ruff `videocaptioner/`: pass. Pyright `cli/` + 10 module đã sửa: **0 errors**.
+- Chưa nghiệm thu: ffmpeg/whisper/yt-dlp thật với `env=child_environment()` (máy không có FFmpeg), sidecar
+  VieNeu thật, và gọi LLM thật qua `LLMCredentials`.
+
 ## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
 
 ### Nguyên nhân và thay đổi

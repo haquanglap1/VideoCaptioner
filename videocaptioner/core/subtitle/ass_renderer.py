@@ -12,6 +12,7 @@ from PIL import Image
 from videocaptioner.config import CACHE_PATH, FONTS_PATH, RESOURCE_PATH
 from videocaptioner.core.entities import SubtitleLayoutEnum
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.core.utils.subprocess_helper import child_environment
 
 from .ass_utils import auto_wrap_ass_file
 
@@ -180,7 +181,7 @@ def render_ass_preview(
                         "-frames:v",
                         "1",
                         str(default_bg),
-                    ],
+                    ], env=child_environment(),
                     capture_output=True,
                     creationflags=(
                         getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -210,7 +211,7 @@ def render_ass_preview(
         ]
 
         result = subprocess.run(
-            cmd,
+            cmd, env=child_environment(),
             capture_output=True,
             creationflags=(
                 getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
@@ -232,7 +233,7 @@ def render_ass_preview(
 def _get_video_resolution(video_path: str) -> Tuple[int, int]:
     """获取视频分辨率"""
     result = subprocess.run(
-        ["ffmpeg", "-i", video_path],
+        ["ffmpeg", "-i", video_path], env=child_environment(),
         capture_output=True,
         text=True,
         creationflags=(
@@ -351,7 +352,7 @@ def render_ass_video(
         process = None
         try:
             process = subprocess.Popen(
-                cmd,
+                cmd, env=child_environment(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,

@@ -40,6 +40,7 @@ from videocaptioner.core.entities import (
 )
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
+from videocaptioner.core.utils.subprocess_helper import child_environment
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
 from videocaptioner.ui.components.SpinBoxSettingCard import DoubleSpinBoxSettingCard
@@ -354,7 +355,7 @@ class UnzipThread(QThread):
             )
 
         subprocess.run(
-            [seven_zip, "x", str(self.zip_file), f"-o{self.extract_path}", "-y"],
+            [seven_zip, "x", str(self.zip_file), f"-o{self.extract_path}", "-y"], env=child_environment(),
             check=True,
             capture_output=True,
             text=True,
@@ -363,7 +364,7 @@ class UnzipThread(QThread):
 
     def _extract_with_tar(self, tar: str):
         subprocess.run(
-            [tar, "-xf", str(self.zip_file), "-C", str(self.extract_path)],
+            [tar, "-xf", str(self.zip_file), "-C", str(self.extract_path)], env=child_environment(),
             check=True,
             capture_output=True,
             text=True,
