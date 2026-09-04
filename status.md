@@ -113,9 +113,18 @@
 - Sửa `.github/workflows/ci.yml`: cài thêm `libpulse0 libpulse-mainloop-glib0` và gstreamer
   (base/good/libav) cho backend playback; giữ log pytest qua `tee` và thêm bước `Annotate failures` phát
   dòng `FAILED/ERROR` thành annotation `::error` để API public đọc được nguyên nhân mà không cần token.
-- Chưa nghiệm thu: kết quả run sau khi sửa phải xem trên GitHub; test layout editor dưới Qt offscreen
-  (`test_editor_layout_remains_usable_at_700_pixel_page_width`, preview 306 px < 320 trên máy dev) có
-  thể vẫn fail trên Ubuntu.
+- Run `0051b2b` sau khi cài libpulse chạy hết bộ test trên Ubuntu: **576 passed, 3 failed** — annotation
+  chỉ đúng ba test đặc thù Linux: `validate_relative_reference` không chặn `C:/...` trên POSIX (nay kiểm
+  cả `PurePosixPath`/`PureWindowsPath`), test locator so sánh `sys.executable` chưa resolve (trên Linux
+  `.venv/bin/python` là symlink), và test `get_subprocess_kwargs` mới thêm giả định có `CREATE_NO_WINDOW`.
+  Sửa ở `9fca48a`.
+- Run `9fca48a` abort SIGABRT (exit 134) không có tóm tắt pytest: test playback QtMultimedia dùng backend
+  gstreamer trên runner không có sink. `555e406` skip test đó khi `QT_QPA_PLATFORM=offscreen` và bước
+  annotate in thêm 10 dòng cuối log + dòng faulthandler. Run `555e406`: **cả hai job pass**, CI trên
+  `master` xanh lần đầu kể từ khi thêm workflow.
+- Test layout editor (`test_editor_layout_remains_usable_at_700_pixel_page_width`) pass trên Ubuntu
+  offscreen; chỉ fail khi chạy offscreen trên máy Windows dev (preview 306 px < 320), pass ở platform
+  native. Chưa sửa.
 
 ### Tài liệu kiến trúc, gộp snapshot cũ, đồng bộ AGENTS/CLAUDE (mục 7)
 - `docs/dev/architecture.md` viết lại theo hiện trạng (tiếng Việt như các dev doc mới): sơ đồ CLI/core/GUI,
