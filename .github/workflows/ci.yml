@@ -99,7 +99,11 @@ jobs:
           grep -E "^(FAILED|ERROR) " pytest-offline.log | head -n 10 | while IFS= read -r line; do
             echo "::error title=pytest::${line}"
           done
-          grep -E "^E   |^Interrupted|errors? during collection|passed|failed" pytest-offline.log | head -n 10 | while IFS= read -r line; do
+          grep -E "^E   |^Interrupted|errors? during collection|passed|failed|Fatal Python error|Aborted|Segmentation|^  File \"|^Current thread|^Thread " pytest-offline.log | head -n 10 | while IFS= read -r line; do
             echo "::warning title=pytest::${line}"
+          done
+          # A crash (SIGABRT/SIGSEGV) leaves no summary; the tail shows the last test and faulthandler output.
+          tail -n 10 pytest-offline.log | while IFS= read -r line; do
+            echo "::notice title=pytest-tail::${line}"
           done
           true

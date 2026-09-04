@@ -1,5 +1,6 @@
 # pyright: reportAttributeAccessIssue=false
 
+import os
 import shutil
 import subprocess
 import sys
@@ -147,6 +148,10 @@ def test_editor_preview_uses_poster_until_playback_starts(qapp, tmp_path):
 def test_qtmultimedia_h264_preview_plays_and_seeks(qapp, tmp_path):
     if not shutil.which("ffmpeg"):
         pytest.skip("FFmpeg is required")
+    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        # Headless CI has no usable audio/video sink; the gstreamer backend can
+        # abort the whole pytest process there. This test targets real backends.
+        pytest.skip("QtMultimedia playback needs a real platform backend")
     video = Path(tmp_path) / "qt-preview.mp4"
     result = subprocess.run(
         [
