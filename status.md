@@ -103,6 +103,19 @@
   chưa chạm khác chưa đếm.
 - Validation: ruff pass, pyright 0 errors, test translate/subtitle/utils/ui/llm/cli **210 passed**.
 
+### Tài liệu kiến trúc, gộp snapshot cũ, đồng bộ AGENTS/CLAUDE (mục 7)
+- `docs/dev/architecture.md` viết lại theo hiện trạng (tiếng Việt như các dev doc mới): sơ đồ CLI/core/GUI,
+  cấu trúc thư mục, chế độ đường dẫn, lớp cấu hình, pipeline phụ đề, LLM client, dubbing, VieNeu Local,
+  Video Editor, subprocess env, đóng gói và gate. `docs/en/dev/architecture.md` (trước đây rỗng) có bản
+  tiếng Anh tương đương; sidebar VitePress đã trỏ sẵn tới hai đường dẫn này.
+- `docs/TRANG_THAI_DU_AN.md` (snapshot 2026-05-01) được rút gọn thành mục "Lịch sử cũ" ở cuối
+  `status.md` rồi xóa; `docs/README.md` trỏ sang architecture thay cho link cũ.
+- `AGENTS.md` và `CLAUDE.md` hợp nhất: cùng nội dung, chỉ khác mục "Đặc thù Claude Code". Sửa claim sai
+  rằng `CLAUDE.md` bị gitignore (file được track, chỉ `.claude/` bị ignore), bỏ tham chiếu tới snapshot
+  đã xóa, guard Bing ghi đúng là "từng hỏng, chưa đo lại", bổ sung cấu trúc `core/editor`, `core/tts/vieneu`,
+  `core/llm`, `installer/`, quy tắc test không ghi vào `AppData/settings.json`, ghi chú môi trường
+  (basetemp ngắn, FFmpeg thiếu) và bài học mojibake khi patch file qua stdin trên Windows.
+
 ## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
 
 ### Nguyên nhân và thay đổi
@@ -666,3 +679,25 @@
 - Thêm tính năng "Tìm kiếm & Thay thế" (Search & Replace) trong giao diện `SubtitleInterface` (Tab Tối ưu và Dịch phụ đề).
 - Tính năng này hiển thị một popup nhập liệu, cho phép người dùng thay thế hàng loạt những từ bị dịch sai trong dữ liệu phụ đề hiện tại.
 - Cập nhật tài liệu `README.md` tương ứng.
+
+
+## Lịch sử cũ (gộp từ `docs/TRANG_THAI_DU_AN.md`, snapshot ngày 2026-05-01)
+
+File snapshot đã bị xóa; nội dung dưới đây là bản rút gọn để giữ lịch sử. Mọi mục mới hơn ở trên
+mới là trạng thái hiện tại.
+
+- Build lúc đó: `dist/VideoCaptioner-PhaseD-20260501.exe` (~107 MB, onefile), Python 3.12.13,
+  PyInstaller 6.20.0, tên EXE đặt qua `VC_BUILD_NAME`. Từ 2026-08 spec đã chuyển sang onedir.
+- Phase D lồng tiếng bằng TTS API: thêm `core/dubbing/` (config, audio_mixer, engine), `DubbingThread`,
+  tab "Lồng tiếng" (pipeline + thủ công), `DubbingTask` trong entities, 9 config item dubbing, dubbing
+  step tùy chọn trong `subtitle_pipeline_thread`. Tái dùng `core/tts` (OpenAI TTS, SiliconFlow, voice
+  clone + cache); ba chế độ audio gốc (giữ/giảm 40%/tắt); căn timeline bằng atempo 0.75x–1.5x, truncate
+  khi vượt. Sau này Natural timing, planner, rewrite và VieNeu Local thay thế phần lớn logic này.
+- Dọn UI: xóa card "Trợ giúp", "Gửi phản hồi" ở Cài đặt và icon GitHub trên sidebar.
+- Tự cập nhật phiên bản: `auto_update_thread.py` tải EXE mới, `UpdateDialog` với progress + batch script
+  thay thế và restart; `main_window.onNewVersion()` và `setting_interface.checkUpdate()` dùng dialog này.
+  (2026-09-04: dialog từ chối thay EXE trên bản onedir và chỉ giữ file đã tải.)
+- Bản dịch Việt: `resource/translations/VideoCaptioner_vi_VN.json` 698 entry, đồng bộ sang
+  `videocaptioner/resources/translations/`.
+- Kế hoạch còn dang dở khi đó: dubbing trong batch FULL_PROCESS, CLI `videocaptioner dub` (đã có),
+  test end-to-end với TTS key thật, tối ưu build (UPX/exclude module).

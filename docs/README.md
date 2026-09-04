@@ -5,7 +5,7 @@ Thư mục này chứa tài liệu sử dụng và tài liệu phát triển c�
 ## Tài Liệu Nên Đọc
 
 - [Hướng dẫn sử dụng module](MODULE_USAGE.md)
-- [Tổng quan dự án](TRANG_THAI_DU_AN.md)
+- [Kiến trúc hệ thống](dev/architecture.md)
 - [CLI](cli.md)
 - [Cấu hình ASR](config/asr.md)
 - [Cấu hình LLM](config/llm.md)

@@ -4,8 +4,8 @@ Hướng dẫn cho Claude Code khi làm việc trong repository này. File là b
 cùng bộ quy tắc bền vững, thêm phần đặc thù cho harness Claude Code. Khi đổi quy tắc, cập nhật cả hai
 file trong cùng một thay đổi; nếu hai bên mâu thuẫn, `AGENTS.md` là bản chuẩn.
 
-`CLAUDE.md` đang nằm trong `.gitignore` (dòng `# Claude Code`), nên đây là file cục bộ của máy này và
-không đi theo repo. Nếu muốn commit và chia sẻ cho cả team, phải bỏ nó khỏi `.gitignore` trước.
+`CLAUDE.md` được track trong Git cùng repo (chỉ thư mục `.claude/` bị ignore), nên thay đổi ở đây đi
+theo commit như mọi file khác.
 
 Trạng thái công việc hiện tại nằm trong `status.md`; cấu hình chạy/build thực tế nằm trong
 `pyproject.toml`, `uv.lock` và `VideoCaptioner.spec`.
@@ -13,10 +13,10 @@ Trạng thái công việc hiện tại nằm trong `status.md`; cấu hình ch�
 ## Bắt đầu mỗi task
 
 1. Đọc `README.md` để nắm tính năng, lệnh CLI, yêu cầu môi trường và cách build được hỗ trợ.
-2. Đọc phần mới nhất của `status.md`; chỉ đọc mục cũ khi task liên quan. Nếu `docs/TRANG_THAI_DU_AN.md`
-   khác `status.md`, ưu tiên `status.md` vì file kia là snapshot cũ.
-3. Đọc đúng tài liệu domain cần sửa dưới `docs/dev/`, `docs/config/` hoặc `docs/guide/`; không nạp cả
-   thư mục nếu không cần.
+2. Đọc phần mới nhất của `status.md`; chỉ đọc mục cũ khi task liên quan. Lịch sử trước 2026-08 nằm ở
+   cuối file đó.
+3. Đọc `docs/dev/architecture.md` khi cần nắm tổng thể, rồi đúng tài liệu domain dưới `docs/dev/`,
+   `docs/config/` hoặc `docs/guide/`; không nạp cả thư mục nếu không cần.
 4. Trước khi sửa, chạy `git status --short --branch` và giữ nguyên mọi thay đổi không thuộc task.
 5. Dùng Grep/Glob để tìm symbol và call site trước khi đọc hoặc thay đổi code.
 
@@ -44,10 +44,11 @@ videocaptioner/core/asr/        Speech recognition và chunking
 videocaptioner/core/split/      Tách/căn chỉnh câu phụ đề
 videocaptioner/core/optimize/   Tối ưu phụ đề bằng LLM
 videocaptioner/core/translate/  LLM, Google, Bing và DeepLX translators
-videocaptioner/core/subtitle/   SRT/ASS/style/rendering
-videocaptioner/core/dubbing/    TTS orchestration và audio mixing
+videocaptioner/core/subtitle/   SRT/ASS/style/rendering và editing (thao tác bảng phụ đề)
+videocaptioner/core/dubbing/    TTS orchestration, presets và audio mixing
 videocaptioner/core/tts/vieneu/ Managed VieNeu Local runtime, updater và sidecar lifecycle
 videocaptioner/core/editor/     Editor domain Qt-independent: models, commands, media, project store
+videocaptioner/core/llm/        Client OpenAI-compatible, LLMCredentials, context, request logger
 videocaptioner/core/utils/      FFmpeg, subprocess, logging, cache, installer
 videocaptioner/ui/              PyQt views, components, threads và task factory
 videocaptioner/core/prompts/    Prompt `.md` cần có cả trong source package và EXE
@@ -60,7 +61,8 @@ installer/                      WiX source cho MSI offline và web installer
 
 Luồng dữ liệu chuẩn dùng entity trong `videocaptioner/core/entities.py` và type theo domain; không
 truyền dict tùy ý qua nhiều tầng nếu đã có model tương ứng. UI là tầng điều phối/trình bày, không đặt
-business logic mới vào view khi logic có thể nằm trong `core/`.
+business logic mới vào view khi logic có thể nằm trong `core/` (ví dụ `core/subtitle/editing.py`,
+`core/dubbing/presets.py`).
 
 ## Quy tắc sửa code
 
@@ -81,14 +83,17 @@ business logic mới vào view khi logic có thể nằm trong `core/`.
 - Khi thêm runtime resource hoặc dynamic import, cập nhật `VideoCaptioner.spec` và kiểm tra trên EXE;
   chạy từ source không chứng minh resource đã được bundle.
 - Giữ comment ngắn và giải thích lý do/bẫy, không kể lại code. Code, identifier, CLI flag và tên file
-  dùng English; nội dung UI/documentation theo ngôn ngữ hiện có của file.
+  dùng English; comment/docstring viết English và dịch dần comment tiếng Trung còn lại khi chạm file;
+  chuỗi `tr()` và nội dung UI/documentation theo ngôn ngữ hiện có.
 - Không sửa trực tiếp file sinh tự động như `videocaptioner/_version.py`, `*.qm`, `build/`, `dist/`,
   cache hoặc log. Với `*.qm`, sửa nguồn `*.ts` rồi dùng toolchain tương ứng.
+- Test không được ghi vào dữ liệu thật của máy dev: root conftest đã cô lập `AppData/settings.json`
+  (`cfg.file`), config CLI và biến `OPENAI_*`; giữ nguyên cơ chế đó khi thêm fixture.
 
 ## Known guards
 
-- `status.md` ghi Bing translator đang hỏng do endpoint Microsoft trả 404. Không đoán endpoint mới và
-  không gọi việc đổi User-Agent là fix nếu chưa có phép đo end-to-end.
+- Bing translator từng hỏng vì endpoint Microsoft trả 404 (ghi nhận giữa 2026) và chưa có phép đo
+  end-to-end mới. Không đoán endpoint mới và không gọi việc đổi User-Agent là fix nếu chưa đo thật.
 - FFmpeg 8.x đã bỏ `-filter_complex_script`; giữ cơ chế probe/chọn cú pháp tương thích cho cả FFmpeg cũ
   và mới trong dubbing.
 - Video không có audio stream phải tiếp tục dùng đường fallback không trộn audio gốc.
@@ -139,7 +144,10 @@ Thiếu API key/service hoặc test được skip không phải là bằng chứ
 
 Ghi chú môi trường: nếu `uv run` fail vì `Access is denied` khi rebuild package vào `.venv`, chạy pytest
 trực tiếp bằng `.venv\Scripts\python.exe -m pytest`. Nếu test dùng `tmp_path` fail với `PermissionError`
-trên `%TEMP%\pytest-of-*`, truyền `--basetemp` tới thư mục ghi được; đó là ACL của máy, không phải lỗi code.
+trên `%TEMP%\pytest-of-*`, truyền `--basetemp` tới thư mục ghi được (dùng đường dẫn ngắn, ví dụ
+`C:\Users\<user>\AppData\Local\Temp\vcpt`, vì test builder VieNeu có thể vượt MAX_PATH); đó là ACL/giới
+hạn của máy, không phải lỗi code. Máy không có FFmpeg trên PATH sẽ fail `tests/test_asr/test_chunk*`
+(pydub) và fixture `silent_video` của dubbing integration; các suite khác tự skip.
 
 ## Build EXE Windows
 
@@ -186,10 +194,14 @@ end-to-end. Không gọi task hoàn tất vượt quá bằng chứng thực t�
 - Dùng Read/Grep/Glob thay cho `cat`/`rg` qua shell khi có thể; Edit chỉ sau khi đã Read đúng file.
 - Shell chính là PowerShell 7; tool Bash có sẵn nhưng dùng cú pháp POSIX riêng. Không trộn hai cú pháp
   trong một lệnh và không mở lệnh interactive (`git rebase -i`, `Read-Host`, editor).
+- Khi sửa file qua script trong Bash trên Windows, đọc/ghi bằng UTF-8 tường minh (stdin của Python có
+  thể decode sai và ghi mojibake vào file có tiếng Việt/Trung); kiểm tra lại bằng grep sau khi ghi.
 - File tạm, script thử nghiệm và output phân tích đặt trong scratchpad của session, không đặt trong repo.
 - Chỉ chạy lệnh ghi Git (commit, push, tag, PR) khi user yêu cầu rõ ràng. Mặc định là để nguyên working
   tree cho user review.
 - Không tự spawn subagent, workflow hoặc deep research nếu user chưa yêu cầu.
+- Không chạy smoke có gọi `cfg.set(...)`/`_save_settings()` trên `AppData/settings.json` thật; dựng
+  widget trong pytest (fixture cô lập) hoặc trỏ `cfg.file` sang file tạm trước.
 - Trả lời user bằng tiếng Việt theo ngôn ngữ họ dùng; nội dung code vẫn theo quy tắc English ở trên.
 - Báo cáo trung thực: nêu rõ gate nào đã chạy, gate nào skip, và phần nào chỉ là suy luận từ code chứ
   chưa đo trên runtime thật.
