@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-09-04 (Sau roadmap: build EXE nghiệm thu, tách view đợt 2, dịch comment, pyright sạch, layout test)
+
+### Build EXE onedir, smoke và workflow thật (mục 1)
+- `uv run --frozen pyinstaller VideoCaptioner.spec --clean --noconfirm` tại HEAD `176ca84` (trước các thay đổi
+  mục 2–5): exit code 0, 0 error, 6 warning không đáng chú ý (`urllib3.contrib.emscripten` thiếu module `js`,
+  `curl_cffi`/`yt_dlp_ejs` không phải package nên bỏ qua data, `darkdetect` import AppKit chỉ có trên macOS).
+- Artifact `dist/VideoCaptioner/VideoCaptioner.exe`: 30,934,673 byte, 2026-09-04 22:53, SHA-256
+  `f4a00cc16f6830a2363d75a77ed9d386d9df13a0178df3f3606aa376135c86c6`; thư mục onedir 225 MB / 524 file, đã có
+  `videocaptioner/core/prompts`, `videocaptioner/resources`, `resource/{assets,fonts,translations,subtitle_style}`.
+- Smoke: khởi động EXE từ `dist/VideoCaptioner`, sau 20 s process vẫn sống (working set 139 MB), cửa sổ chính
+  "Trợ lý phụ đề Kaka -- VideoCaptioner" hiện, EXE tự tạo `AppData/` riêng dưới `dist/` (cache DB + log ngày),
+  dừng đúng PID do test tạo. Không đụng `AppData/settings.json` của repo (hash không đổi).
+- Theo yêu cầu, tải công cụ bằng chính cơ chế của app để test dễ hơn: FFmpeg (BtbN qua
+  `installer.ensure_ffmpeg()` → `AppData/bin/ffmpeg`), Faster-Whisper-XXL r245.2 bản GPU (ModelScope, giải nén
+  bằng 7-Zip vào `AppData/bin/Faster-Whisper-XXL`), model `faster-whisper-large-v3` (3.09 GB, ModelScope vào
+  `AppData/models`). Máy có RTX 5070 12 GB, driver 616.56. `config.py` tự prepend các thư mục này vào PATH của
+  process nên test pydub/`silent_video` nay chạy thật; shell ngoài vẫn không có `ffmpeg` trên PATH.
+- Workflow thật chạy từ source (EXE chỉ có GUI): clip 14 s giọng SAPI ghép FFmpeg → `video2audio` → `transcribe()`
+  FasterWhisper large-v3 trên CUDA: 28 segment word-level đúng nội dung trong 49.6 s (gồm nạp model), 5 sự kiện
+  progress; CLI `synthesize` hard (CRF 32) và soft: exit 0, output h264+aac 14.32 s, bản soft có stream
+  `mov_text`. Các subprocess ffmpeg/ffprobe/faster-whisper-xxl đều chạy qua `env=child_environment()`.
+- Chưa nghiệm thu: LLM thật (không có API key hay local server), dubbing/TTS thật, auto-update, và workflow
+  chạy trực tiếp qua EXE. EXE này build từ `176ca84` nên chưa chứa các thay đổi mục 2–5.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi
