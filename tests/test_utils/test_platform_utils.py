@@ -92,8 +92,12 @@ def test_platform_predicates(system, name, expected):
 
 def test_subprocess_kwargs_hide_console_only_on_windows(system):
     system("Windows")
-    kwargs = get_subprocess_kwargs()
-    assert kwargs.get("creationflags") == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    # The flag only exists in the Windows build of the subprocess module, so a
+    # CI runner on Linux pretending to be Windows still gets no creationflags.
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        assert get_subprocess_kwargs() == {"creationflags": subprocess.CREATE_NO_WINDOW}
+    else:
+        assert get_subprocess_kwargs() == {}
     system("Linux")
     assert get_subprocess_kwargs() == {}
 

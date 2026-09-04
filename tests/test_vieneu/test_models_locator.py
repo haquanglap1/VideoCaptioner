@@ -106,6 +106,8 @@ def test_runtime_locator_uses_explicit_python_and_bridge_without_machine_default
 ):
     locator = VieNeuRuntimeLocator(app_root=tmp_path / "app")
     layout = locator.locate(Path(sys.executable), fake_bridge)
-    assert layout.python_executable == Path(sys.executable)
-    assert layout.bridge_script == fake_bridge
+    # The locator resolves paths; on Linux ``.venv/bin/python`` is a symlink
+    # to the base interpreter, so compare resolved forms.
+    assert layout.python_executable == Path(sys.executable).resolve()
+    assert layout.bridge_script == fake_bridge.resolve()
     assert layout.source == "explicit"

@@ -6,7 +6,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 VIENEU_PROTOCOL_VERSION = "vieneu-runtime-protocol-v1"
@@ -44,7 +44,13 @@ def validate_relative_reference(value: str) -> str:
     if not value:
         return ""
     path = Path(value)
-    if path.is_absolute() or path.drive:
+    # Check both flavours explicitly: on POSIX ``Path("C:/x")`` is neither
+    # absolute nor has a drive, yet it is still not a relative reference.
+    if (
+        PurePosixPath(value).is_absolute()
+        or PureWindowsPath(value).is_absolute()
+        or PureWindowsPath(value).drive
+    ):
         raise ValueError("VieNeu model state references must be relative")
     if any(part == ".." for part in path.parts):
         raise ValueError("VieNeu model state references cannot escape the model root")
