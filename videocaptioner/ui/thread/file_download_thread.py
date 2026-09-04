@@ -146,14 +146,12 @@ class RequestsDownloader(BaseDownloader):
 
             total_size = int(response.headers.get("content-length", 0))
             downloaded = 0
-            cancelled = False
 
             self.save_path.parent.mkdir(parents=True, exist_ok=True)
 
             with open(temp_file, "wb") as f:
                 for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
                     if self._cancelled:
-                        cancelled = True
                         return False
 
                     f.write(chunk)

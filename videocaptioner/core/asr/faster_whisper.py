@@ -301,7 +301,7 @@ class FasterWhisperASR(BaseASR):
                 # 检查进程状态
                 if self.process.poll() is not None:
                     # 进程已ended，Reading剩余输出
-                    for stream_name, line in reader.get_remaining_output():
+                    for _stream_name, line in reader.get_remaining_output():
                         line = line.strip()
                         if line:
                             if "error" in line:
@@ -313,7 +313,7 @@ class FasterWhisperASR(BaseASR):
                 # Reading输出
                 output = reader.get_output(timeout=0.1)
                 if output:
-                    stream_name, line = output
+                    _stream_name, line = output
                     line = line.strip()
                     if line:
                         # 解析进度百分比

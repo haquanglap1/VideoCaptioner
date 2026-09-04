@@ -45,9 +45,7 @@ class VideoDownloadThread(QThread):
         from yt_dlp.utils import DownloadError
 
         try:
-            video_file_path, subtitle_file_path, thumbnail_file_path, info_dict = (
-                self.download()
-            )
+            video_file_path, _subtitle_path, _thumbnail_path, _info = self.download()
             self.finished.emit(video_file_path or "")
         except DownloadError as e:
             logger.exception("下载视频失败 (DownloadError): %s", str(e))
@@ -265,7 +263,7 @@ class VideoDownloadThread(QThread):
             info_dict = ydl.extract_info(self.url, download=False)
 
             # 设置动态下载文件夹为视频标题
-            video_title = self.sanitize_filename(info_dict.get("title", "MyVideo"))
+            video_title = self.sanitize_filename(info_dict.get("title") or "MyVideo")
             video_work_dir = Path(self.work_dir) / self.sanitize_filename(video_title)
             subtitle_language = info_dict.get("language", None)
             if subtitle_language:

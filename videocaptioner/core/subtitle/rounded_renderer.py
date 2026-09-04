@@ -91,8 +91,8 @@ def render_text_block(
         line_sizes.append((text_width, bbox[3] - bbox[1]))
         line_offsets.append(bbox[1])  # 记录垂直偏移，用于居中对齐
 
-    max_width = max(w for w, h in line_sizes)
-    line_height = max(h for w, h in line_sizes)
+    max_width = max(w for w, _ in line_sizes)
+    line_height = max(h for _, h in line_sizes)
     total_height = line_height * len(texts) + style.line_spacing * (len(texts) - 1)
 
     # 绘制共享背景
@@ -110,7 +110,7 @@ def render_text_block(
     # 绘制文本（补偿字体垂直偏移）
     y = bg_top + style.padding_v
     for i, text in enumerate(texts):
-        w, h = line_sizes[i]
+        w, _ = line_sizes[i]
         x = center_x - w // 2
         y_offset = line_offsets[i]
         text_y = y - y_offset  # 补偿垂直偏移，使文本视觉居中

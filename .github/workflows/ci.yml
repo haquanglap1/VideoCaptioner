@@ -44,8 +44,8 @@ jobs:
       - name: Lint
         run: uv run --frozen ruff check videocaptioner/
 
-      - name: Type check (CLI)
-        run: uv run --frozen pyright videocaptioner/cli/
+      - name: Type check
+        run: uv run --frozen pyright videocaptioner/
 
       - name: Translation sync
         run: uv run --frozen python scripts/sync_translations.py --check

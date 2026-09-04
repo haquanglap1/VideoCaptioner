@@ -3,7 +3,7 @@
 import atexit
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, cast
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.entities import SubtitleProcessData
@@ -97,8 +97,11 @@ class BaseTranslator(ABC):
         first_error: Optional[BaseException] = None
         total_segments = sum(len(c) for c in chunks)
 
+        executor = self.executor
+        if executor is None:
+            raise RuntimeError("Translator executor has already been shut down")
         for chunk in chunks:
-            future = submit_with_context(self.executor, self._safe_translate_chunk, chunk)
+            future = submit_with_context(executor, self._safe_translate_chunk, chunk)
             future_to_chunk[future] = chunk
 
         for future in as_completed(future_to_chunk):
@@ -143,7 +146,12 @@ class BaseTranslator(ABC):
         try:
             cache_key = self._get_cache_key(chunk)
             try:
-                cached_result = self._cache.get(cache_key, default=None)
+                # diskcache's overloads widen the return type; the cache only ever
+                # stores the list this method produced.
+                cached_result = cast(
+                    Optional[List[SubtitleProcessData]],
+                    self._cache.get(cache_key, default=None),
+                )
             except Exception:
                 # Graceful degradation: corrupted cache (e.g. old pickle from app→videocaptioner rename)
                 cached_result = None

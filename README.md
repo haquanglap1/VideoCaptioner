@@ -203,8 +203,9 @@ Bộ test offline đầy đủ (bỏ các test cần dịch vụ ngoài hoặc A
 uv run pytest tests/ -q -m "not integration and not slow and not llm"
 ```
 
-GitHub Actions chạy `.github/workflows/ci.yml` trên mỗi push/PR: ruff, pyright cho `cli/`, kiểm tra đồng
-bộ bản dịch, test CLI và bộ test offline ở trên trên Ubuntu có FFmpeg và Qt offscreen.
+GitHub Actions chạy `.github/workflows/ci.yml` trên mỗi push/PR: ruff, pyright cho toàn bộ
+`videocaptioner/`, kiểm tra đồng bộ bản dịch, test CLI và bộ test offline ở trên trên Ubuntu có FFmpeg và
+Qt offscreen.
 
 ## Giấy phép
 

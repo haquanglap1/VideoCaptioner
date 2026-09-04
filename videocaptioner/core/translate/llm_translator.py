@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import json_repair
 import openai
@@ -217,7 +217,8 @@ class LLMTranslator(BaseTranslator):
                 response_dict, subtitle_dict
             )
             if is_valid:
-                return response_dict
+                # _validate_llm_response already proved this is a str->str dict.
+                return cast(Dict[str, str], response_dict)
             else:
                 last_error = error_message
                 messages.append(

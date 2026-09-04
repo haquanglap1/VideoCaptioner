@@ -270,7 +270,7 @@ class DubbingInterface(QWidget):
 
         row5c = QHBoxLayout()
         row5c.addWidget(BodyLabel(self.tr("Tốc độ Natural tối đa:")))
-        self.natural_speed_slider = Slider(Qt.Horizontal)
+        self.natural_speed_slider = Slider(Qt.Orientation.Horizontal)
         self.natural_speed_slider.setRange(100, 150)
         self.natural_speed_slider.setValue(cfg.dubbing_natural_max_speed.value)
         self.natural_speed_slider.setFixedWidth(200)
@@ -330,7 +330,7 @@ class DubbingInterface(QWidget):
         # Volume slider
         row7 = QHBoxLayout()
         row7.addWidget(BodyLabel(self.tr("Âm lượng nền:")))
-        self.volume_slider = Slider(Qt.Horizontal)
+        self.volume_slider = Slider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(cfg.dubbing_original_volume.value)
         self.volume_slider.setFixedWidth(200)
@@ -346,7 +346,7 @@ class DubbingInterface(QWidget):
         # Speed slider (giá trị lưu dạng 10x: 10 = 1.0x)
         row8 = QHBoxLayout()
         row8.addWidget(BodyLabel(self.tr("Tốc độ giọng:")))
-        self.speed_slider = Slider(Qt.Horizontal)
+        self.speed_slider = Slider(Qt.Orientation.Horizontal)
         self.speed_slider.setRange(5, 20)  # 0.5x - 2.0x
         self.speed_slider.setValue(cfg.dubbing_tts_speed.value)
         self.speed_slider.setFixedWidth(200)
@@ -362,7 +362,7 @@ class DubbingInterface(QWidget):
         # Max speed slider — trần tăng tốc khi căn timeline (10 = 1.0x .. 30 = 3.0x)
         row8b = QHBoxLayout()
         row8b.addWidget(BodyLabel(self.tr("Tốc độ tối đa:")))
-        self.max_speed_slider = Slider(Qt.Horizontal)
+        self.max_speed_slider = Slider(Qt.Orientation.Horizontal)
         self.max_speed_slider.setRange(10, 30)
         self.max_speed_slider.setValue(cfg.dubbing_max_speed.value)
         self.max_speed_slider.setFixedWidth(200)
@@ -394,7 +394,7 @@ class DubbingInterface(QWidget):
         # Voice volume slider (giá trị lưu dạng %: 100 = 1.0x)
         row10 = QHBoxLayout()
         row10.addWidget(BodyLabel(self.tr("Âm lượng giọng:")))
-        self.voice_volume_slider = Slider(Qt.Horizontal)
+        self.voice_volume_slider = Slider(Qt.Orientation.Horizontal)
         self.voice_volume_slider.setRange(50, 300)
         self.voice_volume_slider.setValue(cfg.dubbing_voice_volume.value)
         self.voice_volume_slider.setFixedWidth(200)
@@ -461,11 +461,11 @@ class DubbingInterface(QWidget):
         self.manual_dub_btn = PrimaryPushButton(self.tr("▶ Lồng tiếng"))
         self.manual_dub_btn.setFixedWidth(160)
         self.manual_dub_btn.clicked.connect(self._start_manual_dub)
-        settings_layout.addWidget(self.manual_dub_btn, alignment=Qt.AlignCenter)
+        settings_layout.addWidget(self.manual_dub_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         self.open_editor_btn = PushButton(self.tr("Open in Video Editor"))
         self.open_editor_btn.setFixedWidth(180)
         self.open_editor_btn.clicked.connect(self._open_in_video_editor)
-        settings_layout.addWidget(self.open_editor_btn, alignment=Qt.AlignCenter)
+        settings_layout.addWidget(self.open_editor_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # --- Separator ---
         settings_layout.addSpacing(10)
@@ -510,7 +510,7 @@ class DubbingInterface(QWidget):
         self.merge_audio_btn = PrimaryPushButton(self.tr("▶ Ghép audio"))
         self.merge_audio_btn.setFixedWidth(160)
         self.merge_audio_btn.clicked.connect(self._start_merge_audio)
-        settings_layout.addWidget(self.merge_audio_btn, alignment=Qt.AlignCenter)
+        settings_layout.addWidget(self.merge_audio_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         layout.addWidget(self.settings_widget)
         self.settings_widget.setEnabled(cfg.dubbing_enabled.value)

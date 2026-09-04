@@ -49,6 +49,22 @@
   `run_process_with_stream_reader` với child Python thật (hai stream, override `env`).
 - Validation: `tests/test_utils` **71 passed, 4 skipped** (4 skip là nhóm FFmpeg thật). Ruff pass.
 
+### Pyright toàn package và gate CI (mục 4)
+- Khảo sát bằng `pyright --outputjson` trên 170 file: chỉ còn **10 lỗi** ngoài `cli/` (8 ở
+  `ui/view/dubbing_interface.py` do `Qt.Horizontal`/`Qt.AlignCenter` không có trong stub PyQt5, 2
+  `reportReturnType` ở `core/translate/base.py` và `llm_translator.py`) cùng 21 warning.
+- Sửa: dùng enum có scope `Qt.Orientation.Horizontal`/`Qt.AlignmentFlag.AlignCenter` (bằng nhau ở
+  runtime PyQt5 5.15, không cần `type: ignore`); `_safe_translate_chunk` cast kết quả cache về
+  `Optional[List[SubtitleProcessData]]`, `_agent_loop` cast dict đã validate; `_parallel_translate` raise
+  rõ khi executor đã shutdown thay vì đưa `None` vào `submit_with_context`. Dọn 12 warning biến không dùng
+  và `title` có thể `None` trong `video_download_thread`; 9 warning còn lại là stub yt-dlp `_Params`,
+  `output_path`/`task_type` Optional trong pipeline/batch UI, để lại vì cần đổi logic.
+- Gate CI `.github/workflows/ci.yml` đổi từ `pyright videocaptioner/cli/` sang `pyright videocaptioner/`;
+  AGENTS.md, CLAUDE.md và README cập nhật lệnh gate.
+- Validation: pyright `videocaptioner/` **0 errors, 9 warnings**. Ruff pass. Test translate/subtitle/
+  thread/ui/dubbing engine: pass; 20 fail trong `tests/test_asr/test_chunk*` là pydub gọi ffmpeg không có
+  trên máy (đã ghi từ đợt trước), không liên quan thay đổi này.
+
 ## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
 
 ### Nguyên nhân và thay đổi
