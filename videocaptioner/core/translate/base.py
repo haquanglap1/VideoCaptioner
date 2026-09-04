@@ -1,4 +1,4 @@
-"""翻译器基类"""
+"""Translator base class."""
 
 import atexit
 from abc import ABC, abstractmethod
@@ -16,7 +16,7 @@ logger = setup_logger("subtitle_translator")
 
 
 class BaseTranslator(ABC):
-    """翻译器基类"""
+    """Translator base class."""
 
     def __init__(
         self,
@@ -36,31 +36,31 @@ class BaseTranslator(ABC):
         self._init_thread_pool()
 
     def _init_thread_pool(self):
-        """初始化线程池"""
+        """Create the worker pool."""
         self.executor = ThreadPoolExecutor(max_workers=self.thread_num)
         atexit.register(self.stop)
 
     def translate_subtitle(self, subtitle_data: ASRData) -> ASRData:
-        """翻译字幕文件"""
+        """Translate a subtitle file."""
         try:
             asr_data = subtitle_data
 
-            # 将ASRData转换为SubtitleProcessData列表
+            # Convert ASRData into a SubtitleProcessData list
             translate_data_list = [
                 SubtitleProcessData(index=i, original_text=seg.text)
                 for i, seg in enumerate(asr_data.segments, 1)
             ]
 
-            # 分块前的准备钩子（如构建全局上下文），默认无操作
+            # Pre-chunk hook (e.g. build global context); no-op by default
             self._prepare(translate_data_list)
 
-            # 分批处理字幕
+            # Split into chunks
             chunks = self._split_chunks(translate_data_list)
 
-            # 多线程翻译
+            # Translate chunks in parallel
             translated_list = self._parallel_translate(chunks)
 
-            # 设置Subtitle segment的翻译文本
+            # Write the translations back into the segments
             new_segments = self._set_segments_translated_text(
                 asr_data.segments, translated_list
             )
@@ -71,17 +71,17 @@ class BaseTranslator(ABC):
             raise RuntimeError(f"Translation failed: {str(e)}")
 
     def _prepare(self, translate_data_list: List[SubtitleProcessData]) -> None:
-        """分块前的准备钩子。
+        """Hook run before chunking.
 
-        子类可重写以构建跨块共享的状态（如全局上下文/术语表）。
-        基类默认无操作。
+        Subclasses may build state shared across chunks (global context,
+        glossary). The base class does nothing.
         """
         pass
 
     def _split_chunks(
         self, translate_data_list: List[SubtitleProcessData]
     ) -> List[List[SubtitleProcessData]]:
-        """将字幕分割成块"""
+        """Split the subtitles into chunks."""
         return [
             translate_data_list[i : i + self.batch_num]
             for i in range(0, len(translate_data_list), self.batch_num)
@@ -90,7 +90,7 @@ class BaseTranslator(ABC):
     def _parallel_translate(
         self, chunks: List[List[SubtitleProcessData]]
     ) -> List[SubtitleProcessData]:
-        """并行翻译All块"""
+        """Translate all chunks in parallel."""
         future_to_chunk = {}
         translated_list = []
         failed_count = 0
@@ -133,7 +133,7 @@ class BaseTranslator(ABC):
         return translated_list
 
     def _get_cache_key(self, chunk: List[SubtitleProcessData]) -> str:
-        """生成缓存键"""
+        """Build the cache key."""
         class_name = self.__class__.__name__
         chunk_key = generate_cache_key(chunk)
         lang = self.target_language.value
@@ -142,7 +142,7 @@ class BaseTranslator(ABC):
     def _safe_translate_chunk(
         self, chunk: List[SubtitleProcessData]
     ) -> List[SubtitleProcessData]:
-        """安全的翻译块"""
+        """Translate one chunk with caching and error isolation."""
         try:
             cache_key = self._get_cache_key(chunk)
             try:
@@ -179,8 +179,8 @@ class BaseTranslator(ABC):
     def _set_segments_translated_text(
         original_segments: List[ASRDataSeg], translated_list: List[SubtitleProcessData]
     ) -> List[ASRDataSeg]:
-        """设置Subtitle segment的翻译文本"""
-        # 创建索引到翻译文本的映射
+        """Write translated text back into the segments."""
+        # Map index -> translated text
         translation_map = {data.index: data.translated_text for data in translated_list}
 
         for i, seg in enumerate(original_segments, 1):
@@ -195,11 +195,11 @@ class BaseTranslator(ABC):
     def _translate_chunk(
         self, subtitle_chunk: List[SubtitleProcessData]
     ) -> List[SubtitleProcessData]:
-        """翻译字幕块"""
+        """Translate one chunk."""
         pass
 
     def stop(self):
-        """停止翻译器"""
+        """Stop the translator."""
         if not self.is_running:
             return
 

@@ -1,4 +1,4 @@
-"""翻译器工厂"""
+"""Translator factory."""
 
 from typing import Callable, Optional
 
@@ -14,7 +14,7 @@ logger = setup_logger("translator_factory")
 
 
 class TranslatorFactory:
-    """翻译器工厂类"""
+    """Translator factory."""
 
     @staticmethod
     def create_translator(
@@ -28,9 +28,9 @@ class TranslatorFactory:
         update_callback: Optional[Callable] = None,
         deeplx_endpoint: str = "",
     ) -> BaseTranslator:
-        """创建翻译器实例"""
+        """Create a translator instance."""
         try:
-            # 如果没有指定目标语言，使用默认值
+            # Default target language when none is given
             if target_language is None:
                 target_language = TargetLanguage.SIMPLIFIED_CHINESE
 

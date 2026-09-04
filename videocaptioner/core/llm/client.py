@@ -164,7 +164,7 @@ def _call_llm_api(
     temperature: float = 1,
     **kwargs: Any,
 ) -> Any:
-    """实际调用 LLM API（带重试）"""
+    """Call the LLM API (with retries)."""
     client = get_llm_client()
 
     response = client.chat.completions.create(
@@ -174,7 +174,7 @@ def _call_llm_api(
         **kwargs,
     )
 
-    # 记录响应内容
+    # Log the response
     log_llm_response(response)
 
     return response

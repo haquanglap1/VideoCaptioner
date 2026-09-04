@@ -66,7 +66,7 @@ class SubtitleTableModel(QAbstractTableModel):
             self._data = data
 
     def load_data(self, data: str):
-        """加载字幕数据"""
+        """Load subtitle data from a JSON string."""
         try:
             self._data = json.loads(data)
             self.layoutChanged.emit()
@@ -148,9 +148,9 @@ class SubtitleTableModel(QAbstractTableModel):
                     ),
                 ][section]
             elif orientation == Qt.Vertical:  # type: ignore
-                return str(section + 1)  # 显示行号
+                return str(section + 1)  # Row number
         elif role == Qt.TextAlignmentRole:  # type: ignore
-            return Qt.AlignCenter  # type: ignore  # 居中对齐
+            return Qt.AlignCenter  # type: ignore  # centered
         return None
 
     def rowCount(self, parent: Optional[QModelIndex] = None) -> int:
@@ -167,17 +167,17 @@ class SubtitleTableModel(QAbstractTableModel):
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable  # type: ignore
 
     def update_data(self, new_data: Dict[str, str]) -> None:
-        """更新字幕数据"""
+        """Patch translated text for the given rows."""
         updated_rows = set()
 
-        # 更新内部数据
+        # Update the internal data
         for key, value in new_data.items():
             if key in self._data:
                 self._data[key]["translated_subtitle"] = value
                 row = list(self._data.keys()).index(key)
                 updated_rows.add(row)
 
-        # 如果有更新，发出dataChanged信号
+        # Emit dataChanged for the touched range
         if updated_rows:
             min_row = min(updated_rows)
             max_row = max(updated_rows)
@@ -186,7 +186,7 @@ class SubtitleTableModel(QAbstractTableModel):
             self.dataChanged.emit(top_left, bottom_right, [Qt.DisplayRole, Qt.EditRole])  # type: ignore
 
     def update_all(self, data: Dict[str, Any]) -> None:
-        """更新所有数据"""
+        """Replace the whole table."""
         self._data = data
         self.layoutChanged.emit()
 
@@ -234,19 +234,19 @@ class SubtitleInterface(QWidget):
         self.target_language_button.setEnabled(cfg.need_translate.value)
 
     def _setup_top_layout(self):
-        # 创建水平布局
+        # Horizontal layout
         top_layout = QHBoxLayout()
 
-        # 创建命令栏
+        # Command bar
         self.command_bar = CommandBar(self)
         self.command_bar.setToolButtonStyle(
             Qt.ToolButtonTextBesideIcon  # type: ignore
-        )  # 设置图标和文字并排显示
-        top_layout.addWidget(self.command_bar, 1)  # 设置stretch为1，使其尽可能占用空间
+        )  # Icon beside text
+        top_layout.addWidget(self.command_bar, 1)  # stretch=1 so the bar takes the remaining space
 
-        # 创建保存按钮的下拉菜单
+        # Drop-down menu for the save button
         save_menu = RoundMenu(parent=self)
-        save_menu.view.setMaxVisibleItems(8)  # 设置菜单最大高度
+        save_menu.view.setMaxVisibleItems(8)  # Menu max height
         for format in OutputSubtitleFormatEnum:
             action = Action(text=format.value)
             action.triggered.connect(
@@ -254,13 +254,13 @@ class SubtitleInterface(QWidget):
             )
             save_menu.addAction(action)
 
-        # 添加保存按钮(带下拉菜单)
+        # Save button (with drop-down)
         save_button = TransparentDropDownPushButton(self.tr("保存"), self, FIF.SAVE)
         save_button.setMenu(save_menu)
         save_button.setFixedHeight(34)
         self.command_bar.addWidget(save_button)
 
-        # 添加字幕排布下拉按钮
+        # Subtitle layout drop-down
         self.layout_button = TransparentDropDownPushButton(
             self.tr("字幕排布"), self, FIF.LAYOUT
         )
@@ -285,7 +285,7 @@ class SubtitleInterface(QWidget):
 
         self.command_bar.addSeparator()
 
-        # 添加字幕优化按钮
+        # Subtitle optimization toggle
         self.optimize_button = Action(
             FIF.EDIT,
             self.tr("字幕校正"),
@@ -294,7 +294,7 @@ class SubtitleInterface(QWidget):
         )
         self.command_bar.addAction(self.optimize_button)
 
-        # 添加字幕翻译按钮
+        # Subtitle translation toggle
         self.translate_button = Action(
             FIF.LANGUAGE,
             self.tr("字幕翻译"),
@@ -303,7 +303,7 @@ class SubtitleInterface(QWidget):
         )
         self.command_bar.addAction(self.translate_button)
 
-        # 添加翻译语言选择
+        # Target language selector
         self.target_language_button = TransparentDropDownPushButton(
             self.tr("翻译语言"), self, FIF.LANGUAGE
         )
@@ -325,13 +325,13 @@ class SubtitleInterface(QWidget):
 
         self.command_bar.addSeparator()
 
-        # 添加文稿提示按钮
+        # Prompt (manuscript) button
         self.prompt_button = Action(
             FIF.DOCUMENT, self.tr("Prompt"), triggered=self.show_prompt_dialog
         )
         self.command_bar.addAction(self.prompt_button)
 
-        # 添加搜索替换按钮（批量修正翻译错误的词）
+        # Search/replace button (batch-fix repeated translation mistakes)
         self.command_bar.addAction(
             Action(
                 FIF.SEARCH,
@@ -340,15 +340,15 @@ class SubtitleInterface(QWidget):
             )
         )
 
-        # 添加设置按钮
+        # Settings button
         self.command_bar.addAction(
             Action(FIF.SETTING, "", triggered=self.show_subtitle_settings)
         )
 
-        # 添加视频播放按钮
+        # Video player button
         # self.command_bar.addAction(Action(FIF.VIDEO, "", triggered=self.show_video_player))
 
-        # 添加打开文件夹按钮
+        # Open folder button
         self.command_bar.addAction(
             Action(FIF.FOLDER, "", triggered=self.on_open_folder_clicked)
         )
@@ -365,12 +365,12 @@ class SubtitleInterface(QWidget):
 
         self.command_bar.addSeparator()
 
-        # 添加文件选择按钮
+        # File picker button
         self.command_bar.addAction(
             Action(FIF.FOLDER_ADD, "", triggered=self.on_file_select)
         )
 
-        # 添加开始按钮到水平布局
+        # Start button in the horizontal layout
         self.start_button = PrimaryPushButton(self.tr("开始"), self, icon=FIF.PLAY)
         self.start_button.clicked.connect(
             lambda: self.start_subtitle_optimization(need_create_task=True)
@@ -397,19 +397,19 @@ class SubtitleInterface(QWidget):
         self.subtitle_table.setColumnWidth(0, 120)
         self.subtitle_table.setColumnWidth(1, 120)
 
-        # 配置垂直表头
-        self.subtitle_table.verticalHeader().setVisible(True)  # 显示垂直表头
+        # Vertical header
+        self.subtitle_table.verticalHeader().setVisible(True)  # Show the vertical header
         self.subtitle_table.verticalHeader().setDefaultAlignment(
             Qt.AlignCenter  # type: ignore
-        )  # 居中对齐
-        self.subtitle_table.verticalHeader().setDefaultSectionSize(50)  # 行高
-        self.subtitle_table.verticalHeader().setMinimumWidth(20)  # 设置最小宽度
+        )  # Centered
+        self.subtitle_table.verticalHeader().setDefaultSectionSize(50)  # Row height
+        self.subtitle_table.verticalHeader().setMinimumWidth(20)  # Minimum width
 
         self.subtitle_table.setEditTriggers(
             QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed  # type: ignore
         )
         self.subtitle_table.clicked.connect(self.on_subtitle_clicked)
-        # 添加右键菜单支持
+        # Context menu
         self.subtitle_table.setContextMenuPolicy(Qt.CustomContextMenu)  # type: ignore
         self.subtitle_table.customContextMenuRequested.connect(self.show_context_menu)
         self.main_layout.addWidget(self.subtitle_table)
@@ -421,9 +421,9 @@ class SubtitleInterface(QWidget):
         self.status_label.setMinimumWidth(100)
         self.status_label.setAlignment(Qt.AlignCenter)  # type: ignore
 
-        # 添加取消按钮
+        # Cancel button
         self.cancel_button = PushButton(self.tr("取消"), self, icon=FIF.CANCEL)
-        self.cancel_button.hide()  # 初始隐藏
+        self.cancel_button.hide()  # Hidden initially
         self.cancel_button.clicked.connect(self.cancel_optimization)
 
         self.bottom_layout.addWidget(self.progress_bar, 1)
@@ -536,7 +536,7 @@ class SubtitleInterface(QWidget):
         self.cancel_button.show()
 
         if need_create_task:
-            # 将当前表格状态写回原文件，保留用户的合并/删除/编辑
+            # Write the current table back to the source file so merges/deletes/edits survive
             if self.model._data:
                 ASRData.from_json(self.model._data).to_srt(save_path=self.subtitle_path)
             self.task = TaskFactory.create_subtitle_task(file_path=self.subtitle_path)
@@ -592,7 +592,7 @@ class SubtitleInterface(QWidget):
 
     def on_subtitle_optimization_error(self, error: str) -> None:
         self.start_button.setEnabled(True)
-        self.cancel_button.hide()  # 隐藏取消按钮
+        self.cancel_button.hide()  # Hide the cancel button
         self.progress_bar.error()
         # Persist the real cause in the status label so it survives the InfoBar timeout.
         self.status_label.setText(self.tr("失败：") + (error or "")[:200])
@@ -866,12 +866,12 @@ class SubtitleInterface(QWidget):
             super().keyPressEvent(event)
 
     def cancel_optimization(self) -> None:
-        """取消字幕校正"""
+        """Cancel the running optimization."""
         if hasattr(self, "subtitle_optimization_thread"):
             self.subtitle_optimization_thread.stop()  # type: ignore
             self.start_button.setEnabled(True)
             self.cancel_button.hide()
-            self.progress_bar.resume()  # 恢复正常状态
+            self.progress_bar.resume()  # Back to the normal state
             self.progress_bar.setValue(0)
             self.status_label.setText(self.tr("已取消校正"))
             InfoBar.warning(
@@ -882,7 +882,7 @@ class SubtitleInterface(QWidget):
             )
 
     def on_target_language_changed(self, language: str) -> None:
-        """处理翻译语言变更"""
+        """Target language changed from the signal bus."""
         for lang in TargetLanguage:
             if lang.value == language:
                 self.target_language_button.setText(self._target_language_text(lang))
@@ -890,19 +890,19 @@ class SubtitleInterface(QWidget):
                 break
 
     def on_subtitle_optimization_changed(self, checked: bool) -> None:
-        """处理字幕优化开关变更"""
+        """Optimization toggle changed from the signal bus."""
         cfg.set(cfg.need_optimize, checked)
         self.optimize_button.setChecked(checked)
 
     def on_subtitle_translation_changed(self, checked: bool) -> None:
-        """处理字幕翻译开关变更"""
+        """Translation toggle changed from the signal bus."""
         cfg.set(cfg.need_translate, checked)
         self.translate_button.setChecked(checked)
-        # 控制翻译语言选择按钮的启用状态
+        # The target-language button only makes sense with translation on
         self.target_language_button.setEnabled(checked)
 
     def on_subtitle_layout_changed(self, layout: str) -> None:
-        """处理字幕排布变更"""
+        """Subtitle layout changed from the signal bus."""
         layout_enum = SubtitleLayoutEnum(layout)  # Convert string to enum
         cfg.set(cfg.subtitle_layout, layout_enum)
         self.layout_button.setText(self._subtitle_layout_text(layout_enum))
@@ -957,13 +957,13 @@ class PromptDialog(MessageBoxBase):
         super().__init__(parent)
         self.setup_ui()
         self.setWindowTitle(self.tr("文稿提示"))
-        # 连接按钮点击事件
+        # Button handlers
         self.yesButton.clicked.connect(self.save_prompt)
 
     def setup_ui(self) -> None:
         self.titleLabel = BodyLabel(self.tr("文稿提示"), self)
 
-        # 添加文本编辑框
+        # Text editor
         self.text_edit = TextEdit(self)
         self.text_edit.setPlaceholderText(
             self.tr(
@@ -983,12 +983,12 @@ class PromptDialog(MessageBoxBase):
         self.text_edit.setMinimumWidth(420)
         self.text_edit.setMinimumHeight(380)
 
-        # 添加到布局
+        # Add to layout
         self.viewLayout.addWidget(self.titleLabel)
         self.viewLayout.addWidget(self.text_edit)
         self.viewLayout.setSpacing(10)
 
-        # 设置按钮文本
+        # Button labels
         self.yesButton.setText(self.tr("确定"))
         self.cancelButton.setText(self.tr("取消"))
 
@@ -996,7 +996,7 @@ class PromptDialog(MessageBoxBase):
         return self.text_edit.toPlainText()
 
     def save_prompt(self) -> None:
-        # 在点击确定按钮时保存提示文本到配置
+        # Persist the prompt when OK is clicked
         prompt_text = self.text_edit.toPlainText()
         cfg.set(cfg.custom_prompt_text, prompt_text)
 

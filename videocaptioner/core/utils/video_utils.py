@@ -24,7 +24,7 @@ from ..utils.logger import setup_logger
 if TYPE_CHECKING:
     from videocaptioner.core.asr.asr_data import ASRData
 
-# FFmpeg preset 类型
+# FFmpeg preset names
 PresetType = Literal[
     "ultrafast",
     "superfast",
@@ -124,15 +124,16 @@ def plan_video_chunks(
 
 @contextmanager
 def temporary_subtitle_file(subtitle_path: str):
-    """临时字幕文件上下文管理器
+    """Context manager that copies a subtitle file to a temporary path.
 
-    自动复制字幕文件到临时位置，使用后自动清理
+    The copy is removed on exit, so FFmpeg gets a path that stays untouched
+    even if the original is edited meanwhile.
 
     Args:
-        subtitle_path: 原始字幕文件路径
+        subtitle_path: original subtitle file
 
     Yields:
-        临时字幕文件路径
+        path of the temporary copy
     """
     suffix = Path(subtitle_path).suffix.lower()
     temp_fd, temp_path = tempfile.mkstemp(
@@ -141,24 +142,24 @@ def temporary_subtitle_file(subtitle_path: str):
     os.close(temp_fd)
 
     try:
-        # 复制字幕到临时位置
+        # Copy the subtitle to the temporary location
         shutil.copy2(subtitle_path, temp_path)
         yield temp_path
     finally:
-        # 自动清理临时文件
+        # Remove the temporary copy
         Path(temp_path).unlink(missing_ok=True)
 
 
 def video2audio(input_file: str, output: str = "", audio_track_index: int = 0) -> bool:
-    """使用 ffmpeg 将视频转换为音频
+    """Extract one audio track with ffmpeg as 16 kHz mono.
 
     Args:
-        input_file: 输入视频文件路径
-        output: 输出音频文件路径
-        audio_track_index: 要提取的音轨索引，默认为 0（第一 audio tracks）
+        input_file: input video path
+        output: output audio path
+        audio_track_index: audio track to extract (0 = first track)
 
     Returns:
-        转换是否成功
+        True when the conversion succeeded
     """
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -173,9 +174,9 @@ def video2audio(input_file: str, output: str = "", audio_track_index: int = 0) -
         f"0:a:{audio_track_index}",
         "-vn",
         "-ac",
-        "1",  # 单声道
+        "1",  # mono
         "-ar",
-        "16000",  # 采样率16kHz
+        "16000",  # 16 kHz sample rate
         "-y",
         output,
     ]
@@ -216,7 +217,7 @@ def video2audio(input_file: str, output: str = "", audio_track_index: int = 0) -
 def check_cuda_available() -> bool:
     """Check if CUDA hardware acceleration is available via FFmpeg."""
     try:
-        # 首先检查ffmpeg是否支持cuda
+        # First check whether this ffmpeg build lists cuda
         result = subprocess.run(
             ["ffmpeg", "-hwaccels"], env=child_environment(),
             capture_output=True,
@@ -229,7 +230,7 @@ def check_cuda_available() -> bool:
             logger.debug("CUDA not in FFmpeg hwaccels list")
             return False
 
-        # 进一步检查CUDA设备信息
+        # Then try to initialise the CUDA device
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-init_hw_device", "cuda"], env=child_environment(),
             capture_output=True,
@@ -239,7 +240,7 @@ def check_cuda_available() -> bool:
             ),
         )
 
-        # 如果stderr中包含"Cannot load cuda" 或 "Failed to load"等Error output，说明CUDA不可用
+        # "Cannot load cuda" / "Failed to load" in stderr means CUDA is unusable
         if any(
             error in result.stderr.lower()
             for error in ["cannot load cuda", "failed to load", "error"]
@@ -278,21 +279,21 @@ def add_subtitles(
     assert Path(input_file).is_file(), "输入文件不存在"
     assert Path(subtitle_file).is_file(), "字幕文件不存在"
 
-    # 使用临时文件上下文管理器处理字幕（自动清理）
+    # Work on a temporary copy of the subtitle (removed automatically)
     with temporary_subtitle_file(subtitle_file) as temp_subtitle_path:
-        # 如果是 ASS 字幕，进行自动换行处理
+        # ASS subtitles get automatic line wrapping first
         suffix = Path(subtitle_file).suffix.lower()
         processed_subtitle = temp_subtitle_path
         if suffix == ".ass":
             processed_subtitle = auto_wrap_ass_file(temp_subtitle_path)
 
-        # 如果是WebM格式，强制使用硬字幕
+        # WebM cannot carry mov_text: force hard subtitles
         if Path(output).suffix.lower() == ".webm":
             soft_subtitle = False
             logger.debug("WebM format, forcing hard subtitles")
 
         if soft_subtitle:
-            # 添加软字幕
+            # Soft subtitles: mux as a separate stream
             cmd = [
                 "ffmpeg",
                 "-i",
@@ -334,7 +335,7 @@ def add_subtitles(
                     logger.error(f"stderr: {e.stderr}")
                 raise
         else:
-            # 使用硬字幕
+            # Hard subtitles: burn into the frames
             subtitle_path_escaped = (
                 Path(processed_subtitle).as_posix().replace(":", r"\:")
             )
@@ -349,7 +350,7 @@ def add_subtitles(
                 vcodec = "libvpx-vp9"
                 logger.debug("WebM format, using libvpx-vp9")
 
-            # 检查CUDA是否可用
+            # Use CUDA when available
             use_cuda = check_cuda_available()
             cmd = ["ffmpeg"]
             if use_cuda:
@@ -393,7 +394,7 @@ def add_subtitles(
                     ),
                 )
 
-                # 实时Reading输出并调用回调函数
+                # Read stderr live and report progress through the callback
                 total_duration = None
                 current_time = 0
 
@@ -413,7 +414,7 @@ def add_subtitles(
                             total_duration = h * 3600 + m * 60 + s
                             logger.debug(f"Video duration: {total_duration}秒")
 
-                    # 解析当前处理时间
+                    # Current position
                     time_match = re.search(
                         r"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})", output_line
                     )
@@ -421,7 +422,7 @@ def add_subtitles(
                         h, m, s = map(float, time_match.groups())
                         current_time = h * 3600 + m * 60 + s
 
-                    # 计算进度百分比
+                    # Progress percentage
                     if total_duration:
                         progress = (current_time / total_duration) * 100
                         progress_callback(f"{round(progress)}", "Đang ghép video")
@@ -429,7 +430,7 @@ def add_subtitles(
                 if progress_callback:
                     progress_callback("100", "Hoàn tất ghép video")
 
-                # 检查进程的Return code
+                # Check the exit code
                 return_code = process.wait()
                 if return_code != 0:
                     error_info = process.stderr.read()
@@ -457,18 +458,18 @@ def add_subtitles(
 def get_video_info(
     file_path: str, thumbnail_path: Optional[str] = None
 ) -> Optional["VideoInfo"]:
-    """获取媒体文件信息（支持视频和音频文件）
+    """Probe a media file (video or audio) with ffmpeg.
 
     Args:
-        file_path: 媒体文件路径（视频或音频）
-        thumbnail_path: 缩略图保存路径（可选，仅对视频文件有效）
+        file_path: media file (video or audio)
+        thumbnail_path: where to save a thumbnail (optional, video only)
 
     Returns:
-        VideoInfo 对象，失败返回 None
-        对于纯音频文件，视频相关字段（width/height/fps）将为 0
+        VideoInfo, or None on failure.
+        Audio-only files report width/height/fps as 0.
     """
     try:
-        # 执行 ffmpeg 获取视频信息
+        # Run ffmpeg to get the stream banner
         result = subprocess.run(
             ["ffmpeg", "-i", file_path], env=child_environment(),
             capture_output=True,
@@ -481,18 +482,18 @@ def get_video_info(
         )
         info = result.stderr
 
-        # 提取时长
+        # Duration
         duration_seconds = 0.0
         if duration_match := re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", info):
             hours, minutes, seconds = map(float, duration_match.groups())
             duration_seconds = hours * 3600 + minutes * 60 + seconds
 
-        # 提取比特率
+        # Bitrate
         bitrate_kbps = 0
         if bitrate_match := re.search(r"bitrate: (\d+) kb/s", info):
             bitrate_kbps = int(bitrate_match.group(1))
 
-        # 提取视频流信息
+        # Video stream
         width, height, fps, video_codec = 0, 0, 0.0, ""
         has_video_stream = False
         if video_stream_match := re.search(
@@ -506,7 +507,7 @@ def get_video_info(
             fps = float(video_stream_match.group(4))
             has_video_stream = True
 
-        # 提取第一条音频流信息（用于兼容性）
+        # First audio stream (kept for compatibility)
         audio_codec, audio_sampling_rate = "", 0
         if audio_stream_match := re.search(
             r"Stream #\d+:\d+.*Audio: (\w+).* (\d+) Hz", info
@@ -514,7 +515,7 @@ def get_video_info(
             audio_codec = audio_stream_match.group(1)
             audio_sampling_rate = int(audio_stream_match.group(2))
 
-        # 提取All音频流信息（用于多音轨选择）
+        # Every audio stream (for multi-track selection)
         audio_streams: list[AudioStreamInfo] = []
         for match in re.finditer(
             r"Stream #\d+:(\d+)(?:\[0x[0-9a-fA-F]+\])?(?:\(([a-z]{3})\))?: Audio: (\w+)",
@@ -531,18 +532,18 @@ def get_video_info(
         if audio_streams:
             logger.debug(f"Detected {len(audio_streams)}  audio tracks")
 
-        # 验证文件是否包含有效的媒体流
+        # Reject files without any media stream
         if not has_video_stream and not audio_streams:
             logger.error("File has no video or audio streams")
             return None
 
-        # 提取缩略图（如果指定了路径且有视频流）
+        # Thumbnail (only when requested and a video stream exists)
         final_thumbnail_path = ""
         if thumbnail_path and duration_seconds > 0 and has_video_stream:
             if _extract_thumbnail(file_path, duration_seconds * 0.3, thumbnail_path):
                 final_thumbnail_path = thumbnail_path
 
-        # 构造并返回 VideoInfo 对象
+        # Build the VideoInfo
         return VideoInfo(
             file_name=Path(file_path).stem,
             file_path=file_path,
@@ -563,15 +564,15 @@ def get_video_info(
 
 
 def _extract_thumbnail(video_path: str, seek_time: float, thumbnail_path: str) -> bool:
-    """提取视频缩略图
+    """Grab one frame as a thumbnail.
 
     Args:
-        video_path: 视频文件路径
-        seek_time: 截取时间点（秒）
-        thumbnail_path: 缩略图保存路径
+        video_path: video file
+        seek_time: position in seconds
+        thumbnail_path: where to write the image
 
     Returns:
-        是否成功
+        True on success
     """
     if not Path(video_path).is_file():
         logger.error(f"视频文件不存在: {video_path}")
@@ -623,23 +624,23 @@ def add_subtitles_with_style(
     progress_callback: Optional[Callable] = None,
 ) -> None:
     """
-    根据渲染模式选择合成方式
+    Burn subtitles using the selected render mode.
 
     Args:
-        video_path: 输入视频路径
-        asr_data: 字幕数据
-        output_path: 输出视频路径
-        render_mode: 渲染模式 (ASS_STYLE 或 ROUNDED_BG)
-        subtitle_layout: 字幕布局
-        ass_style: ASS 样式字符串 (仅 ASS_STYLE 模式使用)
-        rounded_style: 圆角背景样式配置字典 (仅 ROUNDED_BG 模式使用)
-        crf: 视频质量
-        preset: FFmpeg 编码预设
-        progress_callback: 进度回调
+        video_path: input video
+        asr_data: subtitle data
+        output_path: output video
+        render_mode: ASS_STYLE or ROUNDED_BG
+        subtitle_layout: subtitle layout
+        ass_style: ASS style string (ASS_STYLE only)
+        rounded_style: rounded-background style dict (ROUNDED_BG only)
+        crf: video quality
+        preset: FFmpeg encoder preset
+        progress_callback: progress callback
     """
 
     if render_mode == SubtitleRenderModeEnum.ROUNDED_BG:
-        # 圆角背景模式
+        # Rounded background mode
         render_rounded_video(
             video_path=video_path,
             asr_data=asr_data,
@@ -651,7 +652,7 @@ def add_subtitles_with_style(
             progress_callback=progress_callback,
         )
     else:
-        # ASS 样式模式
+        # ASS style mode
         render_ass_video(
             video_path=video_path,
             asr_data=asr_data,

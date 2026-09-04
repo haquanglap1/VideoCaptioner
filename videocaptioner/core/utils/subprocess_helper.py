@@ -39,22 +39,22 @@ def child_environment(overrides: Optional[Mapping[str, str]] = None) -> Dict[str
 
 
 class StreamReader:
-    """通用的子进程输出流Reading器"""
+    """Asynchronous reader for a child process's stdout/stderr."""
 
     def __init__(self, process: subprocess.Popen):
         """
-        初始化流Reading器
+        Start with the process whose pipes will be read.
 
         Args:
-            process: 子进程对象
+            process: child process
         """
         self.process = process
         self.output_queue = queue.Queue()
         self.threads = []
 
     def start_reading(self) -> None:
-        """启动异步Readingstdout和stderr"""
-        # 启动stdoutReading线程
+        """Start background threads that read stdout and stderr."""
+        # stdout reader thread
         if self.process.stdout:
             stdout_thread = threading.Thread(
                 target=self._read_stream,
@@ -64,7 +64,7 @@ class StreamReader:
             stdout_thread.start()
             self.threads.append(stdout_thread)
 
-        # 启动stderrReading线程
+        # stderr reader thread
         if self.process.stderr:
             stderr_thread = threading.Thread(
                 target=self._read_stream,
@@ -75,7 +75,7 @@ class StreamReader:
             self.threads.append(stderr_thread)
 
     def _read_stream(self, stream, stream_name: str) -> None:
-        """Reading流并放入队列"""
+        """Read a stream line by line into the queue."""
         try:
             for line in iter(stream.readline, ""):
                 if line:
@@ -87,13 +87,13 @@ class StreamReader:
 
     def get_output(self, timeout: float = 0.1) -> Optional[Tuple[str, str]]:
         """
-        获取输出
+        Pop one line.
 
         Args:
-            timeout: 等待超时时间
+            timeout: seconds to wait for output
 
         Returns:
-            (stream_name, line) 或 None
+            (stream_name, line) or None when nothing arrived in time
         """
         try:
             return self.output_queue.get(timeout=timeout)
@@ -101,7 +101,7 @@ class StreamReader:
             return None
 
     def get_remaining_output(self) -> list:
-        """获取队列中剩余的All输出"""
+        """Drain everything still queued."""
         output = []
         while not self.output_queue.empty():
             try:
@@ -111,7 +111,7 @@ class StreamReader:
         return output
 
     def is_empty(self) -> bool:
-        """检查队列是否为空"""
+        """True when no output is queued."""
         return self.output_queue.empty()
 
 
@@ -122,16 +122,17 @@ def run_process_with_stream_reader(
     **popen_kwargs,
 ) -> subprocess.Popen:
     """
-    运行子进程并使用StreamReader处理输出
+    Run a subprocess and feed its output lines to handlers via StreamReader.
 
     Args:
-        cmd: Command列表
-        stdout_handler: stdout行处理函数
-        stderr_handler: stderr行处理函数
-        **popen_kwargs: 传递给subprocess.Popen的额外参数
+        cmd: command as an argument list
+        stdout_handler: called with each stdout line
+        stderr_handler: called with each stderr line
+        **popen_kwargs: extra arguments for subprocess.Popen (``env`` defaults
+            to the scrubbed child environment)
 
     Returns:
-        子进程对象
+        The running Popen object.
 
     Example:
         ```python
@@ -160,19 +161,19 @@ def run_process_with_stream_reader(
     }
     default_kwargs.update(popen_kwargs)
 
-    # 启动进程
+    # Start the process
     process = subprocess.Popen(cmd, **default_kwargs)
 
-    # 创建流Reading器
+    # Reader threads for both pipes
     reader = StreamReader(process)
     reader.start_reading()
 
-    # 处理输出的线程
+    # Dispatch queued lines to the handlers
     def process_output():
         while True:
-            # 检查进程状态
+            # Check whether the process has exited
             if process.poll() is not None:
-                # 进程已ended，Reading剩余输出
+                # Process exited: drain the remaining output
                 for stream_name, line in reader.get_remaining_output():
                     if stream_name == "stdout" and stdout_handler:
                         stdout_handler(line)
@@ -180,7 +181,7 @@ def run_process_with_stream_reader(
                         stderr_handler(line)
                 break
 
-            # Reading输出
+            # Read output
             output = reader.get_output()
             if output:
                 stream_name, line = output
@@ -189,7 +190,7 @@ def run_process_with_stream_reader(
                 elif stream_name == "stderr" and stderr_handler:
                     stderr_handler(line)
 
-    # 如果提供了处理函数，启动处理线程
+    # Only spin up the dispatcher when someone wants the lines
     if stdout_handler or stderr_handler:
         handler_thread = threading.Thread(target=process_output, daemon=True)
         handler_thread.start()

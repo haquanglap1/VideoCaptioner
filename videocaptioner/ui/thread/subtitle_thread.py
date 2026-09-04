@@ -40,7 +40,7 @@ def create_translator_from_config(
     custom_prompt: str = "",
     callback=None,
 ):
-    """根据 SubtitleConfig 创建翻译器"""
+    """Build a translator from a SubtitleConfig."""
     translator_service = config.translator_service
     if translator_service not in SERVICE_TO_TYPE:
         raise ValueError(f"不支持的翻译服务: {translator_service}")
@@ -97,7 +97,7 @@ class SubtitleThread(QThread):
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
 
     def run(self):
-        # 设置任务上下文
+        # Task context for logs
         task_file = (
             Path(self.task.video_path) if self.task.video_path else Path(self.task.subtitle_path)
         )
@@ -110,7 +110,7 @@ class SubtitleThread(QThread):
         try:
             logger.info(f"\n{self.task.subtitle_config.print_config()}")
 
-            # 字幕文件路径检查、对断句字幕路径进行定义
+            # The subtitle path is required from here on
             subtitle_path = self.task.subtitle_path
             assert subtitle_path is not None, self.tr("字幕文件路径为空")
 
@@ -119,17 +119,17 @@ class SubtitleThread(QThread):
 
             asr_data = ASRData.from_subtitle_file(subtitle_path)
 
-            # 1. 分割成字词级时间戳（对于非断句字幕且开启分割选项）
+            # 1. Split into word-level timestamps (unsegmented subtitles with split enabled)
             if subtitle_config.need_split and not asr_data.is_word_timestamp():
                 asr_data.split_to_word_segments()
                 self.update_all.emit(asr_data.to_json())
 
-            # 验证 LLM 配置
+            # Verify the LLM configuration
             if self.need_llm(subtitle_config, asr_data):
                 self.progress.emit(2, self.tr("开始验证 LLM 配置..."))
                 subtitle_config = self._setup_llm_config()
 
-            # 2. 重新断句（对于字词级字幕）
+            # 2. Re-segment word-level subtitles into sentences
             if asr_data.is_word_timestamp():
                 update_stage("split")
                 self.progress.emit(5, self.tr("字幕断句..."))
@@ -143,7 +143,7 @@ class SubtitleThread(QThread):
                 asr_data = splitter.split_subtitle(asr_data)
                 self.update_all.emit(asr_data.to_json())
 
-            # 3. 优化字幕
+            # 3. Optimize subtitles
             # Chỉ gửi tên file, không gửi đường dẫn tuyệt đối: prompt này đi ra
             # API LLM của bên thứ ba, không cần lộ cấu trúc thư mục của user.
             context_info = f'The subtitles below are from a file named "{task_file.name}". Use this context to improve accuracy if needed.\n'
@@ -168,7 +168,7 @@ class SubtitleThread(QThread):
                 asr_data.remove_punctuation()
                 self.update_all.emit(asr_data.to_json())
 
-            # 4. 翻译字幕
+            # 4. Translate subtitles
             if subtitle_config.need_translate:
                 update_stage("translate")
                 if (
@@ -192,11 +192,11 @@ class SubtitleThread(QThread):
 
                 asr_data = translator.translate_subtitle(asr_data)
 
-                # 移除末尾标点符号
+                # Strip trailing punctuation
                 asr_data.remove_punctuation()
                 self.update_all.emit(asr_data.to_json())
 
-                # 保存翻译结果(单语、双语)
+                # Save the translation (monolingual and bilingual layouts)
                 if self.task.need_next_task and self.task.video_path:
                     for layout in SubtitleLayoutEnum:
                         save_path = str(
@@ -210,7 +210,7 @@ class SubtitleThread(QThread):
                         )
                         logger.info(f"翻译字幕保存到：{save_path}")
 
-            # 5. 保存字幕
+            # 5. Save subtitles
             if self.task.need_next_task and self.task.video_path:
                 dubbing_path = (
                     Path(self.task.output_path or self.task.subtitle_path).parent
@@ -230,7 +230,7 @@ class SubtitleThread(QThread):
             )
             logger.info(f"字幕保存到 {self.task.output_path}")
 
-            # 6. 文件移动与清理
+            # 6. Move files and clean up
             if self.task.need_next_task and self.task.video_path:
                 # Full pipeline persists SRT only. ASS remains an explicit
                 # export choice in SubtitleInterface's Save menu.
@@ -270,10 +270,10 @@ class SubtitleThread(QThread):
 
     def callback(self, result: List[SubtitleProcessData]):
         self.finished_subtitle_length += len(result)
-        # 简单计算当前进度（0-100%）
+        # Rough progress estimate (0-100%)
         progress = min(int((self.finished_subtitle_length / max(self.subtitle_length, 1)) * 100), 100)
         self.progress.emit(progress, self.tr("{0}% 处理字幕").format(progress))
-        # 转换为字典格式供UI使用
+        # Dict form for the UI
         result_dict = {
             str(data.index): data.translated_text or data.optimized_text or data.original_text
             for data in result
@@ -281,22 +281,22 @@ class SubtitleThread(QThread):
         self.update.emit(result_dict)
 
     def stop(self):
-        """停止所有处理"""
+        """Stop all processing."""
         try:
-            # 先停止优化器
+            # Stop the optimizer first
             if hasattr(self, "optimizer") and self.optimizer:
                 try:
                     self.optimizer.stop()  # type: ignore
                 except Exception as e:
                     logger.error(f"停止优化器时出错：{str(e)}")
 
-            # 终止线程
+            # Terminate the thread
             self.terminate()
-            # 等待最多3秒
+            # Wait up to 3 seconds
             if not self.wait(3000):
                 logger.warning("线程未能在3秒内正常停止")
 
-            # 发送进度信号
+            # Report progress
             self.progress.emit(100, self.tr("已终止"))
 
         except Exception as e:
@@ -305,17 +305,17 @@ class SubtitleThread(QThread):
 
 
 class RetranslateThread(QThread):
-    """重新翻译选中行的轻量线程"""
+    """Lightweight worker that re-translates the selected rows."""
 
     finished = pyqtSignal(dict)  # {key: translated_text}
-    progress = pyqtSignal(int, str)  # (百分比, 状态描述)
+    progress = pyqtSignal(int, str)  # (percent, status text)
     error = pyqtSignal(str)
 
     def __init__(self, selected_data: dict, subtitle_config: SubtitleConfig, file_name: str = ""):
         """
-        selected_data: model._data 中选中的条目，键为行号字符串
-        subtitle_config: 当前任务配置
-        file_name: 用于日志上下文的文件名
+        selected_data: selected entries from model._data, keyed by row number string
+        subtitle_config: current task configuration
+        file_name: file name for the log context
         """
         super().__init__()
         self.selected_data = selected_data
@@ -348,14 +348,14 @@ class RetranslateThread(QThread):
                     LLMCredentials(api_key=config.api_key, base_url=config.base_url)
                 )
 
-            # 构建仅含选中行的 ASRData
+            # ASRData containing only the selected rows
             asr_data = ASRData.from_json(self.selected_data)
 
-            # 创建翻译器并翻译
+            # Build the translator and translate
             translator = create_translator_from_config(config, callback=self._callback)
             asr_data = translator.translate_subtitle(asr_data)
 
-            # 构建 {原始行号: translated_text} 映射
+            # Map {original row number: translated_text}
             keys = list(self.selected_data.keys())
             result = {
                 keys[i]: seg.translated_text

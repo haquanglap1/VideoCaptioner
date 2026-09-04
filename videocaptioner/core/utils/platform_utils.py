@@ -1,5 +1,5 @@
 """
-跨平台工具函数
+Cross-platform helpers: launchers, subprocess flags and platform checks.
 """
 
 import logging
@@ -35,10 +35,10 @@ def is_onedir_frozen_build() -> bool:
 
 def open_folder(path):
     """
-    跨平台打开文件夹
+    Open a folder in the platform file manager.
 
     Args:
-        path: 要打开的文件夹路径
+        path: folder to open
     """
     system = platform.system()
 
@@ -52,7 +52,7 @@ def open_folder(path):
     elif system == "Linux":
         subprocess.Popen(["xdg-open", path], env=child_environment())
     else:
-        # 其他系统，尝试使用默认方式
+        # Unknown platform: try the freedesktop opener
         try:
             subprocess.Popen(["xdg-open", path], env=child_environment())
         except (OSError, subprocess.SubprocessError):
@@ -60,7 +60,7 @@ def open_folder(path):
 
 
 def reveal_in_explorer(file_path):
-    """跨平台在文件管理器中显示并选中文件"""
+    """Show a file selected in the platform file manager."""
     system = platform.system()
     try:
         if system == "Windows":
@@ -68,7 +68,7 @@ def reveal_in_explorer(file_path):
         elif system == "Darwin":
             subprocess.Popen(["open", "-R", file_path], env=child_environment())
         else:
-            # Linux 没有统一的选中文件方式，打开父文件夹
+            # Linux has no portable "select file" action; open the parent folder
             subprocess.Popen(["xdg-open", os.path.dirname(file_path)], env=child_environment())
     except (OSError, subprocess.SubprocessError):
         logger.warning(f"can not reveal in explorer: {file_path}")
@@ -76,10 +76,10 @@ def reveal_in_explorer(file_path):
 
 def open_file(path):
     """
-    跨平台打开文件
+    Open a file with its default application.
 
     Args:
-        path: 要打开的文件路径
+        path: file to open
     """
     system = platform.system()
 
@@ -93,7 +93,7 @@ def open_file(path):
     elif system == "Linux":
         subprocess.Popen(["xdg-open", path], env=child_environment())
     else:
-        # 其他系统，尝试使用默认方式
+        # Unknown platform: try the freedesktop opener
         try:
             subprocess.Popen(["xdg-open", path], env=child_environment())
         except (OSError, subprocess.SubprocessError):
@@ -102,14 +102,14 @@ def open_file(path):
 
 def get_subprocess_kwargs():
     """
-    获取跨平台的subprocess参数
+    Extra keyword arguments for subprocess calls on this platform.
 
     Returns:
-        dict: subprocess参数字典
+        dict: kwargs to splat into subprocess.run/Popen
     """
     kwargs = {}
 
-    # 仅在Windows上添加CREATE_NO_WINDOW标志
+    # CREATE_NO_WINDOW only exists (and matters) on Windows
     if platform.system() == "Windows":
         if hasattr(subprocess, "CREATE_NO_WINDOW"):
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -119,46 +119,46 @@ def get_subprocess_kwargs():
 
 def is_macos() -> bool:
     """
-    检测是否为 macOS 系统
+    Whether the current platform is macOS.
 
     Returns:
-        bool: 如果是 macOS 返回 True，否则返回 False
+        bool: True on macOS
     """
     return platform.system() == "Darwin"
 
 
 def is_windows() -> bool:
     """
-    检测是否为 Windows 系统
+    Whether the current platform is Windows.
 
     Returns:
-        bool: 如果是 Windows 返回 True，否则返回 False
+        bool: True on Windows
     """
     return platform.system() == "Windows"
 
 
 def is_linux() -> bool:
     """
-    检测是否为 Linux 系统
+    Whether the current platform is Linux.
 
     Returns:
-        bool: 如果是 Linux 返回 True，否则返回 False
+        bool: True on Linux
     """
     return platform.system() == "Linux"
 
 
 def get_available_transcribe_models() -> list[TranscribeModelEnum]:
     """
-    获取当前平台可用的转录模型列表
+    Transcription models usable on this platform.
 
-    macOS 上不支持 FasterWhisper，因为它依赖 CUDA/CuDNN
+    FasterWhisper is unavailable on macOS because it depends on CUDA/cuDNN.
 
     Returns:
-        list[TranscribeModelEnum]: 可用的转录模型列表
+        list[TranscribeModelEnum]: models that can run here
     """
     all_models = list(TranscribeModelEnum)
 
-    # macOS 上过滤掉 FasterWhisper
+    # FasterWhisper cannot run on macOS
     if is_macos():
         return [
             model for model in all_models if model != TranscribeModelEnum.FASTER_WHISPER
@@ -169,15 +169,15 @@ def get_available_transcribe_models() -> list[TranscribeModelEnum]:
 
 def is_model_available(model: TranscribeModelEnum) -> bool:
     """
-    检查指定模型是否在当前平台可用
+    Whether a transcription model can run on this platform.
 
     Args:
-        model: 要检查的转录模型
+        model: model to check
 
     Returns:
-        bool: 如果模型可用返回 True，否则返回 False
+        bool: True when the model is usable here
     """
-    # FasterWhisper 在 macOS 上不可用
+    # FasterWhisper is unavailable on macOS
     if is_macos() and model == TranscribeModelEnum.FASTER_WHISPER:
         return False
 

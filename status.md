@@ -91,6 +91,18 @@
 - Validation: ruff pass; pyright `videocaptioner/` 0 errors; test_ui + test_vieneu UI thread + test_cli +
   editing + presets: **pass**, hash `settings.json` không đổi sau khi chạy.
 
+### Comment/docstring tiếng Trung sang English trong file đã chạm (mục 6, đợt 1)
+- 198 comment và docstring CJK trong 10 file đã sửa logic ở đợt này được dịch sang English:
+  `core/utils/subprocess_helper.py`, `platform_utils.py`, `video_utils.py`, `ui/thread/subtitle_thread.py`,
+  `core/translate/base.py`, `llm_translator.py`, `deeplx_translator.py`, `factory.py`,
+  `core/llm/client.py`, `ui/view/subtitle_interface.py`. Chuỗi `self.tr(...)` và message log giữ nguyên
+  vì là key bản dịch/UI. Cách làm: tokenize để liệt kê đúng COMMENT/docstring có CJK, thay theo
+  (file, dòng, nội dung) nên không đụng string literal.
+- Còn lại theo thống kê `tokenize`: ~160 mục trong `faster_whisper.py`, `rounded_renderer.py`,
+  `ass_renderer.py`, `video_download_thread.py`, `file_download_thread.py`, `whisper_cpp.py`; các file
+  chưa chạm khác chưa đếm.
+- Validation: ruff pass, pyright 0 errors, test translate/subtitle/utils/ui/llm/cli **210 passed**.
+
 ## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
 
 ### Nguyên nhân và thay đổi
