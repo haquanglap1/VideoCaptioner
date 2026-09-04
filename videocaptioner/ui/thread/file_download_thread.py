@@ -16,7 +16,7 @@ logger = setup_logger("download_thread")
 
 
 class BaseDownloader(ABC):
-    """下载器基类"""
+    """Base class for downloaders."""
 
     def __init__(self, url: str, save_path: Path, progress_callback):
         self.url = url
@@ -26,16 +26,16 @@ class BaseDownloader(ABC):
 
     @abstractmethod
     def download(self) -> bool:
-        """执行下载，返回是否成功"""
+        """Run the download; return whether it succeeded."""
         pass
 
     def cancel(self):
-        """取消下载"""
+        """Cancel the download."""
         self._cancelled = True
 
 
 class Aria2Downloader(BaseDownloader):
-    """aria2c 多线程下载器"""
+    """Multi-connection downloader backed by aria2c."""
 
     def __init__(self, url: str, save_path: Path, progress_callback):
         super().__init__(url, save_path, progress_callback)
@@ -43,7 +43,7 @@ class Aria2Downloader(BaseDownloader):
 
     @staticmethod
     def is_available() -> bool:
-        """检查 aria2c 是否可用"""
+        """Whether aria2c is available."""
         return shutil.which("aria2c") is not None
 
     def download(self) -> bool:
@@ -103,7 +103,7 @@ class Aria2Downloader(BaseDownloader):
             return False
 
     def _parse_progress(self, line: str):
-        """解析 aria2c 输出格式: [#40ca1b 2.4MiB/74MiB(3%) CN:2 DL:3.9MiB ETA:18s]"""
+        """Parse aria2c output such as [#40ca1b 2.4MiB/74MiB(3%) CN:2 DL:3.9MiB ETA:18s]."""
         if "[#" not in line or "]" not in line:
             return
 
@@ -131,7 +131,7 @@ class Aria2Downloader(BaseDownloader):
 
 
 class RequestsDownloader(BaseDownloader):
-    """Python requests 下载器（回退方案）"""
+    """Downloader using requests (fallback)."""
 
     CHUNK_SIZE = 8192
 
@@ -163,7 +163,7 @@ class RequestsDownloader(BaseDownloader):
                         status = f"已下载: {speed} / {self._format_size(total_size)}"
                         self.progress_callback(percent, status)
 
-            # 下载完成后重命名
+            # Rename once the download completes
             os.replace(temp_file, self.save_path)
             return True
 
@@ -177,7 +177,7 @@ class RequestsDownloader(BaseDownloader):
 
     @staticmethod
     def _format_size(bytes_size: int) -> str:
-        """格式化文件大小"""
+        """Human-readable file size."""
         size = float(bytes_size)
         for unit in ["B", "KB", "MB", "GB"]:
             if size < 1024:
@@ -187,7 +187,7 @@ class RequestsDownloader(BaseDownloader):
 
 
 class FileDownloadThread(QThread):
-    """文件下载线程"""
+    """Worker thread that downloads one file."""
 
     progress = pyqtSignal(float, str)
     finished = pyqtSignal()
@@ -203,7 +203,7 @@ class FileDownloadThread(QThread):
         try:
             self.progress.emit(0, self.tr("正在连接..."))
 
-            # 选择下载器：优先 aria2c，否则回退到 requests
+            # Prefer aria2c, fall back to requests
             if Aria2Downloader.is_available():
                 self.downloader = Aria2Downloader(
                     self.url, self.save_path, self._on_progress
@@ -226,10 +226,10 @@ class FileDownloadThread(QThread):
             self.error.emit(str(e))
 
     def _on_progress(self, percent: float, status: str):
-        """进度回调"""
+        """Progress callback."""
         self.progress.emit(percent, status)
 
     def stop(self):
-        """停止下载"""
+        """Stop the download."""
         if self.downloader:
             self.downloader.cancel()

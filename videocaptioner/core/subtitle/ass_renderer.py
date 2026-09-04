@@ -40,21 +40,21 @@ def _escape_filter_path(path: str | Path) -> str:
 
 
 def _check_cuda_available() -> bool:
-    """检查 CUDA 是否可用"""
+    """Whether CUDA is available."""
     from videocaptioner.core.utils.video_utils import check_cuda_available
     return check_cuda_available()
 
 
 def _scale_ass_style(style_str: str, scale_factor: float) -> str:
     """
-    缩放 ASS 样式中的数值参数
+    Scale the numeric fields of an ASS style.
 
     Args:
-        style_str: 原始 ASS 样式字符串（720P）
-        scale_factor: 缩放因子
+        style_str: original ASS style string (720p)
+        scale_factor: scale factor
 
     Returns:
-        缩放后的 ASS 样式字符串
+        Scaled ASS style string
     """
     if scale_factor == 1.0:
         return style_str
@@ -72,7 +72,7 @@ def _scale_ass_style(style_str: str, scale_factor: float) -> str:
                 parts[13] = str(float(parts[13]) * scale_factor)
                 # parts[16]: Outline
                 parts[16] = str(float(parts[16]) * scale_factor)
-                # parts[21]: MarginV (垂直间距)
+                # parts[21]: MarginV (vertical margin)
                 parts[21] = str(int(float(parts[21]) * scale_factor))
                 line = ",".join(parts)
         scaled_lines.append(line)
@@ -89,19 +89,19 @@ def render_ass_preview(
     reference_height: int = 720,
 ) -> str:
     """
-    生成 ASS 样式字幕预览图
+    Render an ASS-style subtitle preview image.
 
     Args:
-        style_str: ASS 样式字符串（包含 PlayResY）
-        preview_text: (原文, 译文) 元组，译文可以为 None
-        bg_image_path: 背景图片路径
-        width: 图片宽度（None=从bg_image_path自动获取）
-        height: 图片高度（None=从bg_image_path自动获取）
-        reference_height: 参考高度（固定720P）
+        style_str: ASS style string (with PlayResY)
+        preview_text: (original, translation) tuple; translation may be None
+        bg_image_path: background image path
+        width: image width (None = read from bg_image_path)
+        height: image height (None = read from bg_image_path)
+        reference_height: reference height (fixed 720p)
     Returns:
-        生成的预览图路径
+        Path of the generated preview image
     """
-    # 自动获取图片尺寸
+    # Read the image size
     if width is None or height is None:
         bg_path = Path(bg_image_path)
         if bg_path.exists():
@@ -115,7 +115,7 @@ def render_ass_preview(
 
     original_text, translate_text = preview_text
 
-    # 构建对话行
+    # Build the dialogue lines
     if translate_text:
         dialogue = [
             f"Dialogue: 0,0:00:00.00,0:00:01.00,Secondary,,0,0,0,,{translate_text}",
@@ -126,7 +126,7 @@ def render_ass_preview(
             f"Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,{original_text}"
         ]
 
-    # 生成 ASS 内容
+    # Generate the ASS content
     ass_content = ASS_TEMPLATE.format(
         style_str=style_str,
         dialogue=os.linesep.join(dialogue),
@@ -134,11 +134,11 @@ def render_ass_preview(
         video_height=height,
     )
 
-    # 从 ASS 内容中提取参考高度，根据图片高度自动缩放样式
+    # Scale the style from the reference height to the image height
     scale_factor = height / reference_height
     style_str = _scale_ass_style(style_str, scale_factor)
 
-    # 重新生成缩放后的 ASS 内容
+    # Regenerate the ASS content with the scaled style
     ass_content = ASS_TEMPLATE.format(
         style_str=style_str,
         dialogue=os.linesep.join(dialogue),
@@ -160,17 +160,17 @@ def render_ass_preview(
 
     processed_ass = temp_ass_path
     try:
-        # 自动换行处理
+        # Automatic line wrapping
         processed_ass = auto_wrap_ass_file(temp_ass_path)
 
-        # 确保背景图片存在
+        # Make sure a background image exists
         bg_path_obj = Path(bg_image_path)
         if not bg_path_obj.exists():
-            # 使用默认黑色背景
+            # Fall back to a black background
             default_bg = RESOURCE_PATH / "assets" / "default_bg.png"
             if not default_bg.exists():
                 default_bg.parent.mkdir(parents=True, exist_ok=True)
-                # 生成黑色背景
+                # Generate the black background
                 subprocess.run(
                     [
                         "ffmpeg",
@@ -191,7 +191,7 @@ def render_ass_preview(
                 )
             bg_path_obj = default_bg
 
-        # 生成预览图
+        # Render the preview
         output_path = CACHE_PATH / "ass_preview.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -224,14 +224,14 @@ def render_ass_preview(
         return str(output_path)
 
     finally:
-        # 清理临时文件
+        # Clean up temp files
         Path(temp_ass_path).unlink(missing_ok=True)
         if processed_ass != temp_ass_path:
             Path(processed_ass).unlink(missing_ok=True)
 
 
 def _get_video_resolution(video_path: str) -> Tuple[int, int]:
-    """获取视频分辨率"""
+    """Video resolution."""
     result = subprocess.run(
         ["ffmpeg", "-i", video_path], env=child_environment(),
         capture_output=True,
@@ -241,12 +241,12 @@ def _get_video_resolution(video_path: str) -> Tuple[int, int]:
         ),
     )
 
-    # 从 ffmpeg 输出中解析分辨率
+    # Parse the resolution from ffmpeg output
     pattern = r"(\d{2,5})x(\d{2,5})"
     match = re.search(pattern, result.stderr)
     if match:
         return int(match.group(1)), int(match.group(2))
-    return 1920, 1080  # 默认返回 1080P
+    return 1920, 1080  # Default to 1080p
 
 
 def render_ass_video(
@@ -261,31 +261,31 @@ def render_ass_video(
     reference_height: int = 720,
 ) -> None:
     """
-    渲染 ASS 样式字幕到视频（硬字幕）
+    Burn ASS-style subtitles into a video (hard subtitles).
 
     Args:
-        video_path: 输入视频路径
-        asr_data: 字幕数据
-        output_path: 输出视频路径
-        style_str: ASS 样式字符串（包含 PlayResY）
-        layout: 字幕布局
-        crf: 视频质量参数 (0-51，越小越好)
-        preset: FFmpeg 编码预设
-        progress_callback: 进度回调 (progress: str, message: str) -> None
-        reference_height: 参考高度（固定720P）
+        video_path: input video path
+        asr_data: subtitle data
+        output_path: output video path
+        style_str: ASS style string (with PlayResY)
+        layout: subtitle layout
+        crf: video quality (0-51, lower is better)
+        preset: FFmpeg encoding preset
+        progress_callback: progress callback (progress: str, message: str) -> None
+        reference_height: reference height (fixed 720p)
     """
-    # 检查字幕数据是否为空
+    # Check for empty subtitle data
     if not asr_data or not asr_data.segments:
         raise ValueError("Empty subtitle data, cannot render video")
 
-    # 获取视频分辨率
+    # Video resolution
     width, height = _get_video_resolution(video_path)
 
-    # 根据视频高度自动缩放样式
+    # Scale the style to the video height
     scale_factor = height / reference_height
     style_str = _scale_ass_style(style_str, scale_factor)
 
-    # 生成临时 ASS 文件（传入实际视频分辨率）
+    # Write a temp ASS file with the actual video resolution
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".ass", delete=False, encoding="utf-8"
     ) as temp_file:
@@ -301,25 +301,25 @@ def render_ass_video(
 
     processed_subtitle = temp_ass_path
     try:
-        # 自动换行处理
+        # Automatic line wrapping
         processed_subtitle = auto_wrap_ass_file(temp_ass_path)
 
-        # 转义字幕路径
+        # Escape the subtitle path
         subtitle_path_escaped = Path(processed_subtitle).as_posix().replace(":", r"\:")
 
-        # 构建 FFmpeg Command
+        # Build the FFmpeg command
         vcodec = "libx264"
         if Path(output_path).suffix.lower() == ".webm":
             vcodec = "libvpx-vp9"
             logger.debug("WebM format, using libvpx-vp9")
 
-        # 添加内置字体目录支持
+        # Point the ass filter at the bundled fonts directory
         fonts_dir_escaped = FONTS_PATH.as_posix().replace(":", r"\:")
 
-        # 统一使用 ass 滤镜
+        # Always use the ass filter
         vf = f"ass='{subtitle_path_escaped}':fontsdir='{fonts_dir_escaped}'"
 
-        # 检查 CUDA 是否可用
+        # Check CUDA availability
         use_cuda = _check_cuda_available()
         cmd = ["ffmpeg"]
         if use_cuda:
@@ -348,7 +348,7 @@ def render_ass_video(
         cmd_str = subprocess.list2cmdline(cmd)
         logger.debug(f"FFmpeg ASS render cmd: {cmd_str}")
 
-        # 执行 FFmpeg
+        # Run FFmpeg
         process = None
         try:
             process = subprocess.Popen(
@@ -363,7 +363,7 @@ def render_ass_video(
                 ),
             )
 
-            # 实时Reading输出并调用回调
+            # Read output live and report progress
             total_duration = None
             current_time = 0
 
@@ -374,7 +374,7 @@ def render_ass_video(
                 if not progress_callback:
                     continue
 
-                # 解析总时长
+                # Parse the total duration
                 if total_duration is None:
                     duration_match = re.search(
                         r"Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})", output_line
@@ -383,7 +383,7 @@ def render_ass_video(
                         h, m, s = map(float, duration_match.groups())
                         total_duration = h * 3600 + m * 60 + s
 
-                # 解析当前处理时间
+                # Parse the current position
                 time_match = re.search(
                     r"time=(\d{2}):(\d{2}):(\d{2}\.\d{2})", output_line
                 )
@@ -391,7 +391,7 @@ def render_ass_video(
                     h, m, s = map(float, time_match.groups())
                     current_time = h * 3600 + m * 60 + s
 
-                # 计算进度百分比
+                # Compute the percentage
                 if total_duration:
                     progress = (current_time / total_duration) * 100
                     progress_callback(f"{round(progress)}", "Đang ghép video")
@@ -399,7 +399,7 @@ def render_ass_video(
             if progress_callback:
                 progress_callback("100", "Hoàn tất ghép video")
 
-            # 检查Return code
+            # Check the return code
             return_code = process.wait()
             if return_code != 0:
                 error_info = process.stderr.read()
@@ -425,7 +425,7 @@ def render_ass_video(
             raise
 
     finally:
-        # 清理临时文件
+        # Clean up temp files
         Path(temp_ass_path).unlink(missing_ok=True)
         if processed_subtitle != temp_ass_path:
             Path(processed_subtitle).unlink(missing_ok=True)

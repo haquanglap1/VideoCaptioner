@@ -69,11 +69,11 @@ class WhisperCppASR(BaseASR):
 
     def _make_segments(self, resp_data: str) -> List[ASRDataSeg]:
         asr_data = ASRData.from_srt(resp_data)
-        # 过滤掉纯音乐标记
+        # Drop pure music markers
         filtered_segments = []
         for seg in asr_data.segments:
             text = seg.text.strip()
-            # 保留不以【、[、(、（开头的文本
+            # Keep lines that do not open with a bracket (ASCII or full-width)
             if not (
                 text.startswith("【")
                 or text.startswith("[")
@@ -130,7 +130,7 @@ class WhisperCppASR(BaseASR):
             output_path = wav_path.with_suffix(".srt")
 
             try:
-                # 复制音频文件
+                # Copy the audio file
                 if isinstance(self.audio_input, str):
                     shutil.copy2(self.audio_input, wav_path)
                 else:
@@ -277,7 +277,7 @@ def detect_whisper_executable() -> str:
 
 
 if __name__ == "__main__":
-    # 简短示例
+    # Short example
     asr = WhisperCppASR(
         audio_input="audio.mp3",
         whisper_model="tiny",

@@ -50,6 +50,18 @@
 - Validation: ruff `videocaptioner/` pass; pyright 0 errors; test_ui/test_subtitle/test_llm/test_cli/test_editor/
   test_thread/test_dubbing/test_translate/test_utils offline: **393 passed, 26 deselected**.
 
+### Dịch comment/docstring tiếng Trung đợt 2 (mục 3)
+- 163 mục trong 6 file: `core/asr/faster_whisper.py` (34), `core/subtitle/rounded_renderer.py` (43),
+  `core/subtitle/ass_renderer.py` (36), `ui/thread/video_download_thread.py` (33),
+  `ui/thread/file_download_thread.py` (13), `core/asr/whisper_cpp.py` (4). Chỉ token COMMENT và docstring
+  theo `tokenize`, thay đúng (file, dòng); chuỗi `tr()` và message log giữ nguyên. ruff pass, import được.
+- Còn lại theo cùng thống kê: **1267 mục / 60 file**. Nhiều nhất: `ui/view/setting_interface.py` 101,
+  `ui/components/FasterWhisperSettingWidget.py` 101, `core/split/split.py` 85, `core/entities.py` 76,
+  `ui/components/WhisperCppSettingWidget.py` 66, `ui/view/batch_process_interface.py` 49,
+  `ui/view/transcription_interface.py` 46, `ui/view/subtitle_style_interface.py` 44,
+  `ui/thread/batch_process_thread.py` 43, `ui/view/llm_logs_interface.py` 35, `core/asr/chunk_merger.py` 34,
+  `core/optimize/optimize.py` 33, `core/asr/chunked_asr.py` 32; 47 file còn lại mỗi file ≤ 31.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi

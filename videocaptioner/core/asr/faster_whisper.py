@@ -58,13 +58,13 @@ class FasterWhisperASR(BaseASR):
         output_format: str = "srt",
         use_cache: bool = False,
         need_word_time_stamp: bool = False,
-        # VAD 相关参数
+        # VAD parameters
         vad_filter: bool = True,
         vad_threshold: float = 0.4,
         vad_method: str = "",  # https://github.com/Purfview/whisper-standalone-win/discussions/231
-        # 音频处理
+        # Audio processing
         ff_mdx_kim2: bool = False,
-        # 文本处理参数
+        # Text processing parameters
         one_word: int = 0,
         sentence: bool = False,
         max_line_width: int = 100,
@@ -75,7 +75,7 @@ class FasterWhisperASR(BaseASR):
     ):
         super().__init__(audio_input, use_cache)
 
-        # 基本参数
+        # Basic parameters
         self.model_path = whisper_model
         self.model_dir = model_dir
         self.faster_whisper_program = faster_whisper_program
@@ -85,15 +85,15 @@ class FasterWhisperASR(BaseASR):
         self.output_dir = output_dir
         self.output_format = output_format
 
-        # VAD 参数
+        # VAD parameters
         self.vad_filter = vad_filter
         self.vad_threshold = vad_threshold
         self.vad_method = vad_method
 
-        # 音频处理参数
+        # Audio processing parameters
         self.ff_mdx_kim2 = ff_mdx_kim2
 
-        # 文本处理参数
+        # Text processing parameters
         self.one_word = one_word
         self.sentence = sentence
         self.max_line_width = max_line_width
@@ -104,20 +104,20 @@ class FasterWhisperASR(BaseASR):
 
         self.process = None
 
-        # 断句宽度
+        # Line width for sentence splitting
         if self.language in ["zh", "ja", "ko"]:
             self.max_line_width = 30
         else:
             self.max_line_width = 90
 
-        # 断句选项
+        # Sentence splitting options
         if self.need_word_time_stamp:
             self.one_word = 1
         else:
             self.one_word = 0
             self.sentence = True
 
-        # 根据设备选择程序
+        # Pick the binary by device
         if self.device == "cpu":
             xxl_program = _which_valid("faster-whisper-xxl")
             cpu_program = _which_valid("faster-whisper")
@@ -153,23 +153,23 @@ class FasterWhisperASR(BaseASR):
             "--print_progress",
         ]
 
-        # 添加模型目录参数
+        # Model directory argument
         if self.model_dir:
             cmd.extend(["--model_dir", str(self.model_dir)])
 
         cmd.extend([str(audio_input), "-d", self.device, "--output_format", self.output_format])
 
-        # 有指定语言才传 -l，空字符串让 faster-whisper 自动检测
+        # Pass -l only for an explicit language; empty lets faster-whisper auto-detect
         if self.language:
             cmd.extend(["-l", self.language])
 
-        # 输出目录
+        # Output directory
         if self.output_dir:
             cmd.extend(["-o", str(self.output_dir)])
         else:
             cmd.extend(["-o", "source"])
 
-        # VAD 相关参数
+        # VAD parameters
         if self.vad_filter:
             cmd.extend(
                 [
@@ -184,13 +184,13 @@ class FasterWhisperASR(BaseASR):
         else:
             cmd.extend(["--vad_filter", "false"])
 
-        # 人声分离
+        # Vocal separation
         if self.ff_mdx_kim2 and self.faster_whisper_program.startswith(
             "faster-whisper-xxl"
         ):
             cmd.append("--ff_mdx_kim2")
 
-        # 文本处理参数
+        # Text processing parameters
         if self.one_word:
             self.one_word = 1
         else:
@@ -213,14 +213,14 @@ class FasterWhisperASR(BaseASR):
                 ]
             )
 
-        # 提示词
+        # Prompt
         if self.prompt:
             cmd.extend(["--initial_prompt", self.prompt])
 
-        # 完成的提示音
+        # Silence the completion beep
         cmd.extend(["--beep_off"])
 
-        # 检测 50 系显卡，添加 compute_type 参数
+        # RTX 50-series GPUs need an explicit compute_type
         if is_rtx_50_series():
             cmd.extend(["--compute_type", "float16"])
 
@@ -229,21 +229,21 @@ class FasterWhisperASR(BaseASR):
     def _make_segments(self, resp_data: str) -> List[ASRDataSeg]:
         asr_data = ASRData.from_srt(resp_data)
 
-        # 幻觉文本关键词列表
+        # Keywords that mark hallucinated text
         hallucination_keywords = [
             "请不吝点赞 订阅 转发",
             "打赏支持明镜",
         ]
-        # 过滤掉音乐标记和幻觉文本
+        # Drop music markers and hallucinated text
         filtered_segments = []
         for seg in asr_data.segments:
             text = seg.text.strip()
 
-            # 跳过音乐标记
+            # Skip music markers
             if text.startswith(("【", "[", "(", "（")):
                 continue
 
-            # 跳过包含幻觉关键词的文本
+            # Skip text containing hallucination keywords
             if any(keyword in text for keyword in hallucination_keywords):
                 continue
 
@@ -288,7 +288,7 @@ class FasterWhisperASR(BaseASR):
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
 
-            # 使用 StreamReader 处理输出
+            # Consume output through StreamReader
             reader = StreamReader(self.process)
             reader.start_reading()
 
@@ -296,11 +296,11 @@ class FasterWhisperASR(BaseASR):
             error_msg = ""
             last_progress = 0
 
-            # 实时处理输出
+            # Process output as it arrives
             while True:
-                # 检查进程状态
+                # Check process state
                 if self.process.poll() is not None:
-                    # 进程已ended，Reading剩余输出
+                    # Process ended; read the remaining output
                     for _stream_name, line in reader.get_remaining_output():
                         line = line.strip()
                         if line:
@@ -310,19 +310,19 @@ class FasterWhisperASR(BaseASR):
                                 logger.debug(line)
                     break
 
-                # Reading输出
+                # Read output
                 output = reader.get_output(timeout=0.1)
                 if output:
                     _stream_name, line = output
                     line = line.strip()
                     if line:
-                        # 解析进度百分比
+                        # Parse the progress percentage
                         if match := re.search(r"(\d+)%", line):
                             progress = int(match.group(1))
                             if progress == 100:
                                 is_finish = True
                             mapped_progress = int(5 + (progress * 0.9))
-                            # 只允许进度单调递增
+                            # Progress may only increase
                             if mapped_progress > last_progress:
                                 last_progress = mapped_progress
                                 callback(mapped_progress, f"{mapped_progress}%")
@@ -339,7 +339,7 @@ class FasterWhisperASR(BaseASR):
                 logger.error("Faster Whisper Error: %s", error_msg)
                 raise RuntimeError(error_msg)
 
-            # 判断是否识别成功
+            # Decide whether recognition succeeded
             if not output_path.exists():
                 logger.debug("Faster Whisper 返回值: %s", self.process.returncode)
                 raise RuntimeError(f"Faster Whisper 输出文件不存在: {output_path}")
@@ -351,14 +351,14 @@ class FasterWhisperASR(BaseASR):
             return output_path.read_text(encoding="utf-8")
 
     def _get_key(self):
-        """获取缓存key"""
+        """Cache key for this configuration."""
         cmd = self._build_command("")
         cmd_hash = hashlib.md5(str(cmd).encode()).hexdigest()
         return f"{self.crc32_hex}-{cmd_hash}"
 
 
 def is_rtx_50_series() -> bool:
-    """检测是否为 RTX 50 系显卡"""
+    """Whether the GPU is an RTX 50-series card."""
     if GPUtil is None:
         logger.debug("GPUtil 未安装，无法检测 GPU 型号")
         return False
@@ -366,7 +366,7 @@ def is_rtx_50_series() -> bool:
         gpus = GPUtil.getGPUs()
         for gpu in gpus:
             gpu_name = gpu.name.lower()
-            # 检测是否包含 50 系列标识，如 RTX 5090, RTX 5080 等
+            # Look for a 50-series marker such as RTX 5090 or RTX 5080
             if re.search(r"rtx\s*50\d{2}", gpu_name):
                 logger.debug(f"Detected RTX 50 系显卡: {gpu.name}")
                 return True

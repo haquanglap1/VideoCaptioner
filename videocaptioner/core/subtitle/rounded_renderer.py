@@ -25,7 +25,7 @@ logger = setup_logger("subtitle.rounded")
 
 
 def _get_video_info(video_path: str) -> Tuple[int, int, float]:
-    """获取视频分辨率和时长"""
+    """Video resolution and duration."""
     result = subprocess.run(
         ["ffmpeg", "-i", video_path], env=child_environment(),
         capture_output=True,
@@ -35,14 +35,14 @@ def _get_video_info(video_path: str) -> Tuple[int, int, float]:
         creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
     )
 
-    # 解析分辨率
+    # Parse resolution
     width, height = 0, 0
     if match := re.search(r"Stream.*Video:.* (\d{2,5})x(\d{2,5})", result.stderr):
         width, height = int(match.group(1)), int(match.group(2))
     else:
         raise ValueError(f"Cannot get video resolution: {video_path}")
 
-    # 解析时长
+    # Parse duration
     duration = 0.0
     if match := re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr):
         h, m, s = match.groups()
@@ -60,18 +60,18 @@ def render_text_block(
     style: RoundedBgStyle,
 ) -> float:
     """
-    渲染多行文本块（共享圆角背景）
+    Render a multi-line text block over one shared rounded background.
 
     Args:
-        draw: PIL ImageDraw 对象
-        texts: 文本行列表
-        font: 字体对象
-        center_x: 水平中心位置
-        top_y: 顶部 y 坐标
-        style: 样式配置
+        draw: PIL ImageDraw object
+        texts: text lines
+        font: font object
+        center_x: horizontal centre
+        top_y: top y coordinate
+        style: style configuration
 
     Returns:
-        背景框高度
+        Height of the background box
     """
     if not texts:
         return 0
@@ -79,23 +79,23 @@ def render_text_block(
     bg_color = hex_to_rgba(style.bg_color)
     text_color = hex_to_rgba(style.text_color)
 
-    # 计算All行的尺寸和垂直偏移
+    # Measure every line and its vertical offset
     line_sizes = []
     line_offsets = []
     for text in texts:
         bbox = font.getbbox(text)
         text_width = bbox[2] - bbox[0]
-        # 如果有字符间距，需要加上额外的宽度
+        # Letter spacing adds extra width
         if style.letter_spacing > 0 and len(text) > 1:
             text_width += style.letter_spacing * (len(text) - 1)
         line_sizes.append((text_width, bbox[3] - bbox[1]))
-        line_offsets.append(bbox[1])  # 记录垂直偏移，用于居中对齐
+        line_offsets.append(bbox[1])  # Keep the vertical offset for centring
 
     max_width = max(w for w, _ in line_sizes)
     line_height = max(h for _, h in line_sizes)
     total_height = line_height * len(texts) + style.line_spacing * (len(texts) - 1)
 
-    # 绘制共享背景
+    # Draw the shared background
     bg_width = max_width + style.padding_h * 2
     bg_height = total_height + style.padding_v * 2
     bg_left = center_x - bg_width // 2
@@ -107,15 +107,15 @@ def render_text_block(
         fill=bg_color,
     )
 
-    # 绘制文本（补偿字体垂直偏移）
+    # Draw text, compensating the font's vertical offset
     y = bg_top + style.padding_v
     for i, text in enumerate(texts):
         w, _ = line_sizes[i]
         x = center_x - w // 2
         y_offset = line_offsets[i]
-        text_y = y - y_offset  # 补偿垂直偏移，使文本视觉居中
+        text_y = y - y_offset  # Compensate the vertical offset so text looks centred
 
-        # 如果有字符间距，逐字符绘制
+        # With letter spacing, draw character by character
         if style.letter_spacing > 0 and len(text) > 1:
             current_x = x
             for char in text:
@@ -123,7 +123,7 @@ def render_text_block(
                 char_width = font.getbbox(char)[2] - font.getbbox(char)[0]
                 current_x += char_width + style.letter_spacing
         else:
-            # 无字符间距，一次性绘制（性能更好）
+            # No letter spacing: draw in one call (faster)
             draw.text((x, text_y), text, font=font, fill=text_color)
 
         y += line_height + style.line_spacing
@@ -139,23 +139,23 @@ def render_subtitle_image(
     style: RoundedBgStyle,
 ) -> Image.Image:
     """
-    渲染单帧字幕图像（透明背景）
+    Render one subtitle frame on a transparent background.
 
     Args:
-        primary_text: 主字幕文本
-        secondary_text: 副字幕文本
-        width: 图像宽度
-        height: 图像高度
-        style: 样式配置
+        primary_text: primary subtitle text
+        secondary_text: secondary subtitle text
+        width: image width
+        height: image height
+        style: style configuration
 
     Returns:
-        PIL Image 对象（RGBA 格式）
+        PIL Image in RGBA
     """
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     font = get_font(style.font_size, style.font_name)
 
-    # 换行处理（额外留 40px 边距防止文字贴边）
+    # Wrap lines (extra 40px margin keeps text off the edge)
     extra_margin = int(width * 0.1)
     primary_lines = (
         wrap_text(primary_text, font, width, style.padding_h, extra_margin=extra_margin)
@@ -170,7 +170,7 @@ def render_subtitle_image(
 
     center_x = width // 2
 
-    # 计算总高度
+    # Total height
     def calc_block_height(lines: List[str]) -> float:
         if not lines:
             return 0
@@ -183,11 +183,11 @@ def render_subtitle_image(
     gap = style.line_spacing if primary_lines and secondary_lines else 0
     total_height = primary_height + gap + secondary_height
 
-    # 从底部计算起始位置
+    # Start position measured from the bottom
     bottom_y = height - style.margin_bottom
     start_y = bottom_y - total_height
 
-    # 渲染文本块
+    # Render the text blocks
     current_y = start_y
     if primary_lines:
         h = render_text_block(draw, primary_lines, font, center_x, current_y, style)
@@ -208,40 +208,40 @@ def render_preview(
     reference_height: int = 720,
 ) -> str:
     """
-    渲染圆角背景字幕预览图
+    Render a rounded-background subtitle preview image.
 
     Args:
-        primary_text: 主字幕文本
-        secondary_text: 副字幕文本
-        width: 图片宽度（None=从bg_image_path自动获取）
-        height: 图片高度（None=从bg_image_path自动获取）
-        style: 圆角背景样式（包含reference_height，会根据height自动缩放）
-        bg_image_path: 背景图片路径
-        reference_height: 参考高度（固定720P）
+        primary_text: primary subtitle text
+        secondary_text: secondary subtitle text
+        width: image width (None = read from bg_image_path)
+        height: image height (None = read from bg_image_path)
+        style: rounded-background style (720p reference, scaled to height)
+        bg_image_path: background image path
+        reference_height: reference height (fixed 720p)
     Returns:
-        生成的预览图路径
+        Path of the generated preview image
     """
     if style is None:
         style = RoundedBgStyle()
 
-    # 加载或创建背景
+    # Load or create the background
     if bg_image_path and Path(bg_image_path).exists():
         background = Image.open(bg_image_path).convert("RGB")
-        # 如果未提供尺寸，从图片获取
+        # Take the size from the image when not given
         if width is None or height is None:
             width, height = background.size
     else:
-        # 没有背景图片，使用默认尺寸或提供的尺寸
+        # No background image: use the given or default size
         if width is None:
             width = 1920
         if height is None:
             height = 1080
         background = Image.new("RGB", (width, height), (20, 20, 20))
 
-    # 确保 width 和 height 不为 None（类型收窄）
+    # Narrow width/height away from None for the type checker
     assert width is not None and height is not None
 
-    # 从样式中获取参考高度，根据图片高度自动缩放样式
+    # Scale the style from its reference height to the image height
     scale_factor = height / reference_height
 
     if scale_factor != 1.0:
@@ -256,11 +256,11 @@ def render_preview(
             letter_spacing=int(style.letter_spacing * scale_factor),
         )
 
-    # 渲染字幕并叠加
+    # Render the subtitle and composite it
     subtitle_img = render_subtitle_image(primary_text, secondary_text, width, height, style)
     background.paste(subtitle_img, (0, 0), subtitle_img)
 
-    # 保存到临时目录
+    # Save into the temp directory
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".png", delete=False) as tmp_file:
         background.save(tmp_file, "PNG")
         return tmp_file.name
@@ -278,27 +278,27 @@ def render_rounded_video(
     reference_height: int = 720,
 ) -> None:
     """
-    渲染圆角背景字幕到视频（分批overlay方案）
+    Render rounded-background subtitles into a video (batched overlay).
 
-    核心流程: 直接分批overlay字幕PNG到原视频
-    每批50个字幕，避免FFmpeg文件数量限制
+    Core flow: overlay subtitle PNGs directly onto the source video in
+    batches of 50 to stay under FFmpeg's input-file limit.
 
     Args:
-        video_path: 输入视频路径
-        asr_data: 字幕数据
-        output_path: 输出视频路径
-        rounded_style: 圆角背景样式配置字典
-        layout: 字幕布局
-        crf: 视频质量参数
-        preset: FFmpeg编码预设
-        progress_callback: 进度回调 (progress: int, message: str)
-        reference_height: 参考高度（固定720P）
+        video_path: input video path
+        asr_data: subtitle data
+        output_path: output video path
+        rounded_style: rounded-background style dict
+        layout: subtitle layout
+        crf: video quality
+        preset: FFmpeg encoding preset
+        progress_callback: progress callback (progress: int, message: str)
+        reference_height: reference height (fixed 720p)
     """
-    # 检查字幕数据
+    # Check subtitle data
     if not asr_data or not asr_data.segments:
         raise ValueError("Empty subtitle data, cannot render video")
 
-    # 检查布局合理性
+    # Sanity-check the layout
     if layout == SubtitleLayoutEnum.ONLY_TRANSLATE:
         has_translation = any(
             seg.translated_text and seg.translated_text.strip() for seg in asr_data.segments
@@ -315,10 +315,10 @@ def render_rounded_video(
         if not has_translation:
             layout = SubtitleLayoutEnum.ONLY_ORIGINAL
 
-    # 获取视频信息
+    # Video info
     width, height, video_duration = _get_video_info(video_path)
 
-    # 构建并缩放样式
+    # Build and scale the style
     style_config = rounded_style or {}
     style_config["layout"] = layout
     style = RoundedBgStyle(**style_config)
@@ -339,14 +339,14 @@ def render_rounded_video(
     with tempfile.TemporaryDirectory(prefix="rounded_subtitle_") as temp_dir:
         temp_path = Path(temp_dir)
 
-        # 步骤1: 生成All字幕PNG (0-30%)
+        # Step 1: render every subtitle PNG (0-30%)
         logger.debug(
             f"Generating subtitle PNGs (total: {len(asr_data.segments)}, layout: {layout.value})"
         )
         subtitle_frames = []
 
         for i, seg in enumerate(asr_data.segments):
-            # 根据布局确定主副文本
+            # Primary/secondary text per layout
             if layout == SubtitleLayoutEnum.ONLY_ORIGINAL:
                 primary, secondary = seg.text, ""
             elif layout == SubtitleLayoutEnum.ONLY_TRANSLATE:
@@ -356,17 +356,17 @@ def render_rounded_video(
             else:  # TRANSLATE_ON_TOP
                 primary, secondary = seg.translated_text or "", seg.text
 
-            # 渲染字幕图片
+            # Render the subtitle image
             img = render_subtitle_image(primary, secondary, width, height, style)
             png_path = temp_path / f"subtitle_{i:06d}.png"
             img.save(png_path, "PNG")
 
-            # 记录时间戳
+            # Record timestamps
             start_time = seg.start_time / 1000.0
             end_time = seg.end_time / 1000.0
             subtitle_frames.append((start_time, end_time, png_path))
 
-            # 进度回调
+            # Progress callback
             if progress_callback:
                 progress = int((i + 1) / len(asr_data.segments) * 30)
                 progress_callback(progress, f"Tạo ảnh phụ đề {i + 1}/{len(asr_data.segments)}")
@@ -374,7 +374,7 @@ def render_rounded_video(
         if not subtitle_frames:
             raise ValueError("No valid subtitle images generated")
 
-        # 步骤2: 分批overlay到视频 (30-100%)
+        # Step 2: overlay onto the video in batches (30-100%)
         logger.debug("Overlaying subtitle batches onto video")
         BATCH_SIZE = 50
         current_video = video_path
@@ -385,7 +385,7 @@ def render_rounded_video(
             end_idx = min((batch_idx + 1) * BATCH_SIZE, len(subtitle_frames))
             batch_frames = subtitle_frames[start_idx:end_idx]
 
-            # 构建overlay滤镜链
+            # Build the overlay filter chain
             input_args = ["-i", current_video]
             filter_parts = []
 
@@ -401,15 +401,15 @@ def render_rounded_video(
             filter_complex = ";".join(filter_parts)
             final_output = f"[v{len(batch_frames)}]"
 
-            # 判断是否是最后一批
+            # Is this the last batch?
             is_last_batch = batch_idx == total_batches - 1
             batch_output = (
                 output_path if is_last_batch else temp_path / f"batch_{batch_idx:03d}.mp4"
             )
 
             logger.debug(f"Processing batch {batch_idx + 1}/{total_batches}（{len(batch_frames)}个字幕）")
-            # 构建 ffmpeg Command
-            # -t 参数强制保持原视频时长，防止因 overlay ended而截断视频
+            # Build the ffmpeg command
+            # -t keeps the source duration so an ended overlay cannot truncate the video
             cmd = [
                 "ffmpeg",
                 "-y",
@@ -421,7 +421,7 @@ def render_rounded_video(
                 "-map",
                 "0:a?",
                 "-t",
-                str(video_duration),  # 强制保持原视频时长
+                str(video_duration),  # Keep the source duration
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -454,12 +454,12 @@ def render_rounded_video(
                 logger.error(f"Lo batch {batch_idx + 1} that bai: {result.stderr}")
                 raise RuntimeError(f"Xu ly phu de that bai (batch {batch_idx + 1})")
 
-            # 更新进度 (30-100%)
+            # Update progress (30-100%)
             if progress_callback:
                 progress = 30 + int((batch_idx + 1) / total_batches * 70)
                 progress_callback(progress, f"Ghép video {batch_idx + 1}/{total_batches}")
 
-            # 更新当前视频
+            # The batch output becomes the next input
             current_video = str(batch_output)
 
         logger.debug("Video synthesis complete")

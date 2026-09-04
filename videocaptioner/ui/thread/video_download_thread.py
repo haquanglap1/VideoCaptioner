@@ -28,13 +28,13 @@ def _format_bytes(num_bytes: float) -> str:
 
 
 class VideoDownloadThread(QThread):
-    """视频下载线程类"""
+    """Worker thread that downloads a video with yt-dlp."""
 
     finished = pyqtSignal(
         str
-    )  # 发送下载完成的信号(视频路径, 字幕路径, 缩略图路径, 视频信息)
-    progress = pyqtSignal(int, str)  # 发送下载进度的信号
-    error = pyqtSignal(str)  # 发送错误信息的信号
+    )  # Emitted on completion: (video path, subtitle path, thumbnail path, video info)
+    progress = pyqtSignal(int, str)  # Download progress
+    error = pyqtSignal(str)  # Error message
 
     def __init__(self, url: str, work_dir: str):
         super().__init__()
@@ -79,7 +79,7 @@ class VideoDownloadThread(QThread):
         return message
 
     def progress_hook(self, d):
-        """下载进度回调函数 — robust against missing/N-A fields and ANSI noise."""
+        """yt-dlp progress hook, robust against missing/N-A fields and ANSI noise."""
         try:
             status = d.get("status")
             if status != "downloading":
@@ -123,27 +123,27 @@ class VideoDownloadThread(QThread):
             logger.warning("progress_hook error: %s", exc)
 
     def sanitize_filename(self, name: str, replacement: str = "_") -> str:
-        """清理文件名中不允许的字符"""
-        # 定义不允许的字符
+        """Strip characters that are not allowed in file names."""
+        # Disallowed characters
         forbidden_chars = r'<>:"/\\|?*'
 
-        # 替换不允许的字符
+        # Replace disallowed characters
         sanitized = re.sub(f"[{re.escape(forbidden_chars)}]", replacement, name)
 
-        # 移除控制字符
+        # Remove control characters
         sanitized = re.sub(r"[\0-\31]", "", sanitized)
 
-        # 去除文件名末尾的空格和点
+        # Trim trailing spaces and dots
         sanitized = sanitized.rstrip(" .")
 
-        # 限制文件名长度
+        # Limit the file name length
         max_length = 255
         if len(sanitized) > max_length:
             base, ext = os.path.splitext(sanitized)
             base_max_length = max_length - len(ext)
             sanitized = base[:base_max_length] + ext
 
-        # 处理Windows保留名称
+        # Handle Windows reserved names
         windows_reserved_names = {
             "CON",
             "PRN",
@@ -172,14 +172,14 @@ class VideoDownloadThread(QThread):
         if name_without_ext in windows_reserved_names:
             sanitized = f"{sanitized}_"
 
-        # 如果文件名为空，返回默认名称
+        # Fall back to a default name when empty
         if not sanitized:
             sanitized = "default_filename"
 
         return sanitized
 
     def download(self, need_subtitle: bool = True, need_thumbnail: bool = False):
-        """下载视频"""
+        """Download the video, subtitles and thumbnail."""
         import yt_dlp
 
         logger.info("开始下载视频: %s", self.url)
@@ -215,22 +215,22 @@ class VideoDownloadThread(QThread):
             format_selector = "best[ext=mp4]/best/worst"
             logger.warning("ffmpeg 未找到，使用单文件下载（最高 720p）。")
 
-        # 初始化 ydl 选项
+        # Base yt-dlp options
         initial_ydl_opts = {
             "outtmpl": {
-                "default": "%(title).200s.%(ext)s",  # 限制文件名最长200个字符
+                "default": "%(title).200s.%(ext)s",  # Cap the file name at 200 characters
                 "subtitle": "【下载字幕】.%(ext)s",
                 "thumbnail": "thumbnail",
             },
             "format": format_selector,
-            "progress_hooks": [self.progress_hook],  # 下载进度钩子
-            "quiet": True,  # 禁用日志输出
-            "no_warnings": True,  # 禁用警告信息
+            "progress_hooks": [self.progress_hook],  # Progress hook
+            "quiet": True,  # Silence logging
+            "no_warnings": True,  # Silence warnings
             "noprogress": True,
-            "writesubtitles": need_subtitle,  # 下载人工上传的字幕（优先）
-            "writeautomaticsub": need_subtitle,  # 下载自动生成的字幕（备选）
-            "writethumbnail": need_thumbnail,  # 下载缩略图
-            "thumbnail_format": "jpg",  # 指定缩略图的格式
+            "writesubtitles": need_subtitle,  # Uploaded subtitles (preferred)
+            "writeautomaticsub": need_subtitle,  # Auto-generated subtitles (fallback)
+            "writethumbnail": need_thumbnail,  # Thumbnail
+            "thumbnail_format": "jpg",  # Thumbnail format
             # Modern UA helps avoid some YouTube anti-bot rejections.
             "http_headers": {
                 "User-Agent": (
@@ -252,17 +252,17 @@ class VideoDownloadThread(QThread):
         # (android/web/ios/tv) hides formats that those clients can't serve without
         # PO tokens; yt-dlp's default client selection resolves full HD formats.
 
-        # 检查 cookies 文件
+        # Cookies file
         cookiefile_path = APPDATA_PATH / "cookies.txt"
         if cookiefile_path.exists():
             logger.info(f"使用cookiefile: {cookiefile_path}")
             initial_ydl_opts["cookiefile"] = str(cookiefile_path)
 
         with yt_dlp.YoutubeDL(initial_ydl_opts) as ydl:
-            # 提取视频信息（不下载）
+            # Extract video info without downloading
             info_dict = ydl.extract_info(self.url, download=False)
 
-            # 设置动态下载文件夹为视频标题
+            # Download folder named after the video title
             video_title = self.sanitize_filename(info_dict.get("title") or "MyVideo")
             video_work_dir = Path(self.work_dir) / self.sanitize_filename(video_title)
             subtitle_language = info_dict.get("language", None)
@@ -271,7 +271,7 @@ class VideoDownloadThread(QThread):
 
             try:
                 subtitle_download_link = None
-                # 优先使用人工上传的字幕（manual/community subtitles）
+                # Prefer uploaded (manual/community) subtitles
                 manual_subtitles = info_dict.get("subtitles")
                 if manual_subtitles and subtitle_language:
                     for lang_code in manual_subtitles:
@@ -281,7 +281,7 @@ class VideoDownloadThread(QThread):
                             ]
                             logger.info("找到人工上传字幕 (lang=%s)", lang_code)
                             break
-                # 如果没有人工字幕，退回自动生成的字幕
+                # Fall back to auto-generated subtitles
                 if not subtitle_download_link:
                     automatic_captions = info_dict.get("automatic_captions")
                     if automatic_captions and subtitle_language:
@@ -295,7 +295,7 @@ class VideoDownloadThread(QThread):
             except Exception:
                 subtitle_download_link = None
 
-            # 设置 yt-dlp 下载选项
+            # yt-dlp download options
             ydl_opts = {
                 "paths": {
                     "home": str(video_work_dir),
@@ -303,7 +303,7 @@ class VideoDownloadThread(QThread):
                     "thumbnail": str(video_work_dir),
                 },
             }
-            # 更新 yt-dlp 的配置
+            # Apply the yt-dlp options
             ydl.params.update(ydl_opts)
 
             # Use the public extractor pipeline so format selection, post-processing,
@@ -316,14 +316,14 @@ class VideoDownloadThread(QThread):
                 # Older yt-dlp builds: fall back to internal API.
                 ydl.process_info(info_dict)
 
-            # 获取视频文件路径
+            # Video file path
             video_file_path = Path(ydl.prepare_filename(info_dict))
             if video_file_path.exists():
                 video_file_path = str(video_file_path)
             else:
                 video_file_path = None
 
-            # 获取字幕文件路径
+            # Subtitle file path
             subtitle_file_path = None
             for file in video_work_dir.glob("**/【下载字幕】*"):
                 file_path = str(file)
@@ -347,7 +347,7 @@ class VideoDownloadThread(QThread):
                     subtitle_file_path = file_path
                 break
 
-            # 获取缩略图文件路径
+            # Thumbnail file path
             thumbnail_file_path = None
             for file in video_work_dir.glob("**/thumbnail*"):
                 thumbnail_file_path = str(file)
