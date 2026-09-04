@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from PyQt5.QtWidgets import QApplication
 from qfluentwidgets import (
     BodyLabel,
     MessageBoxBase,
@@ -14,6 +15,10 @@ from qfluentwidgets import (
 )
 
 from videocaptioner.core.utils.logger import setup_logger
+from videocaptioner.core.utils.platform_utils import (
+    is_onedir_frozen_build,
+    reveal_in_explorer,
+)
 from videocaptioner.ui.thread.auto_update_thread import AutoUpdateThread
 
 logger = setup_logger("update_dialog")
@@ -38,6 +43,9 @@ class UpdateDialog(MessageBoxBase):
         self.download_url = download_url
         self._thread = None
         self._temp_exe_path = None
+        # Overrides what the yes button does; None means start/retry the download.
+        # Set to reveal the downloaded installer once an in-place swap is refused.
+        self._yes_action = None
 
         self._setup_ui()
 
@@ -78,9 +86,14 @@ class UpdateDialog(MessageBoxBase):
         # Min width
         self.widget.setMinimumWidth(400)
 
-    def __onYesButtonClicked(self):
-        """Override: bắt đầu tải thay vì đóng dialog."""
-        self._start_download()
+    def validate(self) -> bool:
+        """Hook MessageBoxBase gọi khi bấm nút yes; trả về False để giữ dialog mở.
+
+        Không override ``__onYesButtonClicked`` được vì tên bị name-mangling theo
+        lớp cha, nên bản cũ chỉ đóng dialog mà không tải gì.
+        """
+        (self._yes_action or self._start_download)()
+        return False
 
     def _start_download(self):
         """Bắt đầu tải exe mới."""
@@ -111,6 +124,7 @@ class UpdateDialog(MessageBoxBase):
         self._apply_update(temp_path)
 
     def _on_error(self, error_msg: str):
+        self._yes_action = None
         self.yesButton.setEnabled(True)
         self.yesButton.setText(self.tr("Thử lại"))
         self.cancelButton.setText(self.tr("Đóng"))
@@ -120,7 +134,7 @@ class UpdateDialog(MessageBoxBase):
         logger.error("Auto-update failed: %s", error_msg)
 
     def _apply_update(self, temp_exe_path: str):
-        """Tạo batch script thay thế exe và restart app."""
+        """Thay exe bằng script nền rồi khởi động lại app (chỉ áp dụng cho bản onefile)."""
         try:
             # Determine current exe path
             if getattr(sys, "frozen", False):
@@ -133,6 +147,13 @@ class UpdateDialog(MessageBoxBase):
                 )
                 self.yesButton.setEnabled(False)
                 self.cancelButton.setText(self.tr("Đóng"))
+                return
+
+            if is_onedir_frozen_build():
+                # The app ships as exe + _internal/. Overwriting only the exe
+                # pairs it with stale _internal files and the next launch dies,
+                # so hand the downloaded installer to the user instead.
+                self._show_manual_install(temp_exe_path)
                 return
 
             # Create batch script for Windows
@@ -157,9 +178,8 @@ class UpdateDialog(MessageBoxBase):
 
                 logger.info("Running update batch: %s", batch_path)
                 subprocess.Popen(
-                    [str(batch_path)],
-                    shell=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    ["cmd", "/c", str(batch_path)],
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
             else:
                 # Unix: shell script
@@ -180,9 +200,8 @@ class UpdateDialog(MessageBoxBase):
                 logger.info("Running update script: %s", script_path)
                 subprocess.Popen([str(script_path)])
 
-            # Quit the app
-            from PyQt5.QtWidgets import QApplication
-            QApplication.quit()
+            # Quit the app so the script can overwrite the exe
+            self._quit_application()
 
         except Exception as e:
             logger.exception("Failed to apply update")
@@ -192,6 +211,31 @@ class UpdateDialog(MessageBoxBase):
             )
             self.yesButton.setEnabled(False)
             self.cancelButton.setText(self.tr("Đóng"))
+
+    def _show_manual_install(self, downloaded_path: str) -> None:
+        """Giữ file đã tải và hướng dẫn cài thủ công thay vì ghi đè exe."""
+        logger.info(
+            "Onedir build detected; skipping in-place exe replacement, installer kept at %s",
+            downloaded_path,
+        )
+        self._yes_action = self._reveal_downloaded_file
+        self.progress_bar.setVisible(False)
+        self.status_label.setText(
+            self.tr("Bản cài này gồm cả thư mục nên không thể thay riêng file exe. ")
+            + self.tr("Hãy đóng ứng dụng rồi chạy file đã tải: ")
+            + downloaded_path
+        )
+        self.yesButton.setEnabled(True)
+        self.yesButton.setText(self.tr("Mở thư mục tải về"))
+        self.cancelButton.setText(self.tr("Đóng"))
+
+    def _reveal_downloaded_file(self) -> None:
+        if self._temp_exe_path:
+            reveal_in_explorer(self._temp_exe_path)
+
+    @staticmethod
+    def _quit_application() -> None:
+        QApplication.quit()
 
     def reject(self):
         """Handle cancel/close."""

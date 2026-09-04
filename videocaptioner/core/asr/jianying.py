@@ -15,6 +15,10 @@ from .asr_data import ASRDataSeg
 from .base import BaseASR
 from .status import ASRStatus
 
+# (connect, read) seconds shared by every JianYing/VOD request so a stalled
+# upload or signing call cannot hang the ASR thread indefinitely.
+REQUEST_TIMEOUT = (10, 120)
+
 
 class JianYingASR(BaseASR):
     """JianYing (CapCut) ASR API implementation.
@@ -69,7 +73,7 @@ class JianYingASR(BaseASR):
             url="/lv/v1/audio_subtitle/submit", pf="4", appvr="6.6.0", tdid=self.tdid
         )
         headers = self._build_headers(device_time, sign)
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         resp_data = response.json()
 
         if resp_data.get("ret") != "0":
@@ -96,7 +100,7 @@ class JianYingASR(BaseASR):
             url="/lv/v1/audio_subtitle/query", pf="4", appvr="6.6.0", tdid=self.tdid
         )
         headers = self._build_headers(device_time, sign)
-        response = requests.post(url, json=payload, headers=headers)
+        response = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         resp_data = response.json()
 
         if resp_data.get("ret") != "0":
@@ -171,7 +175,9 @@ class JianYingASR(BaseASR):
         # Replace with your actual endpoint URL
         get_sign_url = "https://asrtools-update.bkfeng.top/sign"
         try:
-            response = requests.post(get_sign_url, json=data, headers=headers)
+            response = requests.post(
+                get_sign_url, json=data, headers=headers, timeout=REQUEST_TIMEOUT
+            )
             response.raise_for_status()
             response_data = response.json()
             sign = response_data.get("sign")
@@ -211,7 +217,7 @@ class JianYingASR(BaseASR):
             url="/lv/v1/upload_sign", pf="4", appvr="6.6.0", tdid=self.tdid
         )
         headers = self._build_headers(device_time, sign)
-        response = requests.post(url, data=payload, headers=headers)
+        response = requests.post(url, data=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         login_data = response.json()
         self.access_key = login_data["data"]["access_key_id"]
@@ -239,7 +245,9 @@ class JianYingASR(BaseASR):
         authorization = f"AWS4-HMAC-SHA256 Credential={self.access_key}/{datestamp}/cn/vod/aws4_request, SignedHeaders=x-amz-date;x-amz-security-token, Signature={signature}"
         headers["authorization"] = authorization
         response = requests.get(
-            f"https://vod.bytedanceapi.com/?{request_parameters}", headers=headers
+            f"https://vod.bytedanceapi.com/?{request_parameters}",
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
         )
         store_infos = response.json()
 
@@ -261,7 +269,9 @@ class JianYingASR(BaseASR):
         """Upload the file"""
         url = f"https://{self.upload_hosts}/{self.store_uri}?partNumber=1&uploadID={self.upload_id}"
         headers = self._upload_headers()
-        response = requests.put(url, data=self.file_binary, headers=headers)
+        response = requests.put(
+            url, data=self.file_binary, headers=headers, timeout=REQUEST_TIMEOUT
+        )
         resp_data = response.json()
         assert resp_data["success"] == 0, f"File upload failed: {response.text}"
         return resp_data
@@ -271,7 +281,7 @@ class JianYingASR(BaseASR):
         url = f"https://{self.upload_hosts}/{self.store_uri}?uploadID={self.upload_id}"
         payload = f"1:{self.crc32_hex}"
         headers = self._upload_headers()
-        response = requests.post(url, data=payload, headers=headers)
+        response = requests.post(url, data=payload, headers=headers, timeout=REQUEST_TIMEOUT)
         resp_data = response.json()
         return resp_data
 
@@ -279,7 +289,7 @@ class JianYingASR(BaseASR):
         """Commit the uploaded file"""
         url = f"https://{self.upload_hosts}/{self.store_uri}?uploadID={self.upload_id}&partNumber=1&x-amz-security-token={self.session_token}"
         headers = self._upload_headers()
-        requests.put(url, data=self.file_binary, headers=headers)
+        requests.put(url, data=self.file_binary, headers=headers, timeout=REQUEST_TIMEOUT)
         return self.store_uri
 
 

@@ -1,5 +1,41 @@
 # Project Status
 
+## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
+
+### Nguyên nhân và thay đổi
+- Trước đây chỉ `publish-pypi.yml` chạy gate khi push tag. Thêm `.github/workflows/ci.yml` chạy trên
+  push `master/main/dev` và mọi PR: ruff, pyright `cli/`, translation sync, test CLI, và job riêng cho
+  bộ offline `-m "not integration and not slow and not llm"` trên Ubuntu có FFmpeg + Qt offscreen.
+- `tests/test_cli/test_dub.py` fail trên máy không có FFmpeg vì `dub.run` gọi `validate_ffmpeg()` trước
+  mọi mock. Thêm `tests/test_cli/conftest.py` autouse patch validator này.
+- `test_daily_logs::test_log_interface_loads_only_selected_day` chỉ đúng vào ngày 2026-08-21 vì
+  `available_llm_log_days` luôn chèn hôm nay; nay pin `local_day`. Cùng test giữ `QApplication` trong
+  biến cục bộ nên bị GC sau khi pass và kéo `qconfig` của qfluentwidgets chết theo, làm mọi test Qt chạy
+  sau báo `wrapped C/C++ object ... has been deleted`; nay giữ tham chiếu ở module.
+- 14 lời gọi `requests` ở Bcut, JianYing và tải phụ đề YouTube không có timeout nên worker có thể treo
+  vô hạn. Thêm `REQUEST_TIMEOUT = (10, 120)` cho hai ASR và `timeout=30` cho phụ đề; kiểm bằng AST:
+  không còn `requests.*` nào thiếu timeout trong `videocaptioner/`.
+- `UpdateDialog.__onYesButtonClicked` bị name-mangling theo lớp cha nên nút "Cập nhật ngay" thực tế
+  chỉ đóng dialog; nay override `validate()` và giữ dialog mở. `_apply_update` copy exe đè
+  `sys.executable` sẽ làm hỏng bản onedir; thêm `is_onedir_frozen_build()` trong `platform_utils`,
+  với onedir chỉ giữ file đã tải, hướng dẫn chạy thủ công và nút mở thư mục. Bỏ `shell=True`, chạy
+  `cmd /c` với list args.
+- `request_logger` dùng dict toàn cục không lock và ghép response với entry "completed đầu tiên", nên
+  log request/response lẫn giữa các thread translator; entry lỗi không bao giờ bị xóa. Nay ghép qua
+  `ContextVar` một slot theo thread/context; thêm test 4 thread song song và retry.
+
+### Validation
+- Targeted `test_cli` + `test_llm` + `test_utils` + `test_ui`: **85 passed**. Ruff `videocaptioner/`
+  và test mới: pass. Pyright `cli/` và 5 module đã sửa: **0 errors, 0 warnings** (6 warning sẵn có của
+  `video_download_thread.py` không đổi). Translation sync: pass.
+- Full offline cùng filter CI: **416 passed, 17 skipped, 21 failed, 9 errors**. Toàn bộ fail/error là
+  môi trường máy này: FFmpeg không có trên PATH (pydub trong `test_asr/test_chunk*`, fixture của
+  `test_natural_dubbing_integration`) và `test_one_app_builder` vượt MAX_PATH khi basetemp dài; chạy
+  lại với basetemp ngắn: pass.
+- Chưa nghiệm thu: workflow CI chưa chạy thật trên GitHub (job `offline-tests` trên Linux chưa được
+  kiểm chứng), UpdateDialog chưa click-through trên EXE thật, Bcut/JianYing chưa gọi thật sau khi thêm
+  timeout.
+
 ## 2026-08-22 (Nghiệm thu Video Editor trên EXE và sửa lỗi phát hiện khi chạy thật)
 
 ### Nguyên nhân và thay đổi

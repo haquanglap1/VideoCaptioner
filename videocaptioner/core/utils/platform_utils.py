@@ -6,10 +6,30 @@ import logging
 import os
 import platform
 import subprocess
+import sys
 
 from videocaptioner.core.entities import TranscribeModelEnum
 
 logger = logging.getLogger(__name__)
+
+
+def is_onedir_frozen_build() -> bool:
+    """True when running from a PyInstaller onedir bundle (exe + ``_internal/``).
+
+    Onedir builds set ``sys._MEIPASS`` to the ``_internal`` directory beside the
+    executable (PyInstaller 6) or to the executable directory itself (older
+    versions); onefile builds extract to a temporary ``_MEIxxxx`` folder instead.
+    Swapping only the exe of an onedir build leaves it paired with stale
+    ``_internal`` files, so the updater uses this to refuse in-place replacement.
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if not bundle_root:
+        return False
+    bundle = os.path.abspath(str(bundle_root))
+    exe_dir = os.path.abspath(os.path.dirname(sys.executable))
+    return bundle == exe_dir or os.path.dirname(bundle) == exe_dir
 
 
 def open_folder(path):

@@ -335,7 +335,7 @@ class VideoDownloadThread(QThread):
                     )
                     os.remove(file_path)
                     if subtitle_download_link:
-                        response = requests.get(subtitle_download_link)
+                        response = requests.get(subtitle_download_link, timeout=30)
                         file_path = (
                             video_work_dir
                             / "subtitle"

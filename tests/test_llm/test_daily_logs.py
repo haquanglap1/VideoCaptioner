@@ -15,6 +15,17 @@ from videocaptioner.core.utils.log_files import (
 )
 from videocaptioner.core.utils.logger import DailySizeRotatingFileHandler
 
+_QT_APP = None
+
+
+def _qt_application() -> QApplication:
+    # Keep a module-level reference. A QApplication held only by a local is
+    # collected when the test returns and takes qfluentwidgets' global qconfig
+    # with it, which breaks every Qt test that runs later in the same session.
+    global _QT_APP
+    _QT_APP = QApplication.instance() or QApplication([])
+    return _QT_APP
+
 
 def test_daily_paths_are_stable():
     moment = datetime(2026, 8, 21, 23, 59)
@@ -65,15 +76,18 @@ def test_daily_app_handler_writes_current_date(tmp_path):
 
 
 def test_log_interface_loads_only_selected_day(tmp_path, monkeypatch):
+    from videocaptioner.core.utils import log_files
     from videocaptioner.ui.view import llm_logs_interface
 
-    app = QApplication.instance() or QApplication([])
+    app = _qt_application()
 
     first = daily_llm_log_path(tmp_path, "2026-08-20")
     second = daily_llm_log_path(tmp_path, "2026-08-21")
     first.write_text(json.dumps({"time": "2026-08-20 10:00:00", "task_id": "old"}) + "\n", encoding="utf-8")
     second.write_text(json.dumps({"time": "2026-08-21 10:00:00", "task_id": "new"}) + "\n", encoding="utf-8")
     monkeypatch.setattr(llm_logs_interface, "LOG_PATH", tmp_path)
+    # The day list always includes "today"; pin it so the test does not depend on the clock.
+    monkeypatch.setattr(log_files, "local_day", lambda value=None: "2026-08-21")
 
     widget = llm_logs_interface.LLMLogsInterface()
     try:
