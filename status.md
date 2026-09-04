@@ -62,6 +62,15 @@
   `ui/thread/batch_process_thread.py` 43, `ui/view/llm_logs_interface.py` 35, `core/asr/chunk_merger.py` 34,
   `core/optimize/optimize.py` 33, `core/asr/chunked_asr.py` 32; 47 file còn lại mỗi file ≤ 31.
 
+### Dọn 9 warning pyright còn lại (mục 4)
+- `ui/thread/video_download_thread.py`: typeshed gõ `YoutubeDL(params)` bằng TypedDict riêng `_Params` (không có
+  trong package yt-dlp 2026.7.4) còn dict option được dựng động, nên `cast(Any, ...)` ở hai điểm gọi kèm comment.
+- `ui/thread/subtitle_pipeline_thread.py`: `file_path`/`output_path` của `FullProcessTask` là Optional; thu hẹp
+  trước khi dựng đường dẫn video lồng tiếng, thiếu thì báo qua `handle_error` (TaskFactory luôn đặt hai giá trị).
+- `ui/view/batch_process_interface.py`: `_current_task_type()` thu hẹp `currentData()` (chỉ None trước init) về
+  `FULL_PROCESS` mặc định, dùng ở 5 chỗ đọc task type.
+- Validation: pyright `videocaptioner/` **0 errors, 0 warnings**; ruff pass.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi

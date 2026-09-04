@@ -1,6 +1,7 @@
 import os
 import re
 from pathlib import Path
+from typing import Any, cast
 
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -258,7 +259,9 @@ class VideoDownloadThread(QThread):
             logger.info(f"使用cookiefile: {cookiefile_path}")
             initial_ydl_opts["cookiefile"] = str(cookiefile_path)
 
-        with yt_dlp.YoutubeDL(initial_ydl_opts) as ydl:
+        # typeshed types the params as a private TypedDict; the dict is built
+        # dynamically above, so hand it over untyped.
+        with yt_dlp.YoutubeDL(cast(Any, initial_ydl_opts)) as ydl:
             # Extract video info without downloading
             info_dict = ydl.extract_info(self.url, download=False)
 
@@ -304,7 +307,7 @@ class VideoDownloadThread(QThread):
                 },
             }
             # Apply the yt-dlp options
-            ydl.params.update(ydl_opts)
+            ydl.params.update(cast(Any, ydl_opts))
 
             # Use the public extractor pipeline so format selection, post-processing,
             # and subtitle writing all run as expected.

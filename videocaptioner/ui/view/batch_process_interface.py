@@ -152,8 +152,15 @@ class BatchProcessInterface(QWidget):
         self.task_table.setContextMenuPolicy(Qt.CustomContextMenu)  # type: ignore
         self.task_table.customContextMenuRequested.connect(self.show_context_menu)
 
-    def on_add_file_clicked(self):
+    def _current_task_type(self) -> BatchTaskType:
+        """The combo is filled from BatchTaskType, so data is None only before init."""
         task_type = self.task_type_combo.currentData()
+        if isinstance(task_type, BatchTaskType):
+            return task_type
+        return BatchTaskType.FULL_PROCESS
+
+    def on_add_file_clicked(self):
+        task_type = self._current_task_type()
         file_filter = ""
         if task_type in [
             BatchTaskType.TRANSCRIBE,
@@ -186,7 +193,7 @@ class BatchProcessInterface(QWidget):
         self.add_files(files)
 
     def add_files(self, file_paths):
-        task_type = self.task_type_combo.currentData()
+        task_type = self._current_task_type()
 
         # 展开文件夹为其中的文件（最多 3 层深度）
         max_depth = 3
@@ -352,7 +359,7 @@ class BatchProcessInterface(QWidget):
 
     def open_output_folder(self, file_path: str):
         # 根据任务类型和文件路径确定输出文件夹
-        task_type = self.task_type_combo.currentData()
+        task_type = self._current_task_type()
         file_dir = os.path.dirname(file_path)
 
         if task_type == BatchTaskType.FULL_PROCESS:
@@ -430,7 +437,7 @@ class BatchProcessInterface(QWidget):
             file_path = self.task_table.item(row, 0).toolTip()
             status = self.task_table.item(row, 2).text()
             if status == str(BatchTaskStatus.WAITING):
-                task_type = self.task_type_combo.currentData()
+                task_type = self._current_task_type()
                 batch_task = BatchTask(file_path, task_type)
                 self.batch_thread.add_task(batch_task)
 
@@ -446,7 +453,7 @@ class BatchProcessInterface(QWidget):
         )
 
         # 创建并添加单个任务
-        task_type = self.task_type_combo.currentData()
+        task_type = self._current_task_type()
         batch_task = BatchTask(file_path, task_type)
         self.batch_thread.add_task(batch_task)
 

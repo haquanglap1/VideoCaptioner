@@ -122,10 +122,14 @@ class SubtitlePipelineThread(QThread):
             if dubbing_enabled:
                 self.progress.emit(d_start, self.tr("Bắt đầu lồng tiếng"))
 
-                # Output dubbed video to a temp file
+                # Output dubbed video next to the final output; the task factory
+                # always sets output_path, so a blank one is a wiring bug.
+                source_path, output_path = self.task.file_path, self.task.output_path
+                if not source_path or not output_path:
+                    handle_error(self.tr("Thiếu đường dẫn đầu ra cho video lồng tiếng"))
+                    return
                 dubbed_video_path = str(
-                    Path(self.task.output_path).parent
-                    / f"{Path(self.task.file_path).stem}_dubbed.mp4"
+                    Path(output_path).parent / f"{Path(source_path).stem}_dubbed.mp4"
                 )
 
                 dubbing_task = DubbingTask(
