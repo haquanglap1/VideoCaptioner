@@ -45,20 +45,35 @@ from videocaptioner.core.editor.commands import (
     CompositeCommand,
     DeleteCueCommand,
     DeleteLayerCommand,
-    EditCueSpeakerCommand,
-    EditCueTextCommand,
     EditCueTimingCommand,
     EditLayerCommand,
-    EditTrackStateCommand,
-    EditVoiceSettingsCommand,
     SplitCueCommand,
 )
 from videocaptioner.core.editor.media import cleanup_preview_files, fast_preview_range
 from videocaptioner.core.editor.models import (
-    EditorCue,
-    EditorLayer,
     EditorLayerKind,
     EditorProject,
+)
+from videocaptioner.core.editor.presenter import (
+    DEFAULT_BLUR_STRENGTH,
+    FX_TRACK_ID,
+    MASK_MODES,
+    CuePlacementError,
+    inspector_commands,
+    layer_index,
+    layer_list_label,
+    layer_pending_changes,
+    layer_properties,
+    layer_range,
+    new_cue,
+    new_layer,
+    preview_output_path,
+    split_position,
+    suggested_ass_path,
+    suggested_export_path,
+    suggested_project_path,
+    track_locked,
+    track_state_command,
 )
 from videocaptioner.core.editor.project_store import EditorProjectStore
 from videocaptioner.ui.components.editor import (
@@ -617,31 +632,7 @@ class VideoEditorInterface(QWidget):
         if not self.project:
             return
         try:
-            cue = self.project.cue_by_id(cue_id)
-            commands = []
-            if (cue.start_ms, cue.end_ms) != (values["start_ms"], values["end_ms"]):
-                commands.append(
-                    EditCueTimingCommand(
-                        self.project, cue_id, values["start_ms"], values["end_ms"]
-                    )
-                )
-            for field_name in ("source_text", "display_text", "tts_text"):
-                if getattr(cue, field_name) != values[field_name]:
-                    commands.append(
-                        EditCueTextCommand(self.project, cue_id, field_name, values[field_name])
-                    )
-            if cue.speaker != values["speaker"]:
-                commands.append(EditCueSpeakerCommand(self.project, cue_id, values["speaker"]))
-            if cue.voice != values["voice"] or cue.voice_speed != values["voice_speed"]:
-                commands.append(
-                    EditVoiceSettingsCommand(
-                        self.project,
-                        cue_id,
-                        values["voice"],
-                        values["voice_speed"],
-                        dict(cue.voice_settings),
-                    )
-                )
+            commands = inspector_commands(self.project, cue_id, values)
             if commands:
                 self.command_stack.execute(CompositeCommand(commands, "Edit cue in inspector"))
             else:
@@ -653,36 +644,24 @@ class VideoEditorInterface(QWidget):
         if not self.project:
             return
         try:
-            if field_name == "muted":
-                command = EditTrackStateCommand(self.project, track_id, muted=value)
-            elif field_name == "locked":
-                command = EditTrackStateCommand(self.project, track_id, locked=value)
-            elif field_name == "visible":
-                command = EditTrackStateCommand(self.project, track_id, visible=value)
-            else:
-                raise ValueError(f"Unsupported track state: {field_name}")
-            self.command_stack.execute(command)
+            self.command_stack.execute(
+                track_state_command(self.project, track_id, field_name, value)
+            )
         except Exception as exc:
             self._show_error(str(exc))
 
     def add_cue(self) -> None:
         if not self.project:
             return
-        position = self.project.playhead_ms
-        if self.project.active_cue_at(position):
-            self._show_error(self.tr("Playhead is inside an existing cue"))
+        try:
+            cue = new_cue(self.project, self.project.playhead_ms)
+        except CuePlacementError as exc:
+            self._show_error(
+                self.tr("Playhead is inside an existing cue")
+                if exc.reason == "inside_cue"
+                else self.tr("No free timeline space for a new cue")
+            )
             return
-        previous_end = max((cue.end_ms for cue in self.project.cues if cue.end_ms <= position), default=0)
-        next_start = min(
-            (cue.start_ms for cue in self.project.cues if cue.start_ms >= position),
-            default=self.project.duration_ms,
-        )
-        start = max(position, previous_end)
-        end = min(next_start, start + 1000)
-        if end - start < 50:
-            self._show_error(self.tr("No free timeline space for a new cue"))
-            return
-        cue = EditorCue(f"cue-{uuid4().hex[:16]}", start, end, "", "New subtitle", "New subtitle")
         try:
             self.command_stack.execute(AddCueCommand(self.project, cue))
             self.select_cue(cue.id)
@@ -692,10 +671,7 @@ class VideoEditorInterface(QWidget):
     def split_cue(self, cue_id: str) -> None:
         if not self.project or not cue_id:
             return
-        cue = self.project.cue_by_id(cue_id)
-        split_ms = self.project.playhead_ms
-        if not cue.start_ms + 50 <= split_ms <= cue.end_ms - 50:
-            split_ms = cue.start_ms + cue.duration_ms // 2
+        split_ms = split_position(self.project.cue_by_id(cue_id), self.project.playhead_ms)
         try:
             self.command_stack.execute(SplitCueCommand(self.project, cue_id, split_ms))
             self.select_cue(cue_id)
@@ -746,11 +722,10 @@ class VideoEditorInterface(QWidget):
             return
         path = self.project_path
         if not path:
-            suggested = str(Path(self.project.video_path).with_suffix(EditorProjectStore.project_suffix))
             path, _ = QFileDialog.getSaveFileName(
                 self,
                 self.tr("Save editor project"),
-                suggested,
+                suggested_project_path(self.project.video_path),
                 self.tr("Editor Project (*.vceditor.json)"),
             )
         if not path:
@@ -768,7 +743,7 @@ class VideoEditorInterface(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self,
             self.tr("Explicit Save as ASS"),
-            str(Path(self.project.video_path).with_suffix(".ass")),
+            suggested_ass_path(self.project.video_path),
             self.tr("Advanced SubStation Alpha (*.ass)"),
         )
         if not path:
@@ -786,13 +761,12 @@ class VideoEditorInterface(QWidget):
             return
         signature = uuid4().hex
         self._signatures["preview"] = signature
-        output_dir = CACHE_PATH / "editor_preview" / self.project.project_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output = preview_output_path(CACHE_PATH, self.project.project_id, signature)
+        output.parent.mkdir(parents=True, exist_ok=True)
         # Every run used to leave an mp4 behind; drop the ones no player holds.
         self.preview.exit_rendered_preview()
-        cleanup_preview_files(output_dir)
+        cleanup_preview_files(output.parent)
         self._preview_offset_ms = fast_preview_range(self.project)[0]
-        output = output_dir / f"preview-{signature}.mp4"
         thread = EditorRenderThread(signature, "preview", self.project, str(output), parent=self)
         self._start_render_thread("preview", thread)
 
@@ -802,7 +776,7 @@ class VideoEditorInterface(QWidget):
         output, _ = QFileDialog.getSaveFileName(
             self,
             self.tr("Export current editor state"),
-            str(Path(self.project.video_path).with_name(Path(self.project.video_path).stem + "-edited.mp4")),
+            suggested_export_path(self.project.video_path),
             self.tr("MP4 Video (*.mp4)"),
         )
         if not output:
@@ -914,62 +888,20 @@ class VideoEditorInterface(QWidget):
         self.progress.setValue(100)
         self._show_success(self.tr("Regenerated only the selected cue/group"))
 
-    def _layer_range(self) -> tuple[int, int]:
-        assert self.project is not None
-        if (
-            self.project.selection_start_ms is not None
-            and self.project.selection_end_ms is not None
-            and self.project.selection_end_ms > self.project.selection_start_ms
-        ):
-            return self.project.selection_start_ms, self.project.selection_end_ms
-        start = self.project.playhead_ms
-        return start, min(self.project.duration_ms, start + 5000)
-
     def add_visual_layer(self, kind: EditorLayerKind) -> None:
         if not self.project:
             return
-        if self._track_locked("track-fx1"):
+        if track_locked(self.project, FX_TRACK_ID):
             self._show_error(self.tr("FX1 track is locked"))
             return
-        start_ms, end_ms = self._layer_range()
+        start_ms, end_ms = layer_range(self.project)
         if end_ms <= start_ms:
             self._show_error(self.tr("Visual layer range is empty"))
             return
-        properties = {}
-        name = kind.value.title()
-        if kind == EditorLayerKind.TEXT:
-            text, ok = QInputDialog.getText(self, self.tr("Add Text"), self.tr("Text:"))
-            if not ok:
-                return
-            properties = {"text": text, "font_size": 42, "font_color": "white", "outline_width": 2}
-        elif kind == EditorLayerKind.LOGO:
-            path, _ = QFileDialog.getOpenFileName(
-                self, self.tr("Add Logo"), "", self.tr("Image (*.png *.jpg *.jpeg *.webp)")
-            )
-            if not path:
-                return
-            properties = {"path": path}
-        elif kind == EditorLayerKind.MASK:
-            modes = ["solid", "pixelate", "blur"]
-            mode, ok = QInputDialog.getItem(self, self.tr("Add Mask"), self.tr("Mode:"), modes, 0, False)
-            if not ok:
-                return
-            properties = {"mode": mode, "color": "black", "strength": 12}
-        else:
-            strength, ok = QInputDialog.getInt(
-                self, self.tr("Add Blur"), self.tr("Strength:"), 12, 1, 50
-            )
-            if not ok:
-                return
-            properties = {"strength": strength}
-        layer = EditorLayer(
-            f"layer-{uuid4().hex[:12]}",
-            kind,
-            start_ms,
-            end_ms,
-            name=self._unique_layer_name(name),
-            properties=properties,
-        )
+        value = self._ask_layer_value(kind)
+        if value is None:
+            return
+        layer = new_layer(self.project, kind, layer_properties(kind, value), start_ms, end_ms)
         try:
             self.command_stack.execute(AddLayerCommand(self.project, layer))
             self.select_layer(layer.id)
@@ -977,34 +909,31 @@ class VideoEditorInterface(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
 
-    def _unique_layer_name(self, base: str) -> str:
-        assert self.project is not None
-        existing = {layer.name for layer in self.project.layers}
-        if base not in existing:
-            return base
-        index = 2
-        while f"{base} {index}" in existing:
-            index += 1
-        return f"{base} {index}"
-
-    def _track_locked(self, track_id: str) -> bool:
-        if not self.project:
-            return False
-        try:
-            return self.project.track_by_id(track_id).locked
-        except KeyError:
-            return False
+    def _ask_layer_value(self, kind: EditorLayerKind):
+        """The one dialog input a new layer needs; ``None`` when cancelled."""
+        if kind == EditorLayerKind.TEXT:
+            text, ok = QInputDialog.getText(self, self.tr("Add Text"), self.tr("Text:"))
+            return text if ok else None
+        if kind == EditorLayerKind.LOGO:
+            path, _ = QFileDialog.getOpenFileName(
+                self, self.tr("Add Logo"), "", self.tr("Image (*.png *.jpg *.jpeg *.webp)")
+            )
+            return path or None
+        if kind == EditorLayerKind.MASK:
+            mode, ok = QInputDialog.getItem(
+                self, self.tr("Add Mask"), self.tr("Mode:"), list(MASK_MODES), 0, False
+            )
+            return mode if ok else None
+        strength, ok = QInputDialog.getInt(
+            self, self.tr("Add Blur"), self.tr("Strength:"), DEFAULT_BLUR_STRENGTH, 1, 50
+        )
+        return strength if ok else None
 
     def select_layer(self, layer_id: str) -> None:
         if not self.project or not layer_id:
             return
-        try:
-            index = next(
-                position
-                for position, layer in enumerate(self.project.layers)
-                if layer.id == layer_id
-            )
-        except StopIteration:
+        index = layer_index(self.project, layer_id)
+        if index < 0:
             return
         self._selected_layer_id = layer_id
         self.layer_list.blockSignals(True)
@@ -1039,12 +968,7 @@ class VideoEditorInterface(QWidget):
         if not self.project:
             return
         try:
-            layer = self.project.layer_by_id(layer_id)
-            pending = {
-                key: value
-                for key, value in changes.items()
-                if getattr(layer, key, None) != value
-            }
+            pending = layer_pending_changes(self.project.layer_by_id(layer_id), changes)
             if not pending:
                 self.status_label.setText(self.tr("No layer changes"))
                 return
@@ -1083,11 +1007,7 @@ class VideoEditorInterface(QWidget):
         selected_row = -1
         if self.project:
             for index, layer in enumerate(self.project.layers):
-                item = QListWidgetItem(
-                    f"{layer.kind.value.upper()}  {layer.start_ms / 1000:.2f}s–"
-                    f"{layer.end_ms / 1000:.2f}s  {layer.name}"
-                    + ("" if layer.visible else "  ·")
-                )
+                item = QListWidgetItem(layer_list_label(layer))
                 item.setData(Qt.UserRole, layer.id)
                 self.layer_list.addItem(item)
                 if layer.id == self._selected_layer_id:

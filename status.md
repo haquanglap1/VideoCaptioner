@@ -24,6 +24,32 @@
 - Chưa nghiệm thu: LLM thật (không có API key hay local server), dubbing/TTS thật, auto-update, và workflow
   chạy trực tiếp qua EXE. EXE này build từ `176ca84` nên chưa chứa các thay đổi mục 2–5.
 
+### Tách logic khỏi view đợt 2: style, settings, editor (mục 2)
+- `core/subtitle/style_presenter.py` (không import Qt): `PREVIEW_TEXTS`/`PREVIEW_ORIENTATIONS`,
+  `preview_text_pair`, `default_background`/`preview_background`, `parse_rgba_hex`/`format_rgba_hex`,
+  `font_choices` + `pil_can_load_font`, `style_file_path`/`resolve_style_path`/`list_style_ids`/`choose_style_id`/
+  `save_style`, `rounded_bg_style`, `render_style_preview` (chọn renderer theo `StyleMode`), `first_image_path`.
+  `SubtitleStyleInterface` (1281 → 967 dòng) chỉ còn snapshot widget ↔ `SubtitleStyle` (`_ass_style`,
+  `_rounded_style`, `_apply_style`); hai QThread preview gộp thành `StylePreviewThread`; `generateAssStyles`
+  thay bằng `SubtitleStyle.to_ass_string()` (cùng chuỗi ASS, bold=-1); load/save rounded đi qua
+  `SubtitleStyle.from_file`/`to_json_dict` thay vì dict thủ công.
+- `core/llm/services.py`: `LLM_SERVICE_PRESETS` (prefix trong settings.json, attr trên `cfg`, base mặc định, model
+  gợi ý, base có sửa được hay không, key mặc định cho Ollama/LM Studio, placeholder), `settings_prefix_for`,
+  `fill_default_api_key`, `missing_whisper_api_fields`; `core/entities.enum_from_display` thay
+  `_enum_from_display`. `SettingInterface` (1120 → 1006) dựng card theo bảng; CLI `GUI_LLM_SERVICE_PREFIX` suy
+  ra từ cùng bảng nên không còn hai bản map provider.
+- `core/editor/presenter.py`: `new_cue_span`/`new_cue` (`CuePlacementError.reason` = `inside_cue`/`no_space`),
+  `split_position`, `inspector_commands`, `track_state_command`/`track_locked`, `layer_range`,
+  `unique_layer_name`, `layer_properties`, `new_layer`, `layer_index`, `layer_pending_changes`,
+  `layer_list_label`, đường dẫn gợi ý và `preview_output_path`. `VideoEditorInterface` (1117 → 1043) giữ dialog
+  trong `_ask_layer_value`; `CommandStack` và các command hiện có không đổi.
+- Test mới: `tests/test_subtitle/test_style_presenter.py` (26), `tests/test_ui/test_subtitle_style_interface.py`
+  (5, offscreen, `SUBTITLE_STYLE_PATH` trỏ tmp, preview stub, cfg.file đã cô lập), `tests/test_llm/test_services.py`
+  (6, gồm đối chiếu với CLI), `tests/test_ui/test_setting_interface.py` (5), `tests/test_editor/test_presenter.py`
+  (15).
+- Validation: ruff `videocaptioner/` pass; pyright 0 errors; test_ui/test_subtitle/test_llm/test_cli/test_editor/
+  test_thread/test_dubbing/test_translate/test_utils offline: **393 passed, 26 deselected**.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi

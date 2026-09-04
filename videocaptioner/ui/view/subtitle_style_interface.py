@@ -1,8 +1,6 @@
-import json
 from pathlib import Path
 from typing import Optional, Tuple
 
-from PIL import ImageFont
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QColor, QFontDatabase
 from PyQt5.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout, QWidget
@@ -23,9 +21,27 @@ from qfluentwidgets import FluentIcon as FIF
 from videocaptioner.config import ASSETS_PATH, SUBTITLE_STYLE_PATH
 from videocaptioner.core.constant import INFOBAR_DURATION_SUCCESS, INFOBAR_DURATION_WARNING
 from videocaptioner.core.entities import SubtitleLayoutEnum, SubtitleRenderModeEnum
-from videocaptioner.core.subtitle import get_builtin_fonts, render_ass_preview, render_preview
-from videocaptioner.core.subtitle.style_manager import StyleMode
-from videocaptioner.core.subtitle.styles import RoundedBgStyle
+from videocaptioner.core.subtitle import get_builtin_fonts
+from videocaptioner.core.subtitle.style_manager import SecondaryStyle, StyleMode, SubtitleStyle
+from videocaptioner.core.subtitle.style_presenter import (
+    DEFAULT_STYLE_ID,
+    PREVIEW_ORIENTATIONS,
+    PREVIEW_TEXTS,
+    choose_style_id,
+    default_background,
+    first_image_path,
+    font_choices,
+    format_rgba_hex,
+    list_style_ids,
+    parse_rgba_hex,
+    pil_can_load_font,
+    preview_background,
+    preview_text_pair,
+    render_style_preview,
+    resolve_style_path,
+    save_style,
+    style_mode_for,
+)
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
@@ -36,92 +52,27 @@ from videocaptioner.ui.components.MySettingCard import (
     SpinBoxSettingCard,
 )
 
-PERVIEW_TEXTS = {
-    "长文本": (
-        "This is a long text for testing subtitle preview, text wrapping, and style settings.",
-        "这是一段用于测试字幕预览、自动换行以及样式设置的较长文本内容。",
-    ),
-    "中文本": (
-        "Welcome to apply for the prestigious South China Normal University!",
-        "欢迎报考百年名校华南师范大学",
-    ),
-    "短文本": ("Elementary school students know this", "小学二年级的都知道"),
-}
 
-DEFAULT_BG_LANDSCAPE = {
-    "path": ASSETS_PATH / "default_bg_landscape.png",
-    "width": 1280,
-    "height": 720,
-}
-DEFAULT_BG_PORTRAIT = {
-    "path": ASSETS_PATH / "default_bg_portrait.png",
-    "width": 480,
-    "height": 852,
-}
-
-
-class AssPreviewThread(QThread):
-    """ASS 样式预览线程"""
+class StylePreviewThread(QThread):
+    """Render one preview image off the UI thread; the presenter picks the renderer."""
 
     previewReady = pyqtSignal(str)
 
     def __init__(
         self,
+        style: SubtitleStyle,
         preview_text: Tuple[str, Optional[str]],
-        style_str: str,
         bg_image_path: str,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
     ):
         super().__init__()
-        self.preview_text = preview_text
-        self.width = width
-        self.height = height
-        self.style_str = style_str
-        self.bg_image_path = bg_image_path
-
-    def run(self):
-        preview_path = render_ass_preview(
-            style_str=self.style_str,
-            preview_text=self.preview_text,
-            bg_image_path=self.bg_image_path,
-            width=self.width,
-            height=self.height,
-        )
-        self.previewReady.emit(preview_path)
-
-
-class RoundedBgPreviewThread(QThread):
-    """圆角背景预览线程"""
-
-    previewReady = pyqtSignal(str)
-
-    def __init__(
-        self,
-        style: RoundedBgStyle,
-        preview_text: Tuple[str, Optional[str]],
-        width: Optional[int] = None,
-        height: Optional[int] = None,
-        bg_image_path: Optional[str] = None,
-    ):
-        super().__init__()
-        self.primary_text = preview_text[0]
-        self.secondary_text = preview_text[1] or ""
-        self.width = width
-        self.height = height
         self.style = style
+        self.preview_text = preview_text
         self.bg_image_path = bg_image_path
 
     def run(self):
-        preview_path = render_preview(
-            primary_text=self.primary_text,
-            secondary_text=self.secondary_text,
-            width=self.width,
-            height=self.height,
-            style=self.style,
-            bg_image_path=self.bg_image_path,
+        self.previewReady.emit(
+            render_style_preview(self.style, self.preview_text, self.bg_image_path)
         )
-        self.previewReady.emit(preview_path)
 
 
 class SubtitleStyleInterface(QWidget):
@@ -445,7 +396,7 @@ class SubtitleStyleInterface(QWidget):
             FIF.MESSAGE,  # type: ignore
             self.tr("预览文字"),
             self.tr("设置预览显示的文字内容"),
-            texts=list(PERVIEW_TEXTS.keys()),
+            texts=list(PREVIEW_TEXTS.keys()),
             parent=self.previewGroup,
         )
 
@@ -453,7 +404,7 @@ class SubtitleStyleInterface(QWidget):
             FIF.LAYOUT,  # type: ignore
             self.tr("预览方向"),
             self.tr("设置预览图片的显示方向"),
-            texts=["横屏", "竖屏"],
+            texts=list(PREVIEW_ORIENTATIONS),
             parent=self.previewGroup,
         )
 
@@ -532,83 +483,36 @@ class SubtitleStyleInterface(QWidget):
         )
 
     def __setValues(self):
-        """设置初始值"""
-        # 设置渲染模式
+        """Seed the widgets from cfg, then load the persisted style."""
         self.renderModeCard.comboBox.setCurrentText(
             self._display_for_render_mode(cfg.subtitle_render_mode.value)
         )
-
-        # 设置字幕排布
         self.layoutCard.comboBox.setCurrentText(
             self._display_for_layout(cfg.subtitle_layout.value)
         )
-
-        # 设置字幕样式
         self.styleNameComboBox.comboBox.setCurrentText(cfg.get(cfg.subtitle_style_name))
 
-        # 获取字体列表（内置字体 + 系统字体）
-        builtin_fonts = get_builtin_fonts()
-        builtin_font_names = [f["name"] for f in builtin_fonts]
-
-        fontDatabase = QFontDatabase()
-        fontFamilies = fontDatabase.families()
-
-        # 过滤系统字体：
-        # 1. 排除私有字体（以 . 开头）
-        # 2. 排除已有的内置字体
-        # 3. 只保留 PIL 能实际加载的字体（用于圆角背景渲染）
-        system_fonts = []
-        for font_name in fontFamilies:
-            if font_name.startswith(".") or font_name in builtin_font_names:
-                continue
-            # 测试 PIL 是否能加载此字体
-            try:
-                ImageFont.truetype(font_name, 12)  # 测试用小尺寸
-                system_fonts.append(font_name)
-            except (OSError, IOError):
-                # PIL 无法加载，跳过此字体
-                pass
-
-        # 合并字体列表：内置字体在最前面
-        all_fonts = builtin_font_names + sorted(system_fonts)
-
-        # ASS 模式字体
-        self.assPrimaryFontCard.addItems(all_fonts)
-        self.assSecondaryFontCard.addItems(all_fonts)
-        self.assPrimaryFontCard.comboBox.setMaxVisibleItems(12)
-        self.assSecondaryFontCard.comboBox.setMaxVisibleItems(12)
-
-        # 圆角背景模式字体
-        self.roundedFontCard.addItems(all_fonts)
-        self.roundedFontCard.comboBox.setMaxVisibleItems(12)
-
-        # 设置圆角背景模式的初始值
-        self.roundedFontSizeCard.spinBox.setValue(cfg.get(cfg.rounded_bg_font_size))
-        self.roundedCornerRadiusCard.spinBox.setValue(
-            cfg.get(cfg.rounded_bg_corner_radius)
+        # Bundled fonts first; system families only when Pillow can open them,
+        # otherwise the rounded renderer would silently fall back to a default.
+        builtin_font_names = [font["name"] for font in get_builtin_fonts()]
+        all_fonts = font_choices(
+            builtin_font_names, QFontDatabase().families(), pil_can_load_font
         )
+        for card in (self.assPrimaryFontCard, self.assSecondaryFontCard, self.roundedFontCard):
+            card.addItems(all_fonts)
+            card.comboBox.setMaxVisibleItems(12)
+
+        self.roundedFontSizeCard.spinBox.setValue(cfg.get(cfg.rounded_bg_font_size))
+        self.roundedCornerRadiusCard.spinBox.setValue(cfg.get(cfg.rounded_bg_corner_radius))
         self.roundedPaddingHCard.spinBox.setValue(cfg.get(cfg.rounded_bg_padding_h))
         self.roundedPaddingVCard.spinBox.setValue(cfg.get(cfg.rounded_bg_padding_v))
-        self.roundedMarginBottomCard.spinBox.setValue(
-            cfg.get(cfg.rounded_bg_margin_bottom)
-        )
-        self.roundedLineSpacingCard.spinBox.setValue(
-            cfg.get(cfg.rounded_bg_line_spacing)
-        )
-        self.roundedLetterSpacingCard.spinBox.setValue(
-            cfg.get(cfg.rounded_bg_letter_spacing)
-        )
+        self.roundedMarginBottomCard.spinBox.setValue(cfg.get(cfg.rounded_bg_margin_bottom))
+        self.roundedLineSpacingCard.spinBox.setValue(cfg.get(cfg.rounded_bg_line_spacing))
+        self.roundedLetterSpacingCard.spinBox.setValue(cfg.get(cfg.rounded_bg_letter_spacing))
+        self.roundedTextColorCard.setColor(QColor(cfg.get(cfg.rounded_bg_text_color)))
+        self.roundedBgColorCard.setColor(QColor(*parse_rgba_hex(cfg.get(cfg.rounded_bg_color))))
 
-        # 设置颜色
-        text_color = cfg.get(cfg.rounded_bg_text_color)
-        self.roundedTextColorCard.setColor(QColor(text_color))
-        bg_color = cfg.get(cfg.rounded_bg_color)
-        self.roundedBgColorCard.setColor(self._parseRgbaHex(bg_color))
-
-        # 加载样式列表（根据当前模式）
         self._refreshStyleList()
-
-        # 根据当前渲染模式显示/隐藏设置组
         self._updateVisibleGroups()
 
     def connectSignals(self):
@@ -699,7 +603,6 @@ class SubtitleStyleInterface(QWidget):
         signalBus.subtitle_render_mode_changed.connect(self.on_render_mode_changed_external)
 
     def on_open_style_folder_clicked(self):
-        """打开样式文件夹"""
         open_folder(str(SUBTITLE_STYLE_PATH))
 
     def on_subtitle_layout_changed(self, layout: str):
@@ -708,22 +611,21 @@ class SubtitleStyleInterface(QWidget):
         self.layoutCard.setCurrentText(self._display_for_layout(layout_enum))
 
     def on_render_mode_changed_external(self, mode_text: str):
-        """处理外部渲染模式变更（从视频合成界面同步）"""
+        """Mirror a render-mode change made on the synthesis page."""
         mode = self._render_mode_from_text(mode_text)
-        # 避免信号循环：阻断信号后再更新
+        # Block the combo signal so this does not bounce back through onRenderModeChanged.
         self.renderModeCard.comboBox.blockSignals(True)
         self.renderModeCard.comboBox.setCurrentText(self._display_for_render_mode(mode))
         self.renderModeCard.comboBox.blockSignals(False)
-        # 手动触发 UI 更新
         self._updateVisibleGroups()
         self._refreshStyleList()
         self.updatePreview()
 
     def onRenderModeChanged(self):
-        """渲染模式切换（本界面触发）"""
+        """Render mode changed on this page: persist, broadcast, reload styles."""
         mode = self._getCurrentRenderMode()
         cfg.set(cfg.subtitle_render_mode, mode)
-        # 断开自身监听，避免信号回传导致重复执行
+        # Disconnect our own listener so the broadcast does not re-run this handler.
         signalBus.subtitle_render_mode_changed.disconnect(self.on_render_mode_changed_external)
         signalBus.subtitle_render_mode_changed.emit(mode.value)
         signalBus.subtitle_render_mode_changed.connect(self.on_render_mode_changed_external)
@@ -732,110 +634,57 @@ class SubtitleStyleInterface(QWidget):
         self.updatePreview()
 
     def onRoundedBgSettingChanged(self):
-        """圆角背景设置变更"""
+        """Persist rounded settings to cfg and the current style file, then re-render."""
         if self._loading_style:
             return
+        style = self._rounded_style()
+        cfg.set(cfg.rounded_bg_font_name, style.font_name)
+        cfg.set(cfg.rounded_bg_font_size, style.font_size)
+        cfg.set(cfg.rounded_bg_corner_radius, style.corner_radius)
+        cfg.set(cfg.rounded_bg_padding_h, style.padding_h)
+        cfg.set(cfg.rounded_bg_padding_v, style.padding_v)
+        cfg.set(cfg.rounded_bg_margin_bottom, style.margin_bottom_rounded)
+        cfg.set(cfg.rounded_bg_line_spacing, style.line_spacing)
+        cfg.set(cfg.rounded_bg_letter_spacing, style.letter_spacing)
+        cfg.set(cfg.rounded_bg_text_color, style.text_color)
+        cfg.set(cfg.rounded_bg_color, style.bg_color)
 
-        # 保存圆角背景配置
-        cfg.set(cfg.rounded_bg_font_name, self.roundedFontCard.comboBox.currentText())
-        cfg.set(cfg.rounded_bg_font_size, self.roundedFontSizeCard.spinBox.value())
-        cfg.set(
-            cfg.rounded_bg_corner_radius, self.roundedCornerRadiusCard.spinBox.value()
-        )
-        cfg.set(cfg.rounded_bg_padding_h, self.roundedPaddingHCard.spinBox.value())
-        cfg.set(cfg.rounded_bg_padding_v, self.roundedPaddingVCard.spinBox.value())
-        cfg.set(
-            cfg.rounded_bg_margin_bottom, self.roundedMarginBottomCard.spinBox.value()
-        )
-        cfg.set(
-            cfg.rounded_bg_line_spacing, self.roundedLineSpacingCard.spinBox.value()
-        )
-        cfg.set(
-            cfg.rounded_bg_letter_spacing, self.roundedLetterSpacingCard.spinBox.value()
-        )
-
-        # 保存颜色
-        text_color = self.roundedTextColorCard.colorPicker.color.name()
-        cfg.set(cfg.rounded_bg_text_color, text_color)
-        bg_color = self.roundedBgColorCard.colorPicker.color
-        bg_color_hex = f"#{bg_color.red():02x}{bg_color.green():02x}{bg_color.blue():02x}{bg_color.alpha():02x}"
-        cfg.set(cfg.rounded_bg_color, bg_color_hex)
-
-        # 自动保存当前样式
         current_style = self.styleNameComboBox.comboBox.currentText()
         if current_style:
             self.saveStyle(current_style)
-
         self.updatePreview()
 
     def _updateVisibleGroups(self):
-        """根据渲染模式显示/隐藏设置组"""
+        """Only the groups of the active render mode stay visible."""
         is_ass_mode = self._getCurrentRenderMode() == SubtitleRenderModeEnum.ASS_STYLE
-
-        # ASS 样式设置组
         self.assVerticalSpacingCard.setVisible(is_ass_mode)
         self.assPrimaryGroup.setVisible(is_ass_mode)
         self.assSecondaryGroup.setVisible(is_ass_mode)
-
-        # 圆角背景设置组
         self.roundedBgGroup.setVisible(not is_ass_mode)
 
-    def _getStyleFileExtension(self) -> str:
-        """获取当前模式的样式文件扩展名 (统一使用 .json)"""
-        return ".json"
-
     def _refreshStyleList(self):
-        """根据当前渲染模式刷新样式列表"""
-        is_rounded = self._getCurrentRenderMode() == SubtitleRenderModeEnum.ROUNDED_BG
-        target_mode = "rounded" if is_rounded else "ass"
-
-        # 阻断信号，避免 addItems/setCurrentText 重复触发 loadStyle
+        """Repopulate the style combo for the current render mode and load one entry."""
+        # Block signals: addItems/setCurrentText would otherwise call loadStyle repeatedly.
         self.styleNameComboBox.comboBox.blockSignals(True)
-
-        # 清空现有列表
         self.styleNameComboBox.comboBox.clear()
-
-        # 获取匹配当前模式的 JSON 样式文件
-        from videocaptioner.core.subtitle.style_manager import style_id_from_filename
-        style_files = []
-        for f in sorted(SUBTITLE_STYLE_PATH.glob("*.json")):
-            try:
-                data = json.loads(f.read_text(encoding="utf-8"))
-                if data.get("mode", "ass") == target_mode:
-                    style_id = style_id_from_filename(f.name)
-                    style_files.append(style_id)
-            except (json.JSONDecodeError, OSError):
-                pass
-
-        # 确保有默认样式
-        if "default" not in style_files:
-            style_files.insert(0, "default")
-            self.saveStyle("default")
-        else:
-            style_files.insert(0, style_files.pop(style_files.index("default")))
-
-        self.styleNameComboBox.comboBox.addItems(style_files)
-
-        # 加载默认样式或配置中保存的样式
-        subtitle_style_name = cfg.get(cfg.subtitle_style_name)
-        if subtitle_style_name in style_files:
-            self.styleNameComboBox.comboBox.setCurrentText(subtitle_style_name)
-        else:
-            self.styleNameComboBox.comboBox.setCurrentText(style_files[0])
-            subtitle_style_name = style_files[0]
-
-        # 恢复信号
+        style_ids = list_style_ids(SUBTITLE_STYLE_PATH, self._current_style_mode())
+        if DEFAULT_STYLE_ID not in style_ids:
+            # First run for this mode: persist the widget defaults as "default".
+            self.saveStyle(DEFAULT_STYLE_ID)
+            style_ids.insert(0, DEFAULT_STYLE_ID)
+        self.styleNameComboBox.comboBox.addItems(style_ids)
+        style_id = choose_style_id(style_ids, cfg.get(cfg.subtitle_style_name))
+        self.styleNameComboBox.comboBox.setCurrentText(style_id)
         self.styleNameComboBox.comboBox.blockSignals(False)
-
-        # 只调用一次 loadStyle
-        self.loadStyle(subtitle_style_name)
+        self.loadStyle(style_id)
 
     def _getCurrentRenderMode(self) -> SubtitleRenderModeEnum:
-        """获取当前渲染模式"""
         return self._render_mode_from_text(self.renderModeCard.comboBox.currentText())
 
+    def _current_style_mode(self) -> StyleMode:
+        return style_mode_for(self._getCurrentRenderMode())
+
     def _getCurrentLayout(self) -> SubtitleLayoutEnum:
-        """获取当前字幕排布"""
         return self._layout_from_text(self.layoutCard.comboBox.currentText())
 
     def _display_for_render_mode(self, mode: SubtitleRenderModeEnum) -> str:
@@ -850,42 +699,19 @@ class SubtitleStyleInterface(QWidget):
     def _layout_from_text(self, text: str) -> SubtitleLayoutEnum:
         return self._layout_display_to_enum.get(text) or SubtitleLayoutEnum(text)
 
-    def _parseRgbaHex(self, hex_color: str) -> QColor:
-        """解析 #RRGGBBAA 格式的颜色"""
-        hex_color = hex_color.lstrip("#")
-        if len(hex_color) == 8:
-            r = int(hex_color[0:2], 16)
-            g = int(hex_color[2:4], 16)
-            b = int(hex_color[4:6], 16)
-            a = int(hex_color[6:8], 16)
-            return QColor(r, g, b, a)
-        elif len(hex_color) == 6:
-            return QColor(f"#{hex_color}")
-        return QColor(25, 25, 25, 200)  # 默认值
-
     def onOrientationChanged(self):
-        """当预览方向改变时调用"""
-        orientation = self.orientationCard.comboBox.currentText()
-        preview_image = (
-            DEFAULT_BG_LANDSCAPE if orientation == "横屏" else DEFAULT_BG_PORTRAIT
-        )
-        cfg.set(cfg.subtitle_preview_image, str(Path(preview_image["path"])))
+        """Switching orientation resets the background to the bundled image."""
+        preview = default_background(ASSETS_PATH, self.orientationCard.comboBox.currentText())
+        cfg.set(cfg.subtitle_preview_image, str(preview))
         self.updatePreview()
 
     def onAssSettingChanged(self):
-        """ASS 样式设置变更"""
         if self._loading_style:
             return
-
         self.updatePreview()
-        current_style = self.styleNameComboBox.comboBox.currentText()
-        if current_style:
-            self.saveStyle(current_style)
-        else:
-            self.saveStyle("default")
+        self.saveStyle(self.styleNameComboBox.comboBox.currentText() or DEFAULT_STYLE_ID)
 
     def selectPreviewImage(self):
-        """选择预览背景图片"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             self.tr("选择背景图片"),
@@ -896,285 +722,12 @@ class SubtitleStyleInterface(QWidget):
             cfg.set(cfg.subtitle_preview_image, file_path)
             self.updatePreview()
 
-    def generateAssStyles(self) -> str:
-        """生成 ASS 样式字符串（固定720P分辨率）"""
-        style_format = "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding"
+    # ------------------------------------------------------------ widget <-> style
 
-        # 垂直间距
-        vertical_spacing = self.assVerticalSpacingCard.spinBox.value()
-
-        # 主字幕样式
-        primary_font = self.assPrimaryFontCard.comboBox.currentText()
-        primary_size = self.assPrimarySizeCard.spinBox.value()
-
-        # 颜色转换为 ASS 格式 (AABBGGRR)
-        primary_color_hex = self.assPrimaryColorCard.colorPicker.color.name()
-        primary_outline_hex = self.assPrimaryOutlineColorCard.colorPicker.color.name()
-        primary_color = f"&H00{primary_color_hex[5:7]}{primary_color_hex[3:5]}{primary_color_hex[1:3]}"
-        primary_outline_color = f"&H00{primary_outline_hex[5:7]}{primary_outline_hex[3:5]}{primary_outline_hex[1:3]}"
-        primary_spacing = self.assPrimarySpacingCard.spinBox.value()
-        primary_outline_size = self.assPrimaryOutlineSizeCard.spinBox.value()
-
-        # 副字幕样式
-        secondary_font = self.assSecondaryFontCard.comboBox.currentText()
-        secondary_size = self.assSecondarySizeCard.spinBox.value()
-
-        secondary_color_hex = self.assSecondaryColorCard.colorPicker.color.name()
-        secondary_outline_hex = (
-            self.assSecondaryOutlineColorCard.colorPicker.color.name()
-        )
-        secondary_color = f"&H00{secondary_color_hex[5:7]}{secondary_color_hex[3:5]}{secondary_color_hex[1:3]}"
-        secondary_outline_color = f"&H00{secondary_outline_hex[5:7]}{secondary_outline_hex[3:5]}{secondary_outline_hex[1:3]}"
-        secondary_spacing = self.assSecondarySpacingCard.spinBox.value()
-        secondary_outline_size = self.assSecondaryOutlineSizeCard.spinBox.value()
-
-        # 生成样式字符串
-        primary_style = f"Style: Default,{primary_font},{primary_size},{primary_color},&H000000FF,{primary_outline_color},&H00000000,-1,0,0,0,100,100,{primary_spacing},0,1,{primary_outline_size},0,2,10,10,{vertical_spacing},1,\\q1"
-        secondary_style = f"Style: Secondary,{secondary_font},{secondary_size},{secondary_color},&H000000FF,{secondary_outline_color},&H00000000,-1,0,0,0,100,100,{secondary_spacing},0,1,{secondary_outline_size},0,2,10,10,{vertical_spacing},1,\\q1"
-
-        return f"[V4+ Styles]\n{style_format}\n{primary_style}\n{secondary_style}"
-
-    def updatePreview(self):
-        """更新预览图片"""
-        # 获取预览文本
-        main_text, sub_text = PERVIEW_TEXTS[self.previewTextCard.comboBox.currentText()]
-
-        # 字幕布局
-        layout = self._getCurrentLayout()
-        if layout == SubtitleLayoutEnum.TRANSLATE_ON_TOP:
-            main_text, sub_text = sub_text, main_text
-        elif layout == SubtitleLayoutEnum.ORIGINAL_ON_TOP:
-            main_text, sub_text = main_text, sub_text
-        elif layout == SubtitleLayoutEnum.ONLY_TRANSLATE:
-            main_text, sub_text = sub_text, None
-        elif layout == SubtitleLayoutEnum.ONLY_ORIGINAL:
-            main_text, sub_text = main_text, None
-
-        # 获取预览方向和背景
-        orientation = self.orientationCard.comboBox.currentText()
-        default_preview = (
-            DEFAULT_BG_LANDSCAPE if orientation == "横屏" else DEFAULT_BG_PORTRAIT
-        )
-
-        # 获取背景图片路径
-        user_bg_path = cfg.get(cfg.subtitle_preview_image)
-        if user_bg_path and Path(user_bg_path).exists():
-            path = user_bg_path
-        else:
-            path = default_preview["path"]
-
-        # 根据渲染模式创建不同的预览线程（不传入尺寸，由渲染层自动从图片获取）
-        render_mode = self._getCurrentRenderMode()
-
-        if render_mode == SubtitleRenderModeEnum.ROUNDED_BG:
-            # 圆角背景模式（样式720P基准，由渲染层自动缩放）
-            bg_color = self.roundedBgColorCard.colorPicker.color
-            bg_color_hex = f"#{bg_color.red():02x}{bg_color.green():02x}{bg_color.blue():02x}{bg_color.alpha():02x}"
-
-            style = RoundedBgStyle(
-                font_name=self.roundedFontCard.comboBox.currentText(),
-                font_size=self.roundedFontSizeCard.spinBox.value(),
-                bg_color=bg_color_hex,
-                text_color=self.roundedTextColorCard.colorPicker.color.name(),
-                corner_radius=self.roundedCornerRadiusCard.spinBox.value(),
-                padding_h=self.roundedPaddingHCard.spinBox.value(),
-                padding_v=self.roundedPaddingVCard.spinBox.value(),
-                margin_bottom=self.roundedMarginBottomCard.spinBox.value(),
-                line_spacing=self.roundedLineSpacingCard.spinBox.value(),
-                letter_spacing=self.roundedLetterSpacingCard.spinBox.value(),
-            )
-
-            self.preview_thread = RoundedBgPreviewThread(
-                preview_text=(main_text, sub_text),
-                style=style,
-                bg_image_path=str(path),
-            )
-        else:
-            # ASS 样式模式（样式720P基准，由渲染层自动缩放）
-            style_str = self.generateAssStyles()
-            self.preview_thread = AssPreviewThread(
-                preview_text=(main_text, sub_text),
-                style_str=style_str,
-                bg_image_path=str(path),
-            )
-
-        self.preview_thread.previewReady.connect(self.onPreviewReady)
-        self.preview_thread.start()
-
-    def onPreviewReady(self, preview_path):
-        """预览图片生成完成的回调"""
-        self.previewImage.setImage(preview_path)
-        self.updatePreviewImage()
-
-    def updatePreviewImage(self):
-        """更新预览图片"""
-        height = int(self.previewTopWidget.height() * 0.98)
-        width = int(self.previewTopWidget.width() * 0.98)
-        self.previewImage.scaledToWidth(width)
-        if self.previewImage.height() > height:
-            self.previewImage.scaledToHeight(height)
-        self.previewImage.setBorderRadius(8, 8, 8, 8)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.updatePreviewImage()
-
-    def showEvent(self, event):
-        """窗口显示事件"""
-        super().showEvent(event)
-        self.updatePreviewImage()
-
-    def _resolve_style_path(self, style_name: str) -> Path:
-        """Resolve style name to file path, trying prefixed names."""
-        mode = self._getCurrentRenderMode()
-        prefix = "rounded-" if mode == SubtitleRenderModeEnum.ROUNDED_BG else "ass-"
-        # Try prefixed first, then exact
-        prefixed = SUBTITLE_STYLE_PATH / f"{prefix}{style_name}.json"
-        if prefixed.exists():
-            return prefixed
-        exact = SUBTITLE_STYLE_PATH / f"{style_name}.json"
-        return exact
-
-    def loadStyle(self, style_name):
-        """加载指定样式（根据当前渲染模式加载对应格式）"""
-        style_path = self._resolve_style_path(style_name)
-
-        if not style_path.exists():
-            return
-
-        self._loading_style = True
-
-        mode = self._getCurrentRenderMode()
-        if mode == SubtitleRenderModeEnum.ROUNDED_BG:
-            self._loadRoundedBgStyle(style_path)
-        else:
-            self._loadAssStyle(style_path)
-
-        cfg.set(cfg.subtitle_style_name, style_name)
-        self._loading_style = False
-        self.updatePreview()
-
-        InfoBar.success(
-            title=self.tr("成功"),
-            content=self.tr("已加载样式 ") + style_name,
-            orient=Qt.Horizontal,  # type: ignore
-            isClosable=True,
-            position=InfoBarPosition.TOP,
-            duration=INFOBAR_DURATION_SUCCESS,
-            parent=self,
-        )
-
-    def _loadAssStyle(self, style_path: Path):
-        """加载 ASS 样式 (.json)"""
-        from videocaptioner.core.subtitle.style_manager import SubtitleStyle
-
-        style = SubtitleStyle.from_file(style_path)
-
-        # Primary style
-        self.assPrimaryFontCard.setCurrentText(style.font_name)
-        self.assPrimarySizeCard.spinBox.setValue(style.font_size)
-        self.assVerticalSpacingCard.spinBox.setValue(style.margin_bottom)
-        self.assPrimaryColorCard.setColor(QColor(style.primary_color))
-        self.assPrimaryOutlineColorCard.setColor(QColor(style.outline_color))
-        self.assPrimarySpacingCard.spinBox.setValue(style.spacing)
-        self.assPrimaryOutlineSizeCard.spinBox.setValue(style.outline_width)
-
-        # Secondary style
-        sec = style.secondary
-        if sec:
-            self.assSecondaryFontCard.setCurrentText(sec.font_name)
-            self.assSecondarySizeCard.spinBox.setValue(sec.font_size)
-            self.assSecondaryColorCard.setColor(QColor(sec.color))
-            self.assSecondaryOutlineColorCard.setColor(QColor(sec.outline_color))
-            self.assSecondarySpacingCard.spinBox.setValue(sec.spacing)
-            self.assSecondaryOutlineSizeCard.spinBox.setValue(sec.outline_width)
-
-    def _loadRoundedBgStyle(self, style_path: Path):
-        """加载圆角背景样式 (.json)"""
-        with open(style_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        if "font_name" in data:
-            self.roundedFontCard.setCurrentText(data["font_name"])
-        if "font_size" in data:
-            self.roundedFontSizeCard.spinBox.setValue(data["font_size"])
-        if "text_color" in data:
-            self.roundedTextColorCard.setColor(QColor(data["text_color"]))
-        if "bg_color" in data:
-            self.roundedBgColorCard.setColor(self._parseRgbaHex(data["bg_color"]))
-        if "corner_radius" in data:
-            self.roundedCornerRadiusCard.spinBox.setValue(data["corner_radius"])
-        if "padding_h" in data:
-            self.roundedPaddingHCard.spinBox.setValue(data["padding_h"])
-        if "padding_v" in data:
-            self.roundedPaddingVCard.spinBox.setValue(data["padding_v"])
-        if "margin_bottom" in data:
-            self.roundedMarginBottomCard.spinBox.setValue(data["margin_bottom"])
-        if "line_spacing" in data:
-            self.roundedLineSpacingCard.spinBox.setValue(data["line_spacing"])
-        if "letter_spacing" in data:
-            self.roundedLetterSpacingCard.spinBox.setValue(data["letter_spacing"])
-
-    def createNewStyle(self):
-        """创建新样式"""
-        dialog = StyleNameDialog(self)
-        if dialog.exec():
-            style_name = dialog.nameLineEdit.text().strip()
-            if not style_name:
-                return
-
-            # 检查是否已存在同名样式（使用带前缀的实际路径）
-            if self._resolve_style_path(style_name).exists():
-                InfoBar.warning(
-                    title=self.tr("警告"),
-                    content=self.tr("样式 ") + style_name + self.tr(" 已存在"),
-                    orient=Qt.Horizontal,  # type: ignore
-                    isClosable=True,
-                    position=InfoBarPosition.TOP,
-                    duration=INFOBAR_DURATION_WARNING,
-                    parent=self,
-                )
-                return
-
-            # 保存新样式
-            self.saveStyle(style_name)
-
-            # 更新样式列表并选中新样式
-            self.styleNameComboBox.addItem(style_name)
-            self.styleNameComboBox.comboBox.setCurrentText(style_name)
-
-            InfoBar.success(
-                title=self.tr("成功"),
-                content=self.tr("已创建新样式 ") + style_name,
-                orient=Qt.Horizontal,  # type: ignore
-                isClosable=True,
-                position=InfoBarPosition.TOP,
-                duration=INFOBAR_DURATION_SUCCESS,
-                parent=self,
-            )
-
-    def saveStyle(self, style_name):
-        """保存样式（根据当前渲染模式保存对应格式）"""
-        SUBTITLE_STYLE_PATH.mkdir(parents=True, exist_ok=True)
-
-        mode = self._getCurrentRenderMode()
-        prefix = "rounded-" if mode == SubtitleRenderModeEnum.ROUNDED_BG else "ass-"
-        style_path = SUBTITLE_STYLE_PATH / f"{prefix}{style_name}.json"
-
-        if mode == SubtitleRenderModeEnum.ROUNDED_BG:
-            self._saveRoundedBgStyle(style_path)
-        else:
-            self._saveAssStyle(style_path)
-
-    def _saveAssStyle(self, style_path: Path):
-        """保存 ASS 样式 (.json)"""
-        from videocaptioner.core.subtitle.style_manager import (
-            SecondaryStyle,
-            SubtitleStyle,
-            style_id_from_filename,
-        )
-        style = SubtitleStyle(
-            name=style_id_from_filename(style_path.name),
+    def _ass_style(self, style_id: str = "") -> SubtitleStyle:
+        """Snapshot the ASS widgets (720p reference; renderers scale)."""
+        return SubtitleStyle(
+            name=style_id,
             mode=StyleMode.ASS,
             font_name=self.assPrimaryFontCard.comboBox.currentText(),
             font_size=self.assPrimarySizeCard.spinBox.value(),
@@ -1193,65 +746,198 @@ class SubtitleStyleInterface(QWidget):
                 spacing=self.assSecondarySpacingCard.spinBox.value(),
             ),
         )
-        with open(style_path, "w", encoding="utf-8") as f:
-            json.dump(style.to_json_dict(), f, ensure_ascii=False, indent=2)
 
-    def _saveRoundedBgStyle(self, style_path: Path):
-        """保存圆角背景样式 (.json)"""
+    def _rounded_style(self, style_id: str = "") -> SubtitleStyle:
+        """Snapshot the rounded-background widgets."""
         bg_color = self.roundedBgColorCard.colorPicker.color
-        bg_color_hex = f"#{bg_color.red():02x}{bg_color.green():02x}{bg_color.blue():02x}{bg_color.alpha():02x}"
+        return SubtitleStyle(
+            name=style_id,
+            mode=StyleMode.ROUNDED,
+            font_name=self.roundedFontCard.comboBox.currentText(),
+            font_size=self.roundedFontSizeCard.spinBox.value(),
+            text_color=self.roundedTextColorCard.colorPicker.color.name(),
+            bg_color=format_rgba_hex(
+                bg_color.red(), bg_color.green(), bg_color.blue(), bg_color.alpha()
+            ),
+            corner_radius=self.roundedCornerRadiusCard.spinBox.value(),
+            padding_h=self.roundedPaddingHCard.spinBox.value(),
+            padding_v=self.roundedPaddingVCard.spinBox.value(),
+            margin_bottom_rounded=self.roundedMarginBottomCard.spinBox.value(),
+            line_spacing=self.roundedLineSpacingCard.spinBox.value(),
+            letter_spacing=self.roundedLetterSpacingCard.spinBox.value(),
+        )
 
-        from videocaptioner.core.subtitle.style_manager import style_id_from_filename
-        data = {
-            "name": style_id_from_filename(style_path.name),
-            "description": "",
-            "mode": "rounded",
-            "font_name": self.roundedFontCard.comboBox.currentText(),
-            "font_size": self.roundedFontSizeCard.spinBox.value(),
-            "text_color": self.roundedTextColorCard.colorPicker.color.name(),
-            "bg_color": bg_color_hex,
-            "corner_radius": self.roundedCornerRadiusCard.spinBox.value(),
-            "padding_h": self.roundedPaddingHCard.spinBox.value(),
-            "padding_v": self.roundedPaddingVCard.spinBox.value(),
-            "margin_bottom": self.roundedMarginBottomCard.spinBox.value(),
-            "line_spacing": self.roundedLineSpacingCard.spinBox.value(),
-            "letter_spacing": self.roundedLetterSpacingCard.spinBox.value(),
-        }
-        with open(style_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+    def _current_style(self, style_id: str = "") -> SubtitleStyle:
+        """Snapshot the widgets of the active render mode."""
+        if self._current_style_mode() is StyleMode.ROUNDED:
+            return self._rounded_style(style_id)
+        return self._ass_style(style_id)
+
+    def _apply_style(self, style: SubtitleStyle) -> None:
+        """Push a loaded style into the widgets of the active render mode."""
+        if self._current_style_mode() is StyleMode.ROUNDED:
+            self._apply_rounded_style(style)
+        else:
+            self._apply_ass_style(style)
+
+    def _apply_ass_style(self, style: SubtitleStyle) -> None:
+        self.assPrimaryFontCard.setCurrentText(style.font_name)
+        self.assPrimarySizeCard.spinBox.setValue(style.font_size)
+        self.assVerticalSpacingCard.spinBox.setValue(style.margin_bottom)
+        self.assPrimaryColorCard.setColor(QColor(style.primary_color))
+        self.assPrimaryOutlineColorCard.setColor(QColor(style.outline_color))
+        self.assPrimarySpacingCard.spinBox.setValue(style.spacing)
+        self.assPrimaryOutlineSizeCard.spinBox.setValue(style.outline_width)
+
+        secondary = style.secondary
+        if secondary:
+            self.assSecondaryFontCard.setCurrentText(secondary.font_name)
+            self.assSecondarySizeCard.spinBox.setValue(secondary.font_size)
+            self.assSecondaryColorCard.setColor(QColor(secondary.color))
+            self.assSecondaryOutlineColorCard.setColor(QColor(secondary.outline_color))
+            self.assSecondarySpacingCard.spinBox.setValue(secondary.spacing)
+            self.assSecondaryOutlineSizeCard.spinBox.setValue(secondary.outline_width)
+
+    def _apply_rounded_style(self, style: SubtitleStyle) -> None:
+        self.roundedFontCard.setCurrentText(style.font_name)
+        self.roundedFontSizeCard.spinBox.setValue(style.font_size)
+        self.roundedTextColorCard.setColor(QColor(style.text_color))
+        self.roundedBgColorCard.setColor(QColor(*parse_rgba_hex(style.bg_color)))
+        self.roundedCornerRadiusCard.spinBox.setValue(style.corner_radius)
+        self.roundedPaddingHCard.spinBox.setValue(style.padding_h)
+        self.roundedPaddingVCard.spinBox.setValue(style.padding_v)
+        self.roundedMarginBottomCard.spinBox.setValue(style.margin_bottom_rounded)
+        self.roundedLineSpacingCard.spinBox.setValue(style.line_spacing)
+        self.roundedLetterSpacingCard.spinBox.setValue(style.letter_spacing)
+
+    # ------------------------------------------------------------------ preview
+
+    def updatePreview(self):
+        """Render the preview for the current widgets on a worker thread."""
+        original, translation = PREVIEW_TEXTS[self.previewTextCard.comboBox.currentText()]
+        preview_text = preview_text_pair(original, translation, self._getCurrentLayout())
+        background = preview_background(
+            cfg.get(cfg.subtitle_preview_image),
+            default_background(ASSETS_PATH, self.orientationCard.comboBox.currentText()),
+        )
+        self.preview_thread = StylePreviewThread(
+            self._current_style(), preview_text, str(background)
+        )
+        self.preview_thread.previewReady.connect(self.onPreviewReady)
+        self.preview_thread.start()
+
+    def onPreviewReady(self, preview_path):
+        self.previewImage.setImage(preview_path)
+        self.updatePreviewImage()
+
+    def updatePreviewImage(self):
+        """Fit the rendered image into the preview card, keeping its aspect."""
+        height = int(self.previewTopWidget.height() * 0.98)
+        width = int(self.previewTopWidget.width() * 0.98)
+        self.previewImage.scaledToWidth(width)
+        if self.previewImage.height() > height:
+            self.previewImage.scaledToHeight(height)
+        self.previewImage.setBorderRadius(8, 8, 8, 8)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.updatePreviewImage()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.updatePreviewImage()
+
+    # -------------------------------------------------------------- style files
+
+    def loadStyle(self, style_name):
+        """Load a style of the current render mode into the widgets."""
+        style_path = resolve_style_path(
+            SUBTITLE_STYLE_PATH, self._current_style_mode(), style_name
+        )
+        if not style_path.exists():
+            return
+
+        self._loading_style = True
+        try:
+            self._apply_style(SubtitleStyle.from_file(style_path))
+        finally:
+            self._loading_style = False
+
+        cfg.set(cfg.subtitle_style_name, style_name)
+        self.updatePreview()
+
+        InfoBar.success(
+            title=self.tr("成功"),
+            content=self.tr("已加载样式 ") + style_name,
+            orient=Qt.Horizontal,  # type: ignore
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=INFOBAR_DURATION_SUCCESS,
+            parent=self,
+        )
+
+    def createNewStyle(self):
+        dialog = StyleNameDialog(self)
+        if not dialog.exec():
+            return
+        style_name = dialog.nameLineEdit.text().strip()
+        if not style_name:
+            return
+
+        if resolve_style_path(SUBTITLE_STYLE_PATH, self._current_style_mode(), style_name).exists():
+            InfoBar.warning(
+                title=self.tr("警告"),
+                content=self.tr("样式 ") + style_name + self.tr(" 已存在"),
+                orient=Qt.Horizontal,  # type: ignore
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=INFOBAR_DURATION_WARNING,
+                parent=self,
+            )
+            return
+
+        self.saveStyle(style_name)
+        self.styleNameComboBox.addItem(style_name)
+        self.styleNameComboBox.comboBox.setCurrentText(style_name)
+
+        InfoBar.success(
+            title=self.tr("成功"),
+            content=self.tr("已创建新样式 ") + style_name,
+            orient=Qt.Horizontal,  # type: ignore
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=INFOBAR_DURATION_SUCCESS,
+            parent=self,
+        )
+
+    def saveStyle(self, style_name):
+        """Write the current widgets as ``<mode>-<name>.json``."""
+        save_style(SUBTITLE_STYLE_PATH, self._current_style(style_name))
 
     def dragEnterEvent(self, event):
-        """拖入事件：检查是否为图片文件"""
-        if event.mimeData().hasUrls():
-            # 检查是否有图片文件
-            for url in event.mimeData().urls():
-                file_path = url.toLocalFile()
-                if file_path.lower().endswith((".png", ".jpg", ".jpeg")):
-                    event.accept()
-                    return
-        event.ignore()
+        """Accept drags that carry at least one preview image."""
+        urls = event.mimeData().urls() if event.mimeData().hasUrls() else []
+        if first_image_path(url.toLocalFile() for url in urls):
+            event.accept()
+        else:
+            event.ignore()
 
     def dropEvent(self, event):
-        """放下事件：将图片设置为预览背景"""
-        files = [u.toLocalFile() for u in event.mimeData().urls()]
-        for file_path in files:
-            # 检查是否为图片文件
-            if file_path.lower().endswith((".png", ".jpg", ".jpeg")):
-                # 设置为预览背景
-                cfg.set(cfg.subtitle_preview_image, file_path)
-                # 更新预览
-                self.updatePreview()
-                # 显示成功提示
-                InfoBar.success(
-                    title=self.tr("成功"),
-                    content=self.tr("已设置预览背景：") + Path(file_path).name,
-                    orient=Qt.Horizontal,  # type: ignore
-                    isClosable=True,
-                    position=InfoBarPosition.TOP,
-                    duration=INFOBAR_DURATION_SUCCESS,
-                    parent=self,
-                )
-                break  # 只处理第一个图片文件
+        """Use the first dropped image as the preview background."""
+        file_path = first_image_path(url.toLocalFile() for url in event.mimeData().urls())
+        if not file_path:
+            return
+        cfg.set(cfg.subtitle_preview_image, file_path)
+        self.updatePreview()
+        InfoBar.success(
+            title=self.tr("成功"),
+            content=self.tr("已设置预览背景：") + Path(file_path).name,
+            orient=Qt.Horizontal,  # type: ignore
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=INFOBAR_DURATION_SUCCESS,
+            parent=self,
+        )
 
 
 class StyleNameDialog(MessageBoxBase):

@@ -26,27 +26,24 @@ from videocaptioner.core.constant import (
     INFOBAR_DURATION_SUCCESS,
     INFOBAR_DURATION_WARNING,
 )
-from videocaptioner.core.entities import LLMServiceEnum, TranscribeModelEnum, TranslatorServiceEnum
+from videocaptioner.core.entities import (
+    LLMServiceEnum,
+    TranscribeModelEnum,
+    TranslatorServiceEnum,
+    enum_from_display,
+)
 from videocaptioner.core.llm import check_whisper_connection
 from videocaptioner.core.llm.check_llm import check_llm_connection, get_available_models
+from videocaptioner.core.llm.services import (
+    LLM_SERVICE_PRESETS,
+    fill_default_api_key,
+    missing_whisper_api_fields,
+)
 from videocaptioner.core.utils.cache import disable_cache, enable_cache
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
 from videocaptioner.ui.components.EditComboBoxSettingCard import EditComboBoxSettingCard
 from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
-
-
-def _enum_from_display(enum_cls, text: str, tr):
-    """Look up an Enum member by either its raw value or its translated display.
-
-    Required because we render combobox texts via ``self.tr(member.value)`` for
-    Vietnamese support, then later read ``currentText()`` back to identify the
-    enum. Direct ``EnumCls(text)`` would fail on the translated string.
-    """
-    for member in enum_cls:
-        if member.value == text or tr(member.value) == text:
-            return member
-    raise ValueError(f"{text!r} is not a valid {enum_cls.__name__}")
 
 
 class SettingInterface(ScrollArea):
@@ -277,132 +274,42 @@ class SettingInterface(ScrollArea):
         # 默认隐藏
         self.openaiOfficialApiCard.setVisible(False)
 
-        # 定义每个服务的配置
-        service_configs = {
-            LLMServiceEnum.OPENAI: {
-                "prefix": "openai",
-                "api_key_cfg": cfg.openai_api_key,
-                "api_base_cfg": cfg.openai_api_base,
-                "model_cfg": cfg.openai_model,
-                "default_base": "https://api.openai.com/v1",
-                "default_models": [
-                    "gemini-2.5-pro",
-                    "gpt-5",
-                    "claude-sonnet-4-5-20250929",
-                    "gemini-2.5-flash",
-                    "claude-haiku-4-5-20251001",
-                ],
-            },
-            LLMServiceEnum.SILICON_CLOUD: {
-                "prefix": "silicon_cloud",
-                "api_key_cfg": cfg.silicon_cloud_api_key,
-                "api_base_cfg": cfg.silicon_cloud_api_base,
-                "model_cfg": cfg.silicon_cloud_model,
-                "default_base": "https://api.siliconflow.cn/v1",
-                "default_models": [
-                    "moonshotai/Kimi-K2-Instruct-0905",
-                    "deepseek-ai/DeepSeek-V3",
-                ],
-            },
-            LLMServiceEnum.DEEPSEEK: {
-                "prefix": "deepseek",
-                "api_key_cfg": cfg.deepseek_api_key,
-                "api_base_cfg": cfg.deepseek_api_base,
-                "model_cfg": cfg.deepseek_model,
-                "default_base": "https://api.deepseek.com/v1",
-                "default_models": ["deepseek-chat", "deepseek-reasoner"],
-            },
-            LLMServiceEnum.OLLAMA: {
-                "prefix": "ollama",
-                "api_key_cfg": cfg.ollama_api_key,
-                "api_base_cfg": cfg.ollama_api_base,
-                "model_cfg": cfg.ollama_model,
-                "default_base": "http://localhost:11434/v1",
-                "default_models": ["qwen3:8b"],
-            },
-            LLMServiceEnum.LM_STUDIO: {
-                "prefix": "LM Studio",
-                "api_key_cfg": cfg.lm_studio_api_key,
-                "api_base_cfg": cfg.lm_studio_api_base,
-                "model_cfg": cfg.lm_studio_model,
-                "default_base": "http://localhost:1234/v1",
-                "default_models": ["qwen3:8b"],
-            },
-            LLMServiceEnum.GEMINI: {
-                "prefix": "gemini",
-                "api_key_cfg": cfg.gemini_api_key,
-                "api_base_cfg": cfg.gemini_api_base,
-                "model_cfg": cfg.gemini_model,
-                "default_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
-                "default_models": [
-                    "gemini-2.5-pro",
-                    "gemini-2.5-flash",
-                    "gemini-2.0-flash-lite",
-                ],
-            },
-            LLMServiceEnum.CHATGLM: {
-                "prefix": "chatglm",
-                "api_key_cfg": cfg.chatglm_api_key,
-                "api_base_cfg": cfg.chatglm_api_base,
-                "model_cfg": cfg.chatglm_model,
-                "default_base": "https://open.bigmodel.cn/api/paas/v4",
-                "default_models": ["glm-4-plus", "glm-4-air-250414", "glm-4-flash"],
-            },
-        }
-
-        # 创建服务配置映射
+        # One key/base/model triple per provider; the presets carry the defaults.
         self.llm_service_configs = {}
-
-        # 为每个服务创建配置卡片
-        for service, config in service_configs.items():
-            prefix = config["prefix"]
-
-            # 创建API Key卡片
+        for service, preset in LLM_SERVICE_PRESETS.items():
             api_key_card = LineEditSettingCard(
-                config["api_key_cfg"],
+                getattr(cfg, f"{preset.config_attr}_api_key"),
                 FIF.FINGERPRINT,
                 self.tr("API Key"),
                 self.tr(f"输入您的 {service.value} API Key"),
-                "sk-" if service != LLMServiceEnum.OLLAMA else "",
+                preset.key_placeholder,
                 self.llmGroup,
             )
-            setattr(self, f"{prefix}_api_key_card", api_key_card)
-
-            # 创建Base URL卡片
             api_base_card = LineEditSettingCard(
-                config["api_base_cfg"],
+                getattr(cfg, f"{preset.config_attr}_api_base"),
                 FIF.LINK,
                 self.tr("Base URL"),
                 self.tr(f"输入 {service.value} Base URL"),
-                config["default_base"],
+                preset.default_base,
                 self.llmGroup,
             )
-            setattr(self, f"{prefix}_api_base_card", api_base_card)
-
-            # 设置只读状态：只有 OpenAI、Ollama、LM Studio 可以编辑 Base URL
-            if service not in [
-                LLMServiceEnum.OPENAI,
-                LLMServiceEnum.OLLAMA,
-                LLMServiceEnum.LM_STUDIO,
-            ]:
-                api_base_card.lineEdit.setReadOnly(True)
-
-            # 创建模型选择卡片
+            api_base_card.lineEdit.setReadOnly(not preset.base_url_editable)
             model_card = EditComboBoxSettingCard(
-                config["model_cfg"],
+                getattr(cfg, f"{preset.config_attr}_model"),
                 FIF.ROBOT,  # type: ignore
                 self.tr("模型"),
                 self.tr(f"选择 {service.value} 模型"),
-                config["default_models"],
+                list(preset.default_models),
                 self.llmGroup,
             )
-            setattr(self, f"{prefix}_model_card", model_card)
-
-            # 存储服务配置
-            cards = [api_key_card, api_base_card, model_card]
-
+            for suffix, card in (
+                ("api_key", api_key_card),
+                ("api_base", api_base_card),
+                ("model", model_card),
+            ):
+                setattr(self, f"{preset.config_attr}_{suffix}_card", card)
             self.llm_service_configs[service] = {
-                "cards": cards,
+                "cards": [api_key_card, api_base_card, model_card],
                 "api_base": api_base_card,
                 "api_key": api_key_card,
                 "model": model_card,
@@ -739,7 +646,7 @@ class SettingInterface(ScrollArea):
         scroll_position = self.verticalScrollBar().value()
 
         # 获取当前选中的服务
-        current_service = _enum_from_display(
+        current_service = enum_from_display(
             LLMServiceEnum, self.llmServiceCard.comboBox.currentText(), self.tr
         )
 
@@ -794,7 +701,7 @@ class SettingInterface(ScrollArea):
         self.checkLLMConnectionCard.button.setText(self.tr("检查连接"))
 
         # 获取当前服务
-        current_service = _enum_from_display(
+        current_service = enum_from_display(
             LLMServiceEnum, self.llmServiceCard.comboBox.currentText(), self.tr
         )
 
@@ -884,7 +791,7 @@ class SettingInterface(ScrollArea):
 
     def __onLLMServiceChanged(self, service):
         """处理LLM服务切换事件"""
-        current_service = _enum_from_display(LLMServiceEnum, service, self.tr)
+        current_service = enum_from_display(LLMServiceEnum, service, self.tr)
 
         # 隐藏所有卡片
         for config in self.llm_service_configs.values():
@@ -899,19 +806,11 @@ class SettingInterface(ScrollArea):
             for card in self.llm_service_configs[current_service]["cards"]:
                 card.setVisible(True)
 
-            # 为OLLAMA和LM_STUDIO设置默认API Key
-            service_config = self.llm_service_configs[current_service]
-            if current_service == LLMServiceEnum.OLLAMA and service_config["api_key"]:
-                # 如果API Key为空，设置默认值"ollama"
-                if not service_config["api_key"].lineEdit.text():
-                    service_config["api_key"].lineEdit.setText("ollama")
-            if (
-                current_service == LLMServiceEnum.LM_STUDIO
-                and service_config["api_key"]
-            ):
-                # 如果API Key为空，设置默认值 "lm-studio"
-                if not service_config["api_key"].lineEdit.text():
-                    service_config["api_key"].lineEdit.setText("lm-studio")
+            # Local servers accept any token: fill the placeholder when blank.
+            key_edit = self.llm_service_configs[current_service]["api_key"].lineEdit
+            filled = fill_default_api_key(current_service, key_edit.text())
+            if filled != key_edit.text():
+                key_edit.setText(filled)
 
             # 如果是OPENAI服务，显示官方API链接卡片
             if current_service == LLMServiceEnum.OPENAI:
@@ -935,7 +834,7 @@ class SettingInterface(ScrollArea):
         # 根据选择的服务显示相应的配置卡片
         # `service` is the comboBox display text — translated. Resolve via helper.
         try:
-            current = _enum_from_display(TranslatorServiceEnum, service, self.tr)
+            current = enum_from_display(TranslatorServiceEnum, service, self.tr)
         except ValueError:
             return
         if current is TranslatorServiceEnum.DEEPLX:
@@ -962,7 +861,7 @@ class SettingInterface(ScrollArea):
         # The combo shows translated text, so resolve it before checking which
         # model-specific cards should be visible.
         try:
-            current = _enum_from_display(TranscribeModelEnum, model_name, self.tr)
+            current = enum_from_display(TranscribeModelEnum, model_name, self.tr)
         except ValueError:
             current = None
         is_whisper_api = current is TranscribeModelEnum.WHISPER_API
@@ -995,29 +894,16 @@ class SettingInterface(ScrollArea):
         api_key = self.whisperApiKeyCard.lineEdit.text().strip()
         model = self.whisperApiModelCard.comboBox.currentText().strip()
 
-        # 验证必填字段
-        if not base_url:
+        missing = missing_whisper_api_fields(base_url, api_key, model)
+        if missing:
+            prompts = {
+                "base_url": self.tr("请输入 Whisper API Base URL"),
+                "api_key": self.tr("请输入 Whisper API Key"),
+                "model": self.tr("请输入 Whisper 模型名称"),
+            }
             InfoBar.warning(
                 self.tr("配置不完整"),
-                self.tr("请输入 Whisper API Base URL"),
-                duration=INFOBAR_DURATION_ERROR,
-                parent=self,
-            )
-            return
-
-        if not api_key:
-            InfoBar.warning(
-                self.tr("配置不完整"),
-                self.tr("请输入 Whisper API Key"),
-                duration=INFOBAR_DURATION_ERROR,
-                parent=self,
-            )
-            return
-
-        if not model:
-            InfoBar.warning(
-                self.tr("配置不完整"),
-                self.tr("请输入 Whisper 模型名称"),
+                prompts[missing[0]],
                 duration=INFOBAR_DURATION_ERROR,
                 parent=self,
             )

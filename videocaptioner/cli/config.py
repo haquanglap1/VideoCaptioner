@@ -16,6 +16,8 @@ from typing import Any, Dict, Optional
 
 from platformdirs import user_config_dir
 
+from videocaptioner.core.llm.services import LLM_SERVICE_PRESETS
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -66,13 +68,8 @@ GUI_KEY_MAP: Dict[str, str] = {
 # LLM.LLMService (serialized LLMServiceEnum value) -> prefix of the GUI's
 # per-service ConfigItem names (LLM.<prefix>_API_Key / _API_Base / _Model).
 GUI_LLM_SERVICE_PREFIX: Dict[str, str] = {
-    "OpenAI 兼容": "OpenAI",
-    "SiliconCloud": "SiliconCloud",
-    "DeepSeek": "DeepSeek",
-    "Ollama": "Ollama",
-    "LM Studio": "LmStudio",
-    "Gemini": "Gemini",
-    "ChatGLM": "ChatGLM",
+    service.value: preset.settings_prefix
+    for service, preset in LLM_SERVICE_PRESETS.items()
 }
 
 DEFAULTS: Dict[str, Any] = {

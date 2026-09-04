@@ -888,3 +888,17 @@ class BatchTaskStatus(Enum):
 
     def __str__(self):
         return self.value
+
+
+def enum_from_display(enum_cls, text, translate=None):
+    """Resolve a member from its raw value or its translated display text.
+
+    Combos show ``tr(member.value)``, so ``currentText()`` may be the
+    translated string; ``EnumCls(text)`` alone would fail on it.
+    """
+    for member in enum_cls:
+        if member.value == text:
+            return member
+        if translate is not None and translate(member.value) == text:
+            return member
+    raise ValueError(f"{text!r} is not a valid {enum_cls.__name__}")
