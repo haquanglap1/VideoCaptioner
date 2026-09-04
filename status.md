@@ -31,6 +31,24 @@
 - Chưa nghiệm thu: ffmpeg/whisper/yt-dlp thật với `env=child_environment()` (máy không có FFmpeg), sidecar
   VieNeu thật, và gọi LLM thật qua `LLMCredentials`.
 
+### Test cho core/utils (mục 3)
+- `tests/test_utils/` trước chỉ có 5 test layout PyInstaller. Thêm `conftest.py` với fixture `ffmpeg`
+  (skip khi `shutil.which` không thấy hoặc binary không chạy được `-version`, ví dụ file ngoại lai trên
+  PATH gây WinError 216) và `silent_video` sinh clip 1 giây bằng lavfi.
+- `test_video_utils.py`: `plan_video_chunks`, `temporary_subtitle_file`, parser banner `ffmpeg -i` (video
+  + nhiều audio stream có tag ngôn ngữ, audio-only, không stream, lỗi subprocess), `video2audio`,
+  `check_cuda_available`, `add_subtitles` soft/hard (progress từ `time=` giả, lỗi return code) qua module
+  `subprocess` giả ghi lại lệnh và kiểm `env=` đã lọc key; 4 test chạy FFmpeg thật (skip ở máy này).
+- `test_installer.py`: tra cứu managed dir > PATH, `_prepend_to_path` idempotent, `_validate_archive`,
+  giải nén ffmpeg zip chỉ lấy file trong `bin/`, `ensure_ffmpeg`/`ensure_deno` với `_download` giả và
+  không network. Fixture khôi phục PATH vì `ensure_*` prepend thư mục tmp, nếu không `ffmpeg.exe` giả rò
+  sang test sau.
+- `test_platform_utils.py` mở rộng: predicate hệ điều hành, `get_subprocess_kwargs`, lọc FasterWhisper
+  trên macOS, `open_folder/open_file/reveal_in_explorer` với Popen giả (đúng launcher, env đã lọc,
+  `os.startfile` ưu tiên trên Windows). `test_subprocess_helper.py` thêm `StreamReader` và
+  `run_process_with_stream_reader` với child Python thật (hai stream, override `env`).
+- Validation: `tests/test_utils` **71 passed, 4 skipped** (4 skip là nhóm FFmpeg thật). Ruff pass.
+
 ## 2026-09-04 (Nhóm sửa ngắn hạn: CI, test hermetic, timeout, auto-update onedir, LLM log race)
 
 ### Nguyên nhân và thay đổi
