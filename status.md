@@ -125,6 +125,11 @@
   offscreen: `check` → Start → tải giọng liên tiếp: 20 giọng trong 8.1 s, chọn "Minh Đức", trạng thái Ready.
 - Validation: ruff pass, pyright 0/0, `tests/test_vieneu` + `test_startup_responsiveness` + `test_dubbing`
   **106 passed**; `test_ui` + `test_ui_thread` 23 passed. One-app build lại cùng tên với `--overwrite`.
+- CI của `2d1f2c2`: job offline abort (exit 134, `Fatal Python error: Aborted`) tại
+  `test_subtitle_thread.py::TestSubtitleThreadError::test_missing_file`, không liên quan thay đổi: helper
+  `run_thread_with_timeout` thoát event loop ngay khi nhận signal `error` rồi thả `SubtitleThread` còn đang chạy,
+  Qt `qFatal` "Destroyed while thread is still running" tùy thời điểm (local 6/6 pass, CI dính). Helper nay
+  `thread.wait()` sau event loop.
 
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 

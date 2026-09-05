@@ -94,6 +94,10 @@ def run_thread_with_timeout(thread, timeout_ms=60000):
 
     thread.start()
     loop.exec_()
+    # The error/finished signals are delivered before run() has returned; dropping
+    # a still-running QThread aborts the interpreter ("Destroyed while thread is
+    # still running"), which is how this suite died on CI.
+    thread.wait(timeout_ms)
 
     return results
 

@@ -117,5 +117,8 @@ def run_thread_with_timeout(thread, timeout_ms: int = 30000) -> dict:
     thread.start()
     loop.exec_()
     timer.stop()
+    # Signals arrive before run() returns; a still-running QThread must not be
+    # garbage-collected or Qt aborts the interpreter.
+    thread.wait(timeout_ms)
 
     return result
