@@ -88,7 +88,14 @@
   `sync_translations --check` in sync; test theo commit: test_vieneu + test_thread + test_ui (54 passed),
   test_cli + test_ui + test_split (190 passed); full suite offline (`-m "not integration and not slow and not llm"`,
   basetemp ngắn): **645 passed, 4 skipped (TTS cần API key), 51 deselected** trong 1:19, 1 warning.
-- 8 commit local `5fc914a..HEAD`, chưa push theo yêu cầu.
+- Phát hiện thêm khi so mtime: `tests/test_editor/test_startup_responsiveness.py` chạy GUI trong process con nên
+  fixture cô lập `cfg.file` của root conftest không áp dụng; child ghi lại `AppData/settings.json` thật (hôm nay nội
+  dung y nguyên, hash không đổi, nhưng `cfg.transcribe_model.value = BIJIAN` trong script có thể lọt vào file thật).
+  Sửa: helper `_run_script` chèn preamble trỏ `cfg.file` sang thư mục tạm; chạy lại file test, mtime không đổi.
+- Sự cố phiên: một script debug chạy ngoài pytest lúc 12:57 dựng `DubbingInterface` với `cfg` thật và đổi provider
+  combo, nên có thể đã ghi `Dubbing/TTSProvider = vieneu-local` vào `AppData/settings.json` của repo (khóa khác không
+  đổi; không có backup để so). Nếu trước đó dùng OpenAI thì đổi lại trong tab Lồng tiếng.
+- 9 commit local `5fc914a..HEAD`, chưa push theo yêu cầu.
 
 ## 2026-09-04 (Sau roadmap: build EXE nghiệm thu, tách view đợt 2, dịch comment, pyright sạch, layout test)
 

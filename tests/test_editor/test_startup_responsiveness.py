@@ -1,17 +1,28 @@
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# The child process does not get the root conftest's cfg.file redirect, and the
+# views call cfg.set() while wiring, which would rewrite the developer's real
+# AppData/settings.json with whatever the script assigned to cfg items.
+_ISOLATE_SETTINGS = """
+from pathlib import Path as _SettingsPath
+from videocaptioner.ui.common.config import cfg as _cfg
+_cfg.file = _SettingsPath({settings!r})
+"""
 
 
 def _run_script(script: str, *, offscreen: bool = False) -> subprocess.CompletedProcess:
     environment = os.environ.copy()
     if offscreen:
         environment["QT_QPA_PLATFORM"] = "offscreen"
+    settings = os.path.join(tempfile.mkdtemp(prefix="vc-settings-"), "settings.json")
     return subprocess.run(
-        [sys.executable, "-c", script],
+        [sys.executable, "-c", _ISOLATE_SETTINGS.format(settings=settings) + script],
         cwd=PROJECT_ROOT,
         env=environment,
         capture_output=True,
