@@ -1,5 +1,95 @@
 # Project Status
 
+## 2026-09-05 (Nghiệm thu VieNeu qua GUI one-app, sửa treo EXE, cập nhật model theo đề nghị, tài liệu, CI Node 24)
+
+### Lỗi phát hiện từ log one-app trước khi nghiệm thu (mục 1)
+- Log `dist/VideoCaptioner-VieNeu-OneApp-20260905/AppData/logs/app-2026-09-05.log` của hai lần user chạy (10:51 và
+  11:12): `VieNeu auto-update failed: 'NoneType' object has no attribute 'write'` ngay khi mở tab Lồng tiếng, và hai
+  process one-app còn sống không cửa sổ (PID 27060/28060, working set 3.8/6.7 MB). py-spy: main thread kẹt ở
+  `tqdm._monitor.TMonitor.exit` → `join()`, thread monitor của tqdm kẹt chờ lock. Nguyên nhân: EXE windowed khởi động
+  với `sys.stderr = None`; `tqdm.refresh()` (tqdm 4.67.1) giữ lock rồi `display()` ném AttributeError, lock không được
+  nhả, atexit của tqdm join monitor vô hạn → mọi update model fail và app treo khi thoát. Sửa `5fc914a`:
+  `ProgressTqdm` không tạo monitor thread và dùng sink ghi khi thiếu stderr; `scripts/pyinstaller_gui.py` thay
+  stdout/stderr None bằng devnull cho cả đường GUI; test `test_hub_client_progress_bar_works_without_stderr` dò lock
+  của đúng lớp bar (`tqdm.auto` và `tqdm.std` có lock riêng nên dò `tqdm.std` là vô nghĩa).
+- Cùng log: `Dubbing thất bại: cannot schedule new futures after interpreter shutdown` lúc 11:56 khi user đóng app
+  giữa job. Sửa `4111c6b`: `DubbingThread._progress_callback` ném `DubbingCancelled` khi thread bị
+  `requestInterruption()` (callback chạy cả trong worker TTS nên job unwind mà core không cần cancel token);
+  `MainWindow.closeEvent` yêu cầu dừng sớm, tắt sidecar/child process như cũ rồi `wait_for_dubbing_job(10 s)`; job bị
+  hủy không hiện popup/report. Test mới `tests/test_thread/test_dubbing_thread.py`.
+- Hai process treo được dừng thủ công sau khi lấy stack.
+
+### Auto-update VieNeu: chỉ kiểm tra rồi đề nghị (mục 3, `6055687`)
+- Trước: mở tab Lồng tiếng là tải ~1.7 GB và validate GPU âm thầm, tiến độ ghi vào widget đang ẩn, action của user
+  xếp hàng sau. Nay `Auto update` bật → khởi động chỉ `check`; có bản mới → InfoBar "Có bản cập nhật mô hình VieNeu"
+  với nút "Tải và kích hoạt"; nút "Kiểm tra cập nhật mô hình" cũng check rồi đề nghị; tắt `Auto update` → không kết
+  nối mạng lúc khởi động. Khi tải: progress bar + status label của tab hiện "Downloading VieNeu model: Downloading
+  bytes 799/1678 MB" (`describe_download_progress` gom ba bar của huggingface_hub: số file, bytes tải, bytes ghi; giữ
+  phần trăm đơn điệu), rồi "Validating VieNeu candidate on the GPU..."; kết quả tách bạch: đã kích hoạt / đã tải nhưng
+  hoãn vì có job giữ lease / đã mới nhất / offline. Action `auto-update` của thread bị bỏ; label trạng thái thêm
+  "có bản <sha12>". Test GUI với hub giả: launch check không tải gì, bấm nút mới tải + kích hoạt qua fake bridge
+  (+2 test trong `test_ui_thread.py`), test `describe_download_progress`; 11 chuỗi dịch vi_VN mới.
+
+### Nghiệm thu VieNeu qua chính GUI one-app (mục 1)
+- One-app build lại từ `6055687` (dời `AppData`/`work-dir` của bản cũ ra ngoài rồi trả lại, vì PyInstaller
+  `--noconfirm` xóa cả `dist/<name>`), rồi điều khiển bằng UI Automation: pywinauto backend uia qua
+  `uv run --frozen --with pywinauto` (không đổi dependency), nút tìm theo text tiếng Việt, `invoke()` cho InfoBar nằm
+  ngoài màn hình (tab cao hơn 1440 px ở 125 %), `set_edit_text` cho LineEdit đường dẫn.
+- Kết quả (104.7 s tổng): mở tab → 1.1 s sau có InfoBar đề nghị `8b7e9cff` (HF main đã qua `19dd1cc`); Start → Ready
+  sau 32 s (cold), tự nạp 20 giọng, combo giữ "Ngọc Huyền"; lồng tiếng thủ công clip 14.32 s (3 câu, `allow-overlap`)
+  xong sau 8.7 s → `smoke_dubbed.mp4` h264 + aac 12.99 s, report 3 group (2 fit, 1 speed_adjust 1.15x + allow_overlap);
+  bấm "Tải và kích hoạt": tải 1678 MB trong ~20 s, validate GPU (Stopping → Starting → Ready `8b7e9cff`) ~11 s, InfoBar
+  "Đã cập nhật mô hình VieNeu / Bản 8b7e9cffb4b4 đang hoạt động."; `state.json` active `8b7e9cff…14a6`, previous
+  `2da0efab…ef5b`, `rejected_revisions` rỗng (không cần rollback); "Tải danh sách" lại 20 giọng từ model mới; lồng
+  tiếng lần 2 OK (8.8 s); Stop → Stopped, python runtime tắt; đóng cửa sổ exit 0, 0 process sót.
+- Log app sau đó chỉ còn 2 traceback cosmetic lúc teardown (`wrapped C/C++ object of type BottomInfoBarManager has
+  been deleted` từ event filter của qfluentwidgets). Sửa `8b47447`: `closeEvent` gỡ các InfoBarManager khỏi event
+  filter của cửa sổ; smoke lại trên bản build cuối (mở tab, kiểm tra cập nhật → InfoBar "Mô hình VieNeu đã mới nhất",
+  đóng): exit 0, log không traceback.
+- Chưa làm: installer WiX, nghe thủ công chất lượng giọng, workflow LLM thật và TTS OpenAI/MiniMax thật.
+
+### Tài liệu (mục 2, `1e0a98c`)
+- `docs/dev/architecture.md` + `docs/en/dev/architecture.md`: style_presenter, core/llm/services, core/editor/presenter,
+  `entities.enum_from_display`, env `VIDEOCAPTIONER_VIENEU_RUNTIME`, guard stderr trong entry EXE, quy tắc
+  `thread.wait()`, builder `--no-config`; `docs/dev/vieneu-one-app.md`: hàng đợi action, luồng check → đề nghị, flag
+  builder, guard symlink, ví dụ `--source` không còn đường dẫn tuyệt đối; `docs/dev/view-structure.md` viết lại theo
+  view hiện tại; AGENTS.md/CLAUDE.md thêm quy tắc `thread.wait()` cho test QThread qua QEventLoop và gate
+  `ruff check videocaptioner/ tests/`.
+
+### CI (mục 5, `e6b81ad`)
+- actions/checkout v7, setup-python v7, astral-sh/setup-uv v10 (`enable-cache: true` vẫn tường minh nên đổi mặc định
+  của v10 không ảnh hưởng), setup-node v7 (+ cache npm theo `docs/package-lock.json`), upload-artifact v7,
+  download-artifact v8, upload-pages-artifact v5, deploy-pages v5; các input đang dùng không đổi ở các major này.
+  Job quality thêm `ruff check tests/` (sửa 1 lỗi I001 ở `tests/test_editor/test_architecture_contract.py`). Chưa
+  push nên CI chưa chạy với các workflow mới.
+
+### Comment CJK đợt 3 (mục 4, `66d29f0`)
+- 429 mục trong `ui/view/setting_interface.py` (101), `ui/components/FasterWhisperSettingWidget.py` (101),
+  `core/split/split.py` (85), `core/entities.py` (76), `ui/components/WhisperCppSettingWidget.py` (66); thay đúng token
+  (file, dòng), giữ CRLF. Còn **838 mục / 55 file**; nhiều nhất: `ui/view/batch_process_interface.py` 49,
+  `ui/view/transcription_interface.py` 46, `ui/view/subtitle_style_interface.py` 44, `ui/thread/batch_process_thread.py`
+  43, `ui/view/llm_logs_interface.py` 35. Bốn view ~1000 dòng vẫn chủ yếu là layout, không tách thêm.
+
+### Build lại từ HEAD `8b47447` (mục 6)
+- Base (`python -m PyInstaller VideoCaptioner.spec --clean --noconfirm` bằng `.venv`): exit 0, 0 error, 6 warning quen
+  thuộc (js/emscripten, curl_cffi, yt_dlp_ejs, AppKit, tzdata, sip). `dist/VideoCaptioner/VideoCaptioner.exe`
+  30,946,521 byte, 2026-09-05 13:23, SHA-256 `953f5f9f195ce826a3e52f098f19bbe66f859e9cfddfa26ceb5bdd5da22cf77a`;
+  524 file / 234.5 MB, đủ prompts/resources/assets/fonts/translations/subtitle_style. Smoke: cửa sổ sau 5.8 s, đóng
+  exit 0, không process sót, log chỉ có dòng version check.
+- One-app (`scripts/build_vieneu_one_app.py --overwrite`, giữ AppData): exit 0, 6 warning như trên. EXE 30,946,521
+  byte, SHA-256 `A8EFD5F85763D977563900F189609C5AD26E6070406AA3F3C50F534F7B6F2FDC`, runtime 29,256 file / 5.91 GB,
+  seed 42 file / 1.77 GB (`2da0efab` từ repo AppData); AppData thật của bản one-app (settings, tool 4.9 GB, cache,
+  model state active `8b7e9cff`) đã trả lại. Smoke `dubtab`: exit 0, không process sót, log không traceback.
+- Nghiệm thu GUI ở mục 1 chạy trên bản build từ `6055687`; các commit sau chỉ đổi comment, docs, CI và
+  `_detach_info_bar_managers`, đã smoke lại trên bản cuối.
+
+### Gate
+- ruff `videocaptioner/ tests/` pass; pyright `videocaptioner/` 0 errors / 0 warnings sau mỗi commit code;
+  `sync_translations --check` in sync; test theo commit: test_vieneu + test_thread + test_ui (54 passed),
+  test_cli + test_ui + test_split (190 passed); full suite offline (`-m "not integration and not slow and not llm"`,
+  basetemp ngắn): **645 passed, 4 skipped (TTS cần API key), 51 deselected** trong 1:19, 1 warning.
+- 8 commit local `5fc914a..HEAD`, chưa push theo yêu cầu.
+
 ## 2026-09-04 (Sau roadmap: build EXE nghiệm thu, tách view đợt 2, dịch comment, pyright sạch, layout test)
 
 ### Build EXE onedir, smoke và workflow thật (mục 1)
