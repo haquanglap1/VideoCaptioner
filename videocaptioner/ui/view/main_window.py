@@ -329,8 +329,27 @@ class MainWindow(FluentWindow):
         if self._dubbing_interface is not None:
             self._dubbing_interface.wait_for_dubbing_job(10_000)
 
+        self._detach_info_bar_managers()
         super().closeEvent(event)
         QApplication.quit()
+
+    def _detach_info_bar_managers(self) -> None:
+        """Stop InfoBar managers from filtering this window's events.
+
+        qfluentwidgets installs its per-position InfoBarManager singletons as
+        event filters on the window the first time a bar is shown and never
+        removes them. At interpreter shutdown the managers die before the
+        window does, and every late event then logs "wrapped C/C++ object of
+        type BottomInfoBarManager has been deleted" through the excepthook.
+        """
+        try:
+            from qfluentwidgets.components.widgets.info_bar import InfoBarManager
+
+            for position in InfoBarPosition:
+                if position in InfoBarManager.managers:
+                    self.removeEventFilter(InfoBarManager.make(position))
+        except Exception:
+            pass
 
     def stop(self):
         """Terminate all child processes spawned by this app."""
