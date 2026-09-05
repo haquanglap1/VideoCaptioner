@@ -130,7 +130,7 @@ uv run --frozen videocaptioner
 Quality gates cơ bản:
 
 ```powershell
-uv run --frozen ruff check videocaptioner/
+uv run --frozen ruff check videocaptioner/ tests/
 uv run --frozen pyright videocaptioner/
 uv run --frozen pytest tests/test_cli/ -q
 uv run --frozen python scripts/sync_translations.py --check

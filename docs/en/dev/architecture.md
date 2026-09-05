@@ -157,7 +157,7 @@ keeps the prepended PATH. Windows uses `CREATE_NO_WINDOW`. Arguments are always 
 - PyInstaller `onedir` with the single `VideoCaptioner.spec`; entry `scripts/pyinstaller_gui.py`;
   resources and prompts must be listed in the spec. `scripts/build_vieneu_one_app.py` merges the runtime
   and model seed into the onedir output.
-- Gates: `ruff check videocaptioner/`, `pyright videocaptioner/` (0 errors), `pytest tests/test_cli`,
+- Gates: `ruff check videocaptioner/ tests/`, `pyright videocaptioner/` (0 errors), `pytest tests/test_cli`,
   `sync_translations.py --check`; CI (`.github/workflows/ci.yml`) also runs the offline suite
   `-m "not integration and not slow and not llm"` on Ubuntu with FFmpeg and offscreen Qt.
 - Tests that need external services carry the `integration`/`llm` markers; tests that need FFmpeg skip

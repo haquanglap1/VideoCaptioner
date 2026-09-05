@@ -147,7 +147,7 @@ PATH đã prepend. Trên Windows dùng `CREATE_NO_WINDOW`. Argument luôn là li
 
 - PyInstaller `onedir` với duy nhất `VideoCaptioner.spec`; entry `scripts/pyinstaller_gui.py`; resource
   và prompt phải nằm trong spec. `scripts/build_vieneu_one_app.py` ghép runtime + model seed vào onedir.
-- Gate: `ruff check videocaptioner/`, `pyright videocaptioner/` (0 lỗi), `pytest tests/test_cli`,
+- Gate: `ruff check videocaptioner/ tests/`, `pyright videocaptioner/` (0 lỗi), `pytest tests/test_cli`,
   `sync_translations.py --check`; CI (`.github/workflows/ci.yml`) chạy thêm bộ offline
   `-m "not integration and not slow and not llm"` trên Ubuntu có FFmpeg và Qt offscreen.
 - Test cần dịch vụ ngoài mang marker `integration`/`llm`; test cần FFmpeg tự skip khi thiếu.
