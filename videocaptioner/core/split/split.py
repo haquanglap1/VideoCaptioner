@@ -16,65 +16,65 @@ from videocaptioner.core.utils.text_utils import (
 
 logger = setup_logger("subtitle_splitter")
 
-# ==================== 配置常量 ====================
+# ==================== Configuration constants ====================
 
-# 字数限制
-MAX_WORD_COUNT_CJK = 25  # CJK文本单行最大字数
-MAX_WORD_COUNT_ENGLISH = 18  # 英文文本单行最大单词数
+# Word limits
+MAX_WORD_COUNT_CJK = 25  # Max characters per line for CJK text
+MAX_WORD_COUNT_ENGLISH = 18  # Max words per line for English text
 
-# Segments阈值
-SEGMENT_WORD_THRESHOLD = 500  # 长文本Segments阈值(字数)
+# Segment thresholds
+SEGMENT_WORD_THRESHOLD = 500  # Word count above which text is cut into segments
 
-# 时间间隔
-MAX_GAP = 1500  # 允许的最大时间间隔(毫秒)
-MERGE_SHORT_GAP = 200  # 短Segments合并时间阈值(毫秒)
-MERGE_VERY_SHORT_GAP = 500  # 极短Segments合并时间阈值(毫秒)
+# Time gaps
+MAX_GAP = 1500  # Largest allowed gap (ms)
+MERGE_SHORT_GAP = 200  # Gap under which short segments merge (ms)
+MERGE_VERY_SHORT_GAP = 500  # Gap under which very short segments merge (ms)
 
-# 短Segments合并阈值
-MERGE_MIN_WORDS = 5  # 短Segments最小字数阈值
-MERGE_VERY_SHORT_WORDS = 3  # 极短Segments字数阈值
+# Short segment merge thresholds
+MERGE_MIN_WORDS = 5  # Word count below which a segment is short
+MERGE_VERY_SHORT_WORDS = 3  # Word count below which a segment is very short
 
-# 分割相关
-SPLIT_SEARCH_RANGE = 30  # 分割点前后搜索范围
-TIME_GAP_WINDOW_SIZE = 5  # 时间间隔窗口大小
-TIME_GAP_MULTIPLIER = 3  # 大间隔判断倍数
-MIN_GROUP_SIZE = 5  # 最小分组大小
+# Splitting
+SPLIT_SEARCH_RANGE = 30  # Search range around a split point
+TIME_GAP_WINDOW_SIZE = 5  # Window size for gap analysis
+TIME_GAP_MULTIPLIER = 3  # Multiplier that marks a gap as large
+MIN_GROUP_SIZE = 5  # Minimum group size
 
-# 规则分割
-RULE_SPLIT_GAP = 500  # 规则分割时间间隔阈值(毫秒)
-RULE_MIN_SEGMENT_SIZE = 4  # 规则分割最小Segments大小
+# Rule-based splitting
+RULE_SPLIT_GAP = 500  # Gap threshold for rule-based splitting (ms)
+RULE_MIN_SEGMENT_SIZE = 4  # Minimum segment size for rule-based splitting
 
-# 常见词分割
-PREFIX_WORD_RATIO = 0.6  # 前缀词分割比例
-SUFFIX_WORD_RATIO = 0.4  # 后缀词分割比例
+# Common-word splitting
+PREFIX_WORD_RATIO = 0.6  # Split ratio at prefix words
+SUFFIX_WORD_RATIO = 0.4  # Split ratio at suffix words
 
-# 匹配相关
-MATCH_SIMILARITY_THRESHOLD = 0.5  # 文本匹配相似度阈值
-MATCH_MAX_SHIFT = 30  # 匹配滑动窗口最大偏移
-MATCH_MAX_UNMATCHED = 5  # 允许的最大未匹配句子数
-MATCH_LARGE_SHIFT = 100  # 未匹配时的大偏移量
+# Matching
+MATCH_SIMILARITY_THRESHOLD = 0.5  # Similarity threshold for text matching
+MATCH_MAX_SHIFT = 30  # Largest sliding-window offset while matching
+MATCH_MAX_UNMATCHED = 5  # Largest allowed number of unmatched sentences
+MATCH_LARGE_SHIFT = 100  # Large offset used when nothing matches
 
 
 def preprocess_segments(
     segments: List[ASRDataSeg], need_lower: bool = True
 ) -> List[ASRDataSeg]:
-    """预处理ASRSegments
+    """Preprocess ASR segments.
 
-    1. 移除纯标点符号的Segments
-    2. 为需要空格分隔的语言添加空格（英语、俄语、阿拉伯语等，不包括CJK）
+    1. Drop segments that are only punctuation
+    2. Add spaces for space-separated languages (English, Russian, Arabic, ...; not CJK)
 
     Args:
-        segments: ASR数据Segments列表
-        need_lower: 是否转小写（仅对拉丁和西里尔字母有效）
+        segments: ASR segment list
+        need_lower: lowercase the text (Latin and Cyrillic scripts only)
 
     Returns:
-        处理后的Segments列表
+        Processed segment list
     """
     new_segments = []
     for seg in segments:
         if not is_pure_punctuation(seg.text):
             text = seg.text.strip()
-            # 检查是否为需要空格分隔的语言（不包括CJK）
+            # Space-separated language (not CJK)?
             if is_space_separated_language(text):
                 if need_lower:
                     text = text.lower()
@@ -84,9 +84,10 @@ def preprocess_segments(
 
 
 class SubtitleSplitter:
-    """字幕智能分割器
+    """Smart subtitle splitter.
 
-    使用LLM进行语义Segments,支持缓存、并发处理和规则降级。
+    Splits into semantic segments with an LLM, with caching, concurrency and
+    a rule-based fallback.
     """
 
     def __init__(
@@ -96,13 +97,13 @@ class SubtitleSplitter:
         max_word_count_cjk: int = MAX_WORD_COUNT_CJK,
         max_word_count_english: int = MAX_WORD_COUNT_ENGLISH,
     ):
-        """初始化分割器
+        """Create the splitter.
 
         Args:
-            thread_num: 并发线程数
-            model: LLM模型名称
-            max_word_count_cjk: CJK最大字数
-            max_word_count_english: 英文最大单词数
+            thread_num: number of concurrent threads
+            model: LLM model name
+            max_word_count_cjk: max characters for CJK text
+            max_word_count_english: max words for English text
         """
         self.thread_num = thread_num
         self.model = model
@@ -112,30 +113,30 @@ class SubtitleSplitter:
         self._init_thread_pool()
 
     def _init_thread_pool(self):
-        """初始化线程池并注册清理"""
+        """Create the thread pool and register its cleanup."""
         self.executor = ThreadPoolExecutor(max_workers=self.thread_num)
         atexit.register(self.stop)
 
     def split_subtitle(self, subtitle_data: Union[str, ASRData]) -> ASRData:
-        """分割字幕(主入口)
+        """Split subtitles (main entry point).
 
-        处理流程:
-        1. Reading并预处理字幕
-        2. 按字数Segments
-        3. 并发调用LLM处理
-        4. 合并结果并优化
+        Steps:
+        1. Read and preprocess the subtitles
+        2. Cut into segments by word count
+        3. Process the segments concurrently with the LLM
+        4. Merge the results and optimize
 
         Args:
-            subtitle_data: 字幕文件路径或ASRData对象
+            subtitle_data: subtitle file path or ASRData object
 
         Returns:
-            分割后的ASRData对象
+            Split ASRData object
 
         Raises:
             RuntimeError: Raised on split failure
         """
         try:
-            # 1. Reading字幕
+            # 1. Read the subtitles
             if isinstance(subtitle_data, str):
                 asr_data = ASRData.from_subtitle_file(subtitle_data)
             else:
@@ -144,21 +145,21 @@ class SubtitleSplitter:
             if not asr_data.is_word_timestamp():
                 asr_data = asr_data.split_to_word_segments()
 
-            # 2. 预处理
+            # 2. Preprocess
             asr_data.segments = preprocess_segments(asr_data.segments, need_lower=False)
             txt = asr_data.to_txt().replace("\n", "")
 
-            # 3. 确定Segments数并分割
+            # 3. Decide the segment count and split
             total_word_count = count_words(txt)
             num_segments = self._determine_num_segments(total_word_count)
             logger.debug(f"Based on word count {total_word_count},determined segment count: {num_segments}")
 
             asr_data_list = self._split_asr_data(asr_data, num_segments)
 
-            # 4. 并发处理
+            # 4. Process concurrently
             processed_segments = self._process_segments(asr_data_list)
 
-            # 5. 合并并优化
+            # 5. Merge and optimize
             final_segments = self._merge_processed_segments(processed_segments)
 
             return ASRData(final_segments)
@@ -170,14 +171,14 @@ class SubtitleSplitter:
     def _determine_num_segments(
         self, word_count: int, threshold: int = SEGMENT_WORD_THRESHOLD
     ) -> int:
-        """Based on word count确定Segments数
+        """Decide the segment count from the word count.
 
         Args:
-            word_count: 总字数
-            threshold: 每段目标字数
+            word_count: total word count
+            threshold: target words per segment
 
         Returns:
-            Segments数(最小为1)
+            Segment count (at least 1)
         """
         num_segments = word_count // threshold
         if word_count % threshold > 0:
@@ -185,19 +186,19 @@ class SubtitleSplitter:
         return max(1, num_segments)
 
     def _split_asr_data(self, asr_data: ASRData, num_segments: int) -> List[ASRData]:
-        """按时间间隔智能分割长文本
+        """Split long text into segments at time gaps.
 
-        策略:
-        1. 计算平均分割点
-        2. 在分割点附近寻找最大时间间隔
-        3. 在间隔处切分以保证语义完整
+        Strategy:
+        1. Compute evenly spaced split points
+        2. Look for the largest time gap near each split point
+        3. Cut at that gap so sentences stay intact
 
         Args:
-            asr_data: ASR数据对象
-            num_segments: 目标Segments数
+            asr_data: ASR data object
+            num_segments: target segment count
 
         Returns:
-            分割后的ASRData列表
+            List of ASRData segments
         """
         total_segs = len(asr_data.segments)
         total_word_count = count_words(asr_data.to_txt())
@@ -206,16 +207,16 @@ class SubtitleSplitter:
         if num_segments <= 1 or total_segs <= num_segments:
             return [asr_data]
 
-        # 计算初始分割点
+        # Initial split points
         split_indices = [i * words_per_segment for i in range(1, num_segments)]
 
-        # 调整分割点:在附近寻找最大时间间隔
+        # Adjust each split point to the largest nearby time gap
         adjusted_split_indices = []
         for split_point in split_indices:
             start = max(0, split_point - SPLIT_SEARCH_RANGE)
             end = min(total_segs - 1, split_point + SPLIT_SEARCH_RANGE)
 
-            # 寻找最大间隔点
+            # Find the largest gap
             max_gap = -1
             best_index = split_point
 
@@ -229,10 +230,10 @@ class SubtitleSplitter:
 
             adjusted_split_indices.append(best_index)
 
-        # 去重并排序
+        # Deduplicate and sort
         adjusted_split_indices = sorted(list(set(adjusted_split_indices)))
 
-        # 执行分割
+        # Split
         segments = []
         prev_index = 0
         for index in adjusted_split_indices:
@@ -247,7 +248,7 @@ class SubtitleSplitter:
         return segments
 
     def _process_segments(self, asr_data_list: List[ASRData]) -> List[List[ASRDataSeg]]:
-        """并发处理AllSegments"""
+        """Process all segments concurrently."""
         futures = []
         for asr_data in asr_data_list:
             if not self.executor:
@@ -270,7 +271,7 @@ class SubtitleSplitter:
         return processed_segments
 
     def _process_single_segment(self, asr_data_part: ASRData) -> List[ASRDataSeg]:
-        """处理单个Segments(带重试和降级)"""
+        """Process one segment with retry and fallback."""
         if not asr_data_part.segments:
             return []
         try:
@@ -280,13 +281,13 @@ class SubtitleSplitter:
             return self._process_by_rules(asr_data_part.segments)
 
     def _process_by_llm(self, segments: List[ASRDataSeg]) -> List[ASRDataSeg]:
-        """使用LLM进行智能Segments
+        """Split into sentences with the LLM.
 
         Args:
-            segments: ASRSegments列表
+            segments: ASR segment list
 
         Returns:
-            处理后的Segments列表
+            Processed segment list
         """
         txt = "".join([seg.text for seg in segments])
         logger.debug(f"Calling API for segmentation,text length: {count_words(txt)}")
@@ -301,18 +302,18 @@ class SubtitleSplitter:
         return self._merge_segments_based_on_sentences(segments, sentences)
 
     def _process_by_rules(self, segments: List[ASRDataSeg]) -> List[ASRDataSeg]:
-        """使用规则进行基础分割(LLM降级方案)
+        """Basic rule-based splitting (fallback when the LLM fails).
 
-        规则:
-        1. Grouped by time gaps
-        2. 按常见词分割长句
-        3. 拆分超长Segments
+        Rules:
+        1. Group by time gaps
+        2. Split long sentences at common words
+        3. Split over-long segments
 
         Args:
-            segments: ASRSegments列表
+            segments: ASR segment list
 
         Returns:
-            处理后的Segments列表
+            Processed segment list
         """
         logger.debug(f"Segments: {len(segments)}")
 
@@ -322,7 +323,7 @@ class SubtitleSplitter:
         )
         logger.debug(f"Grouped by time gaps: {len(segment_groups)}")
 
-        # 2. 按常见词分割长句
+        # 2. Split long sentences at common words
         common_result_groups = []
         for group in segment_groups:
             max_word_count = (
@@ -336,7 +337,7 @@ class SubtitleSplitter:
             else:
                 common_result_groups.append(group)
 
-        # 3. 拆分超长Segments
+        # 3. Split over-long segments
         result_segments = []
         for group in common_result_groups:
             result_segments.extend(self._split_long_segment(group))
@@ -349,15 +350,15 @@ class SubtitleSplitter:
         max_gap: int = MAX_GAP,
         check_large_gaps: bool = False,
     ) -> List[List[ASRDataSeg]]:
-        """Grouped by time gaps
+        """Group segments by time gaps.
 
         Args:
-            segments: Segments列表
-            max_gap: 最大允许间隔(ms)
-            check_large_gaps: 是否检查异常大间隔
+            segments: segment list
+            max_gap: largest allowed gap (ms)
+            check_large_gaps: also cut at unusually large gaps
 
         Returns:
-            分组后的列表
+            List of groups
         """
         if not segments:
             return []
@@ -369,7 +370,7 @@ class SubtitleSplitter:
         for i in range(1, len(segments)):
             time_gap = segments[i].start_time - segments[i - 1].end_time
 
-            # 检查异常大间隔
+            # Unusually large gap?
             if check_large_gaps:
                 recent_gaps.append(time_gap)
                 if len(recent_gaps) > TIME_GAP_WINDOW_SIZE:
@@ -384,7 +385,7 @@ class SubtitleSplitter:
                         current_group = []
                         recent_gaps = []
 
-            # 超过最大间隔则分组
+            # Start a new group past the largest gap
             if time_gap > max_gap:
                 result.append(current_group)
                 current_group = []
@@ -400,17 +401,17 @@ class SubtitleSplitter:
     def _split_by_common_words(
         self, segments: List[ASRDataSeg]
     ) -> List[List[ASRDataSeg]]:
-        """在常见连接词处分割
+        """Split at common connective words.
 
         Args:
-            segments: ASRSegments列表
+            segments: ASR segment list
 
         Returns:
-            分割后的分组列表
+            List of groups
         """
-        # 前缀分割词(在这些词前面分割)
+        # Prefix words: split before them
         prefix_split_words = {
-            # 英文
+            # English
             "and",
             "or",
             "but",
@@ -429,7 +430,7 @@ class SubtitleSplitter:
             "for",
             "however",
             "moreover",
-            # 中文
+            # Chinese
             "和",
             "及",
             "与",
@@ -449,9 +450,9 @@ class SubtitleSplitter:
             "哪",
         }
 
-        # 后缀分割词(在这些词后面分割)
+        # Suffix words: split after them
         suffix_split_words = {
-            # 标点
+            # Punctuation
             ".",
             ",",
             "!",
@@ -460,7 +461,7 @@ class SubtitleSplitter:
             "，",
             "！",
             "？",
-            # 中文语气词
+            # Chinese modal particles
             "的",
             "了",
             "着",
@@ -472,7 +473,7 @@ class SubtitleSplitter:
             "呀",
             "嘛",
             "啦",
-            # 英文代词
+            # English pronouns
             "mine",
             "yours",
             "hers",
@@ -493,7 +494,7 @@ class SubtitleSplitter:
                 else self.max_word_count_english
             )
 
-            # 前缀词分割
+            # Split at prefix words
             if any(
                 seg.text.lower().startswith(word) for word in prefix_split_words
             ) and len(current_group) >= int(max_word_count * PREFIX_WORD_RATIO):
@@ -501,7 +502,7 @@ class SubtitleSplitter:
                 logger.debug(f"Split before prefix word {seg.text} ")
                 current_group = []
 
-            # 后缀词分割
+            # Split at suffix words
             if (
                 i > 0
                 and any(
@@ -522,15 +523,15 @@ class SubtitleSplitter:
         return result
 
     def _split_long_segment(self, segments: List[ASRDataSeg]) -> List[ASRDataSeg]:
-        """拆分超长Segments
+        """Split over-long segments.
 
-        策略:寻找最大时间间隔点进行拆分
+        Strategy: cut at the largest time gap.
 
         Args:
-            segments: Segments列表
+            segments: segment list
 
         Returns:
-            拆分后的Segments列表
+            Split segment list
         """
         result_segs = []
         segments_to_process = [segments]
@@ -549,7 +550,7 @@ class SubtitleSplitter:
             )
             n = len(current_segments)
 
-            # Segments足够短或无法继续拆分
+            # Short enough, or nothing left to split
             if count_words(merged_text) <= max_word_count or n < RULE_MIN_SEGMENT_SIZE:
                 merged_seg = ASRDataSeg(
                     merged_text.strip(),
@@ -559,7 +560,7 @@ class SubtitleSplitter:
                 result_segs.append(merged_seg)
                 continue
 
-            # 检查时间间隔
+            # Look at the time gaps
             gaps = [
                 current_segments[i + 1].start_time - current_segments[i].end_time
                 for i in range(n - 1)
@@ -567,10 +568,10 @@ class SubtitleSplitter:
             all_equal = all(abs(gap - gaps[0]) < 1e-6 for gap in gaps)
 
             if all_equal:
-                # 间隔相等:中间分割
+                # Equal gaps: cut in the middle
                 split_index = n // 2
             else:
-                # 间隔不等:寻找最大间隔点
+                # Unequal gaps: cut at the largest one
                 start_idx = max(n // 6, 1)
                 end_idx = min((5 * n) // 6, n - 2)
                 split_index = max(
@@ -582,19 +583,19 @@ class SubtitleSplitter:
                 if split_index == 0 or split_index == n - 1:
                     split_index = n // 2
 
-            # 分割并加入处理队列
+            # Cut and queue both halves
             first_segs = current_segments[: split_index + 1]
             second_segs = current_segments[split_index + 1 :]
             segments_to_process.extend([first_segs, second_segs])
 
-        # 按时间排序
+        # Sort by time
         result_segs.sort(key=lambda seg: seg.start_time)
         return result_segs
 
     def _merge_processed_segments(
         self, processed_segments: List[List[ASRDataSeg]]
     ) -> List[ASRDataSeg]:
-        """合并All处理后的Segments并排序"""
+        """Merge all processed segments and sort them."""
         final_segments = []
         for segments in processed_segments:
             final_segments.extend(segments)
@@ -603,15 +604,14 @@ class SubtitleSplitter:
         return final_segments
 
     def merge_short_segment(self, segments: List[ASRDataSeg]) -> None:
-        """deprecated
-        合并短Segments优化
+        """Deprecated: merge short segments.
 
-        合并条件:
-        1. 时间间隔小 + 字数少
-        2. 合并后不超过最大字数限制
+        Merge conditions:
+        1. Small time gap and few words
+        2. The merged text stays under the word limit
 
         Args:
-            segments: Segments列表(原地修改)
+            segments: segment list (modified in place)
         """
         if not segments:
             return
@@ -631,7 +631,7 @@ class SubtitleSplitter:
                 else self.max_word_count_english
             )
 
-            # 判断是否合并
+            # Merge?
             should_merge = (
                 time_gap < MERGE_SHORT_GAP
                 and (current_words < MERGE_MIN_WORDS or next_words < MERGE_MIN_WORDS)
@@ -650,7 +650,7 @@ class SubtitleSplitter:
                     f"合并短Segments: {current_seg.text} + {next_seg.text} (间隔:{time_gap}ms)"
                 )
 
-                # 合并文本
+                # Merge the text
                 if is_mainly_cjk(current_seg.text):
                     current_seg.text += next_seg.text
                 else:
@@ -667,27 +667,27 @@ class SubtitleSplitter:
         sentences: List[str],
         max_unmatched: int = MATCH_MAX_UNMATCHED,
     ) -> List[ASRDataSeg]:
-        """基于LLM返回的句子列表合并ASRSegments
+        """Merge ASR segments according to the sentences returned by the LLM.
 
-        使用滑动窗口匹配算法:
-        1. 对每个LLM句子,寻找最佳匹配的ASRSegments序列
-        2. 使用相似度算法进行匹配
-        3. 合并匹配的Segments
+        Sliding-window matching:
+        1. For each LLM sentence, find the best matching run of ASR segments
+        2. Match by text similarity
+        3. Merge the matched segments
 
         Args:
-            segments: ASRSegments列表
-            sentences: LLM返回的句子列表
-            max_unmatched: 允许的最大未匹配句子数
+            segments: ASR segment list
+            sentences: sentences returned by the LLM
+            max_unmatched: largest allowed number of unmatched sentences
 
         Returns:
-            合并后的Segments列表
+            Merged segment list
 
         Raises:
-            ValueError: Unmatched sentences exceeded threshold时
+            ValueError: when unmatched sentences exceed the threshold
         """
 
         def preprocess_text(s: str) -> str:
-            """文本标准化:小写+空格规范化"""
+            """Normalize text: lowercase and collapse whitespace."""
             return " ".join(s.lower().split())
 
         asr_texts = [seg.text for seg in segments]
@@ -710,7 +710,7 @@ class SubtitleSplitter:
             best_pos = None
             best_window_size = 0
 
-            # 滑动窗口大小
+            # Sliding window size
             max_window_size = min(word_count * 2, asr_len - asr_index)
             min_window_size = max(1, word_count // 2)
             window_sizes = sorted(
@@ -718,7 +718,7 @@ class SubtitleSplitter:
                 key=lambda x: abs(x - word_count),
             )
 
-            # 滑动窗口匹配
+            # Sliding-window match
             for window_size in window_sizes:
                 max_start = min(asr_index + max_shift + 1, asr_len - window_size + 1)
                 for start in range(asr_index, max_start):
@@ -737,14 +737,14 @@ class SubtitleSplitter:
                 if best_ratio == 1.0:
                     break
 
-            # 处理匹配结果
+            # Apply the match
             if best_ratio >= threshold and best_pos is not None:
                 start_seg_index = best_pos
                 end_seg_index = best_pos + best_window_size - 1
 
                 segs_to_merge = segments[start_seg_index : end_seg_index + 1]
 
-                # 按时间切分避免跨度过大
+                # Cut by time so no segment spans too long
                 seg_groups = self._group_by_time_gaps(segs_to_merge, max_gap=MAX_GAP)
 
                 for group in seg_groups:
@@ -757,7 +757,7 @@ class SubtitleSplitter:
 
                     logger.debug(f"Merged segments: {merged_seg.text}")
 
-                    # 拆分超长Segments
+                    # Split over-long segments
                     split_segs = self._split_long_segment(group)
                     new_segments.extend(split_segs)
 
@@ -774,7 +774,7 @@ class SubtitleSplitter:
         return new_segments
 
     def stop(self):
-        """停止分割器并清理资源"""
+        """Stop the splitter and release resources."""
         if not self.is_running:
             return
         self.is_running = False

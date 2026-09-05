@@ -47,7 +47,7 @@ from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
 
 
 class SettingInterface(ScrollArea):
-    """设置界面"""
+    """Settings page."""
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -56,53 +56,53 @@ class SettingInterface(ScrollArea):
         self.expandLayout = ExpandLayout(self.scrollWidget)
         self.settingLabel = QLabel(self.tr("设置"), self)
 
-        # 初始化所有设置组
+        # Create every settings group
         self.__initGroups()
-        # 初始化所有配置卡片
+        # Create every settings card
         self.__initCards()
-        # 初始化界面
+        # Set up the widget
         self.__initWidget()
-        # 初始化布局
+        # Build the layout
         self.__initLayout()
-        # 连接信号和槽
+        # Connect signals and slots
         self.__connectSignalToSlot()
 
     def __initGroups(self):
-        """初始化所有设置组"""
-        # 转录配置组
+        """Create every settings group."""
+        # Transcription group
         self.transcribeGroup = SettingCardGroup(self.tr("转录配置"), self.scrollWidget)
-        # LLM配置组
+        # LLM group
         self.llmGroup = SettingCardGroup(self.tr("LLM配置"), self.scrollWidget)
-        # 翻译服务组
+        # Translation service group
         self.translate_serviceGroup = SettingCardGroup(
             self.tr("翻译服务"), self.scrollWidget
         )
-        # 翻译与优化组
+        # Translation and optimization group
         self.translateGroup = SettingCardGroup(self.tr("翻译与优化"), self.scrollWidget)
-        # 字幕合成配置组
+        # Subtitle synthesis group
         self.subtitleGroup = SettingCardGroup(
             self.tr("字幕合成配置"), self.scrollWidget
         )
-        # 保存配置组
+        # Save group
         self.saveGroup = SettingCardGroup(self.tr("保存配置"), self.scrollWidget)
-        # 个性化组
+        # Personalization group
         self.personalGroup = SettingCardGroup(self.tr("个性化"), self.scrollWidget)
-        # 关于组
+        # About group
         self.aboutGroup = SettingCardGroup(self.tr("关于"), self.scrollWidget)
 
     def __initCards(self):
-        """初始化所有配置卡片"""
+        """Create every settings card."""
 
-        # ASR 服务配置卡片
+        # ASR service card
         self.__createASRServiceCards()
 
-        # LLM配置卡片
+        # LLM cards
         self.__createLLMServiceCards()
 
-        # 翻译配置卡片
+        # Translation cards
         self.__createTranslateServiceCards()
 
-        # 翻译与优化配置卡片
+        # Translation and optimization cards
         self.subtitleCorrectCard = SwitchSettingCard(
             FIF.EDIT,
             self.tr("字幕校正"),
@@ -126,7 +126,7 @@ class SettingInterface(ScrollArea):
             parent=self.translateGroup,
         )
 
-        # 字幕合成配置卡片
+        # Subtitle synthesis cards
         self.subtitleStyleCard = HyperlinkCard(
             "",
             self.tr("修改"),
@@ -166,7 +166,7 @@ class SettingInterface(ScrollArea):
             parent=self.subtitleGroup,
         )
 
-        # 保存配置卡片
+        # Save cards
         self.savePathCard = PushSettingCard(
             self.tr("工作文件夹"),
             FIF.SAVE,
@@ -175,7 +175,7 @@ class SettingInterface(ScrollArea):
             self.saveGroup,
         )
 
-        # 个性化配置卡片
+        # Personalization cards
         self.cacheEnabledCard = SwitchSettingCard(
             FIF.HISTORY,
             self.tr("启用缓存"),
@@ -228,7 +228,7 @@ class SettingInterface(ScrollArea):
             self.aboutGroup,
         )
 
-        # 添加卡片到对应的组
+        # Add the cards to their groups
         self.translateGroup.addSettingCard(self.subtitleCorrectCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
@@ -250,8 +250,8 @@ class SettingInterface(ScrollArea):
         self.aboutGroup.addSettingCard(self.aboutCard)
 
     def __createLLMServiceCards(self):
-        """创建LLM服务相关的配置卡片"""
-        # 服务选择卡片
+        """Create the cards for the LLM services."""
+        # Service selector card
         self.llmServiceCard = ComboBoxSettingCard(
             cfg.llm_service,
             FIF.ROBOT,
@@ -262,7 +262,7 @@ class SettingInterface(ScrollArea):
         )
         self.llmServiceCard.comboBox.setMinimumWidth(150)
 
-        # 创建OPENAI官方API链接卡片
+        # Card linking to the official OpenAI API page
         self.openaiOfficialApiCard = HyperlinkCard(
             "https://api.videocaptioner.cn/register?aff=UrLB",
             self.tr("访问"),
@@ -271,7 +271,7 @@ class SettingInterface(ScrollArea):
             self.tr("集成多种大语言模型，支持高并发字幕优化、翻译"),
             self.llmGroup,
         )
-        # 默认隐藏
+        # Hidden by default
         self.openaiOfficialApiCard.setVisible(False)
 
         # One key/base/model triple per provider; the presets carry the defaults.
@@ -315,7 +315,7 @@ class SettingInterface(ScrollArea):
                 "model": model_card,
             }
 
-        # 创建检查连接卡片
+        # Connection check card
         self.checkLLMConnectionCard = PushSettingCard(
             self.tr("检查连接"),
             FIF.LINK,
@@ -324,12 +324,12 @@ class SettingInterface(ScrollArea):
             self.llmGroup,
         )
 
-        # 初始化显示状态
+        # Initial visibility
         self.__onLLMServiceChanged(self.llmServiceCard.comboBox.currentText())
 
     def __createASRServiceCards(self):
-        """创建 Whisper API 配置卡片"""
-        # 转录配置卡片
+        """Create the Whisper API cards."""
+        # Transcription cards
         self.transcribeModelCard = ComboBoxSettingCard(
             cfg.transcribe_model,
             FIF.MICROPHONE,
@@ -369,7 +369,7 @@ class SettingInterface(ScrollArea):
             self.transcribeGroup,
         )
 
-        # 模型选择
+        # Model selector
         self.whisperApiModelCard = EditComboBoxSettingCard(
             cfg.whisper_api_model,
             FIF.ROBOT,  # type: ignore
@@ -382,7 +382,7 @@ class SettingInterface(ScrollArea):
             self.transcribeGroup,
         )
 
-        # 测试连接按钮
+        # Connection test button
         self.checkWhisperConnectionCard = PushSettingCard(
             self.tr("测试 Whisper 连接"),
             FIF.CONNECT,
@@ -391,15 +391,15 @@ class SettingInterface(ScrollArea):
             self.transcribeGroup,
         )
 
-        # 默认隐藏 Whisper API 配置卡片（仅在选择 Whisper API 时显示）
+        # Whisper API cards start hidden; shown only when Whisper API is selected
         self.whisperApiBaseCard.setVisible(False)
         self.whisperApiKeyCard.setVisible(False)
         self.whisperApiModelCard.setVisible(False)
         self.checkWhisperConnectionCard.setVisible(False)
 
     def __createTranslateServiceCards(self):
-        """创建翻译服务相关的配置卡片"""
-        # 翻译服务选择卡片
+        """Create the cards for the translation services."""
+        # Translation service selector card
         self.translatorServiceCard = ComboBoxSettingCard(
             cfg.translator_service,
             FIF.ROBOT,
@@ -413,7 +413,7 @@ class SettingInterface(ScrollArea):
         )
         self.translatorServiceCard.comboBox.setMinimumWidth(150)
 
-        # 反思翻译开关
+        # Reflective translation switch
         self.needReflectTranslateCard = SwitchSettingCard(
             FIF.EDIT,
             self.tr("需要反思翻译"),
@@ -422,7 +422,7 @@ class SettingInterface(ScrollArea):
             self.translate_serviceGroup,
         )
 
-        # DeepLx端点配置
+        # DeepLX endpoint
         self.deeplxEndpointCard = LineEditSettingCard(
             cfg.deeplx_endpoint,
             FIF.LINK,
@@ -432,7 +432,7 @@ class SettingInterface(ScrollArea):
             self.translate_serviceGroup,
         )
 
-        # 批处理大小配置
+        # Batch size
         self.batchSizeCard = RangeSettingCard(
             cfg.batch_size,
             FIF.ALIGNMENT,
@@ -441,7 +441,7 @@ class SettingInterface(ScrollArea):
             parent=self.translate_serviceGroup,
         )
 
-        # 线程数配置
+        # Thread count
         self.threadNumCard = RangeSettingCard(
             cfg.thread_num,
             FIF.SPEED_HIGH,
@@ -452,14 +452,14 @@ class SettingInterface(ScrollArea):
             parent=self.translate_serviceGroup,
         )
 
-        # 添加卡片到翻译服务组
+        # Add the cards to the translation service group
         self.translate_serviceGroup.addSettingCard(self.translatorServiceCard)
         self.translate_serviceGroup.addSettingCard(self.needReflectTranslateCard)
         self.translate_serviceGroup.addSettingCard(self.deeplxEndpointCard)
         self.translate_serviceGroup.addSettingCard(self.batchSizeCard)
         self.translate_serviceGroup.addSettingCard(self.threadNumCard)
 
-        # 初始化显示状态
+        # Initial visibility
         self.__onTranslatorServiceChanged(
             self.translatorServiceCard.comboBox.currentText()
         )
@@ -475,14 +475,14 @@ class SettingInterface(ScrollArea):
         self.scrollWidget.setAttribute(Qt.WA_TranslucentBackground, True)  # type: ignore
         self.setObjectName("settingInterface")
 
-        # 初始化样式表
+        # Style sheet
         self.scrollWidget.setObjectName("scrollWidget")
         self.settingLabel.setObjectName("settingLabel")
 
-        # 初始化转录模型配置卡片的显示状态
+        # Initial visibility of the transcription model cards
         self.__onTranscribeModelChanged(self.transcribeModelCard.comboBox.currentText())
 
-        # 初始化翻译服务配置卡片的显示状态
+        # Initial visibility of the translation service cards
         self.__onTranslatorServiceChanged(
             self.translatorServiceCard.comboBox.currentText()
         )
@@ -505,28 +505,28 @@ class SettingInterface(ScrollArea):
         )
 
     def __initLayout(self):
-        """初始化布局"""
+        """Build the layout."""
         self.settingLabel.move(36, 30)
 
-        # 添加转录配置卡片
+        # Transcription cards
         self.transcribeGroup.addSettingCard(self.transcribeModelCard)
         self.transcribeGroup.addSettingCard(self.fasterWhisperManagerCard)
-        # 添加 Whisper API 配置卡片
+        # Whisper API cards
         self.transcribeGroup.addSettingCard(self.whisperApiBaseCard)
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
         self.transcribeGroup.addSettingCard(self.whisperApiModelCard)
         self.transcribeGroup.addSettingCard(self.checkWhisperConnectionCard)
 
-        # 添加LLM配置卡片
+        # LLM cards
         self.llmGroup.addSettingCard(self.llmServiceCard)
-        # 添加OPENAI官方API链接卡片
+        # Official OpenAI API link card
         self.llmGroup.addSettingCard(self.openaiOfficialApiCard)
         for config in self.llm_service_configs.values():
             for card in config["cards"]:
                 self.llmGroup.addSettingCard(card)
         self.llmGroup.addSettingCard(self.checkLLMConnectionCard)
 
-        # 将所有组添加到布局
+        # Add every group to the layout
         self.expandLayout.setSpacing(28)
         self.expandLayout.setContentsMargins(36, 10, 36, 0)
         self.expandLayout.addWidget(self.transcribeGroup)
@@ -539,20 +539,20 @@ class SettingInterface(ScrollArea):
         self.expandLayout.addWidget(self.aboutGroup)
 
     def __connectSignalToSlot(self):
-        """连接信号与槽"""
+        """Connect signals and slots."""
         cfg.appRestartSig.connect(self.__showRestartTooltip)
 
-        # LLM服务切换
+        # LLM service switch
         self.llmServiceCard.comboBox.currentTextChanged.connect(
             self.__onLLMServiceChanged
         )
 
-        # 翻译服务切换
+        # Translation service switch
         self.translatorServiceCard.comboBox.currentTextChanged.connect(
             self.__onTranslatorServiceChanged
         )
 
-        # 转录模型切换
+        # Transcription model switch
         self.transcribeModelCard.comboBox.currentTextChanged.connect(
             self.__onTranscribeModelChanged
         )
@@ -560,16 +560,16 @@ class SettingInterface(ScrollArea):
             self.__showFasterWhisperManager
         )
 
-        # 检查 LLM 连接
+        # LLM connection check
         self.checkLLMConnectionCard.clicked.connect(self.checkLLMConnection)
 
-        # 检查 Whisper 连接
+        # Whisper connection check
         self.checkWhisperConnectionCard.clicked.connect(self.checkWhisperConnection)
 
-        # 保存路径
+        # Save path
         self.savePathCard.clicked.connect(self.__onsavePathCardClicked)
 
-        # 字幕样式修改跳转
+        # Jump to the subtitle style page
         self.subtitleStyleCard.linkButton.clicked.connect(
             lambda: self.window().switchTo(self.window().subtitleStyleInterface)  # type: ignore
         )
@@ -577,15 +577,15 @@ class SettingInterface(ScrollArea):
             lambda: self.window().switchTo(self.window().subtitleStyleInterface)  # type: ignore
         )
 
-        # 个性化
+        # Personalization
         self.cacheEnabledCard.checkedChanged.connect(self.__onCacheEnabledChanged)
         self.themeCard.optionChanged.connect(lambda ci: setTheme(cfg.get(ci)))
         self.themeColorCard.colorChanged.connect(setThemeColor)
 
-        # 关于
+        # About
         self.aboutCard.clicked.connect(self.checkUpdate)
 
-        # 全局 signalBus
+        # Global signalBus
         self.transcribeModelCard.comboBox.currentTextChanged.connect(
             signalBus.transcription_model_changed
         )
@@ -605,7 +605,7 @@ class SettingInterface(ScrollArea):
         )
 
     def __showRestartTooltip(self):
-        """显示重启提示"""
+        """Show the restart hint."""
         InfoBar.success(
             self.tr("更新成功"),
             self.tr("配置将在重启后生效"),
@@ -614,7 +614,7 @@ class SettingInterface(ScrollArea):
         )
 
     def __onsavePathCardClicked(self):
-        """处理保存路径卡片点击事件"""
+        """Handle a click on the save path card."""
         folder = QFileDialog.getExistingDirectory(self, self.tr("选择文件夹"), "./")
         if not folder or cfg.get(cfg.work_dir) == folder:
             return
@@ -622,7 +622,7 @@ class SettingInterface(ScrollArea):
         self.savePathCard.setContent(folder)
 
     def __onCacheEnabledChanged(self, is_enabled: bool):
-        """处理缓存开关变化"""
+        """Handle the cache switch changing."""
         if is_enabled:
             enable_cache()
             InfoBar.success(
@@ -641,16 +641,16 @@ class SettingInterface(ScrollArea):
             )
 
     def checkLLMConnection(self):
-        """检查 LLM 连接"""
-        # 保存当前滚动位置
+        """Check the LLM connection."""
+        # Remember the scroll position
         scroll_position = self.verticalScrollBar().value()
 
-        # 获取当前选中的服务
+        # Currently selected service
         current_service = enum_from_display(
             LLMServiceEnum, self.llmServiceCard.comboBox.currentText(), self.tr
         )
 
-        # 获取服务配置
+        # Service configuration
         service_config = self.llm_service_configs.get(current_service)
         if not service_config:
             return
@@ -671,21 +671,21 @@ class SettingInterface(ScrollArea):
             else ""
         )
 
-        # 禁用检查按钮，显示加载状态
+        # Disable the check button and show the loading state
         self.checkLLMConnectionCard.button.setEnabled(False)
         self.checkLLMConnectionCard.button.setText(self.tr("正在检查..."))
 
-        # 立即恢复滚动位置（防止按钮状态改变导致的自动滚动）
+        # Restore the scroll position right away; the button state change would auto-scroll
         self.verticalScrollBar().setValue(scroll_position)
 
-        # 创建并启动线程
+        # Create and start the thread
         self.connection_thread = LLMConnectionThread(api_base, api_key, model)
         self.connection_thread.finished.connect(self.onConnectionCheckFinished)
         self.connection_thread.error.connect(self.onConnectionCheckError)
         self.connection_thread.start()
 
     def onConnectionCheckError(self, message):
-        """处理连接检查错误事件"""
+        """Handle a connection check error."""
         self.checkLLMConnectionCard.button.setEnabled(True)
         self.checkLLMConnectionCard.button.setText(self.tr("检查连接"))
         InfoBar.error(
@@ -696,17 +696,17 @@ class SettingInterface(ScrollArea):
         )
 
     def onConnectionCheckFinished(self, is_success, message, models):
-        """处理连接检查完成事件"""
+        """Handle a finished connection check."""
         self.checkLLMConnectionCard.button.setEnabled(True)
         self.checkLLMConnectionCard.button.setText(self.tr("检查连接"))
 
-        # 获取当前服务
+        # Current service
         current_service = enum_from_display(
             LLMServiceEnum, self.llmServiceCard.comboBox.currentText(), self.tr
         )
 
         if models:
-            # 更新当前服务的模型列表
+            # Update the model list of the current service
             service_config = self.llm_service_configs.get(current_service)
             if service_config and service_config["model"]:
                 temp = service_config["model"].comboBox.currentText()
@@ -790,18 +790,18 @@ class SettingInterface(ScrollArea):
             webbrowser.open(RELEASE_URL)
 
     def __onLLMServiceChanged(self, service):
-        """处理LLM服务切换事件"""
+        """Handle the LLM service changing."""
         current_service = enum_from_display(LLMServiceEnum, service, self.tr)
 
-        # 隐藏所有卡片
+        # Hide every card
         for config in self.llm_service_configs.values():
             for card in config["cards"]:
                 card.setVisible(False)
 
-        # 隐藏OPENAI官方API链接卡片
+        # Hide the official OpenAI API link card
         self.openaiOfficialApiCard.setVisible(False)
 
-        # 显示选中服务的卡片
+        # Show the cards of the selected service
         if current_service in self.llm_service_configs:
             for card in self.llm_service_configs[current_service]["cards"]:
                 card.setVisible(True)
@@ -812,11 +812,11 @@ class SettingInterface(ScrollArea):
             if filled != key_edit.text():
                 key_edit.setText(filled)
 
-            # 如果是OPENAI服务，显示官方API链接卡片
+            # Show the official API link card for the OpenAI service
             if current_service == LLMServiceEnum.OPENAI:
                 self.openaiOfficialApiCard.setVisible(True)
 
-        # 更新布局
+        # Refresh the layout
         self.llmGroup.adjustSize()
         self.expandLayout.update()
 
@@ -831,7 +831,7 @@ class SettingInterface(ScrollArea):
         for card in all_cards:
             card.setVisible(False)
 
-        # 根据选择的服务显示相应的配置卡片
+        # Show the cards that belong to the selected service
         # `service` is the comboBox display text — translated. Resolve via helper.
         try:
             current = enum_from_display(TranslatorServiceEnum, service, self.tr)
@@ -844,13 +844,13 @@ class SettingInterface(ScrollArea):
             for card in openai_cards:
                 card.setVisible(True)
 
-        # 更新布局
+        # Refresh the layout
         self.translate_serviceGroup.adjustSize()
         self.expandLayout.update()
 
     def __onTranscribeModelChanged(self, model_name):
-        """处理转录模型切换事件"""
-        # Whisper API 配置卡片
+        """Handle the transcription model changing."""
+        # Whisper API cards
         whisper_api_cards = [
             self.whisperApiBaseCard,
             self.whisperApiKeyCard,
@@ -871,7 +871,7 @@ class SettingInterface(ScrollArea):
         for card in whisper_api_cards:
             card.setVisible(is_whisper_api)
 
-        # 更新布局
+        # Refresh the layout
         self.transcribeGroup.adjustSize()
         self.expandLayout.update()
 
@@ -885,11 +885,11 @@ class SettingInterface(ScrollArea):
         dialog.exec_()
 
     def checkWhisperConnection(self):
-        """检查 Whisper API 连接"""
-        # 保存当前滚动位置
+        """Check the Whisper API connection."""
+        # Remember the scroll position
         scroll_position = self.verticalScrollBar().value()
 
-        # 获取配置
+        # Configuration
         base_url = self.whisperApiBaseCard.lineEdit.text().strip()
         api_key = self.whisperApiKeyCard.lineEdit.text().strip()
         model = self.whisperApiModelCard.comboBox.currentText().strip()
@@ -909,14 +909,14 @@ class SettingInterface(ScrollArea):
             )
             return
 
-        # 禁用按钮，显示加载状态
+        # Disable the button and show the loading state
         self.checkWhisperConnectionCard.button.setEnabled(False)
         self.checkWhisperConnectionCard.button.setText(self.tr("正在测试..."))
 
-        # 立即恢复滚动位置（防止按钮状态改变导致的自动滚动）
+        # Restore the scroll position right away; the button state change would auto-scroll
         self.verticalScrollBar().setValue(scroll_position)
 
-        # 创建并启动测试线程
+        # Create and start the test thread
         self.whisper_connection_thread = WhisperConnectionThread(
             base_url, api_key, model
         )
@@ -927,8 +927,8 @@ class SettingInterface(ScrollArea):
         self.whisper_connection_thread.start()
 
     def onWhisperConnectionCheckFinished(self, success, result):
-        """处理 Whisper 连接检查完成事件"""
-        # 恢复按钮状态
+        """Handle a finished Whisper connection check."""
+        # Restore the button
         self.checkWhisperConnectionCard.button.setEnabled(True)
         self.checkWhisperConnectionCard.button.setText(self.tr("测试 Whisper 连接"))
 
@@ -948,8 +948,8 @@ class SettingInterface(ScrollArea):
             )
 
     def onWhisperConnectionCheckError(self, message):
-        """处理 Whisper 连接检查错误事件"""
-        # 恢复按钮状态
+        """Handle a Whisper connection check error."""
+        # Restore the button
         self.checkWhisperConnectionCard.button.setEnabled(True)
         self.checkWhisperConnectionCard.button.setText(self.tr("测试 Whisper 连接"))
 
@@ -962,7 +962,7 @@ class SettingInterface(ScrollArea):
 
 
 class WhisperConnectionThread(QThread):
-    """Whisper API 连接测试线程"""
+    """Whisper API connection test thread."""
 
     finished = pyqtSignal(bool, str)
     error = pyqtSignal(str)
@@ -974,7 +974,7 @@ class WhisperConnectionThread(QThread):
         self.model = model
 
     def run(self):
-        """执行连接测试"""
+        """Run the connection test."""
         try:
             success, result = check_whisper_connection(
                 self.base_url, self.api_key, self.model
@@ -995,7 +995,7 @@ class LLMConnectionThread(QThread):
         self.model = model
 
     def run(self):
-        """检查 LLM 连接并获取模型列表"""
+        """Check the LLM connection and fetch the model list."""
         try:
             is_success, message = check_llm_connection(
                 self.api_base, self.api_key, self.model

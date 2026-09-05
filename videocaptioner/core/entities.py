@@ -10,13 +10,13 @@ if TYPE_CHECKING:
 
 
 def _generate_task_id() -> str:
-    """生成 8 位任务 ID"""
+    """Generate an 8-character task ID."""
     return uuid.uuid4().hex[:8]
 
 
 @dataclass
 class SubtitleProcessData:
-    """字幕处理数据（翻译/优化通用）"""
+    """Subtitle processing payload shared by translation and optimization."""
 
     index: int
     original_text: str
@@ -25,7 +25,7 @@ class SubtitleProcessData:
 
 
 class SupportedAudioFormats(Enum):
-    """支持的音频格式"""
+    """Supported audio formats."""
 
     AAC = "aac"
     AC3 = "ac3"
@@ -47,7 +47,7 @@ class SupportedAudioFormats(Enum):
 
 
 class SupportedVideoFormats(Enum):
-    """支持的视频格式"""
+    """Supported video formats."""
 
     MP4 = "mp4"
     WEBM = "webm"
@@ -75,7 +75,7 @@ class SupportedVideoFormats(Enum):
 
 
 class SupportedSubtitleFormats(Enum):
-    """支持的字幕格式"""
+    """Supported subtitle formats."""
 
     SRT = "srt"
     ASS = "ass"
@@ -83,7 +83,7 @@ class SupportedSubtitleFormats(Enum):
 
 
 class OutputSubtitleFormatEnum(Enum):
-    """字幕输出格式"""
+    """Subtitle output formats."""
 
     SRT = "srt"
     ASS = "ass"
@@ -93,7 +93,7 @@ class OutputSubtitleFormatEnum(Enum):
 
 
 class TranscribeOutputFormatEnum(Enum):
-    """转录输出格式"""
+    """Transcription output formats."""
 
     SRT = "SRT"
     ASS = "ASS"
@@ -103,7 +103,7 @@ class TranscribeOutputFormatEnum(Enum):
 
 
 class LLMServiceEnum(Enum):
-    """LLM服务"""
+    """LLM services."""
 
     OPENAI = "OpenAI 兼容"
     SILICON_CLOUD = "SiliconCloud"
@@ -115,7 +115,7 @@ class LLMServiceEnum(Enum):
 
 
 class TranscribeModelEnum(Enum):
-    """转录模型"""
+    """Transcription models."""
 
     BIJIAN = "B 接口"
     JIANYING = "J 接口"
@@ -125,7 +125,7 @@ class TranscribeModelEnum(Enum):
 
 
 class TranslatorServiceEnum(Enum):
-    """翻译器服务"""
+    """Translator services."""
 
     OPENAI = "LLM 大模型翻译"
     DEEPLX = "DeepLx 翻译"
@@ -134,27 +134,27 @@ class TranslatorServiceEnum(Enum):
 
 
 class VadMethodEnum(Enum):
-    """VAD方法"""
+    """VAD methods."""
 
-    SILERO_V3 = "silero_v3"  # 通常比 v4 准确性低，但没有 v4 的一些怪癖
+    SILERO_V3 = "silero_v3"  # Usually less accurate than v4, but without some of v4's quirks
     SILERO_V4 = (
-        "silero_v4"  # 与 silero_v4_fw 相同。运行原始 Silero 的代码，而不是适配过的代码
+        "silero_v4"  # Same as silero_v4_fw but runs the original Silero code instead of the adapted one
     )
     SILERO_V5 = (
-        "silero_v5"  # 与 silero_v5_fw 相同。运行原始 Silero 的代码，而不是适配过的代码)
+        "silero_v5"  # Same as silero_v5_fw but runs the original Silero code instead of the adapted one
     )
     SILERO_V4_FW = (
-        "silero_v4_fw"  # 默认模型。最准确的 Silero 版本，有一些非致命的小问题
+        "silero_v4_fw"  # Default. The most accurate Silero version, with a few non-fatal quirks
     )
-    # SILERO_V5_FW = "silero_v5_fw"  # 准确性差。不是 VAD，而是某种语音的随机检测器，有各种致命的小问题。避免使用！
-    PYANNOTE_V3 = "pyannote_v3"  # 最佳准确性，支持 CUDA
-    PYANNOTE_ONNX_V3 = "pyannote_onnx_v3"  # pyannote_v3 的轻量版。与 Silero v4 的准确性相似，可能稍好，支持 CUDA
-    WEBRTC = "webrtc"  # 准确性低，过时的 VAD。仅接受 'vad_min_speech_duration_ms' 和 'vad_speech_pad_ms'
-    AUDITOK = "auditok"  # 实际上这不是 VAD，而是 AAD - 音频活动检测
+    # SILERO_V5_FW = "silero_v5_fw"  # Poor accuracy: more a random speech detector than a VAD, with fatal quirks. Avoid.
+    PYANNOTE_V3 = "pyannote_v3"  # Best accuracy, CUDA capable
+    PYANNOTE_ONNX_V3 = "pyannote_onnx_v3"  # Lightweight pyannote_v3: accuracy close to or slightly above Silero v4, CUDA capable
+    WEBRTC = "webrtc"  # Low accuracy, outdated VAD. Only honours 'vad_min_speech_duration_ms' and 'vad_speech_pad_ms'
+    AUDITOK = "auditok"  # Not a VAD but an AAD: audio activity detection
 
 
 class SubtitleLayoutEnum(Enum):
-    """字幕布局"""
+    """Subtitle layouts."""
 
     TRANSLATE_ON_TOP = "Bản dịch ở trên"
     ORIGINAL_ON_TOP = "Bản gốc ở trên"
@@ -163,14 +163,14 @@ class SubtitleLayoutEnum(Enum):
 
 
 class SubtitleRenderModeEnum(Enum):
-    """字幕渲染模式"""
+    """Subtitle render modes."""
 
     ASS_STYLE = "Kiểu ASS"  # FFmpeg ASS render
     ROUNDED_BG = "Nền bo góc"  # Pillow rounded background
 
 
 class VideoQualityEnum(Enum):
-    """视频合成质量"""
+    """Video synthesis quality."""
 
     ULTRA_HIGH = "Cực cao"
     HIGH = "Cao"
@@ -178,7 +178,7 @@ class VideoQualityEnum(Enum):
     LOW = "Thấp"
 
     def get_crf(self) -> int:
-        """获取对应的 CRF 值（越小质量越高，文件越大）"""
+        """CRF value for this quality (lower means better quality and larger files)."""
         crf_map = {
             VideoQualityEnum.ULTRA_HIGH: 18,
             VideoQualityEnum.HIGH: 23,
@@ -200,7 +200,7 @@ class VideoQualityEnum(Enum):
         "slower",
         "veryslow",
     ]:
-        """获取对应的 FFmpeg preset 值（影响编码速度）"""
+        """FFmpeg preset for this quality (affects encoding speed)."""
         preset_map: dict[
             VideoQualityEnum,
             Literal[
@@ -224,7 +224,7 @@ class VideoQualityEnum(Enum):
 
 
 class TranscribeLanguageEnum(Enum):
-    """转录语言"""
+    """Transcription languages."""
 
     AUTO = "自动检测"
     ENGLISH = "英语"
@@ -468,14 +468,14 @@ LANGUAGES = {
 
 @dataclass
 class ASRLanguageCapability:
-    """ASR语言支持能力"""
+    """Language support of the ASR engines."""
 
     supported_languages: list[TranscribeLanguageEnum]
     supports_auto: bool
 
 
 def _get_all_languages_except_auto() -> list[TranscribeLanguageEnum]:
-    """获取除 AUTO 外的All语言"""
+    """Every language except AUTO."""
     return [lang for lang in TranscribeLanguageEnum if lang != TranscribeLanguageEnum.AUTO]
 
 
@@ -510,7 +510,7 @@ ASR_LANGUAGE_CAPABILITIES: dict[TranscribeModelEnum, ASRLanguageCapability] = {
 
 
 def get_asr_language_capability(model: TranscribeModelEnum) -> ASRLanguageCapability:
-    """获取指定模型的语言能力"""
+    """Language capabilities of the given model."""
     return ASR_LANGUAGE_CAPABILITIES.get(
         model,
         ASRLanguageCapability(
@@ -522,17 +522,17 @@ def get_asr_language_capability(model: TranscribeModelEnum) -> ASRLanguageCapabi
 
 @dataclass
 class AudioStreamInfo:
-    """音频流信息"""
+    """Audio stream information."""
 
-    index: int  # 音轨在视频中的实际索引（如 0, 1, 2 或 2, 3, 4）
-    codec: str  # 音频编解码器（如 aac, mp3, opus）
-    language: str = ""  # 语言标签（如 eng, chi, deu）
-    title: str = ""  # 音轨标题（可选）
+    index: int  # Real stream index inside the video (0, 1, 2 or 2, 3, 4 ...)
+    codec: str  # Audio codec (aac, mp3, opus ...)
+    language: str = ""  # Language tag (eng, chi, deu ...)
+    title: str = ""  # Track title (optional)
 
 
 @dataclass
 class VideoInfo:
-    """视频信息类"""
+    """Video information."""
 
     file_name: str
     file_path: str
@@ -545,25 +545,25 @@ class VideoInfo:
     audio_codec: str
     audio_sampling_rate: int
     thumbnail_path: str
-    audio_streams: list[AudioStreamInfo] = field(default_factory=list)  # 音频流列表
+    audio_streams: list[AudioStreamInfo] = field(default_factory=list)  # Audio streams
 
 
 @dataclass
 class TranscribeConfig:
-    """转录配置类"""
+    """Transcription configuration."""
 
     transcribe_model: Optional[TranscribeModelEnum] = None
     transcribe_language: str = ""
     need_word_time_stamp: bool = True
     output_format: Optional[TranscribeOutputFormatEnum] = None
-    # Whisper Cpp 配置
+    # Whisper.cpp settings
     whisper_model: Optional[WhisperModelEnum] = None
-    # Whisper API 配置
+    # Whisper API settings
     whisper_api_key: Optional[str] = None
     whisper_api_base: Optional[str] = None
     whisper_api_model: Optional[str] = None
     whisper_api_prompt: Optional[str] = None
-    # Faster Whisper 配置
+    # Faster Whisper settings
     faster_whisper_program: Optional[str] = None
     faster_whisper_model: Optional[FasterWhisperModelEnum] = None
     faster_whisper_model_dir: Optional[str] = None
@@ -624,21 +624,21 @@ class TranscribeConfig:
 
 @dataclass
 class SubtitleConfig:
-    """字幕处理配置类"""
+    """Subtitle processing configuration."""
 
-    # 翻译配置
+    # Translation settings
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     llm_model: Optional[str] = None
     deeplx_endpoint: Optional[str] = None
-    # 翻译服务
+    # Translation service
     translator_service: Optional[TranslatorServiceEnum] = None
     need_translate: bool = False
     need_optimize: bool = False
     need_reflect: bool = False
     thread_num: int = 10
     batch_size: int = 10
-    # 字幕布局和分割
+    # Subtitle layout and splitting
     subtitle_layout: SubtitleLayoutEnum = SubtitleLayoutEnum.ORIGINAL_ON_TOP
     max_word_count_cjk: int = 12
     max_word_count_english: int = 18
@@ -693,16 +693,16 @@ class SubtitleConfig:
 
 @dataclass
 class SynthesisConfig:
-    """视频合成配置类"""
+    """Video synthesis configuration."""
 
     need_video: bool = True
     soft_subtitle: bool = True
     render_mode: SubtitleRenderModeEnum = SubtitleRenderModeEnum.ASS_STYLE
     video_quality: VideoQualityEnum = VideoQualityEnum.MEDIUM
     subtitle_layout: SubtitleLayoutEnum = SubtitleLayoutEnum.ORIGINAL_ON_TOP
-    # 字幕样式配置
-    ass_style: str = ""  # ASS 样式字符串
-    rounded_style: Optional[dict] = None  # 圆角背景样式配置
+    # Subtitle style settings
+    ass_style: str = ""  # ASS style string
+    rounded_style: Optional[dict] = None  # Rounded background style settings
 
     def print_config(self) -> str:
         """Print video synthesis configuration"""
@@ -721,25 +721,25 @@ class SynthesisConfig:
 
 @dataclass
 class TranscribeTask:
-    """转录任务类"""
+    """Transcription task."""
 
-    # 任务标识
+    # Task identity
     task_id: str = field(default_factory=_generate_task_id)
 
     queued_at: Optional[datetime.datetime] = None
     started_at: Optional[datetime.datetime] = None
     completed_at: Optional[datetime.datetime] = None
 
-    # 输入文件
+    # Input file
     file_path: Optional[str] = None
 
-    # 输出字幕文件
+    # Output subtitle file
     output_path: Optional[str] = None
 
-    # 是否需要执行下一个任务（字幕处理）
+    # Whether the next task (subtitle processing) follows
     need_next_task: bool = False
 
-    # 选中的音轨索引
+    # Selected audio track index
     selected_audio_track_index: int = 0
 
     transcribe_config: Optional[TranscribeConfig] = None
@@ -747,26 +747,26 @@ class TranscribeTask:
 
 @dataclass
 class SubtitleTask:
-    """字幕任务类"""
+    """Subtitle task."""
 
-    # 任务标识
+    # Task identity
     task_id: str = field(default_factory=_generate_task_id)
 
     queued_at: Optional[datetime.datetime] = None
     started_at: Optional[datetime.datetime] = None
     completed_at: Optional[datetime.datetime] = None
 
-    # 输入原始字幕文件
+    # Input: original subtitle file
     subtitle_path: str = ""
-    # 输入原始视频文件
+    # Input: original video file
     video_path: Optional[str] = None
 
-    # 输出 断句、优化、翻译 后的字幕文件
+    # Output: subtitle file after splitting, optimization and translation
     output_path: Optional[str] = None
     # Monolingual artifact for dubbing, independent from the display layout.
     dubbing_subtitle_path: Optional[str] = None
 
-    # 是否需要执行下一个任务（视频合成）
+    # Whether the next task (video synthesis) follows
     need_next_task: bool = True
 
     subtitle_config: Optional[SubtitleConfig] = None
@@ -774,23 +774,23 @@ class SubtitleTask:
 
 @dataclass
 class SynthesisTask:
-    """视频合成任务类"""
+    """Video synthesis task."""
 
-    # 任务标识
+    # Task identity
     task_id: str = field(default_factory=_generate_task_id)
 
     queued_at: Optional[datetime.datetime] = None
     started_at: Optional[datetime.datetime] = None
     completed_at: Optional[datetime.datetime] = None
 
-    # 输入
+    # Input
     video_path: Optional[str] = None
     subtitle_path: Optional[str] = None
 
-    # 输出
+    # Output
     output_path: Optional[str] = None
 
-    # 是否需要执行下一个任务（预留）
+    # Whether a next task follows (reserved)
     need_next_task: bool = False
 
     synthesis_config: Optional[SynthesisConfig] = None
@@ -800,7 +800,7 @@ class SynthesisTask:
 class DubbingTask:
     """Dubbing (lồng tiếng) task."""
 
-    # 任务标识
+    # Task identity
     task_id: str = field(default_factory=_generate_task_id)
 
     queued_at: Optional[datetime.datetime] = None
@@ -824,19 +824,19 @@ class DubbingTask:
 
 @dataclass
 class TranscriptAndSubtitleTask:
-    """转录和字幕任务类"""
+    """Transcription plus subtitle task."""
 
-    # 任务标识
+    # Task identity
     task_id: str = field(default_factory=_generate_task_id)
 
     queued_at: Optional[datetime.datetime] = None
     started_at: Optional[datetime.datetime] = None
     completed_at: Optional[datetime.datetime] = None
 
-    # 输入
+    # Input
     file_path: Optional[str] = None
 
-    # 输出
+    # Output
     output_path: Optional[str] = None
 
     transcribe_config: Optional[TranscribeConfig] = None
@@ -845,18 +845,18 @@ class TranscriptAndSubtitleTask:
 
 @dataclass
 class FullProcessTask:
-    """完整处理任务类(转录+字幕+合成)"""
+    """Full pipeline task (transcription, subtitles, synthesis)."""
 
-    # 任务标识
+    # Task identity
     task_id: str = field(default_factory=_generate_task_id)
 
     queued_at: Optional[datetime.datetime] = None
     started_at: Optional[datetime.datetime] = None
     completed_at: Optional[datetime.datetime] = None
 
-    # 输入
+    # Input
     file_path: Optional[str] = None
-    # 输出
+    # Output
     output_path: Optional[str] = None
 
     transcribe_config: Optional[TranscribeConfig] = None
@@ -866,7 +866,7 @@ class FullProcessTask:
 
 
 class BatchTaskType(Enum):
-    """批量处理任务类型"""
+    """Batch task types."""
 
     TRANSCRIBE = "批量转录"
     SUBTITLE = "批量字幕"
@@ -879,7 +879,7 @@ class BatchTaskType(Enum):
 
 
 class BatchTaskStatus(Enum):
-    """批量处理任务状态"""
+    """Batch task states."""
 
     WAITING = "等待中"
     RUNNING = "处理中"
