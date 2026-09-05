@@ -128,3 +128,71 @@ def test_gui_disables_vieneu_actions_when_base_build_has_no_runtime(qapp, tmp_pa
         widget.close()
         service.shutdown()
         set_vieneu_service_for_tests(None)
+
+
+def _wait_for_vieneu(qapp, widget, timeout_s: float = 20.0) -> None:
+    import time
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        if not widget._vieneu_pending_action and not any(
+            thread.isRunning() for thread in widget._vieneu_threads
+        ):
+            qapp.processEvents()
+            return
+        time.sleep(0.05)
+    raise AssertionError("VieNeu GUI threads did not settle in time")
+
+
+def test_gui_queues_voice_fetch_behind_running_action_and_autoloads_after_start(
+    qapp, tmp_path, fake_bridge
+):
+    """Clicking "Tải danh sách" while Start/auto-update runs must not be dropped.
+
+    The launch auto-update used to run outside the tab's thread set, and a
+    second request was silently ignored while its button already said
+    "Đang tải...", so the voice list never arrived.
+    """
+    service = make_service(tmp_path, fake_bridge)
+    set_vieneu_service_for_tests(service)
+    widget = DubbingInterface()
+    try:
+        widget.provider_combo.setCurrentIndex(3)
+        widget.voice_combo.setText("alloy")
+        widget._start_vieneu_action("start")
+        assert any(thread.isRunning() for thread in widget._vieneu_threads)
+        widget._fetch_voices()
+        assert widget._vieneu_pending_action == "voices"
+        assert widget.fetch_voice_btn.isEnabledTo(widget.settings_widget) is False
+
+        _wait_for_vieneu(qapp, widget)
+        assert widget.fetch_voice_btn.isEnabledTo(widget.settings_widget) is True
+        assert widget.fetch_voice_btn.text() == "Tải danh sách"
+        assert widget.voice_combo.text() == "fake-voice"
+        assert service.manager.process_id
+    finally:
+        widget.shutdown_vieneu_threads()
+        widget.close()
+        service.shutdown()
+        set_vieneu_service_for_tests(None)
+
+
+def test_gui_start_alone_fills_voice_list(qapp, tmp_path, fake_bridge):
+    service = make_service(tmp_path, fake_bridge)
+    set_vieneu_service_for_tests(service)
+    widget = DubbingInterface()
+    try:
+        widget.provider_combo.setCurrentIndex(3)
+        widget.voice_combo.clear()
+        widget._start_vieneu_action("start")
+        _wait_for_vieneu(qapp, widget)
+        assert [widget.voice_combo.itemText(i) for i in range(widget.voice_combo.count())] == [
+            "fake-voice"
+        ]
+        assert widget.vieneu_start_stop_btn.text() == "Stop"
+    finally:
+        widget.shutdown_vieneu_threads()
+        widget.close()
+        service.shutdown()
+        set_vieneu_service_for_tests(None)

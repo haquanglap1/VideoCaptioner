@@ -115,6 +115,7 @@ class DubbingInterface(QWidget):
         self._is_pipeline_mode = False
         self._pending_report_data: dict = {}
         self._vieneu_threads: set[VieNeuRuntimeThread] = set()
+        self._vieneu_pending_action = ""
         self._init_ui()
 
     def _init_ui(self):
@@ -821,7 +822,15 @@ class DubbingInterface(QWidget):
             self._on_vieneu_error(action, runtime_error)
             return
         if any(thread.isRunning() for thread in self._vieneu_threads):
+            # One managed operation at a time. Remember the latest request and run
+            # it when the current thread finishes; dropping it used to leave the
+            # voice button stuck on "Đang tải..." while auto-update was running.
+            self._vieneu_pending_action = action
+            self.vieneu_status_label.setText(
+                self.tr("VieNeu: busy, {0} queued").format(action)
+            )
             return
+        self._vieneu_pending_action = ""
         thread = VieNeuRuntimeThread(action, parent=self)
         self._vieneu_threads.add(thread)
         thread.runtime_state.connect(self._on_vieneu_state)
@@ -829,9 +838,29 @@ class DubbingInterface(QWidget):
         thread.result.connect(self._on_vieneu_result)
         thread.error.connect(self._on_vieneu_error)
         thread.finished.connect(
-            lambda current=thread: self._vieneu_threads.discard(current)
+            lambda current=thread: self._on_vieneu_thread_finished(current)
         )
         thread.start()
+
+    def _on_vieneu_thread_finished(self, thread) -> None:
+        self._vieneu_threads.discard(thread)
+        pending, self._vieneu_pending_action = self._vieneu_pending_action, ""
+        if pending:
+            self._start_vieneu_action(pending)
+
+    def shutdown_vieneu_threads(self, timeout_ms: int = 10_000) -> None:
+        """Cancel and wait for managed VieNeu work; used on close and app quit."""
+        self._vieneu_pending_action = ""
+        try:
+            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
+
+            get_vieneu_service().cancel_pending()
+        except Exception:
+            pass
+        for thread in tuple(self._vieneu_threads):
+            if thread.isRunning():
+                thread.requestInterruption()
+                thread.wait(timeout_ms)
 
     def _on_vieneu_state(self, state: str, message: str):
         suffix = f" • {message}" if message else ""
@@ -841,13 +870,25 @@ class DubbingInterface(QWidget):
         if action == "voices":
             models = [str(item.get("id", "")) for item in result if item.get("id")]
             self._on_fetch_voices_finished(models, "")
+            # Fetching voices starts the runtime, so Start/Stop must reflect it.
+            self._update_provider_visibility()
         else:
             self._update_provider_visibility()
             self.progress_bar.setValue(100)
             self.status_label.setVisible(True)
             self.status_label.setText(self.tr("VieNeu operation completed"))
+            if action == "start" and self._managed_provider_selected():
+                # A freshly started runtime should offer its voices right away.
+                self._fetch_voices()
+
+    def _managed_provider_selected(self) -> bool:
+        index = self.provider_combo.currentIndex()
+        return 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.is_managed_provider(
+            presets.TTS_PROVIDER_KEYS[index]
+        )
 
     def _on_vieneu_error(self, action: str, error: str):
+        logger.warning("VieNeu %s failed: %s", action, error)
         self.fetch_voice_btn.setEnabled(True)
         self.fetch_voice_btn.setText(self.tr("Tải danh sách"))
         self._update_provider_visibility()
@@ -1058,14 +1099,5 @@ class DubbingInterface(QWidget):
         self.unresolved_combo.setEnabled(natural)
 
     def closeEvent(self, event):
-        try:
-            from videocaptioner.core.tts.vieneu.service import get_vieneu_service
-
-            get_vieneu_service().cancel_pending()
-        except Exception:
-            pass
-        for thread in tuple(self._vieneu_threads):
-            if thread.isRunning():
-                thread.requestInterruption()
-                thread.wait(10_000)
+        self.shutdown_vieneu_threads()
         super().closeEvent(event)

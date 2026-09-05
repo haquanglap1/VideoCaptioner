@@ -107,6 +107,25 @@
 - Chưa nghiệm thu: bấm Start/Update/lồng tiếng từ chính GUI one-app, auto-update nền lên `19dd1cc` (chưa chạy
   vì smoke chỉ 30 s), installer WiX, nghe thủ công chất lượng giọng.
 
+### VieNeu GUI: không tải được danh sách giọng (2026-09-05)
+- Báo cáo từ bản one-app: bấm "Tải danh sách" với VieNeu Local không ra giọng. Log one-app cho thấy sidecar đã
+  khởi động và báo `voices=20`, nên lỗi nằm ở tầng GUI. Nguyên nhân: `main_window` chạy action `auto-update`
+  (mặc định) bằng một `VieNeuRuntimeThread` riêng không nằm trong `_vieneu_threads` của tab Lồng tiếng, còn
+  `_start_vieneu_action` bỏ qua im lặng mọi action khi đã có thread đang chạy; `_fetch_voices` lại đổi nút thành
+  "Đang tải..." và disable trước khi gọi, nên nút kẹt vĩnh viễn khi bấm trong lúc check/update hoặc ngay sau Start.
+  Hai luồng dùng chung một sidecar còn có thể chạy song song (launch update + Start của user).
+- Sửa `dubbing_interface.py`: action đến khi bận được xếp vào `_vieneu_pending_action` (mới nhất thắng) và chạy
+  khi thread hiện tại `finished`; status label báo "VieNeu: busy, {action} queued"; sau `start` thành công tự
+  gọi `_fetch_voices` để combo có ngay giọng VieNeu (không còn để "alloy" của OpenAI); kết quả `voices` cũng
+  refresh nút Start/Stop; `_on_vieneu_error` ghi `logger.warning` để log app có dấu vết; `shutdown_vieneu_threads()`
+  dùng chung cho `closeEvent` và lúc thoát app. `main_window.py` gọi launch action qua cùng hàng đợi của tab và
+  chờ bằng `shutdown_vieneu_threads(11_000)` khi đóng.
+- Test: `tests/test_vieneu/test_ui_thread.py` +2 (fake bridge): bấm tải giọng khi Start đang chạy → được xếp hàng,
+  nút bật lại, combo nhận `fake-voice`; Start một mình cũng điền danh sách. Tái hiện với runtime thật qua
+  offscreen: `check` → Start → tải giọng liên tiếp: 20 giọng trong 8.1 s, chọn "Minh Đức", trạng thái Ready.
+- Validation: ruff pass, pyright 0/0, `tests/test_vieneu` + `test_startup_responsiveness` + `test_dubbing`
+  **106 passed**; `test_ui` + `test_ui_thread` 23 passed. One-app build lại cùng tên với `--overwrite`.
+
 ## 2026-09-04 (Nhóm trung hạn: hợp nhất config GUI/CLI, credentials không qua os.environ)
 
 ### Nguyên nhân và thay đổi

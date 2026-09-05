@@ -77,7 +77,7 @@ class MainWindow(FluentWindow):
         super().__init__()
         self.versionChecker = None
         self.versionThread = None
-        self._vieneu_launch_thread = None
+        self._dubbing_interface = None
         self.initWindow()
         self._create_lazy_interfaces()
         self.initNavigation()
@@ -118,21 +118,18 @@ class MainWindow(FluentWindow):
         return interface
 
     def _start_vieneu_runtime_thread(self, dubbing_interface) -> None:
-        if self._vieneu_launch_thread is not None:
+        if self._dubbing_interface is not None:
             return
+        self._dubbing_interface = dubbing_interface
         from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
         if get_vieneu_service().update_prerequisite_error():
             dubbing_interface._update_provider_visibility()
             return
-        from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
-
+        # Run through the dubbing tab's queue so a user action (Start, voices)
+        # cannot race the launch check/update on the same sidecar.
         launch_action = "auto-update" if cfg.vieneu_auto_update.value else "check"
-        thread = VieNeuRuntimeThread(launch_action, parent=self)
-        thread.result.connect(dubbing_interface._on_vieneu_result)
-        thread.error.connect(dubbing_interface._on_vieneu_error)
-        self._vieneu_launch_thread = thread
-        thread.start()
+        dubbing_interface._start_vieneu_action(launch_action)
 
     def _create_batch_interface(self) -> QWidget:
         from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
@@ -304,9 +301,8 @@ class MainWindow(FluentWindow):
             from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
             get_vieneu_service().cancel_pending()
-            if self._vieneu_launch_thread is not None and self._vieneu_launch_thread.isRunning():
-                self._vieneu_launch_thread.requestInterruption()
-                self._vieneu_launch_thread.wait(11_000)
+            if self._dubbing_interface is not None:
+                self._dubbing_interface.shutdown_vieneu_threads(11_000)
         except Exception:
             pass
 
