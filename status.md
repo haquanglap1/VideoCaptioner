@@ -57,8 +57,9 @@
   `ruff check videocaptioner/ tests/`.
 
 ### CI (mục 5, `e6b81ad`)
-- actions/checkout v7, setup-python v7, astral-sh/setup-uv v10 (`enable-cache: true` vẫn tường minh nên đổi mặc định
-  của v10 không ảnh hưởng), setup-node v7 (+ cache npm theo `docs/package-lock.json`), upload-artifact v7,
+- actions/checkout v7, setup-python v7, astral-sh/setup-uv v10.0.1 (ghim tag đầy đủ: từ v8 setup-uv không còn tag
+  major floating nên `@v10` làm CI fail ở Set up job; `enable-cache: true` vẫn tường minh nên đổi mặc định của v10 không
+  ảnh hưởng), setup-node v7 (+ cache npm theo `docs/package-lock.json`), upload-artifact v7,
   download-artifact v8, upload-pages-artifact v5, deploy-pages v5; các input đang dùng không đổi ở các major này.
   Job quality thêm `ruff check tests/` (sửa 1 lỗi I001 ở `tests/test_editor/test_architecture_contract.py`). Chưa
   push nên CI chưa chạy với các workflow mới.
