@@ -862,6 +862,25 @@ class DubbingInterface(QWidget):
                 thread.requestInterruption()
                 thread.wait(timeout_ms)
 
+    def request_stop(self) -> None:
+        """Ask a running dubbing job to stop at its next progress report."""
+        thread = self._thread
+        if thread is not None and thread.isRunning():
+            thread.requestInterruption()
+
+    def wait_for_dubbing_job(self, timeout_ms: int = 10_000) -> bool:
+        """Interrupt the dubbing job and block until its thread exits.
+
+        Interpreter shutdown tears down ThreadPoolExecutor workers under a
+        QThread that is still running, so a job left behind at exit ends with
+        "cannot schedule new futures" or a Qt abort instead of a clean stop.
+        """
+        thread = self._thread
+        if thread is None or not thread.isRunning():
+            return True
+        thread.requestInterruption()
+        return thread.wait(timeout_ms)
+
     def _on_vieneu_state(self, state: str, message: str):
         suffix = f" • {message}" if message else ""
         self.vieneu_status_label.setText(f"VieNeu: {state.title()}{suffix}")
@@ -1099,5 +1118,7 @@ class DubbingInterface(QWidget):
         self.unresolved_combo.setEnabled(natural)
 
     def closeEvent(self, event):
+        self.request_stop()
         self.shutdown_vieneu_threads()
+        self.wait_for_dubbing_job()
         super().closeEvent(event)

@@ -302,6 +302,9 @@ class MainWindow(FluentWindow):
 
             get_vieneu_service().cancel_pending()
             if self._dubbing_interface is not None:
+                # Interrupt now; the wait comes after child processes are gone
+                # so a running FFmpeg mix cannot hold the job past the timeout.
+                self._dubbing_interface.request_stop()
                 self._dubbing_interface.shutdown_vieneu_threads(11_000)
         except Exception:
             pass
@@ -319,6 +322,9 @@ class MainWindow(FluentWindow):
         # tears down — atexit alone is unreliable when the user X-closes the app
         # and orphaned conhost.exe / ffmpeg.exe pile up in Task Manager.
         self.stop()
+
+        if self._dubbing_interface is not None:
+            self._dubbing_interface.wait_for_dubbing_job(10_000)
 
         super().closeEvent(event)
         QApplication.quit()

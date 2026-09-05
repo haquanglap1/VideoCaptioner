@@ -11,6 +11,10 @@ from videocaptioner.core.utils.logger import setup_logger
 logger = setup_logger("dubbing_thread")
 
 
+class DubbingCancelled(Exception):
+    """Raised from the progress callback once the thread was asked to stop."""
+
+
 class DubbingThread(QThread):
     """Thread lồng tiếng video."""
 
@@ -62,6 +66,10 @@ class DubbingThread(QThread):
             self.progress.emit(100, self.tr("Lồng tiếng hoàn tất"))
             self.finished.emit(self.task)
 
+        except DubbingCancelled:
+            # Requested by the window closing: no report dialog, no error popup.
+            logger.info("Dubbing stopped before completion (interruption requested)")
+            self.progress.emit(100, self.tr("Lồng tiếng đã bị hủy"))
         except Exception as e:
             if engine is not None:
                 self.task.report_path = engine.last_report_path
@@ -73,4 +81,8 @@ class DubbingThread(QThread):
             self.progress.emit(100, self.tr("Lồng tiếng thất bại"))
 
     def _progress_callback(self, value: int, message: str):
+        # Runs on the engine's thread and inside its TTS worker threads; raising
+        # here is what unwinds a job, since the core API has no cancel token.
+        if self.isInterruptionRequested():
+            raise DubbingCancelled("dubbing interrupted")
         self.progress.emit(value, message)
