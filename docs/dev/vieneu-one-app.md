@@ -25,7 +25,15 @@ không được import vào Qt process.
 
 Trong tab `Lồng tiếng`, chọn `VieNeu Local`. API Base, API Key, Model và Sample Rate do ứng dụng quản lý;
 không cần mở batch/server riêng. Các nút `Start/Stop`, `Check for model update`, `Rollback` và
-`Open model folder` chạy ngoài Qt main thread. `Auto update` mặc định bật và chỉ check/stage nền; khi
+`Open model folder` chạy ngoài Qt main thread, tuần tự qua một hàng đợi của tab: action đến khi đang bận
+được giữ lại (mới nhất thắng) và chạy khi thread hiện tại xong, nên bấm `Tải danh sách` ngay sau `Start`
+không bị bỏ qua; `Start` thành công tự nạp danh sách giọng.
+
+`Auto update` mặc định bật và chỉ **kiểm tra** revision trên Hugging Face khi tab được mở; có bản mới thì
+một InfoBar đề nghị `Download and activate`, không tải gì nếu người dùng chưa bấm. Tắt `Auto update` thì
+khởi động không kết nối mạng. Nút `Check for model update` cũng chỉ kiểm tra rồi đề nghị. Khi tải, tiến
+độ (số file, MB đã ghi) hiện ở thanh tiến độ của tab; validate trên GPU khởi động lại sidecar với
+candidate nếu không có job đang giữ lease, còn không thì candidate được giữ lại và hoãn kích hoạt. Khi
 offline, active model hiện tại vẫn dùng được.
 
 CLI source hoặc EXE đóng gói dùng cùng lifecycle:

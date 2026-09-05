@@ -6,8 +6,13 @@ from pathlib import Path
 import pytest
 from PyQt5.QtCore import QEventLoop, QTimer
 from PyQt5.QtWidgets import QApplication
+from qfluentwidgets import InfoBar, PushButton
 
-from videocaptioner.core.tts.vieneu.model_updater import VieNeuModelPaths, VieNeuStateStore
+from videocaptioner.core.tts.vieneu.model_updater import (
+    VieNeuModelPaths,
+    VieNeuModelUpdater,
+    VieNeuStateStore,
+)
 from videocaptioner.core.tts.vieneu.models import VieNeuModelState
 from videocaptioner.core.tts.vieneu.runtime_locator import VieNeuRuntimeLocator
 from videocaptioner.core.tts.vieneu.runtime_manager import VieNeuRuntimeManager
@@ -47,6 +52,28 @@ def make_service(tmp_path, fake_bridge):
         explicit_runtime=Path(sys.executable),
         explicit_bridge=fake_bridge,
     )
+
+
+class OfferHub:
+    """Hub double: one remote revision, downloads materialise instantly."""
+
+    def __init__(self, revision="b" * 40):
+        self.revision = revision
+        self.download_calls = 0
+
+    def remote_revision(self, repository_id):
+        return self.revision
+
+    def snapshot_download(
+        self, repository_id, revision, cache_dir, *, progress_callback=None, cancel_event=None
+    ):
+        self.download_calls += 1
+        snapshot = Path(cache_dir) / "snapshots" / revision
+        snapshot.mkdir(parents=True, exist_ok=True)
+        (snapshot / "config.json").write_text("{}", encoding="utf-8")
+        if progress_callback:
+            progress_callback(1, 1, "Fetching 1 files [it]")
+        return snapshot
 
 
 def test_runtime_thread_fetches_voices_without_importing_widgets(qapp, tmp_path, fake_bridge):
@@ -171,6 +198,87 @@ def test_gui_queues_voice_fetch_behind_running_action_and_autoloads_after_start(
         assert widget.fetch_voice_btn.text() == "Tải danh sách"
         assert widget.voice_combo.text() == "fake-voice"
         assert service.manager.process_id
+    finally:
+        widget.shutdown_vieneu_threads()
+        widget.close()
+        service.shutdown()
+        set_vieneu_service_for_tests(None)
+
+
+def test_gui_launch_check_offers_update_and_downloads_only_on_click(
+    qapp, tmp_path, fake_bridge
+):
+    """Auto update at startup checks the hub; the 1.7 GB pull waits for a click."""
+    service = make_service(tmp_path, fake_bridge)
+    hub = OfferHub()
+    service.updater = VieNeuModelUpdater(store=service.store, hub=hub)
+    set_vieneu_service_for_tests(service)
+    widget = DubbingInterface()
+    try:
+        widget.provider_combo.setCurrentIndex(3)
+        widget.show()
+        qapp.processEvents()
+        widget.start_launch_update_check()
+        _wait_for_vieneu(qapp, widget)
+
+        assert hub.download_calls == 0
+        assert service.manager.process_id is None
+        assert widget._vieneu_offered_revision == "b" * 40
+        assert "b" * 12 in widget.vieneu_status_label.text()
+        assert widget.progress_bar.isVisible() is False
+        offers = [
+            bar for bar in widget.findChildren(InfoBar)
+            if bar.titleLabel.text() == "VieNeu model update available"
+        ]
+        assert len(offers) == 1
+        assert "b" * 12 in offers[0].contentLabel.text()
+        button = next(
+            child for child in offers[0].findChildren(PushButton)
+            if child.text() == "Download and activate"
+        )
+
+        button.click()
+        _wait_for_vieneu(qapp, widget, timeout_s=40.0)
+
+        assert hub.download_calls >= 2  # pinned dependencies + the model
+        assert service.model_state().active_revision == "b" * 40
+        assert service.model_state().previous_revision == "a" * 40
+        assert service.manager.identity and service.manager.identity.model_revision == "b" * 40
+        assert widget._vieneu_offered_revision == ""
+        assert widget.progress_bar.isVisible() is True
+        assert widget.progress_bar.value() == 100
+        assert any(
+            bar.titleLabel.text() == "VieNeu model updated"
+            for bar in widget.findChildren(InfoBar)
+        )
+    finally:
+        widget.shutdown_vieneu_threads()
+        widget.close()
+        service.shutdown()
+        set_vieneu_service_for_tests(None)
+
+
+def test_gui_manual_check_reports_current_model_without_offer(qapp, tmp_path, fake_bridge):
+    service = make_service(tmp_path, fake_bridge)
+    hub = OfferHub(revision="a" * 40)
+    service.updater = VieNeuModelUpdater(store=service.store, hub=hub)
+    set_vieneu_service_for_tests(service)
+    widget = DubbingInterface()
+    try:
+        widget.provider_combo.setCurrentIndex(3)
+        # The tab's controls stay disabled until dubbing is switched on.
+        widget.enable_switch.setChecked(True)
+        widget.show()
+        qapp.processEvents()
+        assert widget.vieneu_update_btn.isEnabled()
+        widget.vieneu_update_btn.click()
+        _wait_for_vieneu(qapp, widget)
+
+        assert hub.download_calls == 0
+        assert widget._vieneu_offered_revision == ""
+        titles = [bar.titleLabel.text() for bar in widget.findChildren(InfoBar)]
+        assert "VieNeu model is up to date" in titles
+        assert "VieNeu model update available" not in titles
     finally:
         widget.shutdown_vieneu_threads()
         widget.close()

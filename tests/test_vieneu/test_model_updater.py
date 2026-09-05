@@ -228,7 +228,7 @@ def test_hub_client_progress_bar_works_without_stderr(monkeypatch, tmp_path):
         progress_callback=lambda done, total, name: reports.append((done, total, name)),
     )
 
-    assert reports[-1] == (2, 2, "Fetching 2 files")
+    assert reports[-1] == (2, 2, "Fetching 2 files [it]")
     assert bar_classes[0].monitor_interval == 0
 
     # Another thread must still be able to take the bar class's shared write
@@ -245,6 +245,19 @@ def test_hub_client_progress_bar_works_without_stderr(monkeypatch, tmp_path):
     probe_thread.start()
     probe_thread.join(5)
     assert acquired and all(acquired)
+
+
+def test_describe_download_progress_formats_counts_and_bytes():
+    from videocaptioner.core.tts.vieneu.model_updater import describe_download_progress
+
+    fraction, detail = describe_download_progress(3, 42, "Fetching 42 files [it]")
+    assert fraction == pytest.approx(3 / 42)
+    assert detail == "Fetching 42 files 3/42"
+    fraction, detail = describe_download_progress(512_000_000, 1_700_000_000, "Reconstructing [B]")
+    assert fraction == pytest.approx(512 / 1700)
+    assert detail == "Reconstructing 512/1700 MB"
+    assert describe_download_progress(0, 0, "Downloading bytes [B]") == (0.0, "Downloading bytes")
+    assert describe_download_progress(1, 1, "org/repo") == (1.0, "org/repo 1/1")
 
 
 def test_hub_client_leaves_symlink_setting_alone_elsewhere(monkeypatch, tmp_path):

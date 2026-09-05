@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from videocaptioner.core.tts.vieneu.model_updater import describe_download_progress
 from videocaptioner.core.tts.vieneu.models import VieNeuRuntimeState, sanitize_error
 from videocaptioner.core.tts.vieneu.service import (
     VieNeuManagedService,
@@ -33,6 +34,20 @@ class VieNeuRuntimeThread(QThread):
     def _on_state(self, state: VieNeuRuntimeState, message: str) -> None:
         self.runtime_state.emit(state.value, message)
 
+    def _download_reporter(self, base: int, span: int, what: str):
+        """Map hub bar updates (file counts or bytes) onto one monotonic range."""
+        best = 0.0
+
+        def report(done: int, total: int, name: str) -> None:
+            nonlocal best
+            fraction, detail = describe_download_progress(done, total, name)
+            best = max(best, fraction)
+            self.progress.emit(
+                base + int(best * span), f"Downloading VieNeu {what}: {detail}"
+            )
+
+        return report
+
     def run(self) -> None:
         self.service.manager.add_state_callback(self._on_state)
         try:
@@ -52,27 +67,21 @@ class VieNeuRuntimeThread(QThread):
                     manual_retry_rejected=self.manual_retry_rejected
                 )
                 self.result.emit(self.action, check)
-            elif self.action in {"update", "auto-update"}:
+            elif self.action == "update":
                 self.progress.emit(2, "Provisioning pinned VieNeu dependencies...")
                 self.service.prepare_update_prerequisites(
-                    progress_callback=lambda done, total, name: self.progress.emit(
-                        2 + int((done / total) * 8) if total else 5,
-                        f"Downloading VieNeu dependency: {name}",
-                    )
+                    progress_callback=self._download_reporter(2, 8, "dependency")
                 )
                 self.progress.emit(10, "Checking VieNeu model revision...")
                 check = self.service.updater.stage_latest(
                     cancel_event=self.service._cancel_event,
                     manual_retry_rejected=self.manual_retry_rejected,
-                    progress_callback=lambda done, total, name: self.progress.emit(
-                        10 + int((done / total) * 60) if total else 40,
-                        f"Downloading VieNeu model: {name}",
-                    ),
+                    progress_callback=self._download_reporter(10, 60, "model"),
                 )
                 if check.status != "staged":
                     self.result.emit(self.action, check)
                     return
-                self.progress.emit(75, "Validating VieNeu candidate...")
+                self.progress.emit(75, "Validating VieNeu candidate on the GPU...")
                 state = self.service.model_state()
                 activation = self.service.updater.validate_and_activate(
                     self.service.manager,

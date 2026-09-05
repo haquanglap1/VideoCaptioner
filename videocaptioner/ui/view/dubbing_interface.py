@@ -33,6 +33,7 @@ from qfluentwidgets import (
 from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.dubbing import presets
 from videocaptioner.core.entities import DubbingTask
+from videocaptioner.core.tts.vieneu.model_updater import VieNeuUpdateCheck
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
@@ -116,6 +117,8 @@ class DubbingInterface(QWidget):
         self._pending_report_data: dict = {}
         self._vieneu_threads: set[VieNeuRuntimeThread] = set()
         self._vieneu_pending_action = ""
+        self._vieneu_launch_check = False
+        self._vieneu_offered_revision = ""
         self._init_ui()
 
     def _init_ui(self):
@@ -169,7 +172,7 @@ class DubbingInterface(QWidget):
         )
         self.vieneu_start_stop_btn.clicked.connect(self._toggle_vieneu_runtime)
         self.vieneu_update_btn.clicked.connect(
-            lambda: self._start_vieneu_action("update")
+            lambda: self._start_vieneu_action("check")
         )
         self.vieneu_rollback_btn.clicked.connect(
             lambda: self._start_vieneu_action("rollback")
@@ -789,6 +792,10 @@ class DubbingInterface(QWidget):
                 )
             else:
                 suffix = f" • {model}" if model else " • no active model"
+                if self._vieneu_offered_revision:
+                    suffix += " • " + self.tr("update {0} available").format(
+                        self._vieneu_offered_revision[:12]
+                    )
                 self.vieneu_status_label.setText(f"VieNeu: {state}{suffix}")
             self.vieneu_start_stop_btn.setText(
                 self.tr("Stop") if service.manager.process_id else self.tr("Start")
@@ -814,11 +821,16 @@ class DubbingInterface(QWidget):
         action = "stop" if get_vieneu_service().manager.process_id else "start"
         self._start_vieneu_action(action)
 
+    def start_launch_update_check(self) -> None:
+        """Startup path: ask the hub for a newer model and offer it, never download."""
+        self._vieneu_launch_check = True
+        self._start_vieneu_action("check")
+
     def _start_vieneu_action(self, action: str):
         from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
         runtime_error = get_vieneu_service().update_prerequisite_error()
-        if runtime_error and action in {"start", "voices", "check", "update", "auto-update"}:
+        if runtime_error and action in {"start", "voices", "check", "update"}:
             self._on_vieneu_error(action, runtime_error)
             return
         if any(thread.isRunning() for thread in self._vieneu_threads):
@@ -831,6 +843,12 @@ class DubbingInterface(QWidget):
             )
             return
         self._vieneu_pending_action = ""
+        if action in {"start", "update", "rollback"}:
+            # Model load, a 1.7 GB download and GPU validation take minutes;
+            # report them through the tab's progress bar like a dubbing job.
+            self.progress_bar.setValue(0)
+            self.progress_bar.setVisible(True)
+            self.status_label.setVisible(True)
         thread = VieNeuRuntimeThread(action, parent=self)
         self._vieneu_threads.add(thread)
         thread.runtime_state.connect(self._on_vieneu_state)
@@ -891,14 +909,89 @@ class DubbingInterface(QWidget):
             self._on_fetch_voices_finished(models, "")
             # Fetching voices starts the runtime, so Start/Stop must reflect it.
             self._update_provider_visibility()
-        else:
+            return
+        if action == "check":
+            quiet, self._vieneu_launch_check = self._vieneu_launch_check, False
+            self._show_update_check(result, quiet=quiet)
             self._update_provider_visibility()
-            self.progress_bar.setValue(100)
-            self.status_label.setVisible(True)
-            self.status_label.setText(self.tr("VieNeu operation completed"))
-            if action == "start" and self._managed_provider_selected():
-                # A freshly started runtime should offer its voices right away.
-                self._fetch_voices()
+            return
+        if action == "update":
+            self._vieneu_offered_revision = ""
+            self._show_update_outcome(result)
+        self._update_provider_visibility()
+        self.progress_bar.setValue(100)
+        self.status_label.setVisible(True)
+        self.status_label.setText(self.tr("VieNeu operation completed"))
+        if action == "start" and self._managed_provider_selected():
+            # A freshly started runtime should offer its voices right away.
+            self._fetch_voices()
+
+    def _show_update_check(self, check: VieNeuUpdateCheck, *, quiet: bool) -> None:
+        if check.status == "available":
+            self._offer_vieneu_update(check)
+            return
+        if quiet:
+            return
+        if check.status == "current":
+            InfoBar.success(
+                self.tr("VieNeu model is up to date"),
+                check.active_revision[:12],
+                duration=4000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        InfoBar.warning(
+            self.tr("VieNeu update unavailable"),
+            check.message,
+            duration=5000,
+            position=InfoBarPosition.BOTTOM,
+            parent=self.window(),
+        )
+
+    def _offer_vieneu_update(self, check: VieNeuUpdateCheck) -> None:
+        """Ask before pulling about 1.7 GB and validating it on the GPU."""
+        self._vieneu_offered_revision = check.remote_revision
+        bar = InfoBar.info(
+            self.tr("VieNeu model update available"),
+            self.tr("Revision {0} can replace {1}. Download it now?").format(
+                check.remote_revision[:12], check.active_revision[:12] or "-"
+            ),
+            duration=-1,
+            position=InfoBarPosition.BOTTOM,
+            parent=self.window(),
+        )
+        button = PushButton(self.tr("Download and activate"), bar)
+
+        def accept() -> None:
+            bar.close()
+            self._start_vieneu_action("update")
+
+        button.clicked.connect(accept)
+        bar.addWidget(button)
+
+    def _show_update_outcome(self, result) -> None:
+        if isinstance(result, VieNeuUpdateCheck):
+            self._show_update_check(result, quiet=False)
+            return
+        if result == "deferred":
+            InfoBar.info(
+                self.tr("VieNeu update staged"),
+                self.tr("The new model activates once the current dubbing job finishes."),
+                duration=6000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self.window(),
+            )
+            return
+        InfoBar.success(
+            self.tr("VieNeu model updated"),
+            self.tr("Revision {0} is active.").format(
+                str(getattr(result, "model_revision", ""))[:12]
+            ),
+            duration=6000,
+            position=InfoBarPosition.BOTTOM,
+            parent=self.window(),
+        )
 
     def _managed_provider_selected(self) -> bool:
         index = self.provider_combo.currentIndex()
@@ -908,20 +1001,24 @@ class DubbingInterface(QWidget):
 
     def _on_vieneu_error(self, action: str, error: str):
         logger.warning("VieNeu %s failed: %s", action, error)
+        quiet, self._vieneu_launch_check = self._vieneu_launch_check, False
         self.fetch_voice_btn.setEnabled(True)
         self.fetch_voice_btn.setText(self.tr("Tải danh sách"))
         self._update_provider_visibility()
         from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
         has_active = bool(get_vieneu_service().model_state().active_revision)
-        if action in {"check", "auto-update"} and has_active:
-            InfoBar.warning(
-                self.tr("VieNeu update unavailable"),
-                error,
-                duration=5000,
-                position=InfoBarPosition.BOTTOM,
-                parent=self.window(),
-            )
+        if action == "check" and has_active:
+            # The active model keeps working offline; the startup check stays
+            # silent, a manual check gets a notice.
+            if not quiet:
+                InfoBar.warning(
+                    self.tr("VieNeu update unavailable"),
+                    error,
+                    duration=5000,
+                    position=InfoBarPosition.BOTTOM,
+                    parent=self.window(),
+                )
             return
         self.status_label.setVisible(True)
         self.status_label.setText(self.tr("VieNeu failed") + ": " + error)

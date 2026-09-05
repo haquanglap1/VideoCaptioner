@@ -123,13 +123,16 @@ class MainWindow(FluentWindow):
         self._dubbing_interface = dubbing_interface
         from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
-        if get_vieneu_service().update_prerequisite_error():
+        if (
+            get_vieneu_service().update_prerequisite_error()
+            or not cfg.vieneu_auto_update.value
+        ):
             dubbing_interface._update_provider_visibility()
             return
-        # Run through the dubbing tab's queue so a user action (Start, voices)
-        # cannot race the launch check/update on the same sidecar.
-        launch_action = "auto-update" if cfg.vieneu_auto_update.value else "check"
-        dubbing_interface._start_vieneu_action(launch_action)
+        # Startup only asks the hub for the latest revision, through the tab's
+        # queue so Start/voices cannot race it; the download is offered in the
+        # tab instead of pulling 1.7 GB and restarting the sidecar silently.
+        dubbing_interface.start_launch_update_check()
 
     def _create_batch_interface(self) -> QWidget:
         from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface

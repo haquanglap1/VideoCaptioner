@@ -183,7 +183,11 @@ class HuggingFaceVieNeuClient:
                         "VieNeu download cancelled; partial files remain resumable"
                     )
                 if progress_callback:
-                    progress_callback(int(self.n), int(self.total or 0), str(self.desc or ""))
+                    progress_callback(
+                        int(self.n),
+                        int(self.total or 0),
+                        f"{self.desc or 'download'} [{self.unit}]",
+                    )
                 return result
 
         path = snapshot_download(
@@ -194,6 +198,26 @@ class HuggingFaceVieNeuClient:
             tqdm_class=ProgressTqdm,
         )
         return Path(path).resolve()
+
+
+def describe_download_progress(done: int, total: int, name: str) -> tuple[float, str]:
+    """Turn one hub progress update into (fraction, detail for a status line).
+
+    ``snapshot_download`` drives several bars through the same class: a file
+    counter ("Fetching N files [it]") and byte counters ("Reconstructing [B]").
+    Totals stay 0 until the hub has sized the files.
+    """
+    label, bracket, unit = name.rpartition(" [")
+    if not bracket:
+        label, unit = name, ""
+    label = label.strip() or "download"
+    unit = unit.rstrip("]")
+    fraction = min(1.0, done / total) if total > 0 else 0.0
+    if total <= 0:
+        return fraction, label
+    if unit == "B":
+        return fraction, f"{label} {done / 1_000_000:.0f}/{total / 1_000_000:.0f} MB"
+    return fraction, f"{label} {done}/{total}"
 
 
 @dataclass(frozen=True)
