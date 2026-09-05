@@ -119,6 +119,19 @@ class VieNeuHubClient(Protocol):
     ) -> Path: ...
 
 
+class _NullStream:
+    """Write sink for tqdm when the process has no console (windowed EXE)."""
+
+    def write(self, text: str) -> int:
+        return len(text)
+
+    def flush(self) -> None:
+        return None
+
+    def isatty(self) -> bool:
+        return False
+
+
 class HuggingFaceVieNeuClient:
     """Lazy import keeps Hugging Face/network code out of GUI module import paths."""
 
@@ -151,6 +164,18 @@ class HuggingFaceVieNeuClient:
             hf_constants.HF_HUB_DISABLE_SYMLINKS = True
 
         class ProgressTqdm(tqdm):
+            # tqdm joins its monitor thread from an atexit hook; a bar that
+            # raised while holding the shared write lock made that join hang
+            # the app at exit. The callback below is the only consumer.
+            monitor_interval = 0
+
+            def __init__(self, *args, **kwargs):
+                if kwargs.get("file") is None and sys.stderr is None:
+                    # PyInstaller windowed builds start with sys.stderr=None;
+                    # tqdm would raise AttributeError inside refresh().
+                    kwargs["file"] = _NullStream()
+                super().__init__(*args, **kwargs)
+
             def update(self, value=1):
                 result = super().update(value)
                 if cancel_event and cancel_event.is_set():

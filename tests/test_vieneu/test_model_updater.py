@@ -195,6 +195,58 @@ def test_hub_client_disables_symlinks_on_windows(monkeypatch, tmp_path):
     assert calls[0]["cache_dir"] == str(tmp_path / "hf")
 
 
+def test_hub_client_progress_bar_works_without_stderr(monkeypatch, tmp_path):
+    """Windowed EXE builds start with sys.stderr=None.
+
+    tqdm then raised inside refresh() while holding its global write lock: every
+    model download failed and tqdm's atexit monitor join deadlocked, so the app
+    never exited. The client's bar must stay usable and leave the lock free.
+    """
+    import sys
+    import threading
+
+    from videocaptioner.core.tts.vieneu.model_updater import HuggingFaceVieNeuClient
+
+    reports = []
+    bar_classes = []
+
+    def fake_snapshot_download(**kwargs):
+        bar_class = kwargs["tqdm_class"]
+        bar_classes.append(bar_class)
+        with bar_class(desc="Fetching 2 files", total=2, unit="it") as bar:
+            bar.update(1)
+            bar.update(1)
+        return str(tmp_path)
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
+    monkeypatch.setattr(sys, "stderr", None)
+
+    HuggingFaceVieNeuClient().snapshot_download(
+        "org/repo",
+        "c" * 40,
+        tmp_path / "hf",
+        progress_callback=lambda done, total, name: reports.append((done, total, name)),
+    )
+
+    assert reports[-1] == (2, 2, "Fetching 2 files")
+    assert bar_classes[0].monitor_interval == 0
+
+    # Another thread must still be able to take the bar class's shared write
+    # lock (tqdm.auto and tqdm.std own separate locks, so probe the bar's own).
+    acquired = []
+
+    def probe():
+        for inner in bar_classes[0].get_lock().locks:
+            acquired.append(inner.acquire(timeout=2))
+            if acquired[-1]:
+                inner.release()
+
+    probe_thread = threading.Thread(target=probe)
+    probe_thread.start()
+    probe_thread.join(5)
+    assert acquired and all(acquired)
+
+
 def test_hub_client_leaves_symlink_setting_alone_elsewhere(monkeypatch, tmp_path):
     import os
     import sys

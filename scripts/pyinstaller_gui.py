@@ -53,6 +53,21 @@ def _open_windows_standard_stream(handle_id: int):
         return None
 
 
+def _ensure_standard_streams() -> None:
+    """Never leave sys.stdout/sys.stderr as None.
+
+    Windowed PyInstaller builds start without console streams. print() tolerates
+    None, but libraries do not: tqdm (used by huggingface_hub downloads) raised
+    inside refresh() while holding its global lock, which failed the VieNeu
+    model update and then deadlocked interpreter shutdown in tqdm's atexit
+    monitor join.
+    """
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
 def _prepare_cli_streams() -> None:
     """Reuse the caller's console without showing one for normal GUI startup."""
     if os.name == "nt" and (sys.stdout is None or sys.stderr is None):
@@ -67,10 +82,8 @@ def _prepare_cli_streams() -> None:
             sys.stdout = _open_windows_standard_stream(-11)
         if sys.stderr is None:
             sys.stderr = _open_windows_standard_stream(-12)
-    if sys.stdout is None:
-        sys.stdout = open(os.devnull, "w", encoding="utf-8")
-    if sys.stderr is None:
-        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    _ensure_standard_streams()
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -78,6 +91,7 @@ if __name__ == "__main__":
         from videocaptioner.cli.main import main
 
         raise SystemExit(main(sys.argv[1:]))
+    _ensure_standard_streams()
     from videocaptioner.ui.main import main
 
     main()
