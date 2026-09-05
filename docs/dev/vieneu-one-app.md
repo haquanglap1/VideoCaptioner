@@ -76,7 +76,7 @@ từng package. Không copy developer `.venv` và không cài global:
 
 ```powershell
 .venv\Scripts\python.exe scripts\build_vieneu_runtime.py `
-  --source F:\CppClone\VieNeu-TTS `
+  --source <thư-mục-clone-VieNeu-TTS> `
   --output build\vieneu-runtime-<label>
 
 .venv\Scripts\python.exe scripts\build_vieneu_one_app.py `
@@ -88,6 +88,14 @@ từng package. Không copy developer `.venv` và không cài global:
 Builder ghi SHA-256 của requirements lock, VieNeu wheel và EXE vào manifest. File static development
 `torch/lib/dnnl.lib` không cần cho inference và được bỏ khỏi runtime; DLL runtime vẫn giữ nguyên và GPU
 import/synthesis phải được smoke-test lại sau bước này.
+
+Builder runtime yêu cầu source ở đúng commit ghi trong manifest với working tree sạch, và cài dependency
+bằng `uv pip install --no-config --require-hashes`: cấu hình `[tool.uv]` của workspace (ví dụ
+`override-dependencies` PyQt5-Qt5 không có hash) không được lọt vào runtime. Chạy source mode với runtime
+vừa build bằng `$env:VIDEOCAPTIONER_VIENEU_RUNTIME = '<repo>\build\vieneu-runtime-<label>'`; locator mặc
+định chỉ tìm `<ROOT>/runtime/vieneu/`. Khi tải model trên Windows, `HuggingFaceVieNeuClient` ép
+`HF_HUB_DISABLE_SYMLINKS=1` (huggingface_hub dò quyền symlink lười theo thư mục nên nhiều thread tải có thể
+dính WinError 1314 trên máy không có quyền symlink) để cache luôn là file thường.
 
 Installer Windows dùng duy nhất source `installer/VideoCaptioner-VieNeu-OneApp.wxs`. Vì payload runtime +
 model vượt giới hạn thực tế của một cabinet/PE tự giải nén, output hỗ trợ là một MSI cùng các external CAB

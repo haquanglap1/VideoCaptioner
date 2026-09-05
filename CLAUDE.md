@@ -89,6 +89,9 @@ business logic mới vào view khi logic có thể nằm trong `core/` (ví dụ
   cache hoặc log. Với `*.qm`, sửa nguồn `*.ts` rồi dùng toolchain tương ứng.
 - Test không được ghi vào dữ liệu thật của máy dev: root conftest đã cô lập `AppData/settings.json`
   (`cfg.file`), config CLI và biến `OPENAI_*`; giữ nguyên cơ chế đó khi thêm fixture.
+- Test điều khiển QThread qua `QEventLoop` (thoát loop khi nhận `finished`/`error`) phải gọi
+  `thread.wait()` trước khi thread object ra khỏi scope; Qt hủy QThread còn chạy sẽ abort interpreter
+  (CI exit 134) ở test bất kỳ chạy sau đó.
 
 ## Known guards
 

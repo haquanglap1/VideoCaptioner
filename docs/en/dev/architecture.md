@@ -34,17 +34,17 @@ touched from a worker.
 
 ```text
 videocaptioner/config.py          Runtime paths for the three modes: source, pip-installed, PyInstaller
-videocaptioner/core/entities.py   Shared entities: TranscribeConfig, SubtitleConfig, *Task, enums
+videocaptioner/core/entities.py   Shared entities: TranscribeConfig, SubtitleConfig, *Task, enums, enum_from_display
 videocaptioner/cli/               argparse, commands/, config.py (config layers), output, exit codes
 videocaptioner/core/asr/          ASR engines, ASRData, chunked_asr
 videocaptioner/core/split/        Sentence splitting (rules + LLM)
 videocaptioner/core/optimize/     LLM subtitle optimization
 videocaptioner/core/translate/    BaseTranslator, factory, LLM/Google/Bing/DeepLX
-videocaptioner/core/subtitle/     Styles, ASS/rounded renderers, editing (subtitle table operations)
+videocaptioner/core/subtitle/     Styles, ASS/rounded renderers, editing (subtitle table), style_presenter (style tab)
 videocaptioner/core/dubbing/      engine, orchestrator, planner, cache, rewrite, audio_mixer, presets
 videocaptioner/core/tts/          BaseTTS, OpenAI/MiniMax, vieneu/ (managed runtime + model)
-videocaptioner/core/editor/       Video Editor domain: models, commands, project_store, media, voice
-videocaptioner/core/llm/          OpenAI-compatible client, credentials, context, request logger
+videocaptioner/core/editor/       Video Editor domain: models, commands, project_store, media, voice, presenter
+videocaptioner/core/llm/          OpenAI-compatible client, credentials, context, request logger, services
 videocaptioner/core/prompts/      Prompt .md files (bundled into the EXE)
 videocaptioner/core/utils/        FFmpeg/video_utils, subprocess_helper, installer, cache, logger
 videocaptioner/ui/                main.py, view/, components/, thread/, task_factory.py, common/
@@ -72,6 +72,10 @@ when they are missing.
   endpoints (`load_gui_settings()`), never behaviour toggles.
 - `ui/task_factory.py` turns `cfg` into `SubtitleTask`, `TranscribeTask`, `DubbingTask` and
   `FullProcessTask`; the CLI builds the same entities from its config dict.
+- `core/llm/services.py` holds `LLM_SERVICE_PRESETS` (settings.json prefix, `cfg` attribute, suggested
+  base URL/model, default key for Ollama/LM Studio) per LLM service; `SettingInterface` builds its cards
+  from that table and the CLI derives `GUI_LLM_SERVICE_PREFIX` from the same table, so providers are
+  declared once. `core/entities.enum_from_display` maps display labels back to enums for GUI and CLI.
 
 ## Subtitle pipeline
 
@@ -88,7 +92,9 @@ when they are missing.
    `SubtitleLayoutEnum`; ASS styles come from `style_manager`; `ass_renderer` and `rounded_renderer`
    burn subtitles with FFmpeg. `editing.py` holds the operations on the subtitle dict
    (`ASRData.to_json()`) used by the subtitle tab: merge/delete/select rows, search and replace,
-   re-export of pipeline outputs.
+   re-export of pipeline outputs. `style_presenter.py` is the Qt-free part of the style tab (fonts PIL
+   can load, style list/paths, RGBA colours, preview rendering per `StyleMode`); the view only maps
+   widgets to and from `SubtitleStyle`.
 5. **Synthesis** (`core/utils/video_utils.py`): muxes soft subtitles (mov_text) or burns hard ones
    (`subtitles=`/`ass=` filters), probes CUDA and reads progress from FFmpeg's stderr.
 
@@ -123,12 +129,20 @@ models pinned to a commit SHA with atomic state; `service.py` is the facade for 
 CUDA and FastAPI are never imported into the Qt process. A base build without `runtime/vieneu/` must
 disable the actions instead of repeating errors.
 
+In source mode the locator only looks at `<ROOT>/runtime/vieneu/`; to use a runtime built with
+`scripts/build_vieneu_runtime.py`, set `VIDEOCAPTIONER_VIENEU_RUNTIME` (and `VIDEOCAPTIONER_VIENEU_BRIDGE`
+if the bridge lives elsewhere). `HuggingFaceVieNeuClient` forces `HF_HUB_DISABLE_SYMLINKS` on Windows and
+uses its own tqdm class (no monitor thread, a write sink when the windowed EXE has no stderr). In the
+GUI every VieNeu action of the dubbing tab goes through one queue (latest wins); at startup the app only
+checks the revision and offers the download, see the Vietnamese [VieNeu One-App](../../dev/vieneu-one-app.md) page.
+
 ## Video Editor
 
 `core/editor/` is Qt-free: `models.py` (schema `editor-project-v1`, milliseconds canonical, stable cue
 IDs), `commands.py` (`CommandStack` for every mutation, undo/redo), `project_store.py` (save JSON + SRT;
 ASS only through "Save as ASS"), `media.py` (probe/thumbnail/waveform/render with FFmpeg, cancellable),
-`adapters.py` and `voice.py` (bridges to dubbing/TTS). `ui/view/video_editor_interface.py` is the
+`adapters.py` and `voice.py` (bridges to dubbing/TTS), `presenter.py` (new-cue placement, split
+position, inspector commands, layer properties/names, suggested paths). `ui/view/video_editor_interface.py` is the
 PyQt5/QFluentWidgets page; preview and export share `build_visual_filter_graph`. No PySide6 or MPV.
 
 ## Subprocesses and environment
@@ -148,6 +162,12 @@ keeps the prepended PATH. Windows uses `CREATE_NO_WINDOW`. Arguments are always 
   `-m "not integration and not slow and not llm"` on Ubuntu with FFmpeg and offscreen Qt.
 - Tests that need external services carry the `integration`/`llm` markers; tests that need FFmpeg skip
   when it is absent.
+- Tests that drive a QThread through a `QEventLoop` must `thread.wait()` after the loop returns (see the
+  helper in `tests/test_thread/conftest.py`); dropping a running QThread aborts the interpreter on CI.
+- `scripts/pyinstaller_gui.py` replaces the windowed EXE's `sys.stdout`/`sys.stderr` (None) with devnull
+  before importing the GUI, because libraries writing straight to stderr (tqdm) used to hang the exit.
+- `scripts/build_vieneu_runtime.py` installs dependencies with `uv pip install --no-config
+  --require-hashes` so the workspace's `[tool.uv] override-dependencies` cannot leak into the runtime.
 
 ---
 

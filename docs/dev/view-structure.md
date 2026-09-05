@@ -1,24 +1,24 @@
-view/  目录结构：用户界面 (UI) 模块 
+# Cấu trúc view (videocaptioner/ui/view)
 
-下面是本软件的一个主要页面结构，方便开发者查看和修改。
+Sơ đồ các page và widget chính của GUI để tìm nhanh file cần sửa. Logic không phụ thuộc Qt nằm ở
+`core/` (xem [Kiến trúc](architecture.md)); view chỉ điều phối và trình bày. Worker QThread nằm ở
+`ui/thread/`, `ui/task_factory.py` dịch `cfg` thành các entity task, `ui/components/` chứa widget dùng
+lại (setting card, dialog cài đặt Whisper, report lồng tiếng, panel của Video Editor).
 
-
-```
-├── main_window.py  ------------------  主窗口 (应用程序框架)
-│   │
-│   └── 
-│       ├── home_interface.py -------- 主页窗口 (程序主界面，包含核心功能)
-│       │   │
-│       │   └── 包含以下子功能模块:
-│       │       ├── task_creation_interface.py - 任务创建窗口
-│       │       ├── transcription_interface.py - 语音转录窗口
-│       │       ├── subtitle_interface.py -------- 字幕优化窗口
-│       │       └── video_synthesis_interface.py - 视频合成窗口
-│       │
-│       ├── batch_process_interface.py ------- 批量处理窗口
-│       ├── subtitle_style_interface.py ------ 字幕样式窗口
-│       └── setting_interface.py -------------- 设置窗口
-│
-├── log_window.py -------------------- 日志窗口 (独立窗口，集成在 home_interface)
-
+```text
+main_window.py ---------------- FluentWindow; page nạp lười qua LazyInterface; khởi động launch check
+│                               VieNeu; khi đóng: dừng job dubbing, sidecar và child process
+├── home_interface.py --------- 5 bước pipeline (SegmentedWidget + QStackedWidget, nạp lười)
+│   ├── task_creation_interface.py --- Tạo task: chọn file/URL, cấu hình nhanh
+│   ├── transcription_interface.py --- Nhận dạng giọng nói (TranscriptThread)
+│   ├── subtitle_interface.py -------- Tách/tối ưu/dịch phụ đề, bảng chỉnh sửa (core/subtitle/editing)
+│   ├── dubbing_interface.py --------- Lồng tiếng: provider TTS, VieNeu Local (hàng đợi action, đề nghị
+│   │                                   cập nhật model), lồng tiếng thủ công, ghép audio thủ công
+│   └── video_synthesis_interface.py - Ghép phụ đề vào video
+├── batch_process_interface.py ------ Xử lý hàng loạt (BatchProcessThread)
+├── subtitle_style_interface.py ----- Kiểu phụ đề; logic ở core/subtitle/style_presenter
+├── video_editor_interface.py ------- Video Editor; domain ở core/editor, logic view ở core/editor/presenter
+├── llm_logs_interface.py ----------- Xem log request LLM
+├── setting_interface.py ------------ Cài đặt; card provider LLM dựng từ core/llm/services
+└── log_window.py ------------------- Cửa sổ log (mở từ trang chủ)
 ```
