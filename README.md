@@ -92,6 +92,27 @@ giá trị mặc định. Cấu hình GUI là `AppData/settings.json` của bả
 base URL, model của dịch vụ LLM đang chọn, Whisper API, DeepLX endpoint và TTS lồng tiếng, nên nhập key
 một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate...) không được kế thừa.
 
+## ASR qua API tương thích OpenAI
+
+Trong cài đặt Whisper API, chọn preset `VideoCaptioner API`, `Groq`, `OpenAI` hoặc `Custom`.
+Base URL, model nhập tay, prompt và ngôn ngữ đã lưu vẫn dùng được. Key được giữ riêng theo endpoint;
+đổi endpoint sẽ dùng key đã lưu cho endpoint đó hoặc để trống. Mở settings không tự gọi API.
+
+```bash
+uv run --frozen videocaptioner config set whisper_api.provider videocaptioner
+uv run --frozen videocaptioner config set whisper_api.api_key <gateway-key>
+uv run --frozen videocaptioner transcribe video.mp4 --asr whisper-api \
+  --whisper-model whisper-1 --language zh
+```
+
+`--whisper-provider` và `--whisper-request-profile` cũng dùng được với `process`.
+Profile `auto` nhận biết model trong preset; model ID khác giữ request Whisper cũ.
+Với alias riêng, chọn rõ `whisper` (timestamp) hoặc `json-text` (văn bản JSON).
+`gpt-4o-transcribe` và `gpt-4o-mini-transcribe` dùng JSON và có thể kiểm tra nhận dạng bằng nút probe;
+**chưa xuất phụ đề từ các model text-only** vì cần alignment của S2. Luồng phụ đề dừng trước upload,
+không tạo timestamp giả. Probe báo riêng kết quả nhận dạng và mức timing thực tế.
+Nếu yêu cầu word timestamp nhưng response chỉ có segment, chọn lại chế độ câu hoặc model có word timing.
+
 ## Lồng tiếng Natural
 
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.

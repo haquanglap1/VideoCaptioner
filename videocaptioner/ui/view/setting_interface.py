@@ -21,6 +21,7 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 
 from videocaptioner.config import AUTHOR, RELEASE_URL, VERSION, YEAR
+from videocaptioner.core.asr.api_profiles import MODEL_SUGGESTIONS
 from videocaptioner.core.constant import (
     INFOBAR_DURATION_ERROR,
     INFOBAR_DURATION_SUCCESS,
@@ -32,7 +33,6 @@ from videocaptioner.core.entities import (
     TranslatorServiceEnum,
     enum_from_display,
 )
-from videocaptioner.core.llm import check_whisper_connection
 from videocaptioner.core.llm.check_llm import check_llm_connection, get_available_models
 from videocaptioner.core.llm.services import (
     LLM_SERVICE_PRESETS,
@@ -44,6 +44,8 @@ from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
 from videocaptioner.ui.components.EditComboBoxSettingCard import EditComboBoxSettingCard
 from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
+from videocaptioner.ui.components.WhisperProfileCards import WhisperProfileCards
+from videocaptioner.ui.thread.whisper_connection_thread import WhisperConnectionThread
 
 
 class SettingInterface(ScrollArea):
@@ -350,6 +352,9 @@ class SettingInterface(ScrollArea):
         self.fasterWhisperManagerCard.setVisible(False)
 
         # API Base URL
+        self.whisperProfileCards = WhisperProfileCards(self.transcribeGroup)
+        self.whisperProfileCards.provider.setVisible(False)
+        self.whisperProfileCards.profile.setVisible(False)
         self.whisperApiBaseCard = LineEditSettingCard(
             cfg.whisper_api_base,
             FIF.LINK,
@@ -375,10 +380,7 @@ class SettingInterface(ScrollArea):
             FIF.ROBOT,  # type: ignore
             self.tr("Whisper 模型"),
             self.tr("选择 Whisper 模型"),
-            [
-                "whisper-1",
-                "whisper-large-v3-turbo",
-            ],
+            MODEL_SUGGESTIONS,
             self.transcribeGroup,
         )
 
@@ -512,6 +514,8 @@ class SettingInterface(ScrollArea):
         self.transcribeGroup.addSettingCard(self.transcribeModelCard)
         self.transcribeGroup.addSettingCard(self.fasterWhisperManagerCard)
         # Whisper API cards
+        self.transcribeGroup.addSettingCard(self.whisperProfileCards.provider)
+        self.transcribeGroup.addSettingCard(self.whisperProfileCards.profile)
         self.transcribeGroup.addSettingCard(self.whisperApiBaseCard)
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
         self.transcribeGroup.addSettingCard(self.whisperApiModelCard)
@@ -852,6 +856,8 @@ class SettingInterface(ScrollArea):
         """Handle the transcription model changing."""
         # Whisper API cards
         whisper_api_cards = [
+            self.whisperProfileCards.provider,
+            self.whisperProfileCards.profile,
             self.whisperApiBaseCard,
             self.whisperApiKeyCard,
             self.whisperApiModelCard,
@@ -918,7 +924,8 @@ class SettingInterface(ScrollArea):
 
         # Create and start the test thread
         self.whisper_connection_thread = WhisperConnectionThread(
-            base_url, api_key, model
+            base_url, api_key, model, cfg.whisper_api_provider.value,
+            cfg.whisper_api_request_profile.value,
         )
         self.whisper_connection_thread.finished.connect(
             self.onWhisperConnectionCheckFinished
@@ -959,29 +966,6 @@ class SettingInterface(ScrollArea):
             duration=INFOBAR_DURATION_ERROR,
             parent=self,
         )
-
-
-class WhisperConnectionThread(QThread):
-    """Whisper API connection test thread."""
-
-    finished = pyqtSignal(bool, str)
-    error = pyqtSignal(str)
-
-    def __init__(self, base_url, api_key, model):
-        super().__init__()
-        self.base_url = base_url
-        self.api_key = api_key
-        self.model = model
-
-    def run(self):
-        """Run the connection test."""
-        try:
-            success, result = check_whisper_connection(
-                self.base_url, self.api_key, self.model
-            )
-            self.finished.emit(success, result)
-        except Exception as e:
-            self.error.emit(str(e))
 
 
 class LLMConnectionThread(QThread):

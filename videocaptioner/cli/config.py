@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 
 from platformdirs import user_config_dir
 
+from videocaptioner.core.asr.api_profiles import PROVIDER_PRESETS, endpoint_identity
 from videocaptioner.core.llm.services import LLM_SERVICE_PRESETS
 
 if sys.version_info >= (3, 11):
@@ -45,6 +46,9 @@ ENV_MAP: Dict[str, str] = {
     "VIDEOCAPTIONER_LLM_MODEL": "llm.model",
     "VIDEOCAPTIONER_WHISPER_API_KEY": "whisper_api.api_key",
     "VIDEOCAPTIONER_WHISPER_API_BASE": "whisper_api.api_base",
+    "VIDEOCAPTIONER_WHISPER_API_MODEL": "whisper_api.model",
+    "VIDEOCAPTIONER_WHISPER_API_PROVIDER": "whisper_api.provider",
+    "VIDEOCAPTIONER_WHISPER_API_REQUEST_PROFILE": "whisper_api.request_profile",
     "VIDEOCAPTIONER_DEEPLX_ENDPOINT": "translate.deeplx_endpoint",
     "VIDEOCAPTIONER_TARGET_LANG": "translate.target_language",
 }
@@ -57,6 +61,8 @@ GUI_KEY_MAP: Dict[str, str] = {
     "WhisperAPI.WhisperApiBase": "whisper_api.api_base",
     "WhisperAPI.WhisperApiModel": "whisper_api.model",
     "WhisperAPI.WhisperApiPrompt": "whisper_api.prompt",
+    "WhisperAPI.WhisperApiProvider": "whisper_api.provider",
+    "WhisperAPI.WhisperApiRequestProfile": "whisper_api.request_profile",
     "Translate.DeeplxEndpoint": "translate.deeplx_endpoint",
     "Dubbing.TTSProvider": "dubbing.tts_provider",
     "Dubbing.TTSApiKey": "dubbing.tts_api_key",
@@ -83,6 +89,8 @@ DEFAULTS: Dict[str, Any] = {
         "api_base": "https://api.openai.com/v1",
         "model": "whisper-1",
         "prompt": "",
+        "provider": "custom",
+        "request_profile": "auto",
     },
     "transcribe": {
         "asr": "bijian",
@@ -270,6 +278,26 @@ def load_env_overrides() -> dict:
     return overrides
 
 
+def _merge_asr_layer(config: dict, layer: dict) -> dict:
+    """Apply preset suggestions within precedence and never inherit keys across endpoints."""
+    overrides = layer.get("whisper_api", {})
+    previous = config["whisper_api"]
+    if not isinstance(overrides, dict):
+        return _deep_merge(config, layer)
+    overrides = dict(overrides)
+    provider = overrides.get("provider", previous["provider"])
+    if provider != previous["provider"] and provider in PROVIDER_PRESETS:
+        preset = PROVIDER_PRESETS[provider]
+        overrides.setdefault("api_base", preset.base_url)
+        overrides.setdefault("model", preset.models[0] if preset.models else "whisper-1")
+        overrides.setdefault("request_profile", "auto")
+        overrides.setdefault("prompt", "")
+    base = overrides.get("api_base", previous["api_base"])
+    if endpoint_identity(base) != endpoint_identity(previous["api_base"]):
+        overrides.setdefault("api_key", "")
+    return _deep_merge(config, {**layer, "whisper_api": overrides})
+
+
 def build_config(
     cli_overrides: Optional[dict] = None,
     config_path: Optional[Path] = None,
@@ -281,16 +309,16 @@ def build_config(
     """
     config = DEFAULTS.copy()
     # Layer 0: GUI settings.json (credentials only)
-    config = _deep_merge(config, load_gui_settings(gui_settings_path))
+    config = _merge_asr_layer(config, load_gui_settings(gui_settings_path))
     # Layer 1: config file
     file_config = load_config_file(config_path)
-    config = _deep_merge(config, file_config)
+    config = _merge_asr_layer(config, file_config)
     # Layer 2: environment variables
     env_config = load_env_overrides()
-    config = _deep_merge(config, env_config)
+    config = _merge_asr_layer(config, env_config)
     # Layer 3: CLI argument overrides
     if cli_overrides:
-        config = _deep_merge(config, cli_overrides)
+        config = _merge_asr_layer(config, cli_overrides)
     return config
 
 
@@ -334,7 +362,19 @@ def save_config_value(key: str, value: str, config_path: Optional[Path] = None) 
     path.parent.mkdir(parents=True, exist_ok=True)
 
     existing = load_config_file(path)
-    _set_nested(existing, key, _parse_value(value, key))
+    if key in ("whisper_api.provider", "whisper_api.api_base"):
+        # A sequence of `config set` commands must be as safe as one CLI override.
+        current = _deep_merge(DEFAULTS["whisper_api"], existing.get("whisper_api", {}))
+        credentials = dict(current.get("endpoint_credentials", {}))
+        credentials[endpoint_identity(current["api_base"])] = {"api_key": current["api_key"]}
+        change = {key.split(".", 1)[1]: value}
+        updated = _merge_asr_layer({"whisper_api": current}, {"whisper_api": change})["whisper_api"]
+        if endpoint_identity(updated["api_base"]) != endpoint_identity(current["api_base"]):
+            updated["api_key"] = credentials.get(endpoint_identity(updated["api_base"]), {}).get("api_key", "")
+        updated["endpoint_credentials"] = credentials
+        existing["whisper_api"] = updated
+    else:
+        _set_nested(existing, key, _parse_value(value, key))
 
     with open(path, "w", encoding="utf-8") as f:
         _write_toml(f, existing)

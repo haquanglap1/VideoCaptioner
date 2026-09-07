@@ -129,6 +129,10 @@ def _build_transcribe_parser(subparsers) -> None:
                      help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
     asr.add_argument("--word-timestamps", action="store_true",
                      help="Include word-level timestamps (for subtitle splitting)")
+    asr.add_argument("--whisper-provider", choices=["custom", "videocaptioner", "groq", "openai"],
+                     help="ASR provider preset (preserves explicit base/model overrides)")
+    asr.add_argument("--whisper-request-profile", choices=["auto", "whisper", "json-text"],
+                     help="Request contract; JSON text requires alignment before subtitle export")
     asr.add_argument("--whisper-api-key", metavar="KEY",
                      help="Whisper API key (for --asr whisper-api)")
     asr.add_argument("--whisper-api-base", metavar="URL",
@@ -291,6 +295,8 @@ def _build_process_parser(subparsers) -> None:
                       help="ASR engine (default: bijian)")
     pipe.add_argument("--language", metavar="CODE",
                       help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
+    pipe.add_argument("--whisper-provider", choices=["custom", "videocaptioner", "groq", "openai"])
+    pipe.add_argument("--whisper-request-profile", choices=["auto", "whisper", "json-text"])
     pipe.add_argument("--whisper-api-key", metavar="KEY", help="Whisper API key (for --asr whisper-api)")
     pipe.add_argument("--translator", choices=["llm", "bing", "google"],
                       help="Translation service (default: llm). bing and google are free")
@@ -436,6 +442,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("whisper_api.api_key", getattr(args, "whisper_api_key", None))
     _set("whisper_api.api_base", getattr(args, "whisper_api_base", None))
     _set("whisper_api.model", getattr(args, "whisper_model", None))
+    _set("whisper_api.provider", getattr(args, "whisper_provider", None))
+    _set("whisper_api.request_profile", getattr(args, "whisper_request_profile", None))
 
     # Transcribe
     _set("transcribe.asr", getattr(args, "asr", None))

@@ -220,6 +220,16 @@ class Config(QConfig):
     whisper_api_key = ConfigItem("WhisperAPI", "WhisperApiKey", "")
     whisper_api_model = OptionsConfigItem("WhisperAPI", "WhisperApiModel", "")
     whisper_api_prompt = ConfigItem("WhisperAPI", "WhisperApiPrompt", "")
+    whisper_api_provider = OptionsConfigItem(
+        "WhisperAPI", "WhisperApiProvider", "custom",
+        OptionsValidator(["custom", "videocaptioner", "groq", "openai"]),
+    )
+    whisper_api_request_profile = OptionsConfigItem(
+        "WhisperAPI", "WhisperApiRequestProfile", "auto",
+        OptionsValidator(["auto", "whisper", "json-text"]),
+    )
+    whisper_api_endpoint_keys = ConfigItem("WhisperAPI", "WhisperApiEndpointKeys", {})
+    whisper_api_saved_profiles = ConfigItem("WhisperAPI", "WhisperApiSavedProfiles", {})
 
     # ------------------- 字幕配置 -------------------
     need_optimize = ConfigItem("Subtitle", "NeedOptimize", False, BoolValidator())
@@ -393,3 +403,8 @@ cfg = Config()
 cfg.themeMode.value = Theme.DARK
 cfg.themeColor.value = QColor("#ff28f08b")
 qconfig.load(SETTINGS_PATH, cfg)
+
+# Bind only after loading: opening settings must not migrate or reset saved values.
+from .whisper_settings import WhisperSettings  # noqa: E402
+
+whisper_settings = WhisperSettings(cfg)

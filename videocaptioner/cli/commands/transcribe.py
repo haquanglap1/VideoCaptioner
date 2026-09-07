@@ -111,6 +111,8 @@ def run(args: Namespace, config: dict) -> int:
         whisper_api_base=get(config, "whisper_api.api_base", ""),
         whisper_api_model=get(config, "whisper_api.model", "whisper-1"),
         whisper_api_prompt=get(config, "whisper_api.prompt", ""),
+        whisper_api_provider=get(config, "whisper_api.provider", "custom"),
+        whisper_api_request_profile=get(config, "whisper_api.request_profile", "auto"),
     )
 
 

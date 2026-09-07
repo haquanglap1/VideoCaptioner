@@ -2588,4 +2588,102 @@
     <message><source>Auto update</source><translation>自动更新</translation></message>
     <message><source>VieNeu Local error</source><translation>VieNeu 本地错误</translation></message>
 </context>
+<context>
+    <name>WhisperProfileCards</name>
+    <message>
+        <source>ASR provider</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Presets keep separate endpoint keys. Chinese (zh) is recommended for Chinese speech.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Request profile</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto (known models; otherwise Whisper)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Whisper timestamps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>JSON text (needs alignment)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Word/segment timestamps requested; actual timing is checked after recognition.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recognition test available. Subtitle export needs alignment (S2), not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter a model and choose a compatible request profile. Custom aliases can use Whisper or JSON text.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>WhisperConnectionThread</name>
+    <message>
+        <source>Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recognition succeeded with word timestamps.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recognition succeeded with segment timestamps.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bundled test audio is unavailable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR connection check failed. Check provider and request profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR authentication failed. Check the API key.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR access denied. Check provider/model permissions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR route or model not found. Check Base URL and model access.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR rate limit reached. Try again later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid ASR request. Check model and request profile.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR upload rejected as too large. Compress or split the audio.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR request timed out. Try a shorter audio clip.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>ASR connection failed. Check network and Base URL.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

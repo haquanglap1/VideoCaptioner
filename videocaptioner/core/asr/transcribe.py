@@ -1,3 +1,4 @@
+from videocaptioner.core.asr.api_profiles import require_subtitle_timing, resolve_profile
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
@@ -112,7 +113,13 @@ def _create_whisper_cpp_asr(audio_path: str, config: TranscribeConfig) -> Chunke
 
 def _create_whisper_api_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR:
     """Create Whisper API ASR instance with chunking support."""
+    require_subtitle_timing(resolve_profile(
+        config.whisper_api_model or "whisper-1",
+        config.whisper_api_request_profile, config.whisper_api_provider,
+    ))
     asr_kwargs = {
+        "provider": config.whisper_api_provider,
+        "request_profile": config.whisper_api_request_profile,
         "use_cache": True,
         "need_word_time_stamp": config.need_word_time_stamp,
         "language": config.transcribe_language,

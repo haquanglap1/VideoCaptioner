@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
@@ -13,13 +13,15 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
+from videocaptioner.core.asr.api_profiles import MODEL_SUGGESTIONS
 from videocaptioner.core.constant import INFOBAR_DURATION_ERROR, INFOBAR_DURATION_SUCCESS
 from videocaptioner.core.entities import TranscribeLanguageEnum
-from videocaptioner.core.llm import check_whisper_connection
+from videocaptioner.ui.thread.whisper_connection_thread import WhisperConnectionThread
 
 from ..common.config import cfg
 from .EditComboBoxSettingCard import EditComboBoxSettingCard
 from .LineEditSettingCard import LineEditSettingCard
+from .WhisperProfileCards import WhisperProfileCards
 
 
 class WhisperAPISettingWidget(QWidget):
@@ -30,7 +32,7 @@ class WhisperAPISettingWidget(QWidget):
     def setup_ui(self):
         self.main_layout = QVBoxLayout(self)
 
-        # 创建单向滚动区域和容器
+        # Create the scrolling container.
         self.scrollArea = SingleDirectionScrollArea(orient=Qt.Vertical, parent=self)  # type: ignore
         self.scrollArea.setStyleSheet(
             "QScrollArea{background: transparent; border: none}"
@@ -41,6 +43,8 @@ class WhisperAPISettingWidget(QWidget):
         self.containerLayout = QVBoxLayout(self.container)
 
         self.setting_group = SettingCardGroup(self.tr("Whisper API 设置"), self)
+
+        self.profile_cards = WhisperProfileCards(self.setting_group)
 
         # API Base URL
         self.base_url_card = LineEditSettingCard(
@@ -68,11 +72,11 @@ class WhisperAPISettingWidget(QWidget):
             FIF.ROBOT,  # type: ignore
             self.tr("Whisper 模型"),
             self.tr("选择 Whisper 模型"),
-            ["whisper-large-v3", "whisper-large-v3-turbo", "whisper-1"],
+            MODEL_SUGGESTIONS,
             self.setting_group,
         )
 
-        # 添加 Language 选择
+        # Source language.
         self.language_card = ComboBoxSettingCard(
             cfg.transcribe_language,
             FIF.LANGUAGE,
@@ -82,7 +86,7 @@ class WhisperAPISettingWidget(QWidget):
             self.setting_group,
         )
 
-        # 添加 Prompt
+        # Optional prompt.
         self.prompt_card = LineEditSettingCard(
             cfg.whisper_api_prompt,
             FIF.CHAT,
@@ -92,7 +96,7 @@ class WhisperAPISettingWidget(QWidget):
             self.setting_group,
         )
 
-        # 添加测试连接按钮
+        # Recognition probe.
         self.check_connection_card = PushSettingCard(
             self.tr("测试连接"),
             FIF.CONNECT,
@@ -101,14 +105,16 @@ class WhisperAPISettingWidget(QWidget):
             self.setting_group,
         )
 
-        # 设置最小宽度
+        # Keep input widths consistent.
         self.base_url_card.lineEdit.setMinimumWidth(200)
         self.api_key_card.lineEdit.setMinimumWidth(200)
         self.model_card.comboBox.setMinimumWidth(200)
         self.language_card.comboBox.setMinimumWidth(200)
         self.prompt_card.lineEdit.setMinimumWidth(200)
 
-        # 使用 addSettingCard 添加所有卡片到组
+        # Register cards in display order.
+        self.setting_group.addSettingCard(self.profile_cards.provider)
+        self.setting_group.addSettingCard(self.profile_cards.profile)
         self.setting_group.addSettingCard(self.base_url_card)
         self.setting_group.addSettingCard(self.api_key_card)
         self.setting_group.addSettingCard(self.model_card)
@@ -116,28 +122,28 @@ class WhisperAPISettingWidget(QWidget):
         self.setting_group.addSettingCard(self.prompt_card)
         self.setting_group.addSettingCard(self.check_connection_card)
 
-        # 连接测试按钮信号
+        # Connect the explicit probe action.
         self.check_connection_card.clicked.connect(self.on_check_connection)
 
-        # 将设置组添加到容器布局
+        # Add the settings group.
         self.containerLayout.addWidget(self.setting_group)
         self.containerLayout.addStretch(1)
 
-        # 设置滚动区域
+        # Configure scrolling.
         self.scrollArea.setWidget(self.container)
         self.scrollArea.setWidgetResizable(True)
 
-        # 将滚动区域添加到主布局
+        # Add the scroll area.
         self.main_layout.addWidget(self.scrollArea)
 
     def on_check_connection(self):
-        """测试 Whisper API 连接"""
-        # 获取配置
+        """Test the Whisper API connection."""
+        # Capture the current configuration.
         base_url = self.base_url_card.lineEdit.text().strip()
         api_key = self.api_key_card.lineEdit.text().strip()
         model = self.model_card.comboBox.currentText().strip()
 
-        # 验证必填字段
+        # Validate required fields.
         if not base_url or not api_key or not model:
             InfoBar.warning(
                 self.tr("配置不完整"),
@@ -148,19 +154,22 @@ class WhisperAPISettingWidget(QWidget):
             )
             return
 
-        # 禁用按钮，显示加载状态
+        # Disable repeated probes while the worker runs.
         self.check_connection_card.button.setEnabled(False)
         self.check_connection_card.button.setText(self.tr("正在测试..."))
 
-        # 创建并启动测试线程
-        self.connection_thread = WhisperConnectionThread(base_url, api_key, model)
+        # Start the probe worker.
+        self.connection_thread = WhisperConnectionThread(
+            base_url, api_key, model, cfg.whisper_api_provider.value,
+            cfg.whisper_api_request_profile.value,
+        )
         self.connection_thread.finished.connect(self.on_connection_check_finished)
         self.connection_thread.error.connect(self.on_connection_check_error)
         self.connection_thread.start()
 
     def on_connection_check_finished(self, success, result):
-        """处理连接检查完成事件"""
-        # 恢复按钮状态
+        """Handle a completed connection check."""
+        # Restore the probe button.
         self.check_connection_card.button.setEnabled(True)
         self.check_connection_card.button.setText(self.tr("测试连接"))
 
@@ -182,8 +191,8 @@ class WhisperAPISettingWidget(QWidget):
             )
 
     def on_connection_check_error(self, message):
-        """处理连接检查错误事件"""
-        # 恢复按钮状态
+        """Handle a failed connection check."""
+        # Restore the probe button.
         self.check_connection_card.button.setEnabled(True)
         self.check_connection_card.button.setText(self.tr("测试连接"))
         InfoBar.error(
@@ -193,26 +202,3 @@ class WhisperAPISettingWidget(QWidget):
             position=InfoBarPosition.BOTTOM,
             parent=self.window(),
         )
-
-
-class WhisperConnectionThread(QThread):
-    """Whisper API 连接测试线程"""
-
-    finished = pyqtSignal(bool, str)
-    error = pyqtSignal(str)
-
-    def __init__(self, base_url, api_key, model):
-        super().__init__()
-        self.base_url = base_url
-        self.api_key = api_key
-        self.model = model
-
-    def run(self):
-        """执行连接测试"""
-        try:
-            success, result = check_whisper_connection(
-                self.base_url, self.api_key, self.model
-            )
-            self.finished.emit(success, result)
-        except Exception as e:
-            self.error.emit(str(e))

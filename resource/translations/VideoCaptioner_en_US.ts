@@ -2605,4 +2605,102 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message><source>Auto update</source><translation>Auto update</translation></message>
     <message><source>VieNeu Local error</source><translation>VieNeu Local error</translation></message>
 </context>
+<context>
+    <name>WhisperProfileCards</name>
+    <message>
+        <source>ASR provider</source>
+        <translation>ASR provider</translation>
+    </message>
+    <message>
+        <source>Presets keep separate endpoint keys. Chinese (zh) is recommended for Chinese speech.</source>
+        <translation>Presets keep separate endpoint keys. Chinese (zh) is recommended for Chinese speech.</translation>
+    </message>
+    <message>
+        <source>Request profile</source>
+        <translation>Request profile</translation>
+    </message>
+    <message>
+        <source>Auto (known models; otherwise Whisper)</source>
+        <translation>Auto (known models; otherwise Whisper)</translation>
+    </message>
+    <message>
+        <source>Whisper timestamps</source>
+        <translation>Whisper timestamps</translation>
+    </message>
+    <message>
+        <source>JSON text (needs alignment)</source>
+        <translation>JSON text (needs alignment)</translation>
+    </message>
+    <message>
+        <source>Word/segment timestamps requested; actual timing is checked after recognition.</source>
+        <translation>Word/segment timestamps requested; actual timing is checked after recognition.</translation>
+    </message>
+    <message>
+        <source>Recognition test available. Subtitle export needs alignment (S2), not available yet.</source>
+        <translation>Recognition test available. Subtitle export needs alignment (S2), not available yet.</translation>
+    </message>
+    <message>
+        <source>Enter a model and choose a compatible request profile. Custom aliases can use Whisper or JSON text.</source>
+        <translation>Enter a model and choose a compatible request profile. Custom aliases can use Whisper or JSON text.</translation>
+    </message>
+</context>
+<context>
+    <name>WhisperConnectionThread</name>
+    <message>
+        <source>Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified.</source>
+        <translation>Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified.</translation>
+    </message>
+    <message>
+        <source>Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet.</source>
+        <translation>Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet.</translation>
+    </message>
+    <message>
+        <source>Recognition succeeded with word timestamps.</source>
+        <translation>Recognition succeeded with word timestamps.</translation>
+    </message>
+    <message>
+        <source>Recognition succeeded with segment timestamps.</source>
+        <translation>Recognition succeeded with segment timestamps.</translation>
+    </message>
+    <message>
+        <source>Bundled test audio is unavailable.</source>
+        <translation>Bundled test audio is unavailable.</translation>
+    </message>
+    <message>
+        <source>ASR connection check failed. Check provider and request profile.</source>
+        <translation>ASR connection check failed. Check provider and request profile.</translation>
+    </message>
+    <message>
+        <source>ASR authentication failed. Check the API key.</source>
+        <translation>ASR authentication failed. Check the API key.</translation>
+    </message>
+    <message>
+        <source>ASR access denied. Check provider/model permissions.</source>
+        <translation>ASR access denied. Check provider/model permissions.</translation>
+    </message>
+    <message>
+        <source>ASR route or model not found. Check Base URL and model access.</source>
+        <translation>ASR route or model not found. Check Base URL and model access.</translation>
+    </message>
+    <message>
+        <source>ASR rate limit reached. Try again later.</source>
+        <translation>ASR rate limit reached. Try again later.</translation>
+    </message>
+    <message>
+        <source>Invalid ASR request. Check model and request profile.</source>
+        <translation>Invalid ASR request. Check model and request profile.</translation>
+    </message>
+    <message>
+        <source>ASR upload rejected as too large. Compress or split the audio.</source>
+        <translation>ASR upload rejected as too large. Compress or split the audio.</translation>
+    </message>
+    <message>
+        <source>ASR request timed out. Try a shorter audio clip.</source>
+        <translation>ASR request timed out. Try a shorter audio clip.</translation>
+    </message>
+    <message>
+        <source>ASR connection failed. Check network and Base URL.</source>
+        <translation>ASR connection failed. Check network and Base URL.</translation>
+    </message>
+</context>
 </TS>

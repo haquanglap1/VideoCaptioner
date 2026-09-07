@@ -1,75 +1,42 @@
-"""Whisper API 连接测试工具"""
-
-from typing import Literal, Optional
-
-import openai
+"""Connection probe using the same request/parser contract as file ASR."""
 
 from videocaptioner.config import ASSETS_PATH
-from videocaptioner.core.llm.client import normalize_base_url
+from videocaptioner.core.asr.api_profiles import ASRAPIError, resolve_profile
+from videocaptioner.core.asr.api_transcription import (
+    build_request,
+    create_client,
+    parse_response,
+    submit_transcription,
+)
 
-# 测试音频文件路径
 TEST_AUDIO_PATH = ASSETS_PATH / "en.mp3"
 
 
 def check_whisper_connection(
-    base_url: str, api_key: str, model: str
-) -> tuple[Literal[True], Optional[str]] | tuple[Literal[False], Optional[str]]:
-    """
-    测试 Whisper API 连接
+    base_url: str, api_key: str, model: str, *,
+    provider: str = "custom", request_profile: str = "auto",
+) -> tuple[bool, str]:
+    """Recognize bundled public English audio; report observed timing separately.
 
-    使用测试音频文件进行转录测试，并返回转录结果文本。
-
-    参数:
-        base_url: API 基础 URL
-        api_key: API 密钥
-        model: 模型名称
-
-    返回:
-        (是否成功, 转录结果文本或Error output)
+    Deliberately omit the subtitle preflight: text-only recognition can succeed.
+    No user transcript or arbitrary provider error body is included in the result.
     """
     try:
-        # 检查测试音频文件是否存在
-        if not TEST_AUDIO_PATH.exists():
-            return False, f"Test audio file not found: {TEST_AUDIO_PATH}"
-
-        # 创建 OpenAI 客户端
-        base_url = normalize_base_url(base_url)
-        api_key = api_key.strip()
-        client = openai.OpenAI(base_url=base_url, api_key=api_key, timeout=60)
-
-        # Reading音频文件
-        with open(TEST_AUDIO_PATH, "rb") as audio_file:
-            # 调用 Whisper API 进行转录
-            response = client.audio.transcriptions.create(
-                model=model,
-                file=audio_file,
-                response_format="verbose_json",
-                timestamp_granularities=["word", "segment"],
-                timeout=30,
-            )
-
-        # 返回成功结果和转录文本
-        if isinstance(response, str):
-            raise ValueError(
-                "WhisperAPI returned type error, please check your base URL."
-            )
-        else:
-            resp = f"{response.text}"
-            return True, resp
-
-    except openai.APIConnectionError:
-        return False, "API Connection Error. Please check your network or VPN."
-    except openai.RateLimitError as e:
-        return False, "Rate Limit Error: " + str(e)
-    except openai.AuthenticationError:
-        return False, "Authentication Error. Please check your API key."
-    except openai.NotFoundError:
-        return False, "URL Not Found Error. Please check your Base URL."
-    except openai.BadRequestError as e:
-        return False, "Bad Request Error: " + str(e)
-    except openai.OpenAIError as e:
-        return False, "OpenAI Error: " + str(e)
-    except FileNotFoundError:
-        return False, f"Test audio file not found: {TEST_AUDIO_PATH}"
-    except Exception as e:
-        return False, str(e)
+        profile = resolve_profile(model, request_profile, provider)
+        request = build_request(
+            TEST_AUDIO_PATH.read_bytes(), model, profile, language="en", word_timing=True,
+        )
+        with create_client(base_url, api_key) as client:
+            response = submit_transcription(client, request)
+        result = parse_response(response)
+        if result.timing_level == "none":
+            if not result.text:
+                return True, "Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified."
+            return True, "Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet."
+        return True, f"Recognition succeeded with {result.timing_level} timestamps."
+    except ASRAPIError as exc:
+        return False, str(exc)
+    except OSError:
+        return False, "Bundled test audio is unavailable."
+    except Exception:
+        return False, "ASR connection check failed. Check provider and request profile."

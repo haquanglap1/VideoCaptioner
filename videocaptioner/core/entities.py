@@ -574,6 +574,8 @@ class TranscribeConfig:
     faster_whisper_ff_mdx_kim2: bool = False
     faster_whisper_one_word: bool = True
     faster_whisper_prompt: Optional[str] = None
+    whisper_api_provider: str = "custom"
+    whisper_api_request_profile: str = "auto"
 
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""
@@ -594,11 +596,7 @@ class TranscribeConfig:
         )
 
         if self.transcribe_model == TranscribeModelEnum.WHISPER_API:
-            lines.append(f"API Base: {self.whisper_api_base}")
-            lines.append(f"API Key: {self._mask_key(self.whisper_api_key)}")
-            lines.append(f"API Model: {self.whisper_api_model}")
-            if self.whisper_api_prompt:
-                lines.append(f"Prompt: {self.whisper_api_prompt[:30]}...")
+            lines.append("OpenAI-compatible ASR (endpoint, key and prompt omitted)")
 
         elif self.transcribe_model == TranscribeModelEnum.FASTER_WHISPER:
             lines.append(

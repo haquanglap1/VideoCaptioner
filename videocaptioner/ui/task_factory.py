@@ -103,6 +103,8 @@ class TaskFactory:
             whisper_api_base=cfg.whisper_api_base.value,
             whisper_api_model=cfg.whisper_api_model.value,
             whisper_api_prompt=cfg.whisper_api_prompt.value,
+            whisper_api_provider=cfg.whisper_api_provider.value,
+            whisper_api_request_profile=cfg.whisper_api_request_profile.value,
             # Faster Whisper 配置
             faster_whisper_program=cfg.faster_whisper_program.value,
             faster_whisper_model=cfg.faster_whisper_model.value,

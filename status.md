@@ -1,5 +1,24 @@
 # Project Status
 
+## 2026-09-07 (ASR S1: request profile, preset gateway/Groq và gate offline)
+
+- Hoàn tất S1 offline: registry provider/model/profile nhẹ; request/parser chung WhisperAPI/probe;
+  Whisper/Groq giữ timing, GPT JSON probe được và subtitle preflight báo cần alignment S2 trước upload.
+- Cache v2 SHA-256 cách ly endpoint/request/timing, prompt được hash; MIME theo bytes, cap upload,
+  timeout/retry hữu hạn, lỗi/log không echo key/prompt/raw provider response. Không giả timestamp.
+- Settings hai mặt có preset VideoCaptioner API/Groq/OpenAI/Custom và model nhập tay; giữ cấu hình
+  preset, key theo endpoint và ngôn ngữ user. CLI thêm provider/profile theo precedence cũ; đổi endpoint
+  không tự thừa kế key. Probe chạy worker chung giữ contextvars; không network khi mở settings.
+- Validation: ruff toàn source/tests pass; pyright 0 error/0 warning; CLI và tests gần thay đổi pass;
+  full offline **720 passed, 5 skipped, 51 deselected** (76,48 s); sync translations pass. Đã sửa
+  startup guard bị kéo theo SDK OpenAI trong lượt test đầu. Dùng Python 3.12.13/môi trường project có
+  sẵn, xác nhận import worktree; FFmpeg có sẵn, Qt offscreen, settings/cache/basetemp test cô lập.
+- Online/EXE chưa nghiệm thu; không có key ASR trong worktree/env, không đọc/copy key checkout nguồn.
+  Docs OpenAI/Groq đã đọc lại; trang docs gateway không tải được bằng web tool ở lượt này, giữ hợp đồng
+  đã chấp nhận trong nghiên cứu. Không cài dependency, không build/phát hành, không triển khai S2–S6.
+- Chi tiết hành vi, giới hạn, từng gate, manifest file và đầu vào S2:
+  [bàn giao S1](docs/dev/asr-implementation-2026-09.md#bàn-giao-s1--2026-09-07).
+
 ## 2026-09-05 (Nghiệm thu VieNeu qua GUI one-app, sửa treo EXE, cập nhật model theo đề nghị, tài liệu, CI Node 24)
 
 ### Lỗi phát hiện từ log one-app trước khi nghiệm thu (mục 1)
