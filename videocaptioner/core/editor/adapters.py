@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Iterable
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
@@ -19,7 +20,7 @@ def cues_from_asr(asr_data: ASRData) -> list[EditorCue]:
         display = translated or source
         cues.append(
             EditorCue(
-                id=stable_cue_id(index, segment.start_time, segment.end_time, source),
+                id=segment.cue_id or stable_cue_id(index, segment.start_time, segment.end_time, source),
                 start_ms=int(segment.start_time),
                 end_ms=int(segment.end_time),
                 source_text=source,
@@ -38,20 +39,24 @@ def cue_metadata(cue: EditorCue) -> ASRMetadata | None:
         return metadata
     if not cue.speaker and metadata is None:
         return None
-    return ASRMetadata("user", metadata.scope if metadata else "editor", cue.speaker or None, "edited")
+    if metadata is not None:
+        return replace(metadata, speaker_override=cue.speaker)
+    return ASRMetadata("user", "editor", cue.speaker or None, "edited", cue.speaker)
 
 
 def project_to_asr(project: EditorProject, *, display_only: bool = False) -> ASRData:
     segments: list[ASRDataSeg] = []
     for cue in sorted(project.cues, key=lambda item: (item.start_ms, item.end_ms, item.id)):
         if display_only:
-            segments.append(ASRDataSeg(cue.display_text, cue.start_ms, cue.end_ms, metadata=cue_metadata(cue)))
+            segments.append(ASRDataSeg(cue.display_text, cue.start_ms, cue.end_ms,
+                                       metadata=cue_metadata(cue), cue_id=cue.id))
         else:
             translated = cue.display_text if cue.display_text != cue.source_text else ""
             segments.append(
-                ASRDataSeg(cue.source_text or cue.display_text, cue.start_ms, cue.end_ms, translated, cue_metadata(cue))
+                ASRDataSeg(cue.source_text or cue.display_text, cue.start_ms, cue.end_ms, translated,
+                           cue_metadata(cue), cue.id)
             )
-    return ASRData(segments, project.audio_events)
+    return ASRData(segments, project.audio_events, project.conversation_context)
 
 
 def project_to_tts_asr(project: EditorProject) -> ASRData:

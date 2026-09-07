@@ -8,6 +8,7 @@ from typing import Any, Callable, Protocol
 from uuid import uuid4
 
 from videocaptioner.core.asr.metadata import ASRMetadata
+from videocaptioner.core.translate.conversation import ConversationContext, check_context_update
 
 from .models import EditorCue, EditorLayer, EditorProject
 
@@ -18,6 +19,33 @@ class EditorCommand(Protocol):
     def execute(self) -> None: ...
 
     def undo(self) -> None: ...
+
+
+class ConversationOwner(Protocol):
+    conversation_context: ConversationContext
+
+
+@dataclass
+class EditConversationCommand:
+    owner: ConversationOwner
+    context: ConversationContext
+    user_edit: bool = True
+    description: str = "Edit conversation context"
+    _old: ConversationContext | None = field(default=None, init=False)
+
+    def execute(self) -> None:
+        check_context_update(self.owner.conversation_context, self.context, user_edit=self.user_edit)
+        if self._old is None:
+            self._old = self.owner.conversation_context
+        self.owner.conversation_context = self.context
+        if isinstance(self.owner, EditorProject):
+            self.owner.touch()
+
+    def undo(self) -> None:
+        if self._old is not None:
+            self.owner.conversation_context = self._old
+        if isinstance(self.owner, EditorProject):
+            self.owner.touch()
 
 
 class CommandStack:

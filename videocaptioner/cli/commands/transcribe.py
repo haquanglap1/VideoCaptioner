@@ -161,7 +161,15 @@ def run(args: Namespace, config: dict) -> int:
             audio_path = temp_audio.name
 
         from videocaptioner.core.asr.transcribe import transcribe
+        from videocaptioner.core.translate.conversation import load_context
+        context_path = get(config, "translate.conversation_context", "")
+        context = load_context(context_path) if context_path else None
         asr_data = transcribe(audio_path, transcribe_config, callback=callback)
+        if context is not None:
+            asr_data.conversation_context = context
+            output.warn("Context attached for review; a new ASR request does not reuse old speaker identities.")
+            if not str(output_path).lower().endswith(".json"):
+                output.warn("SRT/ASS/text cannot retain conversation context; use JSON to reopen it.")
 
         args.asr_data = asr_data
 

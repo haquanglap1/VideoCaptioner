@@ -33,6 +33,8 @@ def _add_llm_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_output_options(parser: argparse.ArgumentParser) -> None:
     """Add output-related options."""
+    parser.add_argument("--conversation-context", metavar="JSON",
+                        help="Load saved S4 context from editor/ASR JSON (SRT cannot retain it)")
     group = parser.add_argument_group("Output options")
     group.add_argument("-o", "--output", metavar="PATH", help="Output file or directory path")
     group.add_argument(
@@ -490,6 +492,7 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     # Translate
     _set("translate.service", getattr(args, "translator", None))
     _set("translate.target_language", getattr(args, "target_language", None))
+    _set("translate.conversation_context", getattr(args, "conversation_context", None))
     if getattr(args, "reflect", False):
         _set("translate.reflect", True)
 

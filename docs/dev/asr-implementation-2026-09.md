@@ -2,10 +2,11 @@
 
 Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
-gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1–S3 có code
+gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1–S4 có code
 và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. GPT gateway→SRT,
-phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptance. S4–S6 chưa triển khai.
-Code S2 đã commit theo yêu cầu user sau bàn giao; S3 đang dừng để review, chưa commit/push.
+phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptance. S5–S6 chưa triển khai.
+Theo yêu cầu riêng đầu phiên S4, 50 file S3 được commit `327c214` và push lên
+`origin/codex/asr-s3-native` trước khi sửa S4. S4 chưa commit/push, dừng để review.
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
@@ -26,7 +27,7 @@ Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 | S1 (offline hoàn tất) | Nền API tương thích và preset videocaptioner.cn/Groq/OpenAI/Custom | Code hiện có | Request/probe/parser theo capability, cache cách ly, config cũ hoạt động; text-only có giới hạn rõ ràng; gate offline |
 | S2 (code/offline + local smoke, chờ gateway) | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | Runtime alignment riêng đã đo; còn thiếu key để nghiệm thu GPT gateway→SRT |
 | S3 (code/offline, chờ native API) | Soniox v5 và Scribe v2, timestamp + speaker native | S1 | ASR mới đưa speaker xuyên split/optimize/translate input/editor; save/load speaker không mất |
-| S4 | Quan hệ người nói/người nghe và xưng hô Trung→Việt | S3; đường hybrid nối sau S5 | Mapping theo cặp/cảnh, user override, dịch lại và cache nhất quán, có review trường hợp mơ hồ |
+| S4 (code/offline; chờ nghiệm thu ngôn ngữ) | Quan hệ người nói/người nghe và xưng hô Trung→Việt | S3; đường hybrid nối sau S5 | Mapping theo cặp/cảnh, user override, dịch lại và cache nhất quán; chưa có benchmark người nghe/xưng hô |
 | S5 | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Chạy Windows tách Qt, pin model, đo VRAM/speed, giữ speaker trong toàn job |
 | S6 | Benchmark, chọn preset mặc định và nghiệm thu EXE | S2–S5 | Có kết quả thực trên video Trung, CER/timing/speaker/xưng hô, artifact và workflow thật |
 
@@ -476,6 +477,171 @@ videocaptioner/ui/view/home_interface.py
 videocaptioner/ui/view/setting_interface.py
 videocaptioner/ui/view/subtitle_interface.py
 videocaptioner/ui/view/transcription_interface.py
+videocaptioner/ui/view/video_editor_interface.py
+```
+
+## Bàn giao S4 — 2026-09-07
+
+Triển khai trực tiếp trong working tree S3 user chỉ định, không tạo checkout/worktree mới.
+Đầu phiên xác minh HEAD S2 `d21251a` + đúng 50 file S3 dirty và prompt S4 untracked; đã đọc diff,
+manifest/source metadata/native/settings/tests. User yêu cầu riêng commit/push S3 trước:
+`327c214` gồm đúng 50 file, push nhánh `codex/asr-s3-native` thành công. Prompt S4 giữ nguyên
+untracked. Tất cả diff sau commit này là S4; không commit/push/tag/release S4.
+
+### Code và review nền
+
+- Hướng dẫn sử dụng/schema, policy, scope, dữ liệu có bằng chứng, snapshot và cache:
+  [ASR context S4](asr-context-s4.md). Model immutable trong core; không suy danh tính/người nghe
+  từ nhãn ASR. User/lock có ưu tiên; proposal thiếu cue evidence bị từ chối, xung đột phải review.
+- Sửa nền S3: cue ID trước đây chưa đi xuyên ASR/JSON; JSON CLI input bị validator từ chối;
+  manual load bảng làm mất events; speaker override có thể thêm prefix lặp và mất provenance
+  sau handoff. Nay giữ cue ID + ASR provenance/override riêng, context/events qua JSON/editor.
+  Native ID theo request scope để context cue cũ không tự bám request mới.
+- LLM nhận snapshot toàn tài liệu trước chunking, mapping/rule resolve có hướng, source window và
+  cue evidence. Selection 1–9 cue không bị ngưỡng global-context cũ; chỉ cập nhật selection.
+  Prompt tách thoại khỏi chỉ dẫn ứng dụng, không trả/ghi metadata hay timing từ response.
+- GUI có bảng nhân vật/cảnh/mapping/người nghe/quy tắc, evidence/status/lock và review; không
+  network khi mở. Mutations qua CommandStack; editor dịch selection thành một composite command,
+  undo/redo, không đổi TTS text/voice. Kết quả stale bị bỏ. CLI dùng chung context/schema.
+- Fingerprint tất định có source, IDs, assignment, rule/scope/evidence/override/lock, policy/model/
+  endpoint; không dùng brief LLM ngẫu nhiên. Không xóa toàn cache. Socket S4 có deadline/cancel,
+  credential cố định theo job; không gửi raw body lỗi/context vào log. Transport cũ giữ cho
+  translator không hỗ trợ context; UI nêu giới hạn hỗ trợ xưng hô.
+- Context đã gắn thì re-segmentation dừng để review; không tự gán liên kết cho cue mới. Không thêm
+  bộ tự đoán quan hệ bằng LLM, auto voice, S5/S6 hoặc thay engine mặc định.
+
+### Validation source
+
+- Baseline review mới chạy **27 tests pass** trước commit S3. Gate gần S4 trước guard shutdown cuối:
+  **60 passed** (47 mới + 13 regression nền), gồm HTTP socket cancel, contextvars, 1–9 cue,
+  stale state, precedence/scope, JSON/handoff, UI/CLI và editor undo/redo. Test QThread đều wait.
+- Full offline cuối: **910 passed, 5 skipped, 51 deselected**, **105.38 s**. Baseline 862 + 48
+  test S4, gồm guard đóng app chờ worker đang dịch; có tăng assertion test S3 để kiểm tra speaker override vẫn giữ nhãn ASR gốc.
+  Full lần đầu tìm một kỳ vọng SRT legacy; đã giữ SRT cho table cũ không có ID/metadata/context,
+  còn table có association dùng JSON, rồi full-test lại. Không đổi test legacy để che lỗi.
+- Ruff toàn `videocaptioner/ tests/`: pass; pyright toàn source **0 errors/0 warnings**;
+  sync translations pass. Full suite bao gồm toàn CLI, ASR/subtitle/translate/editor/UI/thread.
+- Python **3.12.13**, dùng interpreter project có sẵn với `PYTHONPATH` đã xác minh import đúng
+  working tree; pyright chỉ định venv đó. Không sync/cài/thay dependency. Qt offscreen, FFmpeg
+  có sẵn trên PATH của process test, basetemp ngắn, fixture cô lập settings/config/env.
+- Đã render dialog tiếng Việt 1080×700 với Noto Sans SC, kiểm tra bảng/quy tắc và cuộn ngang;
+  JSON vi sync. TS en/zh cập nhật; thiếu lrelease nên QM giữ baseline, chuỗi zh mới fallback English.
+- Worktree không có settings LLM và environment không có key LLM. **Chưa chạy bản dịch LLM thật**,
+  chưa nghiệm thu chất lượng xưng hô/người nghe bằng người đọc. Mock không là ground truth.
+  Giữ nguyên **Soniox/Scribe online, GPT gateway→SRT, workflow media/API EXE chưa nghiệm thu**;
+  **phồn thể Qwen strict chưa đạt acceptance**. S2 local alignment/S3 startup là bằng chứng riêng.
+
+### Gate artifact S4
+
+**Bổ sung full SRT Việt theo yêu cầu xem thử (2026-09-07):** từ đủ 30 segment Whisper của clip
+Trung, một request `gpt-5.6-terra` trả bản Việt trong 131.56 s. Lượt xuất có timeout riêng 300 s,
+không đổi code/timeout app. Đã tạo SRT Việt + song ngữ + JSON/project và sidecar cạnh video;
+parse lại đủ 30 cue, giữ nguyên từng cue ID/timestamp (12.560–104.180 s), không dùng word spans
+0 ms hoặc thêm speaker giả. Hai lỗi tên/thuật ngữ có bằng chứng caption được sửa riêng trước
+dịch, ghi nhật ký local; bản xuất vẫn để user review chất lượng. Đây là artifact xuất từ source,
+không đổi gate EXE hay nghiệm thu chất lượng toàn bộ ASR/xưng hô. Không commit/push.
+
+**Bổ sung STT gateway trên cùng clip Trung (2026-09-07):** kiểm tra ba model chuyên dụng trong
+catalog bằng builder/parser S1 + SDK thật, cùng audio 111.333 s, zh/default prompt, không cache.
+`whisper-1` nhận dạng trong 9.00 s, có 30 sentence spans hợp lệ và 142 word spans (11 duration 0).
+Đã xuất toàn bản nhận dạng JSON/SRT bằng timestamp **cấp câu do API cung cấp**, coverage segment
+khớp text response (bỏ whitespace), JSON/editor roundtrip pass; không có speaker. Word timing
+chưa đạt gate, không sửa/interpolate các span 0 ms để xuất. `gpt-4o-transcribe` trả text trong
+4.11 s, không timestamp/speaker; chưa chạy alignment. `gpt-4o-mini-transcribe` HTTP 429 hai lượt
+(4.23 và 8.27 s); chưa đủ bằng chứng xác định nguyên nhân 429 hoặc inference của model này.
+Hai checkpoint tên/thuật ngữ từ chữ trên video chưa khớp ở cả Whisper và GPT text, nên chưa chấm
+chất lượng toàn clip hoặc chọn mặc định. Không test audio-chat/TTS; không đổi source, runtime,
+dependency, EXE hoặc policy. Output riêng tư chỉ ở test folder ignored. Các lượt này không thay
+thế nghiệm thu media/API từ process EXE hoặc GPT→alignment→SRT.
+
+**Bổ sung clip Trung / model user chọn (2026-09-07):** Soniox zh/diarization xử lý 111.333 s
+trong 7.05 s, response 185 token/4 nhãn speaker nhưng parser dừng hai token start=end tại
+83.010 và 104.010 s. Giữ nguyên policy; cleanup remote thành công, không resubmit audio.
+Toàn transcript được chuyển thành 17 đơn vị text-only có snapshot S4, không bịa timestamp,
+và dịch bằng **`gpt-5.6-terra`** (request/response đều xác nhận tên model). Batch 12 đơn vị
+timeout 120 s ở lượt đầu; 5 đơn vị có kết quả được cache. Một retry chẩn đoán đúng batch thiếu
+với deadline 300 s pass sau 76.31 s, ghép đủ 17 bản dịch và giữ output thô để review. Không sửa
+timeout trong app. File Việt/đối chiếu/text-only review lưu local; không coi đây là SRT full clip.
+Mẫu native hợp lệ riêng trước lỗi: 80.970 s/17 cue/4 speaker. Spot-check hai frame thấy ASR sai
+tên/thuật ngữ; cần review nguồn trước khi chấm lỗi xưng hô hoặc dùng bản Việt. Chi tiết riêng
+nằm trong output test ignored; không đưa media/transcript/key/path riêng vào tài liệu Git.
+
+**Bổ sung online sau bàn giao S4 (2026-09-07):** với key và video user chỉ định, đã đo Soniox
+`stt-async-v5` toàn audio 260.551 s tiếng Anh, diarization bật/language auto/cache tắt.
+Service probe và upload→submit→poll→result hoàn tất trong 13.59 s; response 471 token có 4
+nhãn speaker, coverage khớp. **Parser/export toàn clip vẫn fail** vì ba lexical token start=end
+(34.890, 102.510, 157.350 s); giữ nguyên guard, không tự sửa timestamp hoặc resubmit trả phí.
+Cleanup job-owned remote thành công. Mẫu riêng trước lỗi, 33.150 s/6 cue/3 speaker, có JSON/SRT/
+editor roundtrip pass; không gọi mẫu này là output full job thành công.
+
+Gateway GET models HTTP 200 có 366 ID; `gpt-4o-mini` đã inference thật qua LLMTranslator S4,
+dịch 6 cue mẫu Anh→Việt trong 3.81 s và giữ metadata. Context chỉ có unknown proposals, chưa
+có quan hệ user xác nhận; chưa nghiệm thu hiệu lực directed rules hoặc chất lượng ngôi/xưng hô.
+Các model khác mới có bằng chứng catalog. Không test Scribe hoặc GPT transcription/aligner;
+phồn thể strict giữ nguyên khoản thiếu. Các phép đo API này chạy từ **source**, không thay thế
+gate workflow media/API từ process EXE dưới đây. Không ghi key/transcript/media/path riêng vào Git.
+
+1. Duy nhất `VideoCaptioner.spec`, tên `VideoCaptioner-ASR-S4-Review-20260907`, scratch build
+   riêng `build/ASR-S4-Review-20260907`. Build sạch cuối **exit 0**, **6 WARNING, 0 ERROR**:
+   optional WebAssembly `js`, `curl_cffi`/`yt_dlp_ejs` data, hidden imports `tzdata`/`sip`, AppKit
+   macOS. Hai SyntaxWarning modelscope upstream như baseline. Build đầu còn bytecode trước
+   guard shutdown; đã đối chiếu và rebuild sạch trên output S4 do phiên này tạo, chưa có AppData.
+2. Artifact **`dist/VideoCaptioner-ASR-S4-Review-20260907/`**, phân phối nguyên onedir.
+   EXE **31.057.002 byte**, timestamp **2026-09-07 11:31:30**, SHA-256
+   `08dd40819c91152c7fd778b4f81036101ee6db43208844089efc595f58fda252`.
+   Trước smoke **573 file / 237.192.253 byte**. Từ archive nhúng trong chính EXE, **21 module S4
+   (kể cả nested code) khớp source cuối**; prompt `translate/conversation.md` và JSON vi ở hai
+   vị trí khớp bytes. Không có Torch/Qwen/Torchaudio trong PYZ. SHA-256 EXE S3 vẫn nguyên baseline.
+3. Smoke startup GUI hidden từ chính artifact: cửa sổ Qt "Trợ lý phụ đề Kaka -- VideoCaptioner",
+   sống **25 s**, `WM_CLOSE` vào đúng PID/window → **exit 0**; không process artifact còn lại.
+   Log **0 Traceback/ERROR/CRITICAL**. Stderr 103 byte chỉ là thông tin kiểm tra phiên bản
+   (`0.0.0-dev` là bản review), không có lỗi import/resource. Harness lần đầu lỗi encoding khi
+   in title tiếng Việt sau lúc EXE đã đóng; đã chạy lại UTF-8 và lưu kết quả đầy đủ. Không build
+   đè artifact sau khi có AppData, không xóa AppData hay artifact S3.
+4. **Workflow media/API từ EXE chưa nghiệm thu**, tương tự các khoản online và phồn thể giữ ở
+   trên. Không suy nhận dạng/dịch/xưng hô/TTS từ startup hoặc offline mock.
+
+### Manifest phần S4 (so với commit S3 `327c214`)
+
+S3 kế thừa là toàn bộ 50 file trong commit đó. Danh sách dưới chỉ là thay đổi S4; prompt
+`docs/dev/asr-step-4-prompt.md` có từ đầu phiên, giữ nguyên untracked và không tính vào S4.
+
+```text
+docs/dev/asr-context-s4.md
+docs/dev/asr-implementation-2026-09.md
+README.md
+resource/translations/VideoCaptioner_en_US.ts
+resource/translations/VideoCaptioner_vi_VN.json
+resource/translations/VideoCaptioner_zh_CN.ts
+resource/translations/VideoCaptioner_zh_HK.ts
+status.md
+tests/test_asr/test_speaker_pipeline.py
+tests/test_cli/test_conversation.py
+tests/test_translate/test_conversation.py
+tests/test_ui/test_conversation.py
+VideoCaptioner.spec
+videocaptioner/cli/commands/subtitle.py
+videocaptioner/cli/commands/transcribe.py
+videocaptioner/cli/config.py
+videocaptioner/cli/main.py
+videocaptioner/cli/validators.py
+videocaptioner/core/asr/asr_data.py
+videocaptioner/core/asr/metadata.py
+videocaptioner/core/editor/adapters.py
+videocaptioner/core/editor/commands.py
+videocaptioner/core/editor/models.py
+videocaptioner/core/editor/project_store.py
+videocaptioner/core/entities.py
+videocaptioner/core/prompts/translate/conversation.md
+videocaptioner/core/split/split.py
+videocaptioner/core/subtitle/editing.py
+videocaptioner/core/translate/base.py
+videocaptioner/core/translate/conversation.py
+videocaptioner/core/translate/llm_translator.py
+videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
+videocaptioner/ui/components/conversation_dialog.py
+videocaptioner/ui/thread/subtitle_thread.py
+videocaptioner/ui/view/subtitle_interface.py
 videocaptioner/ui/view/video_editor_interface.py
 ```
 

@@ -1327,6 +1327,22 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>Cannot merge different speakers or ASR sources.</source>
         <translation>Cannot merge different speakers or ASR sources.</translation>
     </message>
+    <message>
+        <source>Conversation context</source>
+        <translation>Conversation context</translation>
+    </message>
+    <message>
+        <source>Undo context edit</source>
+        <translation>Undo context edit</translation>
+    </message>
+    <message>
+        <source>Redo context edit</source>
+        <translation>Redo context edit</translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation>Context or subtitles changed; stale translation discarded.</translation>
+    </message>
 </context>
 <context>
     <name>SubtitlePipelineThread</name>
@@ -2610,6 +2626,22 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>Subtitles with optional ASR metadata (*.srt *.json)</source>
         <translation>Subtitles with optional ASR metadata (*.srt *.json)</translation>
     </message>
+    <message>
+        <source>Conversation context</source>
+        <translation>Conversation context</translation>
+    </message>
+    <message>
+        <source>Translate selected cues</source>
+        <translation>Translate selected cues</translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation>Context or subtitles changed; stale translation discarded.</translation>
+    </message>
+    <message>
+        <source>Translated selected cues; review Vietnamese pronouns.</source>
+        <translation>Translated selected cues; review Vietnamese pronouns.</translation>
+    </message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -2808,6 +2840,229 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message>
         <source>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</source>
         <translation>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</translation>
+    </message>
+</context>
+<context>
+    <name>ConversationDialog</name>
+    <message>
+        <source>Conversation context</source>
+        <translation>Conversation context</translation>
+    </message>
+    <message>
+        <source>Characters</source>
+        <translation>Characters</translation>
+    </message>
+    <message>
+        <source>Scenes</source>
+        <translation>Scenes</translation>
+    </message>
+    <message>
+        <source>Speaker mappings</source>
+        <translation>Speaker mappings</translation>
+    </message>
+    <message>
+        <source>Speakers and listeners</source>
+        <translation>Speakers and listeners</translation>
+    </message>
+    <message>
+        <source>Directed rules</source>
+        <translation>Directed rules</translation>
+    </message>
+    <message>
+        <source>Source cues (IDs and evidence)</source>
+        <translation>Source cues (IDs and evidence)</translation>
+    </message>
+    <message>
+        <source>Review context</source>
+        <translation>Review context</translation>
+    </message>
+    <message>
+        <source>No unresolved context entries.</source>
+        <translation>No unresolved context entries.</translation>
+    </message>
+    <message>
+        <source>Unknown / document</source>
+        <translation>Unknown / document</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Remove selected</source>
+        <translation>Remove selected</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Apply</translation>
+    </message>
+    <message>
+        <source>Undo context edit</source>
+        <translation>Undo context edit</translation>
+    </message>
+    <message>
+        <source>Redo context edit</source>
+        <translation>Redo context edit</translation>
+    </message>
+    <message>
+        <source>Translate selected cues</source>
+        <translation>Translate selected cues</translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation>Context or subtitles changed; stale translation discarded.</translation>
+    </message>
+    <message>
+        <source>Translated selected cues; review Vietnamese pronouns.</source>
+        <translation>Translated selected cues; review Vietnamese pronouns.</translation>
+    </message>
+    <message>
+        <source>id</source>
+        <translation>id</translation>
+    </message>
+    <message>
+        <source>label</source>
+        <translation>label</translation>
+    </message>
+    <message>
+        <source>speaker_id</source>
+        <translation>speaker_id</translation>
+    </message>
+    <message>
+        <source>character_id</source>
+        <translation>character_id</translation>
+    </message>
+    <message>
+        <source>scene_id</source>
+        <translation>scene_id</translation>
+    </message>
+    <message>
+        <source>cue_ids</source>
+        <translation>cue_ids</translation>
+    </message>
+    <message>
+        <source>addressee_ids</source>
+        <translation>addressee_ids</translation>
+    </message>
+    <message>
+        <source>mentioned_ids</source>
+        <translation>mentioned_ids</translation>
+    </message>
+    <message>
+        <source>mode</source>
+        <translation>mode</translation>
+    </message>
+    <message>
+        <source>self_term</source>
+        <translation>self_term</translation>
+    </message>
+    <message>
+        <source>address_term</source>
+        <translation>address_term</translation>
+    </message>
+    <message>
+        <source>source</source>
+        <translation>source</translation>
+    </message>
+    <message>
+        <source>status</source>
+        <translation>status</translation>
+    </message>
+    <message>
+        <source>evidence_cue_ids</source>
+        <translation>evidence_cue_ids</translation>
+    </message>
+    <message>
+        <source>LLM translation uses these rules; Google/Bing/DeepLX preserve data but do not apply them. Blank listener means unknown; comma-separated character IDs mean a group. Rules are speaker → listener. Cue IDs limit a turn; scene IDs limit a scene; blank scope means document. Only confirmed/locked evidence applies. Apply is an explicit user edit, including unlocking. Save JSON to retain context; SRT loses it.</source>
+        <translation>LLM translation uses these rules; Google/Bing/DeepLX preserve data but do not apply them. Blank listener means unknown; comma-separated character IDs mean a group. Rules are speaker → listener. Cue IDs limit a turn; scene IDs limit a scene; blank scope means document. Only confirmed/locked evidence applies. Apply is an explicit user edit, including unlocking. Save JSON to retain context; SRT loses it.</translation>
+    </message>
+    <message>
+        <source>user</source>
+        <translation>user</translation>
+    </message>
+    <message>
+        <source>text</source>
+        <translation>text</translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation>unknown</translation>
+    </message>
+    <message>
+        <source>proposed</source>
+        <translation>proposed</translation>
+    </message>
+    <message>
+        <source>confirmed</source>
+        <translation>confirmed</translation>
+    </message>
+    <message>
+        <source>locked</source>
+        <translation>locked</translation>
+    </message>
+    <message>
+        <source>dialogue</source>
+        <translation>dialogue</translation>
+    </message>
+    <message>
+        <source>narration</source>
+        <translation>narration</translation>
+    </message>
+    <message>
+        <source>quotation</source>
+        <translation>quotation</translation>
+    </message>
+    <message>
+        <source>Unknown speaker character</source>
+        <translation>Unknown speaker character</translation>
+    </message>
+    <message>
+        <source>Unknown addressee; do not infer from previous speaker</source>
+        <translation>Unknown addressee; do not infer from previous speaker</translation>
+    </message>
+    <message>
+        <source>Narration, quotation or unknown mode: no directed pronoun substitution</source>
+        <translation>Narration, quotation or unknown mode: no directed pronoun substitution</translation>
+    </message>
+    <message>
+        <source>Unmatched scoped speaker mapping; a new request is not the same identity.</source>
+        <translation>Unmatched scoped speaker mapping; a new request is not the same identity.</translation>
+    </message>
+    <message>
+        <source>Context refers to missing cues; reattach or review after split/import.</source>
+        <translation>Context refers to missing cues; reattach or review after split/import.</translation>
+    </message>
+    <message>
+        <source>mapping: proposal needs confirmation</source>
+        <translation>mapping: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>mapping: conflicting confirmed entries</source>
+        <translation>mapping: conflicting confirmed entries</translation>
+    </message>
+    <message>
+        <source>assignment: proposal needs confirmation</source>
+        <translation>assignment: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>assignment: conflicting confirmed entries</source>
+        <translation>assignment: conflicting confirmed entries</translation>
+    </message>
+    <message>
+        <source>rule: proposal needs confirmation</source>
+        <translation>rule: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>rule: conflicting confirmed entries</source>
+        <translation>rule: conflicting confirmed entries</translation>
+    </message>
+    <message>
+        <source>speaker: proposal needs confirmation</source>
+        <translation>speaker: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>speaker: conflicting confirmed entries</source>
+        <translation>speaker: conflicting confirmed entries</translation>
     </message>
 </context>
 </TS>

@@ -44,12 +44,13 @@ def validate_media_input(path: Path) -> int | None:
     return None
 
 
-def validate_subtitle_input(path: Path) -> int | None:
+def validate_subtitle_input(path: Path, *, allow_json: bool = False) -> int | None:
     """Validate input is a supported subtitle file. Returns exit code on failure, None on success."""
     from videocaptioner.cli import exit_codes as EXIT
-    if path.suffix.lower() not in SUBTITLE_EXTENSIONS:
+    supported = SUBTITLE_EXTENSIONS | {".json"} if allow_json else SUBTITLE_EXTENSIONS
+    if path.suffix.lower() not in supported:
         output.error(f"Unsupported subtitle format: {path.suffix}")
-        output.hint(f"Supported formats: {', '.join(sorted(SUBTITLE_EXTENSIONS))}")
+        output.hint(f"Supported formats: {', '.join(sorted(supported))}")
         return EXIT.FILE_NOT_FOUND
     return None
 

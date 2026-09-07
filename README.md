@@ -132,6 +132,16 @@ hạn provider/app, không tự chia rồi gán cùng speaker giữa các reques
 hủy xử lý hoặc phí phía provider. Xem [hợp đồng, giới hạn và trạng thái nghiệm thu S3](docs/dev/asr-native-s3.md).
 S3 chưa có nghiệm thu API thật; không thay trạng thái GPT gateway→SRT/phồn thể còn thiếu của S2.
 
+## Ngữ cảnh xưng hô Trung → Việt (S4)
+
+Trong tab phụ đề hoặc Video Editor, mở **More → Ngữ cảnh xưng hô** để khai báo nhân vật,
+người nghe và quy tắc theo cặp/cảnh. Lựa chọn user có xác nhận/khóa ưu tiên đề xuất từ text.
+Dịch lại selection vẫn nhận ngữ cảnh tài liệu; Google/Bing/DeepLX không áp các quy tắc này.
+Lưu JSON/project để giữ liên kết; SRT không giữ metadata. CLI hỗ trợ
+`--conversation-context JSON` và đọc trực tiếp project JSON bằng lệnh `subtitle`.
+Xem [cách dùng, snapshot/cache và giới hạn S4](docs/dev/asr-context-s4.md).
+Chưa nghiệm thu chất lượng xưng hô bằng người đọc hoặc các workflow online còn thiếu S2/S3.
+
 ## Lồng tiếng Natural
 
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.

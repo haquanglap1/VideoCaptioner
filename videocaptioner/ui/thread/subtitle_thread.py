@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 from typing import List
 
@@ -72,6 +73,7 @@ class SubtitleThread(QThread):
         self.finished_subtitle_length = 0
         self.custom_prompt_text = ""
         self.optimizer = None
+        self.translator = None
 
     def set_custom_prompt_text(self, text: str):
         self.custom_prompt_text = text
@@ -165,11 +167,14 @@ class SubtitleThread(QThread):
                     custom_prompt=custom_prompt or "",
                     update_callback=self.callback,
                 )
+                self.optimizer = optimizer
                 asr_data = optimizer.optimize_subtitle(asr_data)
                 asr_data.remove_punctuation()
                 self.update_all.emit(asr_data.to_json())
 
             # 4. Translate subtitles
+            if self.isInterruptionRequested():
+                return
             if subtitle_config.need_translate:
                 update_stage("translate")
                 if (
@@ -191,7 +196,10 @@ class SubtitleThread(QThread):
                     subtitle_config, custom_prompt, self.callback
                 )
 
+                self.translator = translator
                 asr_data = translator.translate_subtitle(asr_data)
+                if self.isInterruptionRequested():
+                    return
 
                 # Strip trailing punctuation
                 asr_data.remove_punctuation()
@@ -253,6 +261,8 @@ class SubtitleThread(QThread):
             self.error.emit(str(e))
             self.progress.emit(100, self.tr("字幕处理失败"))
         finally:
+            if self.translator is not None:
+                self.translator.stop()
             clear_task_context()
 
     def need_llm(self, subtitle_config: SubtitleConfig, asr_data: ASRData):
@@ -284,6 +294,13 @@ class SubtitleThread(QThread):
 
     def stop(self):
         """Stop all processing."""
+        self.requestInterruption()
+        if self.translator is not None:
+            self.translator.stop()
+        if self.task.asr_data is not None and self.task.asr_data.conversation_context.enabled:
+            if self.optimizer is not None:
+                self.optimizer.stop()
+            return
         try:
             # Stop the optimizer first
             if hasattr(self, "optimizer") and self.optimizer:
@@ -313,15 +330,18 @@ class RetranslateThread(QThread):
     progress = pyqtSignal(int, str)  # (percent, status text)
     error = pyqtSignal(str)
 
-    def __init__(self, selected_data: dict, subtitle_config: SubtitleConfig, file_name: str = ""):
+    def __init__(self, selected_data: dict, subtitle_config: SubtitleConfig, file_name: str = "",
+                 *, context_data: ASRData | None = None):
         """
         selected_data: selected entries from model._data, keyed by row number string
         subtitle_config: current task configuration
         file_name: file name for the log context
         """
         super().__init__()
-        self.selected_data = selected_data
-        self.subtitle_config = subtitle_config
+        self.selected_data = deepcopy(selected_data)
+        self.context_data = deepcopy(context_data)
+        self.subtitle_config = deepcopy(subtitle_config)
+        self.translator = None
         self.file_name = file_name
         self.total = len(selected_data)
         self.done = 0
@@ -355,18 +375,35 @@ class RetranslateThread(QThread):
 
             # Build the translator and translate
             translator = create_translator_from_config(config, callback=self._callback)
-            asr_data = translator.translate_subtitle(asr_data)
+            self.translator = translator
+            if self.isInterruptionRequested():
+                return
+            if self.context_data is not None:
+                asr_data.conversation_context = self.context_data.conversation_context
+                asr_data = translator.translate_subtitle(asr_data, context_data=self.context_data)
+            else:
+                asr_data = translator.translate_subtitle(asr_data)
 
             # Map {original row number: translated_text}
-            keys = list(self.selected_data.keys())
-            result = {
-                keys[i]: seg.translated_text
-                for i, seg in enumerate(asr_data.segments)
-            }
-            self.finished.emit(result)
+            by_id = {seg.cue_id: seg.translated_text for seg in asr_data}
+            selected = ASRData.from_json(self.selected_data).to_json()
+            # Original row numbers may be nonconsecutive or ordered differently from time.
+            ids = {key: value.get("cue_id") for key, value in self.selected_data.items()}
+            if not all(ids.values()):
+                ids = {key: value["cue_id"] for key, value in zip(sorted(ids, key=int), selected.values())}
+            result = {key: by_id[cue_id] for key, cue_id in ids.items()}
+            if not self.isInterruptionRequested():
+                self.finished.emit(result)
 
         except Exception as e:
             logger.exception(f"重新翻译失败: {e}")
             self.error.emit(str(e))
         finally:
+            if self.translator is not None:
+                self.translator.stop()
             clear_task_context()
+
+    def stop(self):
+        self.requestInterruption()
+        if self.translator is not None:
+            self.translator.stop()

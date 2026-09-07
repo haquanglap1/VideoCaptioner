@@ -12,6 +12,7 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
+from videocaptioner.core.translate.conversation import ConversationContext
 
 EDITOR_PROJECT_SCHEMA = "editor-project-v1"
 MIN_CUE_DURATION_MS = 50
@@ -243,6 +244,7 @@ class EditorProject:
     is_dirty: bool = field(default=False, repr=False, compare=False)
     _cue_index_cache: Any = field(default=None, repr=False, compare=False)
     audio_events: list[ASRAudioEvent] = field(default_factory=list)
+    conversation_context: ConversationContext = field(default_factory=ConversationContext)
 
     def __post_init__(self) -> None:
         self.duration_ms = max(0, int(self.duration_ms))
@@ -346,6 +348,7 @@ class EditorProject:
             "fps": self.fps,
             "cues": [cue.to_dict() for cue in self.cues],
             "audio_events": [event.to_dict() for event in self.audio_events],
+            "conversation_context": self.conversation_context.to_dict(),
             "tracks": [track.to_dict() for track in self.tracks],
             "layers": [layer.to_dict() for layer in self.layers],
             "voice_settings": sanitize_voice_settings(self.voice_settings),
@@ -372,6 +375,7 @@ class EditorProject:
             fps=float(data.get("fps", 0.0)),
             cues=[EditorCue.from_dict(item) for item in data.get("cues", [])],
             audio_events=[ASRAudioEvent.from_dict(item) for item in data.get("audio_events", [])],
+            conversation_context=ConversationContext.from_dict(data.get("conversation_context")),
             tracks=[EditorTrack.from_dict(item) for item in data.get("tracks", [])],
             layers=[EditorLayer.from_dict(item) for item in data.get("layers", [])],
             voice_settings=sanitize_voice_settings(dict(data.get("voice_settings", {}) or {})),

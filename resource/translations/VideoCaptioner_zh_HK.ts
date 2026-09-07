@@ -1330,6 +1330,22 @@
         <source>Cannot merge different speakers or ASR sources.</source>
         <translation>無法合併不同說話人或 ASR 來源。</translation>
     </message>
+    <message>
+        <source>Conversation context</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo context edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redo context edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SubtitlePipelineThread</name>
@@ -2614,6 +2630,22 @@
         <source>Subtitles with optional ASR metadata (*.srt *.json)</source>
         <translation>字幕和可選 ASR 中繼資料 (*.srt *.json)</translation>
     </message>
+    <message>
+        <source>Conversation context</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Translate selected cues</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Translated selected cues; review Vietnamese pronouns.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -2812,6 +2844,229 @@
     <message>
         <source>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</source>
         <translation>服務檢查失敗。請檢查端點、金鑰和讀取權限；尚未測試 ASR 權限。</translation>
+    </message>
+</context>
+<context>
+    <name>ConversationDialog</name>
+    <message>
+        <source>Conversation context</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Characters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scenes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speaker mappings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speakers and listeners</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Directed rules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source cues (IDs and evidence)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Review context</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No unresolved context entries.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown / document</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo context edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Redo context edit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Translate selected cues</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Translated selected cues; review Vietnamese pronouns.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>label</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>speaker_id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>character_id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>scene_id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>cue_ids</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>addressee_ids</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>mentioned_ids</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>self_term</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>address_term</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>evidence_cue_ids</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LLM translation uses these rules; Google/Bing/DeepLX preserve data but do not apply them. Blank listener means unknown; comma-separated character IDs mean a group. Rules are speaker → listener. Cue IDs limit a turn; scene IDs limit a scene; blank scope means document. Only confirmed/locked evidence applies. Apply is an explicit user edit, including unlocking. Save JSON to retain context; SRT loses it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>user</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>proposed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>confirmed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>locked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dialogue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>narration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>quotation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown speaker character</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unknown addressee; do not infer from previous speaker</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Narration, quotation or unknown mode: no directed pronoun substitution</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmatched scoped speaker mapping; a new request is not the same identity.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Context refers to missing cues; reattach or review after split/import.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>mapping: proposal needs confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>mapping: conflicting confirmed entries</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>assignment: proposal needs confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>assignment: conflicting confirmed entries</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>rule: proposal needs confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>rule: conflicting confirmed entries</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>speaker: proposal needs confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>speaker: conflicting confirmed entries</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

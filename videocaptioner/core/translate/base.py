@@ -3,11 +3,13 @@
 import atexit
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from typing import Callable, List, Optional, cast
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.entities import SubtitleProcessData
 from videocaptioner.core.llm.context import submit_with_context
+from videocaptioner.core.translate.conversation import ConversationSnapshot
 from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.utils.cache import generate_cache_key, get_translate_cache
 from videocaptioner.core.utils.logger import setup_logger
@@ -31,6 +33,8 @@ class BaseTranslator(ABC):
         self.is_running = True
         self.update_callback = update_callback
         self.executor = None
+        self.conversation_snapshot: Optional[ConversationSnapshot] = None
+        self._job_lock = Lock()
         self._cache = get_translate_cache()
 
         self._init_thread_pool()
@@ -40,35 +44,54 @@ class BaseTranslator(ABC):
         self.executor = ThreadPoolExecutor(max_workers=self.thread_num)
         atexit.register(self.stop)
 
-    def translate_subtitle(self, subtitle_data: ASRData) -> ASRData:
+    def translate_subtitle(self, subtitle_data: ASRData, *, context_data: Optional[ASRData] = None) -> ASRData:
         """Translate a subtitle file."""
+        if not self._job_lock.acquire(blocking=False):
+            raise RuntimeError("Translator already has an active job.")
         try:
             asr_data = subtitle_data
+            document = context_data if context_data is not None else asr_data
+            source_version = generate_cache_key(document.to_document())
+            selected_version = generate_cache_key(asr_data.to_document())
+            self.conversation_snapshot = document.context_snapshot()
+            source_cues = {c.id: c for c in self.conversation_snapshot.cues}
+            if any(s.cue_id not in source_cues or source_cues[s.cue_id].text != s.text
+                   or source_cues[s.cue_id].speaker != (s.speaker or "") for s in asr_data):
+                raise ValueError("Selection does not match the context document; review required.")
 
             # Convert ASRData into a SubtitleProcessData list
             translate_data_list = [
-                SubtitleProcessData(index=i, original_text=seg.text, asr_metadata=seg.metadata)
+                SubtitleProcessData(index=i, original_text=seg.text, asr_metadata=seg.metadata, cue_id=seg.cue_id)
                 for i, seg in enumerate(asr_data.segments, 1)
             ]
 
             # Pre-chunk hook (e.g. build global context); no-op by default
-            self._prepare(translate_data_list)
+            full_input = [SubtitleProcessData(index=i, original_text=s.text, asr_metadata=s.metadata, cue_id=s.cue_id)
+                          for i, s in enumerate(document, 1)]
+            self._prepare(full_input)
 
             # Split into chunks
             chunks = self._split_chunks(translate_data_list)
 
             # Translate chunks in parallel
             translated_list = self._parallel_translate(chunks)
+            if not self.is_running:
+                raise RuntimeError("Translation cancelled; results were not applied.")
+            if (source_version != generate_cache_key(document.to_document())
+                    or selected_version != generate_cache_key(asr_data.to_document())):
+                raise RuntimeError("Conversation or subtitles changed during translation; discard stale result and retry.")
 
             # Write the translations back into the segments
             new_segments = self._set_segments_translated_text(
-                asr_data.segments, translated_list
+                [seg.clone() for seg in asr_data.segments], translated_list
             )
 
             return asr_data.with_segments(new_segments)
         except Exception as e:
             logger.error(f"Translation failed: {str(e)}")
             raise RuntimeError(f"Translation failed: {str(e)}")
+        finally:
+            self._job_lock.release()
 
     def _prepare(self, translate_data_list: List[SubtitleProcessData]) -> None:
         """Hook run before chunking.
@@ -101,7 +124,14 @@ class BaseTranslator(ABC):
         if executor is None:
             raise RuntimeError("Translator executor has already been shut down")
         for chunk in chunks:
-            future = submit_with_context(executor, self._safe_translate_chunk, chunk)
+            if not self.is_running:
+                break
+            try:
+                future = submit_with_context(executor, self._safe_translate_chunk, chunk)
+            except RuntimeError:
+                if not self.is_running:
+                    break
+                raise
             future_to_chunk[future] = chunk
 
         for future in as_completed(future_to_chunk):
@@ -144,6 +174,8 @@ class BaseTranslator(ABC):
     ) -> List[SubtitleProcessData]:
         """Translate one chunk with caching and error isolation."""
         try:
+            if not self.is_running:
+                raise RuntimeError("Translation cancelled.")
             cache_key = self._get_cache_key(chunk)
             try:
                 # diskcache's overloads widen the return type; the cache only ever
@@ -165,6 +197,8 @@ class BaseTranslator(ABC):
 
             result = self._translate_chunk(chunk)
 
+            if not self.is_running:
+                raise RuntimeError("Translation cancelled.")
             if self.update_callback:
                 self.update_callback(result)
 

@@ -11,9 +11,12 @@ class ASRMetadata:
     scope: str
     speaker: str | None = None
     timing: Literal["native", "edited"] = "native"
+    speaker_override: str | None = None
 
     @property
     def speaker_id(self) -> str | None:
+        if self.speaker_override is not None:
+            return self.speaker_override or None
         return f"{self.provider}:{self.scope}:{self.speaker}" if self.speaker is not None else None
 
     def to_dict(self) -> dict:
@@ -28,7 +31,10 @@ class ASRMetadata:
                 or value.get("timing", "native") not in ("native", "edited")
                 or (value.get("speaker") is not None and not isinstance(value["speaker"], str))):
             raise ValueError("Invalid ASR metadata; review required.")
-        return cls(value["provider"], value["scope"], value.get("speaker"), value.get("timing", "native"))
+        override = value.get("speaker_override")
+        if override is not None and not isinstance(override, str):
+            raise ValueError("Invalid speaker override.")
+        return cls(value["provider"], value["scope"], value.get("speaker"), value.get("timing", "native"), override)
 
 
 @dataclass(frozen=True)

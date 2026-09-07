@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.asr.metadata import ASRAudioEvent
 from videocaptioner.core.entities import SubtitleLayoutEnum, SupportedSubtitleFormats
+from videocaptioner.core.translate.conversation import ConversationContext
 
 SubtitleTable = Dict[str, Dict[str, Any]]
 
@@ -127,9 +128,12 @@ def export_subtitle(
     path: str,
     layout: SubtitleLayoutEnum,
     style: Optional[str] = None,
+    *, events: Optional[List[ASRAudioEvent]] = None, context: Optional[ConversationContext] = None,
 ) -> None:
     """Write the table to ``path``; ``.ass`` uses ``style`` (ASS style block)."""
     asr_data = ASRData.from_json(data)
+    asr_data.events = list(events or [])
+    asr_data.conversation_context = context or ConversationContext()
     if path.lower().endswith(".ass"):
         asr_data.to_ass(style, layout, path)
     else:
@@ -181,6 +185,7 @@ def task_folder(output_path: Optional[str], subtitle_path: str) -> str:
 def write_editor_handoff(
     data: SubtitleTable, handoff_dir: Path, task_id: str, video_path: str,
     *, events: Optional[List[ASRAudioEvent]] = None,
+    context: Optional[ConversationContext] = None,
 ) -> Path:
     """Persist the current table as SRT for the Video Editor without touching
     the task's source subtitle file."""
@@ -188,6 +193,10 @@ def write_editor_handoff(
     name = task_id or Path(video_path).stem
     asr_data = ASRData.from_json(data)
     asr_data.events = list(events or [])
-    target = handoff_dir / f"{name}.{'json' if asr_data.has_metadata else 'srt'}"
+    asr_data.conversation_context = context or ConversationContext()
+    # JSON preserves existing IDs; legacy tables without any association can still use SRT.
+    keep_ids = any(item.get("cue_id") for item in data.values())
+    extension = "json" if asr_data.has_metadata or asr_data.conversation_context.enabled or keep_ids else "srt"
+    target = handoff_dir / f"{name}.{extension}"
     asr_data.save(str(target))
     return target

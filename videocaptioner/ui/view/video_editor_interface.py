@@ -38,7 +38,7 @@ from qfluentwidgets import (
 )
 
 from videocaptioner.config import CACHE_PATH
-from videocaptioner.core.editor.adapters import update_cues_from_groups
+from videocaptioner.core.editor.adapters import project_to_asr, update_cues_from_groups
 from videocaptioner.core.editor.commands import (
     AddCueCommand,
     AddLayerCommand,
@@ -46,6 +46,8 @@ from videocaptioner.core.editor.commands import (
     CompositeCommand,
     DeleteCueCommand,
     DeleteLayerCommand,
+    EditConversationCommand,
+    EditCueTextCommand,
     EditCueTimingCommand,
     EditLayerCommand,
     SplitCueCommand,
@@ -77,6 +79,8 @@ from videocaptioner.core.editor.presenter import (
     track_state_command,
 )
 from videocaptioner.core.editor.project_store import EditorProjectStore
+from videocaptioner.core.utils.cache import generate_cache_key
+from videocaptioner.ui.components.conversation_dialog import ConversationDialog
 from videocaptioner.ui.components.editor import (
     EditorTimelineView,
     EditorTrackHeader,
@@ -87,6 +91,7 @@ from videocaptioner.ui.components.editor import (
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.editor_media_thread import EditorMediaThread, EditorRenderThread
 from videocaptioner.ui.thread.editor_voice_thread import EditorVoiceThread
+from videocaptioner.ui.thread.subtitle_thread import RetranslateThread
 
 EDITOR_DARK_STYLE = """
 QWidget#VideoEditorInterface {
@@ -248,6 +253,10 @@ class VideoEditorInterface(QWidget):
         self.exit_preview_action.setEnabled(False)
         self.exit_preview_action.setVisible(False)
         self.command_bar.addHiddenAction(self.save_ass_action)
+        self.command_bar.addHiddenAction(Action(FIF.PEOPLE, self.tr("Conversation context"),
+                                                triggered=self.edit_conversation_context))
+        self.command_bar.addHiddenAction(Action(FIF.SYNC, self.tr("Translate selected cues"),
+                                                triggered=self.translate_selected_cues))
         for kind, label in (
             (EditorLayerKind.BLUR, "Add Blur"),
             (EditorLayerKind.LOGO, "Add Logo"),
@@ -1022,8 +1031,54 @@ class VideoEditorInterface(QWidget):
         self.layer_list.setCurrentRow(selected_row)
         self.layer_list.blockSignals(False)
 
+    def edit_conversation_context(self) -> None:
+        if self.project is None:
+            return
+        document = project_to_asr(self.project)
+        dialog = ConversationDialog(document.conversation_context, document.context_snapshot().cues, self)
+        if dialog.exec_():
+            self.command_stack.execute(EditConversationCommand(self.project, dialog.context))
+
+    def translate_selected_cues(self) -> None:
+        if self.project is None or (getattr(self, "_translation_worker", None)
+                                    and self._translation_worker.isRunning()):
+            return
+        project = self.project
+        document = project_to_asr(project)
+        start, end = project.selection_start_ms, project.selection_end_ms
+        ids = {c.id for c in project.cues if start is not None and end is not None
+               and c.start_ms < end and c.end_ms > start}
+        if not ids and self.inspector.cue_id:
+            ids.add(self.inspector.cue_id)
+        selected = {k: v for k, v in document.to_json().items() if v["cue_id"] in ids}
+        if not selected:
+            return
+        config = TaskFactory.create_subtitle_task(file_path=project.subtitle_path).subtitle_config
+        if config is None:
+            return
+        version = generate_cache_key(project.to_dict())
+        worker = RetranslateThread(selected, config, context_data=document)
+        self._translation_worker = worker
+
+        def apply_result(result):
+            if self.project is not project or version != generate_cache_key(project.to_dict()):
+                self._show_error(self.tr("Context or subtitles changed; stale translation discarded."))
+                return
+            self.command_stack.execute(CompositeCommand(
+                [EditCueTextCommand(project, selected[key]["cue_id"], "display_text", text)
+                 for key, text in result.items()], "Translate selected cues"))
+            self._show_success(self.tr("Translated selected cues; review Vietnamese pronouns."))
+
+        worker.finished.connect(apply_result)
+        worker.error.connect(self._show_error)
+        worker.start()
+
     def shutdown(self) -> None:
         """Stop playback and workers; also runs on app quit, where closeEvent never fires."""
+        worker = getattr(self, "_translation_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.stop()
+            worker.wait()
         self.preview.player.stop()
         for thread in tuple(self._threads):
             if not thread.isRunning():

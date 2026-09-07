@@ -27,6 +27,7 @@ class SubtitleProcessData:
     translated_text: str = ""
     optimized_text: str = ""
     asr_metadata: Optional[ASRMetadata] = None
+    cue_id: str = ""
 
 
 class SupportedAudioFormats(Enum):

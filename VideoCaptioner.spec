@@ -33,6 +33,9 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
+# S4 context schema and editor form; translate/conversation.md is included by the prompt tree above.
+hiddenimports += ["videocaptioner.core.translate.conversation",
+                  "videocaptioner.ui.components.conversation_dialog"]
 hiddenimports += collect_submodules("videocaptioner")
 # Native settings/probe pages load lazily; explicitly retain their frozen entry points.
 hiddenimports += ["videocaptioner.core.asr.native_api",

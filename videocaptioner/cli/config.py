@@ -125,6 +125,7 @@ DEFAULTS: Dict[str, Any] = {
         "batch_size": 20,
     },
     "translate": {
+        "conversation_context": "",
         "service": "llm",
         "target_language": "zh-Hans",
         "reflect": False,

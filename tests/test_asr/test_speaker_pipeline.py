@@ -129,7 +129,9 @@ def test_editor_import_overlap_save_load_speaker_override_undo(tmp_path):
     stack.execute(EditCueSpeakerCommand(project, cue.id, "User label"))
     stack.execute(EditCueTextCommand(project, cue.id, "display_text", "王小明！"))
     stack.execute(EditCueTimingCommand(project, cue.id, 120, 520))
-    assert project_to_asr(project).segments[0].metadata.speaker == "User label"
+    override = project_to_asr(project).segments[0].metadata
+    assert override.speaker == original.asr_metadata.speaker
+    assert override.speaker_override == "User label"
     project_file, subtitle = store.save(project, tmp_path / "review.vceditor.json")
     loaded = store.load(project_file)
     assert loaded.schema_version == "editor-project-v1"

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import math
 import os
@@ -7,6 +8,12 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from langdetect import LangDetectException, detect
+
+from videocaptioner.core.translate.conversation import (
+    ConversationContext,
+    SourceCue,
+    prepare_snapshot,
+)
 
 from ..entities import SubtitleLayoutEnum
 from ..utils.text_utils import is_mainly_cjk
@@ -53,9 +60,10 @@ def handle_long_path(path: str) -> str:
 class ASRDataSeg:
     def __init__(
         self, text: str, start_time: int, end_time: int, translated_text: str = "",
-        metadata: Optional[ASRMetadata] = None
+        metadata: Optional[ASRMetadata] = None, cue_id: str = ""
     ):
         self.metadata = metadata
+        self.cue_id = cue_id
         self.text = text
         self.translated_text = translated_text
         self.start_time = start_time
@@ -67,7 +75,7 @@ class ASRDataSeg:
 
     def clone(self, *, text: Optional[str] = None) -> "ASRDataSeg":
         return ASRDataSeg(self.text if text is None else text, self.start_time, self.end_time,
-                          self.translated_text, self.metadata)
+                          self.translated_text, self.metadata, self.cue_id)
 
     def to_srt_ts(self) -> str:
         """Convert to SRT timestamp format"""
@@ -115,14 +123,30 @@ class ASRDataSeg:
 
 
 class ASRData:
-    def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None):
+    def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None,
+                 conversation_context: Optional[ConversationContext] = None):
         self.events = list(events or [])
+        self.conversation_context = conversation_context or ConversationContext()
         filtered_segments = [seg for seg in segments if seg.text and seg.text.strip()]
         filtered_segments.sort(key=lambda x: x.start_time)
         self.segments = filtered_segments
+        for index, seg in enumerate(self.segments, 1):
+            if not isinstance(seg.cue_id, str):
+                raise ValueError("Invalid cue ID; review required.")
+            if not seg.cue_id:
+                payload = f"{index}\0{seg.start_time}\0{seg.end_time}\0{seg.text}".encode("utf-8", errors="replace")
+                if seg.metadata is not None:
+                    payload += f"\0{seg.metadata.provider}\0{seg.metadata.scope}".encode("utf-8")
+                seg.cue_id = f"cue-{hashlib.sha256(payload).hexdigest()[:16]}"
+        if len({seg.cue_id for seg in self.segments}) != len(self.segments):
+            raise ValueError("Duplicate cue IDs; review required.")
 
     def with_segments(self, segments: List[ASRDataSeg]) -> "ASRData":
-        return ASRData(segments, self.events)
+        return ASRData(segments, self.events, self.conversation_context)
+
+    def context_snapshot(self):
+        return prepare_snapshot(tuple(SourceCue(s.cue_id, s.text, s.speaker or "") for s in self.segments),
+                                self.conversation_context)
 
     @property
     def has_metadata(self) -> bool:
@@ -189,6 +213,8 @@ class ASRData:
         Returns:
             修改后的ASRData实例
         """
+        if self.conversation_context.enabled:
+            raise ValueError("Re-segmentation would change context associations; disable split and review.")
         if self.has_metadata:
             raise ValueError("Cannot estimate word timing for native ASR; review required.")
         CHARS_PER_PHONEME = 4
@@ -337,14 +363,16 @@ class ASRData:
                 "end_time": segment.end_time,
                 "original_subtitle": segment.text,
                 "translated_subtitle": segment.translated_text,
+                "cue_id": segment.cue_id,
             }
             if segment.metadata is not None:
                 result_json[str(i)]["asr_metadata"] = segment.metadata.to_dict()
         return result_json
 
     def to_document(self) -> dict:
-        if self.events:
+        if self.events or self.conversation_context.enabled:
             return {"schema": "asr-native-v1", "cues": self.to_json(),
+                    "conversation_context": self.conversation_context.to_dict(),
                     "events": [event.to_dict() for event in self.events]}
         return self.to_json()
 
@@ -586,9 +614,15 @@ class ASRData:
     @staticmethod
     def from_json(json_data: dict) -> "ASRData":
         """Create ASRData from JSON data"""
+        if json_data.get("schema_version") == "editor-project-v1":
+            from videocaptioner.core.editor.adapters import project_to_asr
+            from videocaptioner.core.editor.models import EditorProject
+
+            return project_to_asr(EditorProject.from_dict(json_data))
         if json_data.get("schema") == "asr-native-v1":
             data = ASRData.from_json(json_data["cues"])
             data.events = [ASRAudioEvent.from_dict(item) for item in json_data.get("events", [])]
+            data.conversation_context = ConversationContext.from_dict(json_data.get("conversation_context"))
             return data
         segments = []
         for i in sorted(json_data.keys(), key=int):
@@ -599,6 +633,7 @@ class ASRData:
                 start_time=segment_data["start_time"],
                 end_time=segment_data["end_time"],
                 metadata=ASRMetadata.from_dict(segment_data.get("asr_metadata")),
+                cue_id=segment_data.get("cue_id", ""),
             )
             segments.append(segment)
         return ASRData(segments)

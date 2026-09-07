@@ -52,7 +52,7 @@ def run(args: Namespace, config: dict) -> int:
         return EXIT.FILE_NOT_FOUND
 
     from videocaptioner.cli.validators import validate_subtitle_input
-    err = validate_subtitle_input(input_path)
+    err = validate_subtitle_input(input_path, allow_json=True)
     if err is not None:
         return err
 
@@ -167,7 +167,11 @@ def run(args: Namespace, config: dict) -> int:
     from videocaptioner.core.asr.asr_data import ASRData
     asr_data = getattr(args, "asr_data", None)
     if asr_data is None:
-        asr_data = ASRData.from_subtitle_file(str(input_path))
+        try:
+            asr_data = ASRData.from_subtitle_file(str(input_path))
+        except (OSError, ValueError, TypeError, KeyError):
+            output.error("Cannot read subtitle document; review JSON schema and cue associations.")
+            return EXIT.RUNTIME_ERROR
 
     if len(asr_data.segments) == 0 and not quiet:
         output.warn(f"Input file contains 0 subtitle segments: {input_path}")
@@ -184,6 +188,18 @@ def run(args: Namespace, config: dict) -> int:
             progress.update(pct)
 
     try:
+        from videocaptioner.core.translate.conversation import load_context
+        context_path = get(config, "translate.conversation_context", "")
+        if context_path:
+            asr_data.conversation_context = load_context(context_path)
+        if asr_data.conversation_context.enabled:
+            snapshot = asr_data.context_snapshot()
+            if snapshot.review or any(c.review for c in snapshot.resolved):
+                output.warn("Conversation context has unresolved associations; review before accepting pronouns.")
+            if need_translate and translator_service != "llm":
+                output.warn("This translator preserves context but does not apply directed address rules; use LLM.")
+            if not str(output_path).lower().endswith(".json"):
+                output.warn("SRT/ASS/text cannot retain conversation context; use JSON to reopen it.")
         # 1. Split (if word-level timestamps available)
         if need_split and (asr_data.has_metadata or asr_data.is_word_timestamp()):
             if progress:
@@ -251,6 +267,7 @@ def run(args: Namespace, config: dict) -> int:
                 layout=SubtitleLayoutEnum.ONLY_TRANSLATE,
             )
         asr_data.save(save_path=output_path, layout=layout)
+        args.asr_data = asr_data
 
         if progress:
             n = len(asr_data.segments)

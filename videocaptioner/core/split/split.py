@@ -142,6 +142,8 @@ class SubtitleSplitter:
             else:
                 asr_data = subtitle_data
 
+            if asr_data.conversation_context.enabled:
+                raise ValueError("Re-segmentation would change context associations; disable split and review.")
             if asr_data.has_metadata:
                 from videocaptioner.core.asr.native_result import native_cues
 

@@ -78,6 +78,7 @@ class EditorProjectStore:
         project.fps = float(fps)
         project.cues = cues
         project.audio_events = list(asr_data.events)
+        project.conversation_context = asr_data.conversation_context
         project.validate_all_cues()
         project.is_dirty = False
         return project
