@@ -1,5 +1,22 @@
 # Project Status
 
+## 2026-09-07 (chốt commit S5.2 và bàn giao phiên hướng dẫn nghiệm thu)
+
+- Theo yêu cầu user sau review, code S5.2 đã commit thành
+  **`073510db54e5a24ab3deba3626d53279d478813f`**, parent `27be883`, và push lên
+  `origin/codex/asr-s3-native`. Đúng **35 file** trong manifest, không media/AppData/runtime/
+  build/dist/credential. Các dòng “không/chưa commit” bên dưới mô tả thời điểm review trước submit.
+- Trước commit: fetch xác nhận local/remote cùng baseline; ruff pass, pyright **0/0**, translations,
+  diff-check và scan credential/path pass. **218 module / 39 resource** vẫn khớp EXE S5.2 Final,
+  SHA-256 **457613169d3bd5ac262130ca83f783c4cd4148d08317ab7126c5359b48f91649** không đổi.
+  Không đổi code từ gate bàn giao; không rerun full/API hoặc rebuild chỉ để commit/push.
+- [Prompt phiên tiếp theo — hướng dẫn test nghiệm thu](docs/dev/asr-acceptance-next-session-prompt.md)
+  yêu cầu agent chuẩn bị bản test riêng và hướng dẫn user từng 1–3 thao tác, ghi riêng user xác nhận,
+  agent đo và evidence thừa kế. Ưu tiên audio identity/review/pending, Whisper EXE còn 429, Qt teardown;
+  Scribe chỉ khi có đúng credential. Giữ phồn thể/speaker/xưng hô chưa nghiệm thu, chưa mở S6.
+- Chỉ chuẩn bị prompt; chưa khởi chạy phiên test mới. Không đổi runtime, media/AppData, artifact hoặc
+  dependency. Quyền commit/push lần bàn giao này không tự áp dụng cho thay đổi ở phiên kế tiếp.
+
 ## 2026-09-07 (S5.2: identity recording và gateway hybrid; dừng review)
 
 - Đúng worktree/nhánh user chỉ định, baseline **27be883** sạch; code S5.1 **8599965** là ancestor.

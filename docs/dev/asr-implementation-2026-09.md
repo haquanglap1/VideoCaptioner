@@ -6,7 +6,9 @@ gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 
 recording và GPT gateway→strict alignment→Community-1→JSON/SRT thật từ source/EXE**. Whisper
 hybrid source pass, lượt Whisper API từ EXE HTTP 429. S5.1 đã đo Qwen/Community-1 local-hybrid.
 Native online, phồn thể strict, chất lượng speaker/xưng hô và Qt teardown còn thiếu nghiệm thu.
-S6 chưa triển khai; S5.2 dừng review, chưa commit/push. Xem [hướng dẫn S5.2](asr-s52.md).
+S6 chưa triển khai; S5.2 đã dừng review, sau đó user yêu cầu commit/push code thành
+**`073510db54e5a24ab3deba3626d53279d478813f`**. Xem [hướng dẫn S5.2](asr-s52.md) và
+[prompt phiên hướng dẫn user test nghiệm thu](asr-acceptance-next-session-prompt.md).
 Theo yêu cầu riêng đầu phiên S4, 50 file S3 được commit `327c214` và push lên
 `origin/codex/asr-s3-native` trước khi sửa S4. Sau các lượt review/online và xuất SRT xem thử,
 user yêu cầu submit: **code S4 đã chốt tại `8558082945575d551a4c38cdc4943c395254a583`**.
@@ -30,7 +32,15 @@ Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 ## Bàn giao S5.2 — 2026-09-07
 
 Baseline **27be883**, code S5.1 **8599965** là ancestor, nhánh `codex/asr-s3-native` sạch lúc bắt đầu.
-Không commit/push/tag/release/PR/S6; không đổi dependency, model pin, runtime hoặc artifact cũ.
+Sau review, user yêu cầu submit/push: **code S5.2 đã chốt tại
+`073510db54e5a24ab3deba3626d53279d478813f`**, đúng 35 file, và push lên nhánh tương ứng ở origin.
+Các giới hạn “không/chưa commit” trong phần đo bên dưới mô tả thời điểm trước yêu cầu submit mới.
+Không tag/release/PR/S6; không đổi dependency, model pin, runtime hoặc artifact cũ.
+
+Trước commit, fetch/ruff/pyright 0/0/translations/diff-check/scan pass; 218 module / 39 resource
+và hash artifact S5.2 vẫn khớp. Không chạy lại full/API/build chỉ để chốt Git. Commit tài liệu
+bàn giao tiếp theo thêm [prompt hướng dẫn user test nghiệm thu](asr-acceptance-next-session-prompt.md),
+không tự khởi chạy test hoặc cấp quyền commit/push ở phiên sau.
 
 ### Hành vi và regression
 
@@ -116,7 +126,8 @@ lệnh tái hiện ở [S5.2](asr-s52.md); không cần helper ignored để hi�
 
 ### Manifest S5.2 so với baseline 27be883
 
-**35 file sửa/thêm**, chưa commit. Không media/AppData/build/runtime/credential, không đổi dependency hoặc AGENTS/CLAUDE.
+**35 file trong commit code S5.2 `073510d`**. Prompt và cập nhật trạng thái submit thuộc commit
+tài liệu bàn giao tiếp theo. Không media/AppData/build/runtime/credential, không đổi dependency hoặc AGENTS/CLAUDE.
 
 ```text
 README.md
