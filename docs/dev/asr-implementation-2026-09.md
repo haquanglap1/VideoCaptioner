@@ -4,8 +4,10 @@ Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
 gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S5.2 đã có identity
 recording và GPT gateway→strict alignment→Community-1→JSON/SRT thật từ source/EXE**. Whisper
-hybrid source pass, lượt Whisper API từ EXE HTTP 429. S5.1 đã đo Qwen/Community-1 local-hybrid.
-Native online, phồn thể strict, chất lượng speaker/xưng hô và Qt teardown còn thiếu nghiệm thu.
+hybrid source pass; phiên nghiệm thu tiếp đã chạy **một job Whisper EXE mới pass sau lượt 429 cũ**.
+S5.1 đã đo Qwen/Community-1 local-hybrid. Sau crash SIP, bản GUI Lifetime đã sửa hai vấn đề vòng đời
+Qt có regression và qua smoke review/editor/đóng app; chưa kết luận mọi crash ngắt quãng đã hết.
+Native online, phồn thể strict và chất lượng speaker/xưng hô vẫn còn thiếu nghiệm thu.
 S6 chưa triển khai; S5.2 đã dừng review, sau đó user yêu cầu commit/push code thành
 **`073510db54e5a24ab3deba3626d53279d478813f`**. Xem [hướng dẫn S5.2](asr-s52.md) và
 [prompt phiên hướng dẫn user test nghiệm thu](asr-acceptance-next-session-prompt.md).
@@ -30,6 +32,86 @@ Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
 Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ## Bàn giao S5.2 — 2026-09-07
+
+### Củng cố vòng đời GUI sau crash — dừng review
+
+Theo yêu cầu tiếp tục của user, đọc dump của PID 52400 và unwind bằng matching PE function tables.
+Main thread đang hủy QApplication, qua SIP wrapper visitor/get-address trong Python/SystemExit
+cleanup. Đây là bằng chứng về đường shutdown, chưa chứng minh nút Lưu/automation gây crash.
+24 subprocess baseline/stress trước sửa đều exit 0, nên access violation vẫn chưa có reproducer
+tất định. Probe lifetime đo riêng cho thấy FluentTranslator tạm bị hủy trong event loop và
+QApplication bị thu gom khi function entry point unwind.
+
+Sửa `videocaptioner/ui/main.py`: giữ QApplication ở module scope và parent các translator vào nó,
+theo [giải thích lifetime của maintainer PyQt](https://riverbankcomputing.com/pipermail/pyqt/2016-February/036946.html)
+và [SIP ownership](https://python-sip.readthedocs.io/en/stable/other_topics.html#ownership-of-objects).
+Không đổi Qt pin, framework, GC/destructor flags, exit code, ASR policy hoặc worker cleanup.
+Thêm `tests/test_ui/test_gui_entry_lifetime.py`: subprocess VI/EN kiểm tra weakref/GC tại hai ranh
+giới lifetime, fail trên source cũ rồi pass sau sửa; không chỉ assert sự tồn tại của biến mới.
+
+| Gate bản Lifetime | Kết quả |
+| --- | --- |
+| Source gần lỗi | 29 passed, 6,89 s; 2 regression VI/EN red→green |
+| Full offline | **1.119 passed / 5 skipped / 51 deselected / 145,95 s / exit 0**; skip QtMultimedia offscreen và 4 TTS/service |
+| Static | Ruff pass, pyright 0/0, translations sync, diff-check pass; không sync dependency |
+| Build bằng spec duy nhất | **Exit 0**, 234,437 s; 6 optional/platform warnings, 0 errors, 6 upstream SyntaxWarnings |
+| Artifact | `dist/VideoCaptioner-ASR-S52-Lifetime-20260907/`; EXE **31.161.900 byte**, local **22:39:32**, onedir **580 file / 237.667.204 byte** |
+| Source/bundle | 218 module trong PYZ khớp source; không thêm GPU runtime |
+| Native review GUI | Lưu bằng native dialog; worker FFmpeg xác minh FLAC; xuất JSON; reopen giữ raw/IDs/edited/identity/pending và yêu cầu xác minh nguồn lại |
+| Native editor GUI | Project tổng hợp riêng, speaker A→B, Apply→undo→redo, Save JSON+SRT, reopen; typed reload giữ timing/provenance/context confirmed/locked/pending; không ASS |
+| Native GUI close | PID 50040 sống **966,328 s**, RSS snapshot **255.377.408 byte**; X→exit 0, không process con; log không traceback/InfoBar |
+
+SHA-256 mới: **`b2dfe8692266fd08dc2471f54838385b975c6ebfe0839d8aa1d5436b38a75f78`**.
+Artifact Final cũ/hash **457613…f91649** giữ nguyên. Build/work/temp/cache và bản copy GUI mới,
+không dùng AppData/media cũ làm scratch; không rebuild sau smoke. Bản Lifetime chưa chạy job
+ASR/API/TTS/synthesis hoặc chấm chất lượng playback; Whisper API pass bên dưới thuộc binary Final
+cũ. Không yêu cầu lại key hoặc chạy thêm job trả phí chỉ vì thay lifetime GUI.
+
+Manifest thay đổi của lượt củng cố: `videocaptioner/ui/main.py`,
+`tests/test_ui/test_gui_entry_lifetime.py`, `status.md`, tài liệu implementation này. Dump/diagnostics/
+output giữ local, không transcript/path riêng tư/credential vào Git. Giữ giới hạn SIP ngắt quãng
+chưa tái hiện tất định; không gọi smoke/rerun pass là chứng minh mọi crash đã hết. Không commit/push/S6.
+
+### Phiên nghiệm thu sau bàn giao — Whisper EXE pass; GUI crash; dừng review
+
+Từ HEAD **7e28895**, giữ nguyên code **073510d** và binary S5.2 Final có SHA-256
+**457613169d3bd5ac262130ca83f783c4cd4148d08317ab7126c5359b48f91649**. Bản test riêng chỉ copy
+EXE + `_internal/` (**580 file / 237.667.163 byte**), AppData mới; runtime dùng nguyên tại chỗ.
+Sau khi xác nhận A1–A6 và B1, user yêu cầu agent tự kiểm thử phần kỹ thuật. Các gate agent dưới
+đây không được ghi thành user đã nghiệm thu chất lượng. Bản CLI riêng cũng giữ cùng binary/hash.
+
+| Gate | Nguồn bằng chứng | Kết quả hiện tại |
+| --- | --- | --- |
+| A1–A3: GUI/settings, chọn Qwen R2 và Community-1 | User xác nhận từng checkpoint; agent đối chiếu cấu hình test | Đạt phần giao diện/nhận thư mục; chưa suy inference |
+| A4–A5: nạp thử Community-1 và ForcedAligner | User xác nhận thông báo thành công và nút sáng lại; agent kiểm tra GUI phản hồi/không con trực tiếp sau lượt | Đạt health trong lượt này; không đo thời gian nạp hoặc inference |
+| A6: đóng bản test | User xác nhận đã đóng; agent đo process/log/hash | Exit 0 sau **2.965,891 s**, không còn PID/con trực tiếp ở snapshot; log chỉ có update-check, không traceback; hash gốc/copy không đổi |
+| Chuẩn bị B | Agent, API typed source + CLI từ EXE | Tone tổng hợp 4 s/64.000 sample; WAV đổi tên/FLAC khớp; timing lỗi exit 5, sai audio + missing runtime exit 5, không output; reference sửa timing exit 0/2 cue/pending true |
+| B1 mở review | User xác nhận; agent quan sát lại | Đạt: 2 token, 1 lỗi timing, identity retained và diarization pending |
+| B GUI mismatch/override | Agent qua Windows GUI | Sai audio cùng duration bị chặn xuất; FLAC khớp; Apply/undo/redo giữ raw và override riêng |
+| B GUI lưu/reopen | Agent process + Windows Application Error/WER | **Fail/incomplete:** GUI PID 52400 crash **3221225477**, `sip.cp312-win_amd64.pyd`, **0xc0000005 / offset 0xe58e**; không output review GUI đã lưu |
+| B/C contract và export | Agent, source typed APIs + EXE CLI | Lưu/reopen/legacy/guard audio pass; CommandStack/editor JSON + SRT giữ IDs/timing/provenance/override/context confirmed/locked/pending; EXE đọc project→JSON/SRT pass; GUI editor chưa đo |
+| Speaker policy | Agent, fixture tổng hợp + EXE CLI | Giữ unknown/ambiguous/overlap/assigned, union 80% và override riêng; không phải acoustic probability/accuracy |
+| Pending/legacy + Community-1 | Agent, inference local thật từ EXE trên tone tổng hợp | Exit 0 **21,000/7,453 s**; pending xóa sau diarization, legacy vẫn không identity; không chấm speaker quality |
+| Worker/identity/review | Agent, source offline | **32 passed / 1 warning / 2,58 s**; QThread wait/cancel guard; offscreen không là bằng chứng layout |
+| Whisper EXE full hybrid | User chọn đúng job và nhập key kín; agent đo | Health exit 0/40,109 s trước upload; **1 command, cache MISS, exit 0/22,141 s**, 1 cue 0–4000 ms, 1 speaker, 67.263 sample/identity khớp, pending false; EXE xuất SRT exit 0 |
+
+Whisper dùng đúng endpoint `https://api.videocaptioner.cn/v1`, model `whisper-1`, Chinese/segment,
+audio public Qwen 4,204 s. Không 429 lượt này; log không xuất mã HTTP cụ thể. Key chỉ RAM/password
+và named pipe với ACL current-user; 0 reader, owner đã thoát. Không argv/env/file, thêm model hoặc
+vòng lặp command. Hash cả hai bản test và artifact gốc giữ nguyên; không EXE/bridge còn lại cuối lượt.
+
+GUI B sống **1.032,578 s** rồi crash; Application Error lúc **21:54:10**, WER **21:54:15**,
+stderr chỉ có update-check, không Python traceback. Lỗi xảy ra sau review/undo/redo khi công cụ
+Windows timeout ở Lưu/activate; **chưa có reproducer độc lập hoặc quan hệ nhân quả** với thao tác
+Lưu/automation/InfoBar. Module SIP giống họ lỗi cũ nhưng offset **0xe58e** khác **0x13a26** từng
+đo ở test Settings. Không gọi A6 pass là fix Qt; không sửa source/framework hoặc rerun để ép pass.
+
+Full/build, GPT/Qwen audio inference vẫn kế thừa snapshot, không chạy lại. Scribe/phồn thể strict,
+speaker accuracy/xưng hô và GUI/SIP chưa nghiệm thu. Giữ report/log/output/WER metadata local;
+chỉ cập nhật status/implementation, diff-check pass; không S6/commit/push. Bước tiếp nên khoanh
+vùng crash SIP sau khi user yêu cầu xử lý lỗi.
+
+### Snapshot bàn giao code trước phiên nghiệm thu
 
 Baseline **27be883**, code S5.1 **8599965** là ancestor, nhánh `codex/asr-s3-native` sạch lúc bắt đầu.
 Sau review, user yêu cầu submit/push: **code S5.2 đã chốt tại
