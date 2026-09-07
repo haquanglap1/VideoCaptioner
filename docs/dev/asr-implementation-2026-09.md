@@ -13,7 +13,9 @@ S4.1 đã được triển khai theo [followup trước S5](asr-step-4-followup-
 `db23299370f311395fae39069f0983739d259250` theo yêu cầu user. Xem
 [bàn giao S4.1](#bàn-giao-s41--2026-09-07), [hướng dẫn sử dụng](asr-s41.md) và
 [prompt S5 đã thực hiện](asr-step-5-prompt.md). Xem [hướng dẫn S5](asr-local-s5.md).
-S5 đang dừng review, chưa commit/push; S6 chưa triển khai.
+Theo yêu cầu submit/push sau review, **code S5 đã chốt tại
+`3a7c231a53069fefc58b34e95d7cc9ba10dac846`**. Commit tài liệu bàn giao sau code thêm
+[prompt phiên S5.1](asr-step-5-followup-prompt.md); chưa khởi chạy S5.1/S6.
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
@@ -22,7 +24,9 @@ Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 ## Bàn giao S5 — 2026-09-07
 
 Baseline **1bf4dd0** sạch trên `codex/asr-s3-native`; code S4.1 **db23299** là ancestor.
-Triển khai theo [prompt S5](asr-step-5-prompt.md), không commit/push/tag/release hoặc làm S6.
+Giai đoạn triển khai theo [prompt S5](asr-step-5-prompt.md) dừng review, không commit/push/tag/release
+hoặc làm S6. Sau đó user yêu cầu submit/push: code S5 được chốt thành
+**`3a7c231a53069fefc58b34e95d7cc9ba10dac846`**; prompt và trạng thái submit thuộc commit tài liệu sau đó.
 Giữ `pyproject.toml`/`uv.lock`, AGENTS/CLAUDE và toàn bộ artifact/media/AppData S4–S4.1.
 Hướng dẫn đầy đủ: [Qwen local/hybrid S5](asr-local-s5.md).
 
@@ -100,7 +104,8 @@ JSON/public audio/screenshots chỉ ở scratch ignored S5, không đưa transcr
 
 ### Manifest S5 so với baseline 1bf4dd0
 
-**53 file sửa/thêm**, chưa commit. Không có media/AppData/build/dist hoặc dependency Qt trong manifest.
+**53 file sửa/thêm trong commit code S5 `3a7c231`**. Prompt S5.1 và cập nhật trạng thái submit thuộc
+commit tài liệu bàn giao tiếp theo. Không có media/AppData/build/dist hoặc dependency Qt trong manifest.
 
 ```text
 README.md

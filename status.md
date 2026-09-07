@@ -1,5 +1,20 @@
 # Project Status
 
+## 2026-09-07 (chốt commit S5 và bàn giao phiên S5.1)
+
+- Theo yêu cầu user sau review, đã chốt **code S5** thành
+  `3a7c231a53069fefc58b34e95d7cc9ba10dac846` trên `codex/asr-s3-native`, parent `1bf4dd0`.
+  Commit gồm đúng 53 file trong manifest; không media/AppData/build/dist/credential hoặc dependency Qt.
+  Các mục “không/chưa commit” bên dưới mô tả thời điểm triển khai trước yêu cầu submit/push mới này.
+- Trước commit: fetch xác nhận local/remote cùng baseline; ruff, pyright 0/0, sync translations,
+  diff-check và quét mẫu credential/path mới pass. **215 module / 34 resource** tiếp tục khớp
+  artifact Final; EXE giữ SHA-256 bàn giao. Không đổi code từ full **1.066 pass / 4 skip / 51 deselect**
+  và CLI **104 pass**, nên không rerun full hoặc rebuild chỉ để commit.
+- [Prompt phiên tiếp theo — S5.1](docs/dev/asr-step-5-followup-prompt.md) ưu tiên nghiệm thu
+  Community-1/local-hybrid và củng cố lỗi tái hiện trước S6, giữ riêng các khoản runtime/API còn thiếu.
+  Lưu prompt không khởi chạy công việc mới; quyền commit/push ở lượt bàn giao này không tự áp dụng
+  cho thay đổi mới của phiên kế tiếp. Giữ nguyên media/AppData và mọi artifact S4–S5.
+
 ## 2026-09-07 (S5: Qwen local và hybrid diarization; dừng review)
 
 - Tiếp tục đúng worktree user chỉ định, nhánh `codex/asr-s3-native`, HEAD sạch ban đầu
