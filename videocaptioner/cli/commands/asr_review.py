@@ -5,6 +5,7 @@ from pathlib import Path
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
+from videocaptioner.core.asr.audio_identity import verify_audio_file
 from videocaptioner.core.asr.review import NativeReview
 
 
@@ -13,7 +14,20 @@ def run(args: Namespace, config: dict) -> int:
         output.error("ASR review file not found.")
         return EXIT.FILE_NOT_FOUND
     try:
+        if getattr(args, "audio", None) and any(
+                destination and Path(destination).resolve() == Path(args.audio).resolve()
+                for destination in (args.output, args.save_review)):
+            output.error("Review and subtitle output must not replace the selected audio.")
+            return EXIT.USAGE_ERROR
         review = NativeReview.load(args.input)
+        if getattr(args, "audio", None):
+            verified = verify_audio_file(review.audio_identity, args.audio)
+            if verified:
+                output.info("Audio matches the saved whole-recording identity.")
+        if review.audio_identity is None:
+            output.warn("No saved audio identity: recording association is unverified.")
+        elif not getattr(args, "audio", None):
+            output.warn("Audio identity retained; source has not been checked in this review. Use --audio to verify locally.")
         for value in args.set_timing or []:
             try:
                 token_id, start, end = value.split(":")

@@ -150,6 +150,8 @@ def test_real_s1_parser_through_mock_alignment_to_srt_and_cache(tmp_path, config
 
     cache = Cache()
     audio = Sine(400).to_audio_segment(duration=1000).set_frame_rate(16000).set_channels(1)
+    source = tmp_path / "private-input.wav"
+    source.write_bytes(wav_bytes(audio))
     def handler(request):
         calls.append("upload")
         assert calls[0] == "health"
@@ -168,7 +170,7 @@ def test_real_s1_parser_through_mock_alignment_to_srt_and_cache(tmp_path, config
         api_key="synthetic-key", base_url="https://gateway.example/v1", max_retries=0,
         http_client=httpx.AsyncClient(transport=httpx.MockTransport(handler))))
     for _ in range(2):
-        result = transcribe("private-input.wav", config)
+        result = transcribe(str(source), config)
         result.save(str(tmp_path / "output.srt"))
         assert result.segments[0].start_time == 100
         assert result.segments[-1].end_time == 700  # optimize_timing must not extend measured spans.

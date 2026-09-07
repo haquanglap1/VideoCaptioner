@@ -157,7 +157,13 @@ Qwen hoặc Whisper API; model gated cần user chấp nhận điều kiện Hug
 `local-diarize` dùng JSON/SRT đã có với âm thanh gốc, không nhận dạng/upload lại.
 Xem [cài đặt, cache/review, GPU và giới hạn nghiệm thu S5](docs/dev/asr-local-s5.md).
 Qwen và Community-1 đã có smoke local/hybrid từ source và EXE trên audio public.
-Hybrid API cloud và chất lượng speaker/xưng hô vẫn chưa nghiệm thu.
+Chất lượng speaker/xưng hô vẫn chưa nghiệm thu.
+
+S5.2 thêm kiểm tra recording khi mở JSON/review hoặc chạy `local-diarize`: fingerprint PCM toàn
+nguồn, chặn audio khác dù cùng duration; dữ liệu cũ vẫn mở và báo chưa xác minh. Gateway Whisper
+và GPT → alignment → Community-1 đã có smoke API từ source trên audio public ngắn; GPT cũng qua
+EXE S5.2, còn Whisper API từ EXE gặp HTTP 429. Gate GUI teardown và chất lượng vẫn được ghi riêng.
+Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
 ## Lồng tiếng Natural
 

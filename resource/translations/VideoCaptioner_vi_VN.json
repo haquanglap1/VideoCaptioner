@@ -1030,5 +1030,12 @@
   "Health ready. Probe released; inference has not been tested.": "Nạp thử thành công. Đã giải phóng mô hình; chưa kiểm thử suy luận.",
   "Installed. Health and inference have not been tested.": "Đã cài. Chưa nạp thử hoặc kiểm thử suy luận.",
   "Aligned": "Đã căn thời gian",
-  "Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.": "Chưa chạy phân biệt người nói. Bản review này chỉ xuất timing; dùng local-diarize với JSON đã lưu và âm thanh gốc."
+  "Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.": "Chưa chạy phân biệt người nói. Bản review này chỉ xuất timing; dùng local-diarize với JSON đã lưu và âm thanh gốc.",
+  "Audio identity retained. Select the original recording to verify it locally.": "Đã giữ dấu vân tay âm thanh. Chọn bản ghi gốc để kiểm tra tại máy.",
+  "Audio matches the saved recording.": "Âm thanh khớp với bản ghi đã lưu.",
+  "Checking audio locally…": "Đang kiểm tra âm thanh tại máy…",
+  "No saved audio identity. This legacy review cannot verify the original recording; select the original audio yourself.": "Bản review cũ chưa có dấu vân tay âm thanh nên không thể xác minh nguồn. Bạn cần chọn đúng bản ghi gốc.",
+  "Select matching original audio before exporting this review.": "Chọn âm thanh khớp với bản ghi gốc trước khi xuất review này.",
+  "Select original audio…": "Chọn âm thanh gốc…",
+  "Timing exported; local diarization is still pending. Keep JSON and select the original audio for local-diarize.": "Đã xuất timing; bước phân biệt người nói vẫn đang chờ. Giữ JSON và chọn âm thanh gốc để chạy local-diarize."
 }

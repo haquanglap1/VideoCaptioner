@@ -17,6 +17,7 @@ from videocaptioner.core.translate.conversation import (
 
 from ..entities import SubtitleLayoutEnum
 from ..utils.text_utils import is_mainly_cjk
+from .audio_identity import AudioIdentity
 from .metadata import ASRAudioEvent, ASRMetadata
 
 # 多语言分词模式(支持词级和字符级语言)
@@ -124,7 +125,10 @@ class ASRDataSeg:
 
 class ASRData:
     def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None,
-                 conversation_context: Optional[ConversationContext] = None):
+                 conversation_context: Optional[ConversationContext] = None,
+                 audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False):
+        self.audio_identity = audio_identity
+        self.pending_diarization = pending_diarization
         self.events = list(events or [])
         self.conversation_context = conversation_context or ConversationContext()
         filtered_segments = [seg for seg in segments if seg.text and seg.text.strip()]
@@ -142,7 +146,7 @@ class ASRData:
             raise ValueError("Duplicate cue IDs; review required.")
 
     def with_segments(self, segments: List[ASRDataSeg]) -> "ASRData":
-        return ASRData(segments, self.events, self.conversation_context)
+        return ASRData(segments, self.events, self.conversation_context, self.audio_identity, self.pending_diarization)
 
     def context_snapshot(self):
         return prepare_snapshot(tuple(SourceCue(s.cue_id, s.text, s.speaker or "") for s in self.segments),
@@ -370,10 +374,15 @@ class ASRData:
         return result_json
 
     def to_document(self) -> dict:
-        if self.events or self.conversation_context.enabled:
-            return {"schema": "asr-native-v1", "cues": self.to_json(),
+        if self.events or self.conversation_context.enabled or self.audio_identity or self.pending_diarization:
+            result = {"schema": "asr-native-v1", "cues": self.to_json(),
                     "conversation_context": self.conversation_context.to_dict(),
                     "events": [event.to_dict() for event in self.events]}
+            if self.audio_identity is not None:
+                result["audio_identity"] = self.audio_identity.to_dict()
+            if self.pending_diarization:
+                result["pending_diarization"] = True
+            return result
         return self.to_json()
 
     def to_ass(
@@ -623,6 +632,10 @@ class ASRData:
             data = ASRData.from_json(json_data["cues"])
             data.events = [ASRAudioEvent.from_dict(item) for item in json_data.get("events", [])]
             data.conversation_context = ConversationContext.from_dict(json_data.get("conversation_context"))
+            data.audio_identity = AudioIdentity.from_dict(json_data.get("audio_identity"))
+            data.pending_diarization = json_data.get("pending_diarization", False)
+            if type(data.pending_diarization) is not bool:
+                raise ValueError("Invalid pending diarization state.")
             return data
         segments = []
         for i in sorted(json_data.keys(), key=int):

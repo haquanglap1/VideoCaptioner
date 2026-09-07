@@ -24,11 +24,15 @@ def run(args) -> int:
         return EXIT.USAGE_ERROR
     try:
         data = ASRData.from_subtitle_file(args.input)
+        if data.audio_identity is None:
+            output.warn("No saved audio identity: recording association is unverified. Select the original audio; legacy input is not automatically verified.")
         config = TranscribeConfig(need_word_time_stamp=True, local_asr=LocalASRConfig(
             diarize=True, diarization_root=args.runtime or "", timeout=args.timeout))
         result = add_local_speakers(args.audio, data, config, aligned=False,
                     recognition_stage=StageProvenance("imported", "timed-subtitles", "", "user-supplied-timing-v1"))
         result.save(str(destination))
+        if data.audio_identity is not None:
+            output.info("Audio matches the saved whole-recording identity.")
         unknown = sum(s.metadata is not None and s.metadata.speaker is None for s in result)
         output.info(f"Local diarization complete: {len(result)} cues, {unknown} unknown/review associations. No ASR request was made.")
         return EXIT.SUCCESS

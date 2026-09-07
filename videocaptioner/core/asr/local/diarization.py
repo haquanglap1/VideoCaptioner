@@ -85,5 +85,6 @@ def diarization_key(audio_hash: str, data: ASRData) -> str:
     model = MODELS["community-1"]
     source = [[s.cue_id, s.text, s.start_time, s.end_time, s.metadata.to_dict() if s.metadata else None]
               for s in data.segments]
-    payload = [audio_hash, model.repository, model.revision, DIARIZATION_POLICY, "cuda-float32", source]
-    return "diarization:v1-" + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    payload = [audio_hash, model.repository, model.revision, DIARIZATION_POLICY, "cuda-float32", source,
+               data.audio_identity.to_dict() if data.audio_identity else None, data.pending_diarization]
+    return "diarization:v2-" + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()

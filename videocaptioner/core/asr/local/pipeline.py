@@ -17,6 +17,7 @@ from ..alignment.contract import (
     validate_alignment,
 )
 from ..asr_data import ASRData
+from ..audio_identity import identify_audio, require_audio_match
 from ..metadata import ASRMetadata, StageProvenance
 from ..native_result import native_cues
 from ..review import NativeReviewRequired
@@ -57,6 +58,7 @@ class QwenLocalASR:
                 callback(progress, stage)
 
         audio = decode_audio(self.audio_path, check)
+        identity = identify_audio(audio, check)
         self.recognition_layout = locate(options.model, options.runtime_root, verify=True, check=check)
         self.alignment_layout = locate("aligner", options.runtime_root, verify=True, check=check)
         chunks = split_audio(audio, check, options.chunk_ms)
@@ -119,7 +121,7 @@ class QwenLocalASR:
             runtime.close()
         review = LocalReview.capture_chunks(stage=provenance, scope=scope,
                     durations=[(offset, len(chunk)) for chunk, offset in chunks], texts=texts, raw=raw,
-                    word_timing=True)
+                    word_timing=True, audio_identity=identity)
         review = replace(review, pending_diarization=options.diarize)
         if rejected_chunks:
             review = replace(review, acoustic_rejected=tuple(t for i in rejected_chunks for t in review.chunks[i].token_ids))
@@ -146,6 +148,7 @@ def add_local_speakers(audio_path: str, data: ASRData, config, *, aligned: bool,
 
     options = config.local_asr
     audio = decode_audio(audio_path, check)
+    require_audio_match(data.audio_identity, identify_audio(audio, check))
     validate_source(data, len(audio))
     binary = wav_bytes(audio)
     scope = uuid4().hex
@@ -170,6 +173,7 @@ def add_local_speakers(audio_path: str, data: ASRData, config, *, aligned: bool,
             raw = runtime.request(binary, check=check)
         spans = validate_spans(raw, len(audio))
         result = associate(data, spans, len(audio), scope, recognition)
+        result.pending_diarization = False
         check()
         # Ambiguous associations remain usable with unknown speakers; they are not success-cache entries.
         if cache is not None and all(s.metadata and s.metadata.diarization and

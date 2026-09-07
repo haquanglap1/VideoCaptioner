@@ -1,10 +1,11 @@
 """Strict alignment review using the existing timing editor and CommandStack."""
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 from ..alignment.contract import MODEL_REPOSITORY, MODEL_REVISION, POLICY, validate_alignment
 from ..asr_data import ASRData, ASRDataSeg
+from ..audio_identity import AudioIdentity
 from ..metadata import ASRMetadata, StageProvenance
 from ..native_result import native_cues
 from ..review import NativeReview, ReviewToken, TimingIssue, TimingOverride, _raw_time
@@ -26,11 +27,19 @@ class LocalReview(NativeReview):
     recognition: StageProvenance | None = None
     acoustic_rejected: tuple[str, ...] = ()
     pending_diarization: bool = False
+    recognition_complete: bool = True
+
+    def _payload(self) -> dict:
+        raw = super()._payload()
+        if self.recognition_complete:
+            raw.pop("recognition_complete")
+        return raw
 
     @classmethod
     def capture_chunks(cls, *, stage: StageProvenance, scope: str, durations: list[tuple[int, int]],
                        texts: list[str], raw: list[list[dict]], word_timing: bool,
-                       acoustic_rejected: tuple[str, ...] = ()) -> "LocalReview":
+                       acoustic_rejected: tuple[str, ...] = (),
+                       audio_identity: AudioIdentity | None = None) -> "LocalReview":
         chunks, tokens = [], []
         for index, ((offset, duration), text) in enumerate(zip(durations, texts)):
             items = raw[index] if index < len(raw) else []
@@ -48,7 +57,7 @@ class LocalReview(NativeReview):
             chunks.append(ReviewChunk(offset, duration, text, tuple(ids)))
         return cls(stage.provider, stage.model, scope, sum(d for _, d in durations), "".join(texts), tuple(tokens),
                    False, word_timing, "zh", chunks=tuple(chunks), recognition=stage,
-                   acoustic_rejected=acoustic_rejected)
+                   acoustic_rejected=acoustic_rejected, audio_identity=audio_identity)
 
     def timing_ms(self, token: ReviewToken) -> tuple[int, int] | None:
         edit = next((o for o in self.overrides if o.token_id == token.id), None)
@@ -59,6 +68,8 @@ class LocalReview(NativeReview):
 
     def issues(self) -> tuple[TimingIssue, ...]:
         issues = []
+        if not self.recognition_complete:
+            issues.append(TimingIssue("", 0, "Recognition is incomplete; timing edits cannot recover missing speech text"))
         previous = 0
         edited = {o.token_id for o in self.overrides}
         for index, token in enumerate(self.tokens):
@@ -100,11 +111,11 @@ class LocalReview(NativeReview):
             boundary += chunk.duration_ms
         if boundary != self.duration_ms:
             raise ValueError("Incomplete local review audio coverage.")
-        data = ASRData(cues)
+        data = ASRData(cues, audio_identity=self.audio_identity, pending_diarization=self.pending_diarization)
         return data if self.word_timing else native_cues(data)
 
     def to_dict(self) -> dict:
-        return {"schema": SCHEMA, "recognition_sha256": self.recognition_fingerprint(), **asdict(self)}
+        return {"schema": SCHEMA, "recognition_sha256": self.recognition_fingerprint(), **self._payload()}
 
     @classmethod
     def from_dict(cls, data: dict) -> "LocalReview":
@@ -113,6 +124,7 @@ class LocalReview(NativeReview):
             if raw.pop("schema") != SCHEMA:
                 raise ValueError
             fingerprint = raw.pop("recognition_sha256")
+            raw["audio_identity"] = AudioIdentity.from_dict(raw.get("audio_identity"))
             raw["recognition"] = StageProvenance.from_dict(raw["recognition"])
             raw["tokens"] = tuple(ReviewToken(**t) for t in raw["tokens"])
             raw["chunks"] = tuple(ReviewChunk(c["offset_ms"], c["duration_ms"], c["text"], tuple(c["token_ids"])) for c in raw["chunks"])
@@ -123,6 +135,7 @@ class LocalReview(NativeReview):
                     result.model != result.recognition.model or not isinstance(result.scope, str) or not result.scope or
                     type(result.word_timing) is not bool or result.diarize is not False or result.language != "zh" or
                     type(result.pending_diarization) is not bool or
+                    type(result.recognition_complete) is not bool or
                     type(result.duration_ms) is not int or result.duration_ms <= 0):
                 raise ValueError
             ids = [t.id for t in result.tokens]

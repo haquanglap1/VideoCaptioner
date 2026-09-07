@@ -56,7 +56,8 @@ def project_to_asr(project: EditorProject, *, display_only: bool = False) -> ASR
                 ASRDataSeg(cue.source_text or cue.display_text, cue.start_ms, cue.end_ms, translated,
                            cue_metadata(cue), cue.id)
             )
-    return ASRData(segments, project.audio_events, project.conversation_context)
+    return ASRData(segments, project.audio_events, project.conversation_context,
+                   project.audio_identity, project.pending_diarization)
 
 
 def project_to_tts_asr(project: EditorProject) -> ASRData:

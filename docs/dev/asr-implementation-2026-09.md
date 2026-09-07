@@ -2,11 +2,11 @@
 
 Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
-gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1–S4 có code
-và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. GPT gateway→SRT,
-phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptance. S5 hiện có code/offline
-và Qwen 0.6B/1.7B local smoke; S5.1 đã bổ sung Community-1/local-hybrid thật trên public audio.
-Hybrid API cloud và chất lượng speaker còn thiếu nghiệm thu. S6 chưa triển khai.
+gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S5.2 đã có identity
+recording và GPT gateway→strict alignment→Community-1→JSON/SRT thật từ source/EXE**. Whisper
+hybrid source pass, lượt Whisper API từ EXE HTTP 429. S5.1 đã đo Qwen/Community-1 local-hybrid.
+Native online, phồn thể strict, chất lượng speaker/xưng hô và Qt teardown còn thiếu nghiệm thu.
+S6 chưa triển khai; S5.2 dừng review, chưa commit/push. Xem [hướng dẫn S5.2](asr-s52.md).
 Theo yêu cầu riêng đầu phiên S4, 50 file S3 được commit `327c214` và push lên
 `origin/codex/asr-s3-native` trước khi sửa S4. Sau các lượt review/online và xuất SRT xem thử,
 user yêu cầu submit: **code S4 đã chốt tại `8558082945575d551a4c38cdc4943c395254a583`**.
@@ -26,6 +26,135 @@ khởi chạy phiên mới hoặc cấp quyền commit/push cho thay đổi ti�
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
 Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
+
+## Bàn giao S5.2 — 2026-09-07
+
+Baseline **27be883**, code S5.1 **8599965** là ancestor, nhánh `codex/asr-s3-native` sạch lúc bắt đầu.
+Không commit/push/tag/release/PR/S6; không đổi dependency, model pin, runtime hoặc artifact cũ.
+
+### Hành vi và regression
+
+- Optional `AudioIdentity` cấp tài liệu: PCM16 little-endian mono 16 kHz toàn recording, SHA-256
+  và sample count, gồm tail dưới 1 ms; không path/key/transcript. Legacy checksum/schema vẫn mở.
+- Snapshot nguồn Whisper/native, identity từ PCM Qwen/GPT, giữ qua review/resume/JSON/editor/
+  table export và pipeline clone. Diarization mismatch trước cache/model; cache association v2
+  tách trạng thái nguồn/pending. Không gán lại legacy thành verified hoặc trộn nhãn native/local.
+- Baseline pipeline chạy cùng reproducer offline dùng hai tone 1 s khác nội dung đã vào fake
+  model và chấp nhận; mã mới dừng mismatch với **0 model load**. Lossless container/rename pass,
+  changed source/tail/malformed identity fail. Đây là test tổng hợp, không speaker/API acceptance.
+- GUI chọn audio ở worker có cancel/retain/stale signal; CLI `asr-review --audio` và guard không
+  overwrite audio. User timing edit giữ CommandStack/overrides/IDs; pending đi qua JSON/editor,
+  chỉ xóa ở kết quả diarization. Save project vẫn JSON + SRT, ASS không đổi.
+- GPT dùng aligner runtime S5 khi chọn root tường minh, fallback locator S2 cũ khi không chọn;
+  verify/hash/health trước upload. Giữ recognition toàn job trước alignment, raw/tail/chunk IDs
+  khi fail; không resume thành success nếu thiếu text trên audible input. Không đổi strict policy.
+
+### API/runtime thật
+
+Public Qwen Chinese **4,204 s / 67.263 sample**, cùng endpoint **https://api.videocaptioner.cn/v1**,
+provider `videocaptioner`, hai model tường minh. Catalog HTTP 200 chứa model được yêu cầu; không
+dùng catalog làm bằng chứng inference. Source không đọc cache, EXE dùng scratch cache ban đầu trống.
+S2 vẫn retain stage values trong scratch khi cache reads tắt. Key chỉ password/RAM/named pipe
+local với current-user ACL, không file/argv/env; owner/readers đã thoát. Không tìm credential cũ.
+
+| Gate | Kết quả |
+| --- | --- |
+| Source Whisper → Community-1 → JSON/SRT | **exit 0**, 43,390 s; 1 cue 0–4000 ms, 1 speaker, identity, pending false |
+| Source GPT → strict alignment → Community-1 → JSON/SRT | **exit 0**, 70,859 s; 1 cue 400–3680 ms, 13 token IDs, 1 speaker, cùng identity |
+| EXE GPT full hybrid → JSON/SRT | **exit 0**, 58,312 s; cùng timing/13 token IDs/identity; SRT export 0,359 s |
+| EXE Whisper full hybrid | **HTTP 429 / exit 5**, 39,187 s, không output. Chưa nghiệm thu thành công |
+| EXE local-diarize trên timed Whisper JSON từ source | **exit 0**, 10,157 s; identity/pending đúng, không ASR/upload lại |
+| EXE local-diarize trên SRT legacy | **exit 0**, 9,609 s; vẫn unverified, không tạo identity |
+| EXE JSON + audio sai cùng duration + missing runtime | **exit 5** do mismatch trước runtime, 0,406 s, không output |
+| EXE review tổng hợp invalid/override/reopen/wrong audio | **5/0/0/5** đúng kỳ vọng; raw/edited/IDs/identity/pending giữ nguyên; không upload |
+
+Hai runtime dùng nguyên trạng **S5 Qwen R2** và **S5.1 Community-1**, pin/recipe không đổi; host
+không import GPU libraries, không bridge process còn lại. Không dùng thời gian smoke so tốc độ,
+DER, chất lượng speaker hoặc ngôi. Whisper theo policy retry hữu hạn S1 hiện có tối đa 3 attempt;
+không chạy thêm command để ép HTTP 429 thành pass. Không gọi Soniox/mini, không có key Scribe.
+
+### Offline và chẩn đoán
+
+- Full offline sau sửa preflight: **1.116 passed / 4 skipped / 51 deselected, 131,78 s, exit 0**.
+  Sau đó thêm guard destination trùng `--audio`, **CLI cuối 106 passed, 2,58 s**; fixture identity
+  cô lập cache sau rà cuối **24 pass, 3,44 s**. **30 test mới**: 24 core, 4 UI, 2 CLI. Ruff pass,
+  pyright **0 errors/0 warnings**, translations sync/diff-check pass. Python 3.12.13 có sẵn,
+  `--pythonpath` chỉ đúng venv; không uv sync/install. 4 skip TTS/service; native Qt playback pass.
+- Full đầu **2 fail / 1.114 pass**: snapshot chạy trước preflight text-only (đã sửa) và crash
+  Settings **3221225477**. Faulthandler chỉ có `<no Python frame>`; WER: **sip.cp312-win_amd64.pyd**,
+  exception **0xc0000005**, offset **0x13a26**. PyQt5 5.15.11, sip 12.18.0, QFluentWidgets 1.8.4.
+  Không có build/GPU job song song. 4 case chẩn đoán preflight/Settings/Scribe cancel-timeout pass;
+  3 subprocess với marker import/assertions/atexit (2 nguyên trạng, 1 explicit teardown) pass.
+  **Chưa xác định nguyên nhân**, không sửa Qt/framework hoặc nới mock timeout để che lỗi.
+- S2 retain cache values dù tắt cache reads khiến fixture mới ghi 2 entry tổng hợp. Đã dùng
+  cache RAM trong fixture, đối chiếu exact key/value/store-time rồi xóa đúng 2 entry do test tạo;
+  rerun xác nhận chúng không xuất hiện lại. Không xóa cache khác. Settings/review/GPU lease và
+  media kiểm thử vẫn dùng tmp/scratch; QThread được wait. Không gọi offline/mock là API inference.
+
+### Artifact và GUI
+
+- **`dist/VideoCaptioner-ASR-S52-Review-20260907-Final/`**, spec duy nhất, output/cache/temp mới.
+  PyInstaller **exit 0, 6 WARNING optional/platform, 0 ERROR, 6 SyntaxWarning upstream**.
+  **218 module / 39 resource** khớp source (kể cả TS và script sidecar data); không Torch/Qwen/
+  pyannote trong base Qt. So code object sau chuẩn hóa filename; không dùng marshal reference
+  encoding làm false mismatch. Script sidecar là data đúng thiết kế, không phải module PYZ thiếu.
+- EXE **31.161.859 byte**, local **2026-09-07 19:11:44**, SHA-256
+  **`457613169d3bd5ac262130ca83f783c4cd4148d08317ab7126c5359b48f91649`**.
+  Onedir trước GUI **580 file / 237.667.163 byte**; phân phối nguyên folder. API từ bản sao
+  binary/resources riêng cùng hash; không dùng media/AppData/log của artifact cũ làm scratch.
+- Startup artifact mới **25,047 s**, **1 Qt window**, RSS **101.412.864 byte**; WM_CLOSE exit 0,
+  0 process còn lại, binary unchanged. **Teardown log chưa sạch**: cùng một lỗi InfoBar được ghi
+  lặp ở stderr/log: `BottomInfoBarManager has been deleted`, eventFilter qfluentwidgets line 432,
+  sau thông báo update. Bản sao S5.1 Final tái hiện cùng lỗi, 25,047 s / exit 0 / 0 process sót.
+  Chưa chứng minh nó gây crash SIP của Settings. Không gọi gate GUI hoàn toàn sạch hoặc đã sửa Qt.
+- Đã xem render review VI bằng Qt Windows native; Qt worker + FFmpeg kiểm tra audio public pass.
+  Offscreen không render chữ, không dùng để kết luận layout. Không rebuild sau các gate artifact.
+
+**Dừng review.** Còn mở: Whisper API từ EXE sau HTTP 429; Scribe online; Qt/SIP/InfoBar teardown;
+phồn thể strict; speaker accuracy và xưng hô do người đọc chấm. Không tự chuyển S6. Giới hạn và
+lệnh tái hiện ở [S5.2](asr-s52.md); không cần helper ignored để hiểu hoặc dùng tính năng.
+
+### Manifest S5.2 so với baseline 27be883
+
+**35 file sửa/thêm**, chưa commit. Không media/AppData/build/runtime/credential, không đổi dependency hoặc AGENTS/CLAUDE.
+
+```text
+README.md
+VideoCaptioner.spec
+docs/dev/asr-implementation-2026-09.md
+docs/dev/asr-local-s5.md
+docs/dev/asr-s52.md
+resource/translations/VideoCaptioner_en_US.ts
+resource/translations/VideoCaptioner_vi_VN.json
+resource/translations/VideoCaptioner_zh_CN.ts
+resource/translations/VideoCaptioner_zh_HK.ts
+status.md
+tests/test_asr/test_alignment.py
+tests/test_asr/test_audio_identity.py
+tests/test_cli/test_asr_review.py
+tests/test_ui/test_audio_identity.py
+videocaptioner/cli/commands/asr_review.py
+videocaptioner/cli/commands/local_diarize.py
+videocaptioner/cli/main.py
+videocaptioner/core/asr/aligned_api.py
+videocaptioner/core/asr/alignment/audio.py
+videocaptioner/core/asr/asr_data.py
+videocaptioner/core/asr/audio_identity.py
+videocaptioner/core/asr/local/diarization.py
+videocaptioner/core/asr/local/pipeline.py
+videocaptioner/core/asr/local/review.py
+videocaptioner/core/asr/native_api.py
+videocaptioner/core/asr/review.py
+videocaptioner/core/asr/transcribe.py
+videocaptioner/core/editor/adapters.py
+videocaptioner/core/editor/models.py
+videocaptioner/core/editor/project_store.py
+videocaptioner/core/subtitle/editing.py
+videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
+videocaptioner/ui/components/asr_review_dialog.py
+videocaptioner/ui/thread/audio_identity_thread.py
+videocaptioner/ui/view/subtitle_interface.py
+```
 
 ## Bàn giao S5.1 — 2026-09-07
 
@@ -317,10 +446,10 @@ videocaptioner/ui/view/setting_interface.py
 | Gói | Nội dung | Phụ thuộc | Điều kiện hoàn thành |
 | --- | --- | --- | --- |
 | S1 (offline hoàn tất) | Nền API tương thích và preset videocaptioner.cn/Groq/OpenAI/Custom | Code hiện có | Request/probe/parser theo capability, cache cách ly, config cũ hoạt động; text-only có giới hạn rõ ràng; gate offline |
-| S2 (code/offline + local smoke, chờ gateway) | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | Runtime alignment riêng đã đo; còn thiếu key để nghiệm thu GPT gateway→SRT |
+| S2 (code/offline + GPT gateway smoke S5.2) | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | GPT gateway→strict alignment→SRT đã qua source/EXE trên clip public ngắn; phồn thể chưa đạt |
 | S3 (code/offline, chờ native API) | Soniox v5 và Scribe v2, timestamp + speaker native | S1 | ASR mới đưa speaker xuyên split/optimize/translate input/editor; save/load speaker không mất |
 | S4 (code/offline; chờ nghiệm thu ngôn ngữ) | Quan hệ người nói/người nghe và xưng hô Trung→Việt | S3; đường hybrid nối sau S5 | Mapping theo cặp/cảnh, user override, dịch lại và cache nhất quán; chưa có benchmark người nghe/xưng hô |
-| S5 (code/offline + Qwen/Community-1 local smoke) | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Local-hybrid Windows/source/EXE đã đo; còn thiếu hybrid API cloud và speaker accuracy |
+| S5 (local-hybrid + gateway S5.2, dừng review) | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Qwen/Community-1 source/EXE; GPT hybrid source/EXE; Whisper source pass, EXE HTTP 429; còn thiếu chất lượng/Qt teardown |
 | S6 | Benchmark, chọn preset mặc định và nghiệm thu EXE | S2–S5 | Có kết quả thực trên video Trung, CER/timing/speaker/xưng hô, artifact và workflow thật |
 
 Mốc nghiên cứu A được tách thành xác minh tài liệu trong S1 và smoke API thật khi có credential

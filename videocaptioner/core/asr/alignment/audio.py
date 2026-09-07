@@ -41,7 +41,7 @@ def decode_audio(path: str, check: Check) -> AudioSegment:
         wav_path = Path(directory) / "audio.wav"
         try:
             process = subprocess.Popen(
-                ["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", "16000",
+                ["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
                  "-c:a", "pcm_s16le", str(wav_path)],
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 creationflags=_NO_WINDOW, env=child_environment(),

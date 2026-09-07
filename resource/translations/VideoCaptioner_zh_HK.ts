@@ -3111,6 +3111,13 @@
     <message><source>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</source><translation type="unfinished" /></message>
     <message><source>Aligned</source><translation type="unfinished"></translation></message>
     <message><source>Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.</source><translation type="unfinished"></translation></message>
+    <message><source>Audio identity retained. Select the original recording to verify it locally.</source><translation type="unfinished"></translation></message>
+    <message><source>No saved audio identity. This legacy review cannot verify the original recording; select the original audio yourself.</source><translation type="unfinished"></translation></message>
+    <message><source>Select original audio…</source><translation type="unfinished"></translation></message>
+    <message><source>Checking audio locally…</source><translation type="unfinished"></translation></message>
+    <message><source>Audio matches the saved recording.</source><translation type="unfinished"></translation></message>
+    <message><source>Select matching original audio before exporting this review.</source><translation type="unfinished"></translation></message>
+    <message><source>Timing exported; local diarization is still pending. Keep JSON and select the original audio for local-diarize.</source><translation type="unfinished"></translation></message>
 </context>
 
 <context>

@@ -23,6 +23,7 @@ from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_enviro
 from .api_profiles import ASRAPIError
 from .api_transcription import audio_attachment
 from .asr_data import ASRData
+from .audio_identity import AudioIdentity
 from .native_profiles import NATIVE_PROFILES, NativeASRConfig
 from .native_result import native_cues, parse_native
 from .review import NativeReview, NativeReviewRequired
@@ -132,6 +133,7 @@ class NativeASR:
         self.transport = transport
         self.deadline_seconds = deadline_seconds
         self.state = NativeJobState()
+        self.audio_identity: AudioIdentity | None = None
         self._file_id: str | None = None
         self._job_id: str | None = None
         self._submit_attempted = False
@@ -178,7 +180,8 @@ class NativeASR:
             check()
             # Capture the recognition before strict timing validation can reject it.
             review = NativeReview.capture(response, self.config.provider, self.config.model, scope,
-                                           self.duration_ms, self.config.diarize, self.word_timing, self.language)
+                                           self.duration_ms, self.config.diarize, self.word_timing, self.language,
+                                           audio_identity=self.audio_identity)
             try:
                 result = parse_native(response, self.config.provider, self.duration_ms, scope, self.config.diarize)
             except ASRAPIError as exc:
@@ -197,6 +200,7 @@ class NativeASR:
                     {k: v for k, v in item.items() if k in fields} for item in response[field_name]]}
                 cache.set(key, {"response": minimal, "scope": scope}, expire=86400 * 2)
             self.state.status = "succeeded"
+            result.audio_identity = self.audio_identity
             if callback:
                 observed = len({seg.speaker for seg in result if seg.speaker is not None})
                 callback(100, f"Native ASR: {len(result)} timed speech spans; {observed} anonymous speaker labels observed. "

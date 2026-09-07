@@ -2,8 +2,10 @@ from contextlib import nullcontext
 from copy import deepcopy
 
 from videocaptioner.core.asr.aligned_api import AlignedAPI
+from videocaptioner.core.asr.alignment.audio import decode_audio
 from videocaptioner.core.asr.api_profiles import resolve_profile
 from videocaptioner.core.asr.asr_data import ASRData
+from videocaptioner.core.asr.audio_identity import identify_audio
 from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
 from videocaptioner.core.asr.faster_whisper import FasterWhisperASR
@@ -42,6 +44,12 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
         raise ValueError("Transcription model not set")
 
     config = deepcopy(config)
+    # Text-only language/runtime validation must precede source IO as in S2.
+    prepared = None
+    if (config.transcribe_model is TranscribeModelEnum.WHISPER_API and not resolve_profile(
+            config.whisper_api_model or "whisper-1", config.whisper_api_request_profile,
+            config.whisper_api_provider).timestamp_levels):
+        prepared = AlignedAPI(audio_path, config)
 
     # Create ASR instance based on model type
     if config.local_asr.diarize:
@@ -61,10 +69,22 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
     def snapshot_check():
         callback(0, "Preparing hybrid audio snapshot")
 
-    source = source_snapshot(audio_path, snapshot_check) if config.local_asr.diarize else nullcontext(audio_path)
+    snapshot_required = config.local_asr.diarize or config.transcribe_model in (
+        TranscribeModelEnum.WHISPER_API, TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE)
+    source = source_snapshot(audio_path, snapshot_check) if snapshot_required else nullcontext(audio_path)
     with source as job_audio:
-        asr = _create_asr_instance(job_audio, config)
+        if prepared is not None:
+            prepared.audio_path = job_audio
+        asr = prepared if prepared is not None else _create_asr_instance(job_audio, config)
+        identity = None
+        if isinstance(asr, (ChunkedASR, NativeASR)) and snapshot_required:
+            identity = identify_audio(decode_audio(job_audio, snapshot_check), snapshot_check)
+            if isinstance(asr, NativeASR):
+                asr.audio_identity = identity
         asr_data = asr.run(callback=callback)
+        if identity is not None:
+            asr_data.audio_identity = identity
+        asr_data.pending_diarization = config.local_asr.diarize
         if config.local_asr.diarize:
             return add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
         if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR)):

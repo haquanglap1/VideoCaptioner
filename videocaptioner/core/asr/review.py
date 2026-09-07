@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from .api_profiles import ASRAPIError
 from .asr_data import ASRData
+from .audio_identity import AudioIdentity
 from .native_result import _timing, native_cues, parse_native
 
 SCHEMA = "asr-review-v1"
@@ -69,10 +70,12 @@ class NativeReview:
     word_timing: bool = True
     language: str = ""
     overrides: tuple[TimingOverride, ...] = ()
+    audio_identity: AudioIdentity | None = None
 
     @classmethod
     def capture(cls, response: dict, provider: str, model: str, scope: str, duration_ms: int,
-                diarize: bool, word_timing: bool, language: str = "") -> NativeReview:
+                diarize: bool, word_timing: bool, language: str = "",
+                audio_identity: AudioIdentity | None = None) -> NativeReview:
         """Whitelist parser data only; no endpoint, headers, IDs, media path or credentials."""
         items = response.get("tokens" if provider == "soniox" else "words")
         if not isinstance(response.get("text"), str) or not isinstance(items, list):
@@ -93,7 +96,7 @@ class NativeReview:
                                       _raw_time(item.get("end_ms" if provider == "soniox" else "end")),
                                       speaker, kind, status))
         return cls(provider, model, scope, duration_ms, response["text"], tuple(tokens),
-                   diarize, word_timing, language)
+                   diarize, word_timing, language, audio_identity=audio_identity)
 
     def _item(self, token: ReviewToken) -> dict:
         override = next((o for o in self.overrides if o.token_id == token.id), None)
@@ -144,13 +147,21 @@ class NativeReview:
         data = parse_native(self.response(), self.provider, self.duration_ms, self.scope, self.diarize,
                             token_ids=tuple(t.id for t in self.tokens),
                             edited_token_ids=frozenset(o.token_id for o in self.overrides))
+        data.audio_identity = self.audio_identity
         return data if self.word_timing else native_cues(data)
 
     def to_dict(self) -> dict:
-        return {"schema": SCHEMA, "recognition_sha256": self.recognition_fingerprint(), **asdict(self)}
+        return {"schema": SCHEMA, "recognition_sha256": self.recognition_fingerprint(), **self._payload()}
+
+    def _payload(self) -> dict:
+        raw = asdict(self)
+        # An absent optional identity must retain legacy recognition checksums.
+        if self.audio_identity is None:
+            raw.pop("audio_identity")
+        return raw
 
     def recognition_fingerprint(self) -> str:
-        raw = asdict(self)
+        raw = self._payload()
         raw.pop("overrides")
         return hashlib.sha256(json.dumps(raw, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
@@ -164,6 +175,7 @@ class NativeReview:
             if raw.pop("schema") != SCHEMA:
                 raise ValueError
             fingerprint = raw.pop("recognition_sha256")
+            raw["audio_identity"] = AudioIdentity.from_dict(raw.get("audio_identity"))
             raw["tokens"] = tuple(ReviewToken(**t) for t in raw["tokens"])
             raw["overrides"] = tuple(TimingOverride(**o) for o in raw.get("overrides", []))
             result = cls(**raw)

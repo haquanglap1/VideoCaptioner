@@ -694,6 +694,8 @@ class SubtitleInterface(QWidget):
                 style=self._current_ass_style(),
                 events=self._context_data.events,
                 context=self._context_data.conversation_context,
+                audio_identity=self._context_data.audio_identity,
+                pending_diarization=self._context_data.pending_diarization,
             )
             InfoBar.success(
                 self.tr("保存成功"),
@@ -878,6 +880,8 @@ class SubtitleInterface(QWidget):
         data = ASRData.from_json(self.model._data)
         data.events = list(self._context_data.events)
         data.conversation_context = self._context_data.conversation_context
+        data.audio_identity = self._context_data.audio_identity
+        data.pending_diarization = self._context_data.pending_diarization
         return data
 
     def edit_conversation_context(self) -> None:
@@ -986,6 +990,7 @@ class SubtitleInterface(QWidget):
             self.task.video_path,
             layout,
             style=self._current_ass_style(),
+            document=self._context_data,
         )
 
     def on_open_in_video_editor(self) -> None:
@@ -1008,6 +1013,8 @@ class SubtitleInterface(QWidget):
                 video_path,
                 events=self._context_data.events,
                 context=self._context_data.conversation_context,
+                audio_identity=self._context_data.audio_identity,
+                pending_diarization=self._context_data.pending_diarization,
             )
         except Exception as exc:
             InfoBar.error(

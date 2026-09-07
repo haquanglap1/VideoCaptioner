@@ -23,6 +23,8 @@ from videocaptioner.core.asr.review import (
     ReviewSession,
 )
 from videocaptioner.core.editor.commands import CommandStack
+from videocaptioner.ui.thread.audio_identity_thread import AudioIdentityThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
 
 class ASRReviewDialog(QDialog):
@@ -31,6 +33,9 @@ class ASRReviewDialog(QDialog):
         self.session = ReviewSession(review)
         self.review_path = review_path
         self.stack = CommandStack()
+        self.audio_worker = None
+        self.audio_check_failed = False
+        self.finished.connect(self.stop_audio_check)
         self.stack.add_changed_callback(self.refresh)
         self.setWindowTitle(self.tr("ASR timing review"))
         self.resize(1080, 720)
@@ -38,6 +43,15 @@ class ASRReviewDialog(QDialog):
         notice = QLabel(self.tr("Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override."))
         notice.setWordWrap(True)
         layout.addWidget(notice)
+        self.audio_notice = QLabel(self.tr(
+            "Audio identity retained. Select the original recording to verify it locally."
+            if review.audio_identity else
+            "No saved audio identity. This legacy review cannot verify the original recording; select the original audio yourself."))
+        self.audio_notice.setWordWrap(True)
+        layout.addWidget(self.audio_notice)
+        select_audio = QPushButton(self.tr("Select original audio…"))
+        select_audio.clicked.connect(self.select_audio)
+        layout.addWidget(select_audio)
         if getattr(review, "pending_diarization", False):
             pending = QLabel(self.tr("Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio."))
             pending.setWordWrap(True)
@@ -81,6 +95,32 @@ class ASRReviewDialog(QDialog):
         issues = review.issues()
         if issues:
             self.table.selectRow(issues[0].index)
+
+    def select_audio(self):
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("Select original audio…"), "", "Media (*)")
+        if not path:
+            return
+        self.stop_audio_check()
+        worker = AudioIdentityThread(self.session.review.audio_identity, path)
+        self.audio_worker = retain_worker(worker)
+        self.audio_check_failed = True
+        self.audio_notice.setText(self.tr("Checking audio locally…"))
+        connect_current(self, "audio_worker", worker, worker.result, self.audio_checked)
+        worker.start()
+
+    def audio_checked(self, verified: bool, error: str):
+        self.audio_check_failed = bool(error)
+        if error:
+            self.audio_notice.setText(error)
+        elif verified:
+            self.audio_notice.setText(self.tr("Audio matches the saved recording."))
+        else:
+            self.audio_notice.setText(self.tr("No saved audio identity. This legacy review cannot verify the original recording; select the original audio yourself."))
+
+    def stop_audio_check(self):
+        if self.audio_worker is not None:
+            retire_worker(self.audio_worker)
+            self.audio_worker = None
 
     def refresh(self):
         review = self.session.review
@@ -137,6 +177,9 @@ class ASRReviewDialog(QDialog):
                 self.status.setText(self.tr("Cannot save review file."))
 
     def export_result(self):
+        if self.audio_check_failed:
+            self.status.setText(self.tr("Select matching original audio before exporting this review."))
+            return
         try:
             data = self.session.review.resume()
         except ValueError as exc:
@@ -152,6 +195,8 @@ class ASRReviewDialog(QDialog):
             if Path(path).suffix.lower() not in (".json", ".srt"):
                 raise ValueError(self.tr("Choose JSON or SRT."))
             data.save(path)
-            self.status.setText(self.tr("Full result exported. JSON retains cue IDs and edited provenance; SRT does not."))
+            self.status.setText(self.tr("Timing exported; local diarization is still pending. Keep JSON and select the original audio for local-diarize.")
+                                if data.pending_diarization else
+                                self.tr("Full result exported. JSON retains cue IDs and edited provenance; SRT does not."))
         except (OSError, ValueError) as exc:
             self.status.setText(str(exc))

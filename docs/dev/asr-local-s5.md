@@ -160,9 +160,12 @@ bản sao của job. Guard Windows so sánh stat của handle/path với baselin
 hai API có thể khác nhau ngay cả khi file không đổi.
 
 `local-diarize` kiểm tra bounds của cue và nhãn native/local đã có trước khi nạp model. JSON/SRT
-nhập lại vẫn cần user chọn đúng audio gốc; schema hiện tại không lưu fingerprint audio để chứng minh
+nhập lại tại mốc S5.1 vẫn cần user chọn đúng audio gốc; schema lúc đó không lưu fingerprint audio để chứng minh
 hai file thuộc cùng recording. Không nhận dạng/upload lại để đoán nguồn. Policy coverage/overlap,
 token/cue ID, review và stage provenance giữ nguyên.
+
+**S5.2** bổ sung identity PCM toàn recording, mismatch guard trước model, chọn audio trong review,
+giữ pending qua JSON/editor và dùng aligner S5 cho gateway text-only. Xem [hướng dẫn S5.2](asr-s52.md).
 
 Mỗi response runtime đều kiểm tra protocol/model/revision, ngoài health lúc startup. Hash model
 có điểm hủy mỗi block 1 MiB; hủy không bị đổi thành lỗi manifest missing. GUI chỉ áp lựa chọn local

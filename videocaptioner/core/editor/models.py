@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
 
+from videocaptioner.core.asr.audio_identity import AudioIdentity
 from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
 from videocaptioner.core.translate.conversation import ConversationContext
 
@@ -245,8 +246,12 @@ class EditorProject:
     _cue_index_cache: Any = field(default=None, repr=False, compare=False)
     audio_events: list[ASRAudioEvent] = field(default_factory=list)
     conversation_context: ConversationContext = field(default_factory=ConversationContext)
+    audio_identity: AudioIdentity | None = None
+    pending_diarization: bool = False
 
     def __post_init__(self) -> None:
+        if type(self.pending_diarization) is not bool:
+            raise ValueError("Invalid pending diarization state.")
         self.duration_ms = max(0, int(self.duration_ms))
         if not self.tracks:
             self.tracks = default_editor_tracks(self.video_path, self.duration_ms)
@@ -349,6 +354,8 @@ class EditorProject:
             "cues": [cue.to_dict() for cue in self.cues],
             "audio_events": [event.to_dict() for event in self.audio_events],
             "conversation_context": self.conversation_context.to_dict(),
+            **({"audio_identity": self.audio_identity.to_dict()} if self.audio_identity else {}),
+            **({"pending_diarization": True} if self.pending_diarization else {}),
             "tracks": [track.to_dict() for track in self.tracks],
             "layers": [layer.to_dict() for layer in self.layers],
             "voice_settings": sanitize_voice_settings(self.voice_settings),
@@ -376,6 +383,8 @@ class EditorProject:
             cues=[EditorCue.from_dict(item) for item in data.get("cues", [])],
             audio_events=[ASRAudioEvent.from_dict(item) for item in data.get("audio_events", [])],
             conversation_context=ConversationContext.from_dict(data.get("conversation_context")),
+            audio_identity=AudioIdentity.from_dict(data.get("audio_identity")),
+            pending_diarization=data.get("pending_diarization", False),
             tracks=[EditorTrack.from_dict(item) for item in data.get("tracks", [])],
             layers=[EditorLayer.from_dict(item) for item in data.get("layers", [])],
             voice_settings=sanitize_voice_settings(dict(data.get("voice_settings", {}) or {})),

@@ -1,7 +1,20 @@
 """Local review CLI must not fall through to recognition or accept partial output."""
 
+import pytest
+
 from videocaptioner.cli.main import main
 from videocaptioner.core.asr.review import NativeReview
+
+
+@pytest.mark.parametrize("flag", ["--save-review", "--output"])
+def test_audio_verification_never_overwrites_selected_media(tmp_path, flag, monkeypatch):
+    source, audio = tmp_path / "review.json", tmp_path / "original.wav"
+    source.write_text("{}", encoding="utf-8")
+    audio.write_bytes(b"synthetic source")
+    monkeypatch.setattr("videocaptioner.cli.commands.asr_review.verify_audio_file",
+                        lambda *a: pytest.fail("Reject destinations before IO"))
+    assert main(["asr-review", str(source), "--audio", str(audio), flag, str(audio)]) == 2
+    assert source.read_text() == "{}" and audio.read_bytes() == b"synthetic source"
 
 
 def test_cli_report_edit_and_resume_without_provider(tmp_path, monkeypatch):

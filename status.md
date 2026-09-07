@@ -1,5 +1,57 @@
 # Project Status
 
+## 2026-09-07 (S5.2: identity recording và gateway hybrid; dừng review)
+
+- Đúng worktree/nhánh user chỉ định, baseline **27be883** sạch; code S5.1 **8599965** là ancestor.
+  Không commit/push/S6, không đổi dependency Qt/pin/model/runtime. Giữ artifact cũ; SHA-256 S4,
+  S4.1 Final, S5 Final và S5.1 Final khớp bàn giao. Checkout vẫn không có settings.json mới.
+- Thêm identity typed của toàn PCM16 mono 16 kHz (SHA-256 + số sample, không path/transcript/key),
+  giữ tail và optional schema cũ. Qwen/API/native qua pipeline, JSON/review/editor/table giữ
+  identity/IDs/override/pending. Sai audio cùng duration dừng trước cache/runtime/inference;
+  file lossless/đổi tên vẫn khớp. Legacy mở được, báo unverified và không tự được xác minh.
+- Review có chọn audio chạy QThread, cancel/retain/signal guard; CLI `asr-review --audio`, bảo vệ
+  audio khỏi output/save-review. Pending chỉ được xóa sau diarization; export timing không thành
+  full hybrid success. Aligner S5 được chọn tường minh cho API text-only, giữ strict S2. Gateway
+  recognition đầy đủ trước alignment/review, text thiếu trên audio có năng lượng không resume pass.
+- **API source thật**, đúng gateway/model đã chọn, public Chinese 4,204 s, cache reads off:
+  Whisper → Community-1 → JSON/SRT **exit 0 / 1 cue 0–4000 ms / 43,390 s**;
+  GPT → strict alignment → Community-1 → JSON/SRT **exit 0 / 1 cue 400–3680 ms / 13 token IDs /
+  70,859 s**. Cùng identity **67.263 sample**, 1 speaker, pending false. Catalog HTTP 200 là gate riêng.
+- **GPT từ EXE mới thật pass**: 58,312 s, 1 cue 400–3680 ms / 13 token IDs; JSON/SRT và identity
+  khớp source. **Whisper API từ EXE HTTP 429 / exit 5**, không output; không chạy thêm command retry.
+  Frozen `local-diarize` từ timed Whisper JSON của source **exit 0 / 10,157 s**, SRT legacy
+  **exit 0 / 9,609 s** (giữ unverified). Đây không thay thế full Whisper API từ EXE còn thiếu.
+- Frozen wrong-audio trước missing runtime **exit 5**, không inference/output. Review tổng hợp
+  reject/override/reopen giữ raw/IDs/edited/pending và source identity; mismatch exit 5; không upload.
+  Key gateway chỉ RAM/password + named pipe current-user ACL, không argv/env/file; owner/readers
+  đã thoát, không runtime bridge còn lại. Không cấp/tìm key Scribe hoặc gọi lại Soniox/mini.
+- **Full offline: 1.116 passed / 4 skipped / 51 deselected, 131,78 s, exit 0**; sau đó thêm guard
+  output trùng audio và chạy **CLI cuối 106 passed / 2,58 s**. **30 test S5.2 mới** (24 core,
+  4 UI, 2 CLI); test identity sau cô lập cache **24 pass / 3,44 s**. Ruff pass, pyright **0/0**
+  với interpreter 3.12.13 có sẵn, translations sync. 4 skip TTS/service; native Qt playback pass.
+- Full đầu **2 fail / 1.114 pass**: regression thứ tự preflight (đã sửa), Settings subprocess
+  access violation **3221225477**, faulthandler `<no Python frame>`. Windows ghi fault trong
+  **PyQt5-sip 12.18.0**, offset **0x13a26**. Không build/GPU song song ở lượt fail; chưa biết nguyên
+  nhân. 4 case chẩn đoán (preflight/Settings/Scribe cancel-timeout) pass; 3 subprocess Settings
+  có stage/atexit marker (2 original, 1 teardown tường minh) pass. Không coi rerun là fix Qt/Scribe.
+- Rà fixture mới phát hiện S2 vẫn retain cache values khi tắt cache reads: đã thay bằng cache RAM
+  trong test, xóa đúng **2 entry tổng hợp do test tạo** sau đối chiếu key/value/store-time; rerun
+  xác nhận không tái tạo entry. Không xóa cache khác. Runtime/API output và log nghiệm thu ở scratch
+  riêng; không dùng helper ignored làm bằng chứng duy nhất, không đưa media/credential vào Git.
+- Artifact mới **`dist/VideoCaptioner-ASR-S52-Review-20260907-Final/`**, duy nhất spec: build exit 0,
+  **6 WARNING optional/platform, 0 ERROR, 6 SyntaxWarning upstream**; **218 module / 39 resource**
+  khớp source, không bundle GPU. EXE **31.161.859 byte**, local **19:11:44**, SHA-256
+  **`457613169d3bd5ac262130ca83f783c4cd4148d08317ab7126c5359b48f91649`**.
+  Onedir trước GUI **580 file / 237.667.163 byte**. Không rebuild sau nghiệm thu.
+- GUI **25,047 s**, 1 Qt window, RSS **101.412.864 byte**, WM_CLOSE exit 0, 0 process sót.
+  **Log teardown chưa sạch**: `BottomInfoBarManager has been deleted` sau thông báo update;
+  bản sao S5.1 Final tái hiện cùng lỗi (25,047 s/exit 0). Không phải lỗi mới chỉ có ở S5.2;
+  chưa chứng minh liên quan crash SIP. Không sửa framework để che fail. Review VI native render
+  và QThread/FFmpeg xác minh audio thật pass; offscreen không vẽ chữ, không dùng làm gate layout.
+- Còn mở: **Whisper API từ EXE sau HTTP 429, Scribe online, Qt/SIP/InfoBar teardown, phồn thể strict,
+  speaker accuracy và xưng hô do người đọc chấm**. Chưa chuyển S6. Hướng dẫn và giới hạn:
+  [S5.2](docs/dev/asr-s52.md); manifest/gate: [bàn giao](docs/dev/asr-implementation-2026-09.md#bàn-giao-s52--2026-09-07).
+
 ## 2026-09-07 (chốt commit S5.1 và bàn giao prompt S5.2)
 
 - Theo yêu cầu user sau review, đã chốt **code S5.1** thành

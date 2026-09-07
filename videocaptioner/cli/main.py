@@ -444,6 +444,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("input", help="ASR review JSON")
     review.add_argument("--set-timing", action="append", metavar="TOKEN_ID:START_MS:END_MS")
     review.add_argument("--save-review", metavar="JSON", help="Save explicit timing overrides with the original tokens")
+    review.add_argument("--audio", metavar="FILE", help="Verify the original recording locally before review/export")
     review.add_argument("-o", "--output", metavar="PATH", help="Export complete validated subtitles (.json or .srt)")
     _add_common_options(review)
     review.set_defaults(func=_run_asr_review)
