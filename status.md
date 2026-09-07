@@ -1,5 +1,21 @@
 # Project Status
 
+## 2026-09-07 (chốt commit S4 và chuẩn bị session S4.1)
+
+- Theo yêu cầu user sau khi xuất SRT xem thử, đã chốt **code S4** thành
+  `8558082945575d551a4c38cdc4943c395254a583` trên `codex/asr-s3-native`, parent S3 `327c214`.
+  Commit gồm 37 file, kể cả prompt S4 có sẵn được giữ nguyên nội dung. Các mục “chưa commit”
+  bên dưới là trạng thái tại thời điểm bàn giao/đo test trước yêu cầu submit mới này.
+- Trước commit: ruff toàn source/tests pass; pyright 0 errors/0 warnings; sync translations và
+  diff-check pass; quét mẫu credential 37 file pass. 21 module source khớp bytecode của EXE đã
+  kiểm thử. Code không đổi kể từ full offline **910 pass / 5 skip / 51 deselect**, nên không
+  rerun toàn suite hoặc rebuild artifact chỉ để commit. Media, outputs, keys, AppData không vào Git.
+- Session tiếp theo ưu tiên **S4.1**: timeout/chi phí context trong app, bảo toàn và review/resume
+  ASR timing lỗi, stale guard theo dữ liệu liên quan và lifecycle UI. Chưa sang S5/S6.
+  Prompt đầy đủ: [củng cố S4.1](docs/dev/asr-step-4-followup-prompt.md).
+- User có thể xem SRT Việt đã xuất và ghi lại lỗi kèm thời điểm để bổ sung vào session kế tiếp.
+  Yêu cầu submit/push ở phiên này không phải quyền tự commit/push trong session S4.1.
+
 ## 2026-09-07 (xuất full SRT Việt để user xem video thử)
 
 - Theo yêu cầu user, dịch đủ 30 cue Whisper cấp câu của clip Trung 111.333 s bằng đúng

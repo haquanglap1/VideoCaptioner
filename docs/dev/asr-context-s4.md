@@ -99,10 +99,18 @@ lý phía provider. Các translator không hỗ trợ context giữ transport c�
 
 ## Giới hạn nghiệm thu
 
-Các test đều dùng câu tổng hợp; output mock không phải ground truth tiếng Việt. Chưa có benchmark
-người nghe, tên nhân vật, đại từ hoặc video dài bằng người đọc. Soniox/Scribe online, GPT gateway→SRT,
-workflow media/API từ EXE vẫn **chưa nghiệm thu**. Phồn thể Qwen strict vẫn **chưa đạt acceptance**;
-phép đo Qwen local tiếng Trung S2 và startup EXE S3 không thay thế các khoản này.
+Unit/contract tests dùng câu tổng hợp; output mock không phải ground truth tiếng Việt. Chưa có
+benchmark người nghe, tên nhân vật, đại từ hoặc video dài bằng người đọc. Các lượt online sau
+bàn giao: Soniox nhận dạng được nhưng full parser dừng token 0 ms; Whisper gateway xuất được
+SRT cấp câu; GPT transcription trả text, chưa chạy alignment. Có bản Việt đủ 30 cue từ output
+Whisper + `gpt-5.6-terra`, dùng timeout riêng 300 s trong harness vì request mất 131.56 s;
+timeout app vẫn 120 s. Bản xem thử còn cần review ASR/ngôi/tên, không chứng minh chất lượng toàn bộ.
+
+Scribe online, GPT transcription→alignment→SRT và workflow media/API từ process EXE vẫn **chưa
+nghiệm thu**. Phồn thể Qwen strict vẫn **chưa đạt acceptance**. Chi tiết từng lượt đo trong status
+và implementation; phép đo Qwen local/S3 startup không thay thế các khoản này.
 
 Không thêm S5/S6, Qwen ASR/pyannote, auto voice, corpus benchmark hay đổi engine mặc định.
 Gate chạy và artifact S4 được ghi riêng trong `status.md` và implementation.
+Code S4 đã chốt tại `8558082` theo yêu cầu user. [Prompt S4.1](asr-step-4-followup-prompt.md)
+ưu tiên củng cố các luồng trên trước khi mở rộng S5.

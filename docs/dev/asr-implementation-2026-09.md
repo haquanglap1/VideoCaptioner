@@ -6,7 +6,9 @@ gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 
 và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. GPT gateway→SRT,
 phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptance. S5–S6 chưa triển khai.
 Theo yêu cầu riêng đầu phiên S4, 50 file S3 được commit `327c214` và push lên
-`origin/codex/asr-s3-native` trước khi sửa S4. S4 chưa commit/push, dừng để review.
+`origin/codex/asr-s3-native` trước khi sửa S4. Sau các lượt review/online và xuất SRT xem thử,
+user yêu cầu submit: **code S4 đã chốt tại `8558082945575d551a4c38cdc4943c395254a583`**.
+Session tiếp theo: [củng cố S4.1 trước S5](asr-step-4-followup-prompt.md).
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
@@ -485,8 +487,9 @@ videocaptioner/ui/view/video_editor_interface.py
 Triển khai trực tiếp trong working tree S3 user chỉ định, không tạo checkout/worktree mới.
 Đầu phiên xác minh HEAD S2 `d21251a` + đúng 50 file S3 dirty và prompt S4 untracked; đã đọc diff,
 manifest/source metadata/native/settings/tests. User yêu cầu riêng commit/push S3 trước:
-`327c214` gồm đúng 50 file, push nhánh `codex/asr-s3-native` thành công. Prompt S4 giữ nguyên
-untracked. Tất cả diff sau commit này là S4; không commit/push/tag/release S4.
+`327c214` gồm đúng 50 file, push nhánh `codex/asr-s3-native` thành công. Trong giai đoạn triển khai,
+prompt S4 được giữ nguyên untracked và code dừng review. Sau đó user yêu cầu submit/push:
+commit S4 **`8558082`** gồm 36 file S4 và prompt S4 có sẵn, không đổi nội dung prompt cũ.
 
 ### Code và review nền
 
@@ -603,8 +606,9 @@ gate workflow media/API từ process EXE dưới đây. Không ghi key/transcrip
 
 ### Manifest phần S4 (so với commit S3 `327c214`)
 
-S3 kế thừa là toàn bộ 50 file trong commit đó. Danh sách dưới chỉ là thay đổi S4; prompt
-`docs/dev/asr-step-4-prompt.md` có từ đầu phiên, giữ nguyên untracked và không tính vào S4.
+S3 kế thừa là toàn bộ 50 file trong commit đó. Danh sách dưới là 36 file thay đổi S4; prompt
+`docs/dev/asr-step-4-prompt.md` có từ đầu phiên, giữ nguyên nội dung và được track kèm commit S4.
+Tài liệu bàn giao S4.1 nằm ở commit tiếp theo, không đổi source snapshot `8558082`.
 
 ```text
 docs/dev/asr-context-s4.md
