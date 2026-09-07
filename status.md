@@ -1,5 +1,22 @@
 # Project Status
 
+## 2026-09-07 (chốt commit S5.1 và bàn giao prompt S5.2)
+
+- Theo yêu cầu user sau review, đã chốt **code S5.1** thành
+  **`8599965b7931d8c555a55cfa379b4a2e2cee9238`**, parent `80f6e36`, và push lên
+  `origin/codex/asr-s3-native`. Commit đúng **12 file** theo manifest, không chứa media/AppData/
+  runtime/build/dist/credential. Các mục “không commit/push” bên dưới mô tả thời điểm nghiệm thu
+  trước yêu cầu submit này, không phải trạng thái Git hiện tại.
+- Trước commit: fetch xác nhận local/remote cùng baseline; ruff pass, pyright **0/0**, translations
+  sync, diff-check và quét mẫu credential/path pass. **216 module / 33 resource** vẫn khớp artifact
+  S5.1 Final, SHA-256 không đổi. Không đổi code từ gate **1.088 pass / 4 skip / 51 deselect**, CLI104
+  và các lượt local-hybrid source/EXE thật; không rerun full hoặc rebuild chỉ để commit.
+- [Prompt phiên tiếp theo — S5.2](docs/dev/asr-step-5-2-prompt.md) ưu tiên nợ API thật, liên kết
+  audio khi mở lại JSON/review và chẩn đoán có bằng chứng trước S6. Community-1 đã cài/đã inference
+  thật, không cần xin lại HF token để chạy offline. Giữ các khoản chất lượng/API chưa đo riêng.
+  **Chưa khởi chạy S5.2/S6**; quyền commit/push lần này không tự áp dụng cho phiên tiếp theo.
+  Giữ nguyên runtime, artifact, media/AppData và mọi dữ liệu user.
+
 ## 2026-09-07 (S5.1: Community-1 và local-hybrid đã chạy thật; dừng review)
 
 - User cung cấp quyền tải và nhập token qua ô password trên máy; installer truyền token trong

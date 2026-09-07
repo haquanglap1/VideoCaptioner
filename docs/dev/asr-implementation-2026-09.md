@@ -18,12 +18,20 @@ Theo yêu cầu submit/push sau review, **code S5 đã chốt tại
 `3a7c231a53069fefc58b34e95d7cc9ba10dac846`**. Commit tài liệu bàn giao sau code thêm
 [prompt phiên S5.1](asr-step-5-followup-prompt.md). S5.1 đã củng cố contract bên dưới;
 Community-1/local-hybrid đã có smoke thật sau khi user cấp quyền tải. Chưa triển khai S6.
+Theo yêu cầu commit/push sau review, **code S5.1 đã chốt tại
+`8599965b7931d8c555a55cfa379b4a2e2cee9238`** trên `codex/asr-s3-native`.
+[Prompt S5.2](asr-step-5-2-prompt.md) bàn giao nợ API/liên kết nguồn trước S6; lưu prompt không
+khởi chạy phiên mới hoặc cấp quyền commit/push cho thay đổi tiếp theo.
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
 Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ## Bàn giao S5.1 — 2026-09-07
+
+Code và bằng chứng S5.1 được chốt thành **`8599965b7931d8c555a55cfa379b4a2e2cee9238`**,
+parent `80f6e36`, sau yêu cầu submit/push của user. Các giới hạn “không commit/push” trong
+các mục nghiệm thu bên dưới mô tả thời điểm làm việc trước yêu cầu chốt Git này.
 
 ### Bổ sung sau khi có quyền tải Community-1
 
@@ -136,7 +144,8 @@ user vẫn phải chọn đúng audio gốc cho `local-diarize`.
 
 ### Manifest S5.1 so với baseline 80f6e36
 
-**12 file** trong toàn bộ S5.1; README được cập nhật ở lượt nghiệm thu Community-1 bổ sung.
+**12 file** trong commit code S5.1 **8599965**; README được cập nhật ở lượt nghiệm thu Community-1
+bổ sung. Prompt S5.2 và cập nhật trạng thái chốt Git thuộc commit tài liệu bàn giao sau code.
 
 ```text
 README.md
