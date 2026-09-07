@@ -21,7 +21,11 @@
   peak Torch allocation ~1.76 GiB. Câu lệch audio và silence bị chặn; bản phồn thể cũng bị strict
   validator chặn, **chưa đạt acceptance phồn thể**. Không suy chất lượng cả corpus từ clip này.
 - Gateway thật/GPT→SRT chưa nghiệm thu: worktree không có settings ASR hay env ASR key, không lấy
-  credential/media từ checkout khác. Không triển khai S3–S6, không commit/push/tag/GitHub.
+  credential/media từ checkout khác. Không triển khai S3–S6.
+- Sau bàn giao, user yêu cầu commit/push S2 và prompt session tiếp theo: code S2 commit
+  `96470bf7c60eb7598f61eb7d450327011f9f19c8` trên `codex/asr-s2-alignment`.
+  [Prompt S3](docs/dev/asr-step-3-prompt.md) giữ baseline, guard S1/S2 và các phần chưa nghiệm thu;
+  quyền commit/push của lượt bàn giao này không tự áp dụng cho thay đổi S3 ở session mới.
 - Gate cuối: ruff/sync translations/diff-check pass; pyright 0 errors/0 warnings; full offline
   **768 passed, 5 skipped, 51 deselected** (83.74 s). EXE review PyInstaller exit 0, 6 warnings
   optional/platform (chi tiết trong bàn giao); EXE 30,985,630 byte, SHA-256 `133d04bb…55d5cb6`.

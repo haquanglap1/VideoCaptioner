@@ -4,10 +4,11 @@ Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
 gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1 và S2 đã có code
 và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. Gateway GPT→SRT
-chưa nghiệm thu vì thiếu key; S3–S6 chưa triển khai. S2 dừng để review, chưa commit/push.
+chưa nghiệm thu vì thiếu key; S3–S6 chưa triển khai. Code S2 đã commit theo yêu cầu user sau bàn giao.
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
+Prompt session tiếp theo: [thực hiện S3](asr-step-3-prompt.md).
 
 ## Mục tiêu sản phẩm đã chốt
 
@@ -249,7 +250,9 @@ chunk và đoạn không align được. Chỉ bỏ guard subtitle khi có align
 ### Phạm vi và validation
 
 Triển khai từ đúng commit S1 `43bb76f45d8dc12cd107fbcbd92c7e21ab811cc3`, không lấy master
-làm baseline. Không sửa checkout gốc, không commit/push. Code S2 dùng factory CLI/GUI hiện có,
+làm baseline. Không sửa checkout gốc. Giai đoạn implementation dừng trước commit/push; sau đó
+user yêu cầu commit/push và chuẩn bị prompt S3. Commit code S2 là
+`96470bf7c60eb7598f61eb7d450327011f9f19c8`. Code S2 dùng factory CLI/GUI hiện có,
 runtime Qwen riêng và policy strict; chi tiết thiết kế, cài đặt, cache/cancel, phép đo và giới hạn
 nằm ở [ASR alignment S2](asr-alignment-s2.md).
 
