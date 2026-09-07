@@ -1,3 +1,6 @@
+from contextlib import nullcontext
+from copy import deepcopy
+
 from videocaptioner.core.asr.aligned_api import AlignedAPI
 from videocaptioner.core.asr.api_profiles import resolve_profile
 from videocaptioner.core.asr.asr_data import ASRData
@@ -5,6 +8,7 @@ from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
 from videocaptioner.core.asr.faster_whisper import FasterWhisperASR
 from videocaptioner.core.asr.jianying import JianYingASR
+from videocaptioner.core.asr.local.audio import source_snapshot
 from videocaptioner.core.asr.local.pipeline import (
     QwenLocalASR,
     add_local_speakers,
@@ -37,6 +41,8 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
     if config.transcribe_model is None:
         raise ValueError("Transcription model not set")
 
+    config = deepcopy(config)
+
     # Create ASR instance based on model type
     if config.local_asr.diarize:
         if config.transcribe_model not in (TranscribeModelEnum.QWEN_LOCAL, TranscribeModelEnum.WHISPER_API):
@@ -52,18 +58,18 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
                 runtime.start(check)
             finally:
                 runtime.close()
-    asr = _create_asr_instance(audio_path, config)
+    def snapshot_check():
+        callback(0, "Preparing hybrid audio snapshot")
 
-    # Run transcription
-    asr_data = asr.run(callback=callback)
-
-    # Optimize subtitle timing if not using word timestamps
-    if config.local_asr.diarize:
-        return add_local_speakers(audio_path, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
-    if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR)):
-        asr_data.optimize_timing()
-
-    return asr_data
+    source = source_snapshot(audio_path, snapshot_check) if config.local_asr.diarize else nullcontext(audio_path)
+    with source as job_audio:
+        asr = _create_asr_instance(job_audio, config)
+        asr_data = asr.run(callback=callback)
+        if config.local_asr.diarize:
+            return add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
+        if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR)):
+            asr_data.optimize_timing()
+        return asr_data
 
 
 def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI | NativeASR | QwenLocalASR:
@@ -137,8 +143,8 @@ def _create_whisper_cpp_asr(audio_path: str, config: TranscribeConfig) -> Chunke
         asr_class=WhisperCppASR,
         audio_path=audio_path,
         asr_kwargs=asr_kwargs,
-        chunk_concurrency=1,  # 本地转录使用单线程
-        chunk_length=60 * 20,  # 每块20分钟
+        chunk_concurrency=1,  # Avoid concurrent local model loads.
+        chunk_length=60 * 20,
     )
 
 
@@ -193,23 +199,23 @@ def _create_faster_whisper_asr(audio_path: str, config: TranscribeConfig) -> Chu
         asr_class=FasterWhisperASR,
         audio_path=audio_path,
         asr_kwargs=asr_kwargs,
-        chunk_concurrency=1,  # 本地转录使用单线程
-        chunk_length=60 * 20,  # 每块20分钟
+        chunk_concurrency=1,  # Avoid concurrent local model loads.
+        chunk_length=60 * 20,
     )
 
 
 if __name__ == "__main__":
-    # 示例用法
+    # Example usage.
     from videocaptioner.core.entities import WhisperModelEnum
 
-    # 创建配置
+    # Create configuration.
     config = TranscribeConfig(
         transcribe_model=TranscribeModelEnum.WHISPER_CPP,
         transcribe_language="zh",
         whisper_model=WhisperModelEnum.MEDIUM,
     )
 
-    # 转录音频
+    # Transcribe audio.
     audio_file = "test.wav"
 
     def progress_callback(progress: int, message: str):

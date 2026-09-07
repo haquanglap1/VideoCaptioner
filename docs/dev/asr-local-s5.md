@@ -150,7 +150,80 @@ mỗi stage; `--local-timeout`, `local_asr.timeout`. Install có deadline hữu 
 Subprocess ẩn, env được lọc, chỉ đóng process tree thuộc job; reader được join. Worker giữ contextvars,
 dấu hủy còn sau `QThread.finished`, supervisor giữ worker đến lúc xong, không terminate QThread.
 
+## Củng cố S5.1
+
+Job hybrid chụp cấu hình và sao chép nguồn vào thư mục tạm riêng trước recognition. Recognition,
+alignment và diarization cùng dùng bản sao đó; sửa/thay file gốc sau bước chuẩn bị không đổi audio
+của job đang chạy. Nguồn đổi trong lúc sao chép bị từ chối; copy có deadline 600 s và kiểm tra hủy
+mỗi block 1 MiB. Cần thêm dung lượng tạm bằng kích thước input; thành công/lỗi/hủy đều dọn đúng
+bản sao của job. Guard Windows so sánh stat của handle/path với baseline riêng vì `ctime` của
+hai API có thể khác nhau ngay cả khi file không đổi.
+
+`local-diarize` kiểm tra bounds của cue và nhãn native/local đã có trước khi nạp model. JSON/SRT
+nhập lại vẫn cần user chọn đúng audio gốc; schema hiện tại không lưu fingerprint audio để chứng minh
+hai file thuộc cùng recording. Không nhận dạng/upload lại để đoán nguồn. Policy coverage/overlap,
+token/cue ID, review và stage provenance giữ nguyên.
+
+Mỗi response runtime đều kiểm tra protocol/model/revision, ngoài health lúc startup. Hash model
+có điểm hủy mỗi block 1 MiB; hủy không bị đổi thành lỗi manifest missing. GUI chỉ áp lựa chọn local
+diarization vào job Qwen/Whisper API; chuyển engine khác giữ preference đã lưu nhưng không mang
+cờ đang ẩn vào job. CLI vẫn từ chối yêu cầu local diarization tường minh cho engine không hỗ trợ.
+
+S5.1 giữ nguyên pin/recipe và runtime cũ. Source Qwen 0.6B/1.7B trên cùng clip public tiếp tục qua
+strict alignment → JSON/SRT, mỗi bản **13 cue/token, 400–3680 ms**; toàn lượt lần lượt **59,266 /
+42,609 s**, gồm verify/load/alignment trong lúc có build nền, không phải benchmark tốc độ.
+Tại mốc củng cố ban đầu, chưa có quyền/token Community-1 nên chưa cài/chạy model thật. Nghiệm thu
+bổ sung sau khi user cấp quyền được ghi bên dưới. Model card chính thức vẫn yêu cầu user tự
+chấp nhận điều kiện; public card, dependency import và test giả không thay thế quyền tải/model.
+
 ## Bằng chứng và giới hạn
+
+### Nghiệm thu Community-1 bổ sung trong S5.1
+
+Sau khi user cấp quyền tải và nhập token qua GUI password, installer đã cài Community-1 vào
+runtime mới `build/S51-Community1-Runtime-20260907/`, giữ nguyên recipe/pin và runtime cũ.
+Manifest/hash verify pass: **8 file / 32.832.557 byte**, revision
+`3533c8cf8e369892e6b79ff1bf80f7b0286a54ee`. Inference chạy với snapshot local, HF offline,
+telemetry tắt và socket guard bật, không truyền token vào process inference.
+
+[Mẫu WAV 30 s](https://github.com/pyannote/pyannote-audio/blob/main/tutorials/assets/sample.wav)
+và [RTTM tham chiếu](https://github.com/pyannote/pyannote-audio/blob/main/tutorials/assets/sample.rttm)
+của pyannote được dùng cho smoke nhỏ; không mở corpus S6. Model thật trả **13 span / 2 speaker**,
+giữ regular diarization có overlap. Clip Trung public Qwen 4,204 s có **1 speaker**; silence 3 s
+có **0 span**. Đường waveform memory đã inference thành công, vượt mức dependency import S5.
+
+| Phép đo Community-1 | Kết quả |
+| --- | ---: |
+| Load đầu của lượt đo | 75,094 s |
+| Inference đầu / warm trên mẫu 30 s | 1,688 / 0,485 s |
+| Torch peak allocation của process | 1.708.632.064 byte |
+| RSS process tree sau warm | 1.944.559.616 byte |
+| Restart load | 25,968 / 9,421 s |
+| Shutdown | 0,907–0,922 s |
+| Cancel startup / inference, gồm cleanup | 1,531 / 1,563 s |
+
+Peak Torch không phải tổng VRAM/NVML; các lượt khác trạng thái cache, không dùng so tốc độ model.
+Process/reader/lease được giải phóng sau close/cancel. Qwen 0.6B → strict alignment → Community-1
+từ source pass **13 cue/token assigned**, toàn lượt **86,110 s**.
+
+Cancel inference thật Qwen/aligner **1,187/1,344 s**, gồm cleanup; một process khác nhận GPU busy
+khi Community-1 vẫn ready, không tác động owner. Manual speaker override qua CommandStack
+undo/redo và JSON/editor roundtrip giữ stage provenance đã nhận từ model thật.
+
+Nhập JSON/SRT với 11 cue tổng hợp theo timing reference: **1 unknown, 3 ambiguous, 7 overlap**,
+text/timing/cue IDs giữ nguyên, JSON/editor roundtrip pass và hai job có scope khác nhau. Window
+spot-check giữa các lượt thoại giữ speaker quay lại/overlap/silence unknown; lượt thoại ngắn đầu
+clip khác reference và bị giữ ambiguous. Không gọi kết quả này là speaker accuracy đã đạt.
+
+EXE S5.1 Final cũng đã chạy full local-hybrid → JSON/SRT: **1 cue 400–3680 ms, 13 token IDs**,
+exit 0 trong **51,719 s**. `local-diarize` từ Qwen timed JSON/SRT đều exit 0, **13 assigned cue**,
+không ASR/upload lại. Chạy bản sao binary/resources trong scratch mới để giữ AppData/artifact gốc;
+không rebuild và không thay runtime Qwen S5 R2. Đây là runtime cài tại máy, chưa portable.
+
+Community-1/local-hybrid đã có smoke thật; **hybrid API cloud, Scribe online, GPT gateway→alignment→
+SRT, phồn thể strict, speaker accuracy và xưng hô do người đọc chấm** vẫn chưa nghiệm thu.
+
+### Bằng chứng Qwen và giới hạn tại thời điểm bàn giao S5
 
 RTX 5070, 12.227 MiB VRAM theo nvidia-smi. Qwen CUDA thật trên
 [audio Trung public của Qwen](https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_zh.wav),

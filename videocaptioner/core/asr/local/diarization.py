@@ -39,11 +39,7 @@ def _coverage(intervals: list[tuple[int, int]]) -> int:
     return covered
 
 
-def associate(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int, scope: str,
-              recognition: StageProvenance) -> ASRData:
-    model = MODELS["community-1"]
-    stage = StageProvenance("pyannote", model.repository, model.revision, DIARIZATION_POLICY)
-    result = []
+def validate_source(data: ASRData, duration_ms: int) -> None:
     for seg in data.segments:
         if (type(seg.start_time) is not int or type(seg.end_time) is not int or
                 not 0 <= seg.start_time < seg.end_time <= duration_ms):
@@ -51,6 +47,16 @@ def associate(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int, s
         old = seg.metadata
         if old and (old.provider in ("soniox", "scribe") or old.speaker is not None or old.diarization is not None):
             raise ValueError("Existing diarization must be reviewed explicitly; local labels cannot replace it.")
+
+
+def associate(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int, scope: str,
+              recognition: StageProvenance) -> ASRData:
+    validate_source(data, duration_ms)
+    model = MODELS["community-1"]
+    stage = StageProvenance("pyannote", model.repository, model.revision, DIARIZATION_POLICY)
+    result = []
+    for seg in data.segments:
+        old = seg.metadata
         by_speaker: dict[str, list[tuple[int, int]]] = {}
         for span in spans:
             start, end = max(seg.start_time, span.start_ms), min(seg.end_time, span.end_ms)

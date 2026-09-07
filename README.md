@@ -156,8 +156,8 @@ Chọn `Qwen3-ASR [Local]` trong GUI hoặc `--asr qwen-local --language zh` tro
 Qwen hoặc Whisper API; model gated cần user chấp nhận điều kiện Hugging Face và nhập token ẩn.
 `local-diarize` dùng JSON/SRT đã có với âm thanh gốc, không nhận dạng/upload lại.
 Xem [cài đặt, cache/review, GPU và giới hạn nghiệm thu S5](docs/dev/asr-local-s5.md).
-Cả hai Qwen đã có smoke local trên clip public; diarization model/API thật và chất lượng
-speaker/xưng hô vẫn chưa nghiệm thu.
+Qwen và Community-1 đã có smoke local/hybrid từ source và EXE trên audio public.
+Hybrid API cloud và chất lượng speaker/xưng hô vẫn chưa nghiệm thu.
 
 ## Lồng tiếng Natural
 

@@ -2,6 +2,7 @@
 
 from contextvars import ContextVar
 
+import pytest
 from PyQt5.QtCore import QEventLoop, QTimer
 
 from videocaptioner.core.asr.local.runtime import LocalRuntimeError
@@ -24,9 +25,12 @@ def test_open_settings_never_calls_runtime_or_network(qapp, monkeypatch):
 
 
 def test_task_factory_snapshots_local_options(qapp):
+    from videocaptioner.core.entities import TranscribeModelEnum
     from videocaptioner.ui.task_factory import TaskFactory
     old_model, old_diarize = cfg.local_asr_model.value, cfg.local_asr_diarize.value
+    old_engine = cfg.transcribe_model.value
     try:
+        cfg.set(cfg.transcribe_model, TranscribeModelEnum.QWEN_LOCAL)
         cfg.set(cfg.local_asr_model, "qwen-0.6b")
         cfg.set(cfg.local_asr_diarize, True)
         task = TaskFactory.create_transcribe_task("synthetic.wav")
@@ -35,6 +39,7 @@ def test_task_factory_snapshots_local_options(qapp):
         assert task.transcribe_config.local_asr.model == "qwen-0.6b"
         assert task.transcribe_config.local_asr.diarize is True
     finally:
+        cfg.set(cfg.transcribe_model, old_engine)
         cfg.set(cfg.local_asr_model, old_model)
         cfg.set(cfg.local_asr_diarize, old_diarize)
 
@@ -94,3 +99,21 @@ def test_late_install_result_cannot_change_saved_root(qapp, monkeypatch, tmp_pat
     supervisor().workers.discard(worker)
     worker.setParent(None)
     dialog.close()
+
+
+@pytest.mark.parametrize("name", ["QWEN_LOCAL", "WHISPER_API", "SONIOX", "SCRIBE", "BIJIAN", "FASTER_WHISPER"])
+def test_engine_switch_scopes_local_diarization_without_erasing_preference(qapp, name):
+    from videocaptioner.core.entities import TranscribeModelEnum
+    from videocaptioner.ui.common.local_asr_settings import local_config
+
+    old_engine, old_diarize = cfg.transcribe_model.value, cfg.local_asr_diarize.value
+    try:
+        cfg.set(cfg.local_asr_diarize, True)
+        cfg.set(cfg.transcribe_model, getattr(TranscribeModelEnum, name))
+        assert local_config().diarize is (name in ("QWEN_LOCAL", "WHISPER_API"))
+        assert cfg.local_asr_diarize.value is True
+        cfg.set(cfg.transcribe_model, TranscribeModelEnum.QWEN_LOCAL)
+        assert local_config().diarize is True
+    finally:
+        cfg.set(cfg.transcribe_model, old_engine)
+        cfg.set(cfg.local_asr_diarize, old_diarize)

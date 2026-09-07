@@ -1,5 +1,82 @@
 # Project Status
 
+## 2026-09-07 (S5.1: Community-1 và local-hybrid đã chạy thật; dừng review)
+
+- User cung cấp quyền tải và nhập token qua ô password trên máy; installer truyền token trong
+  RAM/stdin, không lưu vào settings/argv/env/log/source. Cài bằng installer hiện có vào đích mới
+  **`build/S51-Community1-Runtime-20260907/`**, không đổi runtime/artifact hoặc dependency Qt cũ.
+  Revision **3533c8cf8e369892e6b79ff1bf80f7b0286a54ee**, **8 file / 32.832.557 byte** model,
+  manifest/hash/recipe/health pass. Giữ pyannote 4.0.7, Torch 2.9.1+cu128, lock đã pin.
+- **Community-1 inference thật pass** qua waveform PCM trong RAM, HF offline/telemetry off/socket
+  guard bật, không cần token sau download. Mẫu pyannote public **30 s → 13 span / 2 nhãn speaker**;
+  clip Trung Qwen public **4,204 s → 1 span / 1 speaker**; silence **3 s → 0 span**.
+  Cold/warm inference mẫu 30 s **1,688/0,485 s**, Torch peak allocation **1.708.632.064 byte**;
+  RSS tree warm **1.944.559.616 byte**. Không suy tổng VRAM/NVML hoặc benchmark tốc độ từ số này.
+- Health load đầu **75,094 s**, restart load **25,968/9,421 s**, shutdown **0,907–0,922 s**.
+  Cancel startup/inference Community-1 thật **1,531/1,563 s**, process/reader/lease đã giải phóng.
+- Cancel inference Qwen/aligner thật **1,187/1,344 s**, cleanup pass. Process thứ hai nhận GPU
+  busy trong khi Community-1 owner còn sống; không unload/kill owner. Speaker override qua
+  CommandStack undo/redo và JSON/editor roundtrip giữ nguyên diarization provenance.
+- **Qwen 0.6B → strict alignment → Community-1 thật từ source pass**, cache tắt: **13 cue/token**
+  đều assigned, toàn lượt **86,110 s**. JSON/SRT nhập riêng từ timing reference tổng hợp của mẫu
+  public giữ **11 cue: 1 unknown, 3 ambiguous, 7 overlap**; không ép gán nhãn. Text/timing/IDs,
+  JSON/editor roundtrip và scope riêng giữa hai job pass. Đây không phải nhận dạng transcript mẫu.
+- Spot-check các cửa sổ nội bộ theo RTTM upstream giữ hai speaker quay lại, overlap và silence
+  unknown. **Lượt thoại ngắn đầu clip khác reference và bị giữ ambiguous**; chưa nghiệm thu
+  speaker accuracy nói chung, chưa mở corpus/benchmark S6.
+- **EXE local-hybrid thật pass** từ bản sao riêng của S5.1 Final, giữ nguyên binary SHA-256
+  **5c2cc4ad873d7acbc0ccb9a94ce942e87a41c3bc8ba0c68c6e36af8df25f73c8** và artifact/AppData gốc.
+  Qwen → alignment → Community-1 → JSON/SRT **exit 0**, **1 cue 400–3680 ms / 13 token IDs**,
+  **51,719 s**. `local-diarize` dùng Qwen timed JSON/SRT đã có đều **exit 0 / 13 assigned cue**,
+  **11,328/11,204 s**, không nhận dạng/upload lại. Không rebuild chỉ để nghiệm thu runtime mới.
+- Lượt này chỉ cập nhật **README.md, status.md, implementation và hướng dẫn S5**; source/test snapshot giữ
+  nguyên gate **1.088 pass / 4 skip / 51 deselect**, CLI104, ruff/pyright/sync đã pass trước đó.
+  Giữ riêng **hybrid API cloud, Scribe online, GPT gateway→alignment→SRT, phồn thể strict,
+  speaker accuracy và xưng hô do người đọc chấm** là chưa nghiệm thu. Không commit/push/S6.
+
+## 2026-09-07 (S5.1: củng cố local/hybrid; Community-1 chờ quyền tải; dừng review)
+
+- Đúng worktree/nhánh user chỉ định, baseline **80f6e36** sạch, code S5 **3a7c231** là ancestor.
+  Không commit/push/S6. Giữ media/AppData, runtime, dependency Qt và artifact S4–S5; SHA-256
+  ba EXE S4/S4.1 Final/S5 Final vẫn đúng bàn giao. Không tìm credential ở checkout/artifact/log.
+- Sửa lỗi hybrid nhận audio khác khi file gốc đổi giữa stage: chụp config và source riêng cho
+  toàn job, có cancel/deadline/copy validation/cleanup. Giữ text/timing/review/policy và IDs.
+  Guard Windows dùng baseline stat riêng cho handle/path; khác biệt `ctime` đã tái hiện bằng
+  file tổng hợp, tránh false rejection. Không lưu fingerprint audio mới vào schema JSON/SRT.
+- Từ chối cue ngoài duration/nhãn native hoặc local đã có trước khi nạp diarization. Kiểm tra
+  protocol/model/revision mỗi response runtime, thêm điểm hủy khi hash model. GUI chỉ áp cờ
+  local diarization cho Qwen/Whisper; chuyển engine khác không mang cờ ẩn vào job, giữ preference.
+- **Full offline mã cuối: 1.088 passed, 4 skipped, 51 deselected, 118,40 s, exit 0**; **22 test mới**.
+  Toàn CLI **104 pass, 2,09 s**; test gần phần cuối **26 pass, 4,55 s**. Ruff pass, pyright
+  **0 errors/0 warnings**, sync translations/diff-check pass. Python **3.12.13**, đúng checkout,
+  FFmpeg/venv có sẵn, không sync dependency. 4 skip TTS/service; native QtMultimedia pass.
+- Có gate trung gian fail: guard `ctime` mới (đã sửa/test); rồi crash Settings subprocess
+  **3221225477** cùng test Scribe mock deadline **10 ms** chưa vào transport (`closed=False`).
+  Ba case chẩn đoán riêng pass; full cuối chạy không có build/runtime song song pass.
+  **Chưa xác định nguyên nhân crash Settings hay khẳng định đã sửa flake timeout**; giữ bằng
+  chứng local ignored. Không coi mock Scribe là online acceptance.
+- **Qwen source thật**: 0.6B/1.7B, audio Trung public **4,204 s**, cache tắt → strict alignment
+  → JSON/SRT **13 cue/token, 400–3680 ms** mỗi bản, toàn lượt **59,266/42,609 s**. Có build nền,
+  không dùng làm benchmark tốc độ. Không còn bridge Qwen, host không import GPU libraries.
+- **Community-1 chưa inference**: chưa được cung cấp quyền/token trong phiên; không cài model,
+  không tự chấp nhận điều kiện. Giữ pin/recipe và thư mục pyannote dependency S5. Community-1/
+  hybrid API, speaker accuracy, Scribe online, GPT gateway→alignment→SRT, phồn thể strict và
+  xưng hô do người đọc chấm vẫn thiếu. **Chưa đủ điều kiện nghiệm thu để chuyển S6**.
+- Artifact mới **`dist/VideoCaptioner-ASR-S51-Review-20260907-Final/`**: PyInstaller exit 0,
+  **6 WARNING optional/platform, 0 ERROR, 6 SyntaxWarning upstream**; **216 module / 33 resource**
+  khớp source, không bundle GPU. EXE **31.150.810 byte**, local **2026-09-07 17:55:01**, SHA-256
+  **`5c2cc4ad873d7acbc0ccb9a94ce942e87a41c3bc8ba0c68c6e36af8df25f73c8`**.
+  Onedir trước smoke **580 file / 237.650.489 byte**; giữ riêng bản S5.1 đầu.
+- **Workflow Qwen từ EXE Final pass**: 0.6B/1.7B nhận dạng → strict alignment → JSON → SRT,
+  các command exit 0, mỗi bản **1 cue 400–3680 ms**, giữ **13 token IDs**. Toàn transcribe
+  **37,562/27,500 s**, export SRT **0,360/0,390 s**. Frozen `local-diarize` từ chối JSON native
+  **exit 5 trước runtime**, không output partial; không process EXE sót sau workflow.
+  Đây là media/local Qwen, không phải Community-1, hybrid cloud hay portable-runtime acceptance.
+- **GUI Final pass**: hidden launch **25 s**, 1 cửa sổ Qt đúng process; WM_CLOSE **exit 0**,
+  RSS **100.052.992 byte**, **0 process sót / 0 startup error marker**. Không rebuild sau smoke.
+- Hướng dẫn: [S5.1](docs/dev/asr-local-s5.md#củng-cố-s51). Manifest đúng **11 file** và gate
+  chi tiết: [bàn giao S5.1](docs/dev/asr-implementation-2026-09.md#bàn-giao-s51--2026-09-07).
+
 ## 2026-09-07 (chốt commit S5 và bàn giao phiên S5.1)
 
 - Theo yêu cầu user sau review, đã chốt **code S5** thành

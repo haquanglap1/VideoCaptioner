@@ -30,10 +30,11 @@ def recipe_directory() -> Path:
     return Path(__file__).resolve().parents[3] / "resources" / "local_asr"
 
 
-def file_hash(path: Path) -> str:
+def file_hash(path: Path, *, check: Check = lambda: None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            check()
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -85,12 +86,14 @@ def locate(model_id: str, root: str | Path = "", *, verify: bool = False, check:
             if (not path.resolve().is_relative_to(model_path.resolve()) or not path.is_file() or
                     path.stat().st_size != info["size"] or not isinstance(info["sha256"], str) or len(info["sha256"]) != 64):
                 raise ValueError
-            if verify and file_hash(path) != info["sha256"]:
+            if verify and file_hash(path, check=check) != info["sha256"]:
                 raise ValueError
         if model_id == "qwen-1.7b":
             index = json.loads((model_path / "model.safetensors.index.json").read_text(encoding="utf-8"))
             if not set(index["weight_map"].values()).issubset(inventory["files"]):
                 raise ValueError
+    except LocalRuntimeError:
+        raise
     except (KeyError, ValueError, TypeError, OSError):
         raise LocalRuntimeError(f"{model_id}: runtime/model missing, incomplete or manifest mismatch. Use local-asr install explicitly.") from None
     return LocalLayout(root, python, root / "bridge.py", model_path, model)
@@ -131,6 +134,9 @@ class LocalRuntime:
             except (ValueError, TypeError):
                 raise LocalRuntimeError("Local runtime protocol error.") from None
             if isinstance(value, dict) and value.get("status") == "ready":
+                if (value.get("protocol") != PROTOCOL or value.get("revision") != self.layout.model.revision or
+                        value.get("model") != self.layout.model.id):
+                    raise LocalRuntimeError("Local runtime health identity mismatch.")
                 return value
             reason = value.get("reason") if isinstance(value, dict) else ""
             if reason == "oom":
@@ -160,9 +166,6 @@ class LocalRuntime:
             self.reader = threading.Thread(target=copy_context().run, args=(read,), daemon=True)
             self.reader.start()
             self.metrics = self._receive(check)
-            if (self.metrics.get("protocol") != PROTOCOL or self.metrics.get("revision") != self.layout.model.revision or
-                    self.metrics.get("model") != self.layout.model.id):
-                raise LocalRuntimeError("Local runtime health identity mismatch.")
             self.state = "ready"
         except BaseException:
             self.close()

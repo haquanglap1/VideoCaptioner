@@ -20,7 +20,7 @@ from ..asr_data import ASRData
 from ..metadata import ASRMetadata, StageProvenance
 from ..native_result import native_cues
 from ..review import NativeReviewRequired
-from .diarization import associate, diarization_key, validate_spans
+from .diarization import associate, diarization_key, validate_source, validate_spans
 from .profiles import MODELS, RECOGNITION_POLICY, LocalASRConfig
 from .review import LocalReview
 from .runtime import LocalRuntime, LocalRuntimeError, locate
@@ -146,6 +146,7 @@ def add_local_speakers(audio_path: str, data: ASRData, config, *, aligned: bool,
 
     options = config.local_asr
     audio = decode_audio(audio_path, check)
+    validate_source(data, len(audio))
     binary = wav_bytes(audio)
     scope = uuid4().hex
     recognition = (data.segments[0].metadata.recognition if data.segments and data.segments[0].metadata else None)
