@@ -28,6 +28,8 @@ datas = [
     # fallback fonts/translations must be added explicitly.
     ("videocaptioner\\core\\prompts", "videocaptioner\\core\\prompts"),
     ("videocaptioner\\resources", "videocaptioner\\resources"),
+    # Reproducible alignment recipe only. GPU interpreter/model are installed separately.
+    ("runtime\\alignment", "runtime\\alignment"),
 ]
 binaries = []
 hiddenimports = []
@@ -51,7 +53,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=["torch", "torchaudio", "qwen_asr"],
     noarchive=False,
     optimize=0,
 )

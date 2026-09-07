@@ -111,8 +111,8 @@ def resolve_profile(model: str, profile: str = "auto", provider: str = "custom")
 def require_subtitle_timing(profile: RequestProfile) -> None:
     if not profile.timestamp_levels:
         raise MissingTimingError(
-            "This model returns text without timestamps. Subtitle export needs alignment (S2), "
-            "which is not available yet. Use a Whisper timestamp model or test recognition in Settings."
+            "This model returns text without timestamps. Use the Chinese alignment (S2) transcription "
+            "pipeline with a ready runtime, or use a Whisper timestamp model."
         )
 
 

@@ -892,5 +892,14 @@
   "Invalid ASR request. Check model and request profile.": "Request ASR không hợp lệ. Hãy kiểm tra model và kiểu request.",
   "ASR upload rejected as too large. Compress or split the audio.": "Audio vượt giới hạn upload ASR. Hãy nén hoặc chia nhỏ audio.",
   "ASR request timed out. Try a shorter audio clip.": "Request ASR hết thời gian chờ. Hãy thử audio ngắn hơn.",
-  "ASR connection failed. Check network and Base URL.": "Kết nối ASR thất bại. Hãy kiểm tra mạng và Base URL."
+  "ASR connection failed. Check network and Base URL.": "Kết nối ASR thất bại. Hãy kiểm tra mạng và Base URL.",
+  "Subtitle export requires Chinese (zh) and a ready alignment runtime. Unmatched timing stops for review.": "Xuất phụ đề cần tiếng Trung (zh) và runtime căn thời gian sẵn sàng. Thời gian không khớp sẽ dừng để kiểm tra.",
+  "Check alignment": "Kiểm tra căn thời gian",
+  "Chinese alignment runtime": "Runtime căn thời gian tiếng Trung",
+  "Local probe only. Install the separate runtime first; no automatic download.": "Chỉ kiểm tra cục bộ. Cài runtime riêng trước; không tự động tải.",
+  "Cancel alignment check": "Hủy kiểm tra căn thời gian",
+  "Starting Chinese alignment runtime...": "Đang khởi động runtime căn thời gian tiếng Trung...",
+  "Chinese alignment ready. Probe runtime released.": "Căn thời gian tiếng Trung sẵn sàng. Đã giải phóng runtime kiểm tra.",
+  "Chinese alignment runtime failed.": "Runtime căn thời gian tiếng Trung bị lỗi.",
+  "Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).": "Nhận dạng thành công nhưng không có dấu thời gian. Xuất phụ đề cần runtime căn thời gian tiếng Trung (S2) sẵn sàng."
 }

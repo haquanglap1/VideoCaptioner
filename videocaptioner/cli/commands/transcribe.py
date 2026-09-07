@@ -152,7 +152,7 @@ def run(args: Namespace, config: dict) -> int:
                 return EXIT.RUNTIME_ERROR
             audio_path = temp_audio.name
 
-        from videocaptioner.core.asr import transcribe
+        from videocaptioner.core.asr.transcribe import transcribe
         asr_data = transcribe(audio_path, transcribe_config, callback=callback)
 
         # Save output

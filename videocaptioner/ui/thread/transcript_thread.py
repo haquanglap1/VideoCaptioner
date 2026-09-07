@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from videocaptioner.core.asr import transcribe
+from videocaptioner.core.asr.transcribe import transcribe
 from videocaptioner.core.entities import TranscribeOutputFormatEnum, TranscribeTask
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import video2audio
@@ -145,5 +145,12 @@ class TranscriptThread(QThread):
             Path(temp_audio_path).unlink(missing_ok=True)
 
     def progress_callback(self, value, message):
+        if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
+            from videocaptioner.core.asr.alignment.contract import AlignmentError
+
+            raise AlignmentError("cancelled")
         progress = min(20 + (value * 0.8), 100)
         self.progress.emit(int(progress), message)
+
+    def stop(self):
+        self.requestInterruption()

@@ -2,10 +2,12 @@
 
 Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
-gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1 đã hoàn tất code và gate offline**; online chưa nghiệm thu.
-S2–S6 chưa triển khai.
+gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1 và S2 đã có code
+và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. Gateway GPT→SRT
+chưa nghiệm thu vì thiếu key; S3–S6 chưa triển khai. S2 dừng để review, chưa commit/push.
 
-Prompt session tiếp theo: [thực hiện S2](asr-step-2-prompt.md).
+Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
+Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
 
 ## Mục tiêu sản phẩm đã chốt
 
@@ -20,7 +22,7 @@ Prompt session tiếp theo: [thực hiện S2](asr-step-2-prompt.md).
 | Gói | Nội dung | Phụ thuộc | Điều kiện hoàn thành |
 | --- | --- | --- | --- |
 | S1 (offline hoàn tất) | Nền API tương thích và preset videocaptioner.cn/Groq/OpenAI/Custom | Code hiện có | Request/probe/parser theo capability, cache cách ly, config cũ hoạt động; text-only có giới hạn rõ ràng; gate offline |
-| S2 | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | Runtime alignment riêng, timing đã đo; GPT qua gateway đi hết pipeline phụ đề |
+| S2 (code/offline + local smoke, chờ gateway) | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | Runtime alignment riêng đã đo; còn thiếu key để nghiệm thu GPT gateway→SRT |
 | S3 | Soniox v5 và Scribe v2, timestamp + speaker native | S1 | ASR mới đưa speaker xuyên split/optimize/translate input/editor; save/load speaker không mất |
 | S4 | Quan hệ người nói/người nghe và xưng hô Trung→Việt | S3; đường hybrid nối sau S5 | Mapping theo cặp/cảnh, user override, dịch lại và cache nhất quán, có review trường hợp mơ hồ |
 | S5 | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Chạy Windows tách Qt, pin model, đo VRAM/speed, giữ speaker trong toàn job |
@@ -241,6 +243,108 @@ chunk và đoạn không align được. Chỉ bỏ guard subtitle khi có align
 - `videocaptioner/ui/task_factory.py`
 - `videocaptioner/ui/thread/whisper_connection_thread.py`
 - `videocaptioner/ui/view/setting_interface.py`
+
+## Bàn giao S2 — 2026-09-07
+
+### Phạm vi và validation
+
+Triển khai từ đúng commit S1 `43bb76f45d8dc12cd107fbcbd92c7e21ab811cc3`, không lấy master
+làm baseline. Không sửa checkout gốc, không commit/push. Code S2 dùng factory CLI/GUI hiện có,
+runtime Qwen riêng và policy strict; chi tiết thiết kế, cài đặt, cache/cancel, phép đo và giới hạn
+nằm ở [ASR alignment S2](asr-alignment-s2.md).
+
+- Ruff toàn `videocaptioner/ tests/` và hai script runtime/builder: pass.
+- Pyright toàn `videocaptioner/`: **0 error, 0 warning**.
+- Gate gần thay đổi gồm toàn CLI, ASR contract/alignment và settings: **193 passed** trước
+  test regression vòng đời worker cuối. Full offline cuối có cả regression mới: **768 passed,
+  5 skipped, 51 deselected**, 83.74 s. 5 skip/51 deselect giữ ý nghĩa như S1 (native playback,
+  TTS/service ngoài và marker integration/slow/llm); warning còn lại audioop deprecation.
+- `scripts/sync_translations.py --check`: pass; `git diff --check`: pass.
+- Dùng Python 3.12.13 của môi trường project có sẵn, đã xác minh import source đúng worktree;
+  không sync/thay dependency Qt. Pyright trỏ venv đó. Test Qt offscreen, config/env/cache cô lập,
+  basetemp ngắn, PATH FFmpeg có sẵn. Cache/media/build/log mới nằm ngoài Git.
+- Test bao phủ JSON wire không timestamp, parser→aligner→SRT/cache, language/runtime/health
+  preflight trước đọc/upload, lỗi cache/coverage/timing/silence/mismatch, punctuation/names/numbers/
+  giản-phồn thể, chunk offset/overlap/tail, async retry/cancel in-flight, manifest/lifecycle và
+  contextvars. Test worker completion cũ không được wait/reset worker mới trên Qt main thread.
+- Runtime CUDA đã build/download model pin thành công. Local smoke thật tạo SRT từ clip Qwen
+  Trung công khai 4.204 s; phồn thể của clip bị policy strict từ chối. Worker Qt local probe
+  thật đã lên ready/đóng sạch, Qt process không có Torch/Qwen; đã xem render settings tiếng Việt
+  với font Windows. Đây chưa phải workflow qua EXE.
+
+**Chưa nghiệm thu GPT gateway→SRT** vì worktree/env không có key ASR. Không copy credential/media
+từ checkout nguồn, không suy inference từ catalog/mock. Chưa benchmark chất lượng trên video dài,
+names/numbers/phồn thể hoặc corpus có nhãn, chưa đo p95; chưa làm pipeline dịch Việt/API thật.
+Runtime là venv cài tại máy, chưa portable/installer; base EXE cần runtime riêng.
+
+### Gate artifact S2
+
+1. **PyInstaller exit 0**, duy nhất `VideoCaptioner.spec`, tên
+   `VideoCaptioner-ASR-S2-Review-20260907`. Build clean thành công; rebuild cuối cập nhật regression
+   worker trên đúng output do session tạo, đã kiểm tra chưa có AppData trước ghi đè.
+   Có **6 WARNING**, không có ERROR: optional urllib3 WebAssembly `js`, optional `curl_cffi`/
+   `yt_dlp_ejs`, hidden import `tzdata`/`sip`, AppKit macOS. Hai SyntaxWarning trong modelscope
+   upstream. Không coi những cảnh báo này là đã kiểm chứng mọi workflow tùy chọn.
+2. **Artifact tồn tại**: `dist/VideoCaptioner-ASR-S2-Review-20260907/` (phân phối nguyên onedir).
+   EXE 30,985,630 byte, timestamp máy `2026-09-07 09:04:20`; SHA-256
+   `133d04bb8c926b330363fc49a0790704c34c555ba2e8a15e054e3056a55d5cb6`.
+   Onedir trước smoke: 572 file / 237,070,845 byte. Đã đối chiếu bytecode các module S2 chính
+   (kể cả nested code) với source và recipe runtime với source; không có Torch/Qwen/Torchaudio
+   trong PYZ. Artifact là bản review/dev, không phải release; không chép riêng EXE.
+3. **Smoke GUI từ chính artifact pass**: với FFmpeg có sẵn trên PATH của process smoke,
+   cửa sổ `Trợ lý phụ đề Kaka -- VideoCaptioner` hiện; sau 25 s process vẫn sống, working set
+   110,977,024 byte. Đóng đúng process do smoke tạo bằng CloseMainWindow; kiểm tra không còn
+   process EXE/sidecar của lượt thử. AppData của artifact mới tách biệt dữ liệu user; log chỉ
+   có version check, không có import/resource error trong startup đã quan sát.
+4. **Workflow media/API từ EXE chưa nghiệm thu**; gateway GPT→SRT và dịch Việt chưa chạy vì thiếu
+   key. Runtime Qwen/SRT thật và Qt local health ở trên là phép đo từ source, không gộp thành
+   acceptance E2E của EXE. Base artifact không chứa runtime GPU/model.
+
+### Danh sách file S2
+
+```text
+README.md
+VideoCaptioner.spec
+status.md
+docs/dev/asr-implementation-2026-09.md
+docs/dev/asr-alignment-s2.md
+runtime/alignment/bridge.py
+runtime/alignment/requirements.in
+runtime/alignment/requirements-win-py312.lock
+runtime/alignment/runtime-manifest.json
+scripts/build_alignment_runtime.py
+videocaptioner/core/asr/aligned_api.py
+videocaptioner/core/asr/alignment/__init__.py
+videocaptioner/core/asr/alignment/audio.py
+videocaptioner/core/asr/alignment/contract.py
+videocaptioner/core/asr/alignment/runtime.py
+videocaptioner/core/asr/api_profiles.py
+videocaptioner/core/asr/api_transcription.py
+videocaptioner/core/asr/transcribe.py
+videocaptioner/core/llm/check_whisper.py
+videocaptioner/cli/commands/transcribe.py
+videocaptioner/ui/components/WhisperAPISettingWidget.py
+videocaptioner/ui/components/WhisperProfileCards.py
+videocaptioner/ui/thread/alignment_thread.py
+videocaptioner/ui/thread/transcript_thread.py
+videocaptioner/ui/thread/subtitle_pipeline_thread.py
+videocaptioner/ui/view/setting_interface.py
+videocaptioner/ui/view/transcription_interface.py
+tests/test_asr/test_alignment.py
+tests/test_ui/test_whisper_profiles.py
+resource/translations/VideoCaptioner_en_US.ts
+resource/translations/VideoCaptioner_zh_CN.ts
+resource/translations/VideoCaptioner_zh_HK.ts
+resource/translations/VideoCaptioner_vi_VN.json
+videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
+```
+
+### Đầu vào S3
+
+S3 chưa triển khai. Có thể dùng `ASRData`/canonical ms, registry/request/parser S1 và contract
+alignment S2; metadata speaker chưa thêm. Không giả định word/character alignment là speaker
+identity. Trước khi nghiệm thu GPT→SRT cần key gateway đúng quyền model và bộ clip Trung được
+user cho phép; cần đánh giá tiếp độ phủ policy strict/phồn thể trước chọn mặc định sản phẩm.
 
 ## Chi tiết các gói tiếp theo
 

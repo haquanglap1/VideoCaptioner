@@ -1,0 +1,5 @@
+# Dedicated Windows CPython 3.12 runtime. Never sync these into the Qt environment.
+qwen-asr==0.0.6
+torch==2.8.0+cu128
+torchaudio==2.8.0+cu128
+numpy==2.2.6

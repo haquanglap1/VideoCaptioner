@@ -37,6 +37,8 @@ def test_open_preserves_custom_settings_and_makes_no_request(qapp, monkeypatch, 
 
     monkeypatch.setattr("videocaptioner.core.asr.api_transcription.create_client",
                         lambda *a: pytest.fail("opening settings must be offline"))
+    monkeypatch.setattr("videocaptioner.ui.thread.alignment_thread.AlignmentRuntime",
+                        lambda *a: pytest.fail("opening settings must not load a local model"))
     before = cfg.toDict()
     language = cfg.transcribe_language.value
     page = SettingInterface() if surface == "settings" else WhisperAPISettingWidget()
@@ -117,3 +119,25 @@ def test_probe_worker_captures_profile_and_context_and_is_joined(qapp, monkeypat
     assert thread.wait(3000)
     assert result[0][0]
     assert observed == [("job-one", "manual", {"provider": "custom", "request_profile": "json-text"})]
+
+
+def test_alignment_probe_old_completion_cannot_wait_or_reset_new_worker(qapp):
+    from videocaptioner.ui.components.WhisperAPISettingWidget import WhisperAPISettingWidget
+
+    page = WhisperAPISettingWidget()
+    cards = page.profile_cards
+    calls = []
+    class FinishedWorker:
+        def wait(self): calls.append("old joined")
+        def deleteLater(self): calls.append("old deleted")
+    class NewWorker:
+        def wait(self): pytest.fail("an old completion must not wait for a newer job on the UI thread")
+    newer = NewWorker()
+    cards.worker = newer
+    cards.alignment.button.setText("cancel-current")
+    cards._probe_finished(FinishedWorker())
+    assert cards.worker is newer
+    assert cards.alignment.button.text() == "cancel-current"
+    assert calls == ["old joined", "old deleted"]
+    cards.worker = None
+    page.close()

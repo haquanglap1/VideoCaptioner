@@ -1,9 +1,10 @@
 """Shared request, response and transport policy for ASR and connection probes."""
 
+import asyncio
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 import openai
@@ -131,10 +132,79 @@ def create_client(base_url: str, api_key: str) -> openai.OpenAI:
     )
 
 
-def submit_transcription(client: openai.OpenAI, request: dict[str, Any]) -> dict:
+def create_async_client(base_url: str, api_key: str) -> openai.AsyncOpenAI:
+    if not api_key.strip():
+        raise ASRAPIError("ASR API key must be set.")
+    return openai.AsyncOpenAI(
+        base_url=normalize_endpoint(base_url), api_key=api_key.strip(), timeout=TIMEOUT, max_retries=0,
+        http_client=openai.DefaultAsyncHttpxClient(follow_redirects=False, timeout=TIMEOUT),
+    )
+
+
+def _status_message(code: int) -> str:
+    return {
+        400: "Invalid ASR request. Check model and request profile.",
+        401: "ASR authentication failed. Check the API key.",
+        403: "ASR access denied. Check provider/model permissions.",
+        404: "ASR route or model not found. Check Base URL and model access.",
+        413: "ASR upload rejected as too large. Compress or split the audio.",
+        429: "ASR rate limit reached. Try again later.",
+    }.get(code, f"ASR service returned HTTP {code}.")
+
+
+def submit_cancellable(base_url: str, api_key: str, request: dict[str, Any],
+                       check: Callable[[], None]) -> dict:
+    """S2's worker-owned event loop cancels the socket task before releasing the sidecar."""
+    async def run():
+        async with create_async_client(base_url, api_key) as client:
+            message = "ASR request failed."
+            for attempt in range(MAX_ATTEMPTS):
+                check()
+                task = asyncio.create_task(client.audio.transcriptions.create(**request))
+                deadline = time.monotonic() + 120
+                retry = False
+                try:
+                    while not task.done():
+                        check()
+                        if time.monotonic() >= deadline:
+                            raise asyncio.TimeoutError
+                        await asyncio.wait({task}, timeout=0.1)
+                    check()
+                    completion = task.result()
+                    response = completion if isinstance(completion, dict) else completion.to_dict()
+                    parse_response(response)
+                    return response
+                except openai.APIStatusError as exc:
+                    retry = exc.status_code == 429 or exc.status_code >= 500
+                    message = _status_message(exc.status_code)
+                except (openai.APITimeoutError, asyncio.TimeoutError):
+                    retry, message = True, "ASR request timed out. Try a shorter audio clip."
+                except openai.APIConnectionError:
+                    retry, message = True, "ASR connection failed. Check network and Base URL."
+                except ASRAPIError:
+                    raise
+                except Exception:
+                    raise ASRAPIError("Invalid ASR service response. Check the API route/profile.") from None
+                finally:
+                    if not task.done():
+                        task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                if not retry or attempt == MAX_ATTEMPTS - 1:
+                    break
+                for _ in range(5 * (attempt + 1)):
+                    check()
+                    await asyncio.sleep(0.1)
+            raise ASRAPIError(message)
+    return asyncio.run(run())
+
+
+def submit_transcription(client: openai.OpenAI, request: dict[str, Any], *,
+                         check_cancel: Callable[[], None] | None = None) -> dict:
     """Bound retries here so server Retry-After cannot stall a GUI worker indefinitely."""
     message = "ASR request failed."
     for attempt in range(MAX_ATTEMPTS):
+        if check_cancel:
+            check_cancel()
         retry = False
         try:
             completion = client.audio.transcriptions.create(**request)
@@ -147,15 +217,7 @@ def submit_transcription(client: openai.OpenAI, request: dict[str, Any]) -> dict
         except openai.APIStatusError as exc:
             code = exc.status_code
             retry = code == 429 or code >= 500
-            reasons = {
-                400: "Invalid ASR request. Check model and request profile.",
-                401: "ASR authentication failed. Check the API key.",
-                403: "ASR access denied. Check provider/model permissions.",
-                404: "ASR route or model not found. Check Base URL and model access.",
-                413: "ASR upload rejected as too large. Compress or split the audio.",
-                429: "ASR rate limit reached. Try again later.",
-            }
-            message = reasons.get(code, f"ASR service returned HTTP {code}.")
+            message = _status_message(code)
         except openai.APITimeoutError:
             retry, message = True, "ASR request timed out. Try a shorter audio clip."
         except openai.APIConnectionError:
@@ -166,6 +228,11 @@ def submit_transcription(client: openai.OpenAI, request: dict[str, Any]) -> dict
             raise ASRAPIError("Invalid ASR service response. Check the API route/profile.") from None
         if not retry or attempt == MAX_ATTEMPTS - 1:
             break
-        time.sleep(0.5 * (attempt + 1))
+        if check_cancel:
+            for _ in range(5 * (attempt + 1)):
+                check_cancel()
+                time.sleep(0.1)
+        else:
+            time.sleep(0.5 * (attempt + 1))
     # Raise outside the handler: upstream logger.exception must not include raw provider errors.
     raise ASRAPIError(message)

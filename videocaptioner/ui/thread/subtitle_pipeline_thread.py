@@ -37,6 +37,9 @@ class SubtitlePipelineThread(QThread):
         self.task = task
         self.has_error = False
 
+    def stop(self):
+        self.requestInterruption()
+
     def run(self):
         try:
 

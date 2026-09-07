@@ -32,7 +32,7 @@ def check_whisper_connection(
         if result.timing_level == "none":
             if not result.text:
                 return True, "Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified."
-            return True, "Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet."
+            return True, "Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2)."
         return True, f"Recognition succeeded with {result.timing_level} timestamps."
     except ASRAPIError as exc:
         return False, str(exc)

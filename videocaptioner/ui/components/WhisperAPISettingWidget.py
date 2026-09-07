@@ -115,6 +115,7 @@ class WhisperAPISettingWidget(QWidget):
         # Register cards in display order.
         self.setting_group.addSettingCard(self.profile_cards.provider)
         self.setting_group.addSettingCard(self.profile_cards.profile)
+        self.setting_group.addSettingCard(self.profile_cards.alignment)
         self.setting_group.addSettingCard(self.base_url_card)
         self.setting_group.addSettingCard(self.api_key_card)
         self.setting_group.addSettingCard(self.model_card)

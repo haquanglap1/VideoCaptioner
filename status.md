@@ -1,5 +1,35 @@
 # Project Status
 
+## 2026-09-07 (ASR S2: JSON → alignment tiếng Trung, dừng để review)
+
+- Baseline đúng `origin/codex/asr-s1-api-profiles`, commit
+  `43bb76f45d8dc12cd107fbcbd92c7e21ab811cc3`. Làm trong worktree/nhánh
+  `codex/asr-s2-alignment`; giữ nguyên master và ba tài liệu untracked của checkout nguồn.
+- `AlignedAPI` nối JSON S1 qua runtime Qwen riêng vào ASRData/SRT cho CLI/GUI; preflight
+  Chinese + runtime/model/CUDA trước upload. Chunk lossless <=240 s, cắt ở silence, không overlap,
+  không bỏ tail. Model limit 300 s; không dùng chunk ASR 10 phút.
+- Contract ms strict giữ nguyên text/dấu câu, kiểm tra coverage/bounds/overlap/silence; tắt
+  nội suy `fix_timestamp` của upstream Qwen. Thiếu/trùng chữ, zero-length, lệch timing hoặc
+  không có ranh cắt an toàn dừng review cả job, không tạo SRT một phần/timestamp giả.
+- Runtime Windows Python 3.12 CUDA riêng, lock có hash (Qwen 0.0.6, Torch 2.8.0+cu128), model pin
+  `c7cbfc2048c462b0d63a45797104fc9db3ad62b7`; tải chỉ qua builder tường minh. Job/probe offline,
+  process ẩn, lọc credential env, timeout/cancel/đóng cả Windows venv process tree. Qt không import
+  Torch/Qwen; worker probe giữ contextvars và `wait()`. S2 HTTP async hủy socket được, giữ retry S1.
+- Cache nhận dạng và alignment tách riêng; key hash theo audio/text/config/model/revision/policy.
+  Preset, key theo endpoint, model/base/prompt/language và engine mặc định S1 được giữ.
+- Alignment thật: clip Qwen Trung công khai 4.204 s → 13 span 400–3680 ms và SRT; warm ~0.10 s,
+  peak Torch allocation ~1.76 GiB. Câu lệch audio và silence bị chặn; bản phồn thể cũng bị strict
+  validator chặn, **chưa đạt acceptance phồn thể**. Không suy chất lượng cả corpus từ clip này.
+- Gateway thật/GPT→SRT chưa nghiệm thu: worktree không có settings ASR hay env ASR key, không lấy
+  credential/media từ checkout khác. Không triển khai S3–S6, không commit/push/tag/GitHub.
+- Gate cuối: ruff/sync translations/diff-check pass; pyright 0 errors/0 warnings; full offline
+  **768 passed, 5 skipped, 51 deselected** (83.74 s). EXE review PyInstaller exit 0, 6 warnings
+  optional/platform (chi tiết trong bàn giao); EXE 30,985,630 byte, SHA-256 `133d04bb…55d5cb6`.
+  Cửa sổ chính từ artifact sống qua 25 s, đóng sạch. Bytecode/recipe S2 đã đối chiếu source;
+  workflow media/API từ EXE chưa nghiệm thu, base artifact không chứa GPU runtime/model.
+- Chi tiết contract, cài runtime, giới hạn và số đo: [ASR alignment S2](docs/dev/asr-alignment-s2.md).
+  Gate cuối và danh sách file: [bàn giao S2](docs/dev/asr-implementation-2026-09.md#bàn-giao-s2--2026-09-07).
+
 ## 2026-09-07 (ASR S1: request profile, preset gateway/Groq và gate offline)
 
 - Hoàn tất S1 offline: registry provider/model/profile nhẹ; request/parser chung WhisperAPI/probe;

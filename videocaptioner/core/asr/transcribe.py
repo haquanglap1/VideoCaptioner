@@ -1,4 +1,5 @@
-from videocaptioner.core.asr.api_profiles import require_subtitle_timing, resolve_profile
+from videocaptioner.core.asr.aligned_api import AlignedAPI
+from videocaptioner.core.asr.api_profiles import resolve_profile
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
@@ -37,13 +38,13 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
     asr_data = asr.run(callback=callback)
 
     # Optimize subtitle timing if not using word timestamps
-    if not config.need_word_time_stamp:
+    if not config.need_word_time_stamp and not isinstance(asr, AlignedAPI):
         asr_data.optimize_timing()
 
     return asr_data
 
 
-def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR:
+def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI:
     """Create appropriate ASR instance based on configuration.
 
     Args:
@@ -111,12 +112,14 @@ def _create_whisper_cpp_asr(audio_path: str, config: TranscribeConfig) -> Chunke
     )
 
 
-def _create_whisper_api_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR:
+def _create_whisper_api_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI:
     """Create Whisper API ASR instance with chunking support."""
-    require_subtitle_timing(resolve_profile(
+    profile = resolve_profile(
         config.whisper_api_model or "whisper-1",
         config.whisper_api_request_profile, config.whisper_api_provider,
-    ))
+    )
+    if not profile.timestamp_levels:
+        return AlignedAPI(audio_path, config)
     asr_kwargs = {
         "provider": config.whisper_api_provider,
         "request_profile": config.whisper_api_request_profile,

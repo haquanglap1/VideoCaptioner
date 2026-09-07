@@ -2686,4 +2686,49 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>WhisperProfileCards</name>
+    <message>
+        <source>Subtitle export requires Chinese (zh) and a ready alignment runtime. Unmatched timing stops for review.</source>
+        <translation type="unfinished"/>
+    </message>
+    <message>
+        <source>Check alignment</source>
+        <translation type="unfinished"/>
+    </message>
+    <message>
+        <source>Chinese alignment runtime</source>
+        <translation type="unfinished"/>
+    </message>
+    <message>
+        <source>Local probe only. Install the separate runtime first; no automatic download.</source>
+        <translation type="unfinished"/>
+    </message>
+    <message>
+        <source>Cancel alignment check</source>
+        <translation type="unfinished"/>
+    </message>
+</context>
+<context>
+    <name>AlignmentThread</name>
+    <message>
+        <source>Starting Chinese alignment runtime...</source>
+        <translation type="unfinished"/>
+    </message>
+    <message>
+        <source>Chinese alignment ready. Probe runtime released.</source>
+        <translation type="unfinished"/>
+    </message>
+    <message>
+        <source>Chinese alignment runtime failed.</source>
+        <translation type="unfinished"/>
+    </message>
+</context>
+<context>
+    <name>WhisperConnectionThread</name>
+    <message>
+        <source>Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).</source>
+        <translation type="unfinished"/>
+    </message>
+</context>
 </TS>

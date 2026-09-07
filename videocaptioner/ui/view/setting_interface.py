@@ -355,6 +355,7 @@ class SettingInterface(ScrollArea):
         self.whisperProfileCards = WhisperProfileCards(self.transcribeGroup)
         self.whisperProfileCards.provider.setVisible(False)
         self.whisperProfileCards.profile.setVisible(False)
+        self.whisperProfileCards.alignment.setVisible(False)
         self.whisperApiBaseCard = LineEditSettingCard(
             cfg.whisper_api_base,
             FIF.LINK,
@@ -516,6 +517,7 @@ class SettingInterface(ScrollArea):
         # Whisper API cards
         self.transcribeGroup.addSettingCard(self.whisperProfileCards.provider)
         self.transcribeGroup.addSettingCard(self.whisperProfileCards.profile)
+        self.transcribeGroup.addSettingCard(self.whisperProfileCards.alignment)
         self.transcribeGroup.addSettingCard(self.whisperApiBaseCard)
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
         self.transcribeGroup.addSettingCard(self.whisperApiModelCard)
@@ -858,6 +860,7 @@ class SettingInterface(ScrollArea):
         whisper_api_cards = [
             self.whisperProfileCards.provider,
             self.whisperProfileCards.profile,
+            self.whisperProfileCards.alignment,
             self.whisperApiBaseCard,
             self.whisperApiKeyCard,
             self.whisperApiModelCard,

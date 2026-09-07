@@ -109,8 +109,10 @@ uv run --frozen videocaptioner transcribe video.mp4 --asr whisper-api \
 Profile `auto` nhận biết model trong preset; model ID khác giữ request Whisper cũ.
 Với alias riêng, chọn rõ `whisper` (timestamp) hoặc `json-text` (văn bản JSON).
 `gpt-4o-transcribe` và `gpt-4o-mini-transcribe` dùng JSON và có thể kiểm tra nhận dạng bằng nút probe;
-**chưa xuất phụ đề từ các model text-only** vì cần alignment của S2. Luồng phụ đề dừng trước upload,
-không tạo timestamp giả. Probe báo riêng kết quả nhận dạng và mức timing thực tế.
+**xuất phụ đề tiếng Trung qua runtime alignment S2 riêng** khi chọn `zh` và runtime đã ready.
+Thiếu runtime/ngôn ngữ phù hợp sẽ dừng trước upload; span không khớp dừng để review, không tạo timestamp giả.
+Xem [cài runtime, policy và giới hạn S2](docs/dev/asr-alignment-s2.md). Probe API báo riêng kết quả nhận dạng
+và mức timing thực tế; nút kiểm tra căn thời gian chỉ probe local theo yêu cầu.
 Nếu yêu cầu word timestamp nhưng response chỉ có segment, chọn lại chế độ câu hoặc model có word timing.
 
 ## Lồng tiếng Natural
