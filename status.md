@@ -1,5 +1,20 @@
 # Project Status
 
+## 2026-09-07 (chốt commit S4.1 và bàn giao prompt S5)
+
+- Theo yêu cầu user sau review, đã chốt **code S4.1** thành
+  `db23299370f311395fae39069f0983739d259250` trên `codex/asr-s3-native`, parent `47d1cec`.
+  Commit gồm đúng 56 file trong manifest, không có media/AppData/build/dist/credential.
+  Các mục “không/chưa commit” bên dưới mô tả thời điểm triển khai trước yêu cầu submit này.
+- Trước commit: fetch xác nhận local/remote cùng baseline; ruff, pyright 0/0, sync translations,
+  diff-check và quét mẫu credential pass. **202 module source** tiếp tục khớp bytecode artifact
+  Final đã smoke. Không đổi code từ full **986 pass / 5 skip / 51 deselect**; không rerun full suite
+  hoặc rebuild EXE chỉ để commit. Giữ nguyên mọi artifact/media/AppData hiện có.
+- [Prompt phiên tiếp theo — S5 local/hybrid](docs/dev/asr-step-5-prompt.md) đã ghi baseline,
+  runtime Qwen/diarization, compatibility S4.1, validation và các khoản online còn thiếu.
+  **Phiên này chưa triển khai S5/S6**. Prompt chỉ được thực thi khi user dùng nó để bắt đầu S5;
+  phiên mới dừng review sau S5, không tự commit/push hoặc làm S6.
+
 ## 2026-09-07 (S4.1: deadline dịch, local ASR review/resume và lifecycle; dừng review)
 
 - Đúng checkout user chỉ định, nhánh `codex/asr-s3-native`, baseline **47d1cec** sạch;

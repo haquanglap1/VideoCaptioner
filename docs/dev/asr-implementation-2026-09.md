@@ -8,8 +8,10 @@ phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptanc
 Theo yêu cầu riêng đầu phiên S4, 50 file S3 được commit `327c214` và push lên
 `origin/codex/asr-s3-native` trước khi sửa S4. Sau các lượt review/online và xuất SRT xem thử,
 user yêu cầu submit: **code S4 đã chốt tại `8558082945575d551a4c38cdc4943c395254a583`**.
-S4.1 đã được triển khai theo [followup trước S5](asr-step-4-followup-prompt.md), chưa commit/push;
-xem [bàn giao S4.1](#bàn-giao-s41--2026-09-07) và [hướng dẫn sử dụng](asr-s41.md).
+S4.1 đã được triển khai theo [followup trước S5](asr-step-4-followup-prompt.md), rồi chốt code
+`db23299370f311395fae39069f0983739d259250` theo yêu cầu user. Xem
+[bàn giao S4.1](#bàn-giao-s41--2026-09-07), [hướng dẫn sử dụng](asr-s41.md) và
+[prompt S5 cho phiên tiếp theo](asr-step-5-prompt.md). S5/S6 chưa triển khai.
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
@@ -653,8 +655,11 @@ videocaptioner/ui/view/video_editor_interface.py
 ## Bàn giao S4.1 — 2026-09-07
 
 Baseline đúng **47d1cec** trên `codex/asr-s3-native`, working tree sạch lúc bắt đầu; commit code
-S4 **8558082** là ancestor. Thực hiện đủ A–C của followup; không commit/push/tag/release hoặc
-làm S5–S6. [Hướng dẫn S4.1](asr-s41.md) mô tả config/CLI, schema review, override và lifecycle.
+S4 **8558082** là ancestor. Giai đoạn triển khai thực hiện đủ A–C của followup rồi dừng review,
+không commit/push/tag/release hoặc làm S5–S6. Sau đó user yêu cầu submit: code S4.1 được chốt tại
+**db23299370f311395fae39069f0983739d259250** (56 file). Commit bàn giao tiếp theo cập nhật status,
+tài liệu này và thêm [prompt S5](asr-step-5-prompt.md); không đổi source/artifact đã kiểm thử.
+[Hướng dẫn S4.1](asr-s41.md) mô tả config/CLI, schema review, override và lifecycle.
 
 ### Thay đổi và validation
 
@@ -726,7 +731,8 @@ Qwen ASR/pyannote, S5–S6 hoặc đổi mặc định.
 
 ### Manifest S4.1 so với baseline 47d1cec
 
-56 file thay đổi/thêm mới, chưa commit. Không có media, credential, AppData, build/dist, QM hoặc
+56 file thay đổi/thêm mới trong **commit code S4.1 `db23299`**. Prompt S5 và cập nhật trạng thái
+submit thuộc commit bàn giao tiếp theo. Không có media, credential, AppData, build/dist, QM hoặc
 lockfile trong danh sách:
 
 ```text
