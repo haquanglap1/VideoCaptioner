@@ -35,6 +35,12 @@ Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ### Củng cố vòng đời GUI sau crash — dừng review
 
+Sau nghiệm thu, user yêu cầu commit/push; code GUI Lifetime và bốn file manifest đã chốt tại
+**`e6c0074250df41b5da4b7eaa71b2e9f21e4adcab`**, parent **7e28895**. Các dòng không submit ở
+phần đo mô tả thời điểm review trước yêu cầu này. Commit tài liệu bàn giao tiếp theo thêm
+[prompt agent tự nghiệm thu](asr-lifetime-next-session-prompt.md), ưu tiên local/media trên binary
+Lifetime và native playback/shutdown; không khởi chạy S6 hay cấp quyền submit cho phiên mới.
+
 Theo yêu cầu tiếp tục của user, đọc dump của PID 52400 và unwind bằng matching PE function tables.
 Main thread đang hủy QApplication, qua SIP wrapper visitor/get-address trong Python/SystemExit
 cleanup. Đây là bằng chứng về đường shutdown, chưa chứng minh nút Lưu/automation gây crash.

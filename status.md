@@ -1,5 +1,20 @@
 # Project Status
 
+## 2026-09-07 (chốt code GUI Lifetime và prompt phiên agent tự nghiệm thu)
+
+- Theo yêu cầu user commit/push, code và kết quả nghiệm thu đã chốt thành
+  **`e6c0074250df41b5da4b7eaa71b2e9f21e4adcab`**, parent **7e28895**, đúng 4 file trong manifest
+  GUI Lifetime. Các dòng “không commit/push” ở phần đo bên dưới mô tả thời điểm trước yêu cầu submit.
+- Trước commit: fetch xác nhận local/remote cùng baseline; ruff pass, pyright 0/0, translations/
+  diff-check và scan credential/path pass. Hash EXE Lifetime **b2dfe869…b38a75f78** không đổi;
+  giữ gate full **1.119 pass / 5 skip / 51 deselect**, không rerun full/API/build chỉ để chốt Git.
+- [Prompt phiên tiếp theo](docs/dev/asr-lifetime-next-session-prompt.md) chuyển rõ sang agent tự
+  kiểm thử kỹ thuật, chỉ gom checkpoint chất lượng/credential/quyết định có phí. Ưu tiên local
+  media trên Lifetime và native playback/shutdown; giữ giới hạn SIP chưa tái hiện tất định,
+  Scribe/phồn thể/speaker/xưng hô chưa nghiệm thu. Whisper Final đã pass, không tự gọi lại vì 429 cũ.
+- Prompt chưa khởi chạy phiên mới; quyền submit lần này không tự áp dụng cho thay đổi ở phiên sau.
+  Giữ nguyên media/AppData/runtime/artifact, không S6/tag/release hoặc dependency mới.
+
 ## 2026-09-07 (S5.2 GUI lifetime: sửa vòng đời Qt, build riêng, dừng review)
 
 - User yêu cầu tiếp tục xử lý crash SIP sau phiên nghiệm thu. Giữ nhánh/HEAD **7e28895** và các
