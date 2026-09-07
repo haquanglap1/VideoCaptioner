@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from videocaptioner.config import ROOT_PATH
+from videocaptioner.core.utils.gpu_lease import GPULease
 from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_environment
 
 from .audio import Check, stop_process
@@ -61,6 +62,7 @@ class AlignmentRuntime:
         self.messages: queue.Queue = queue.Queue()
         self.state = "stopped"
         self.metrics: dict = {}
+        self.lease = GPULease()
 
     def _receive(self, check: Check) -> dict:
         deadline = time.monotonic() + self.timeout
@@ -88,6 +90,7 @@ class AlignmentRuntime:
             raise AlignmentError("runtime already started")
         self.state = "starting"
         try:
+            self.lease.acquire()
             self.process = subprocess.Popen(
                 [str(self.layout.python), "-I", str(self.layout.bridge), str(self.layout.model)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -167,3 +170,4 @@ class AlignmentRuntime:
                     stream.close()
             self.process = None
         self.state = "stopped"
+        self.lease.close()

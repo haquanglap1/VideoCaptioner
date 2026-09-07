@@ -218,6 +218,12 @@ class Config(QConfig):
 
     # ------------------- Whisper API 配置 -------------------
     soniox_api_base = ConfigItem("Soniox", "ApiBase", "https://api.soniox.com/v1")
+    local_asr_model = OptionsConfigItem("LocalASR", "Model", "qwen-1.7b", OptionsValidator(["qwen-1.7b", "qwen-0.6b"]))
+    local_asr_diarize = ConfigItem("LocalASR", "Diarize", False, BoolValidator())
+    local_asr_root = ConfigItem("LocalASR", "RuntimeRoot", "")
+    local_diarization_root = ConfigItem("LocalASR", "DiarizationRoot", "")
+    local_asr_chunk = OptionsConfigItem("LocalASR", "ChunkMs", 120000, OptionsValidator([30000, 60000, 120000, 240000]))
+    local_asr_timeout = OptionsConfigItem("LocalASR", "Timeout", 180, OptionsValidator([60, 180, 300, 600, 1800, 3600]))
     soniox_api_key = ConfigItem("Soniox", "ApiKey", "")
     soniox_model = ConfigItem("Soniox", "Model", "stt-async-v5")
     soniox_diarize = ConfigItem("Soniox", "Diarize", True, BoolValidator())

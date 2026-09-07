@@ -33,6 +33,8 @@ def run(args: Namespace, config: dict) -> int:
             # Transcript is private; inspect it explicitly in the saved JSON or GUI.
             output.warn(f"{issue.token_id} (token {issue.index + 1}): {issue.reason}")
         data = review.resume()
+        if getattr(review, "pending_diarization", False):
+            output.warn("Timing review only: local diarization is still pending. Save JSON, then use local-diarize with the original audio.")
         if args.output:
             if Path(args.output).suffix.lower() not in (".srt", ".json"):
                 output.error("Review resume supports .json or .srt output.")

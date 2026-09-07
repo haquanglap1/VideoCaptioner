@@ -1130,6 +1130,7 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     </message>
     <message><source>Translation request timeout (seconds)</source><translation>Translation request timeout (seconds)</translation></message>
     <message><source>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</source><translation>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</translation></message>
+    <message><source>Qwen3-ASR [Local]</source><translation>Qwen3-ASR [Local]</translation></message>
 </context>
 <context>
     <name>StyleNameDialog</name>
@@ -2020,6 +2021,7 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <translation>Please drag audio or video files here</translation>
     </message>
     <message><source>Open ASR review</source><translation>Open ASR review</translation></message>
+    <message><source>Qwen3-ASR [Local]</source><translation>Qwen3-ASR [Local]</translation></message>
 </context>
 <context>
     <name>VideoInfoCard</name>
@@ -3103,6 +3105,51 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message><source>Open ASR review</source><translation>Open ASR review</translation></message>
     <message><source>Zero-duration speech token</source><translation>Zero-duration speech token</translation></message>
     <message><source>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</source><translation>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</translation></message>
+    <message><source>Aligned</source><translation>Aligned</translation></message>
+    <message><source>Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.</source><translation>Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.</translation></message>
 </context>
 
+<context>
+    <name>LocalASRDialog</name>
+    <message><source>Local ASR models</source><translation>Local ASR models</translation></message>
+    <message><source>Recognition, alignment and diarization have separate readiness. Choose a stage, then check or install explicitly. Models run locally; no audio is uploaded by this manager.</source><translation>Recognition, alignment and diarization have separate readiness. Choose a stage, then check or install explicitly. Models run locally; no audio is uploaded by this manager.</translation></message>
+    <message><source>Not checked. Opening this dialog does not load or download models.</source><translation>Not checked. Opening this dialog does not load or download models.</translation></message>
+    <message><source>Cancel operation</source><translation>Cancel operation</translation></message>
+    <message><source>Choose installed runtime</source><translation>Choose installed runtime</translation></message>
+    <message><source>Choose parent for a new runtime folder</source><translation>Choose parent for a new runtime folder</translation></message>
+    <message><source>Cancelling; waiting for owned processes to stop...</source><translation>Cancelling; waiting for owned processes to stop...</translation></message>
+    <message><source>Hugging Face access</source><translation>Hugging Face access</translation></message>
+    <message><source>First accept Community-1 conditions on Hugging Face. Enter a read token here; it is used only for this download and is not saved.</source><translation>First accept Community-1 conditions on Hugging Face. Enter a read token here; it is used only for this download and is not saved.</translation></message>
+    <message><source>Qwen 1.7B — recognition</source><translation>Qwen 1.7B — recognition</translation></message>
+    <message><source>Qwen 0.6B — recognition</source><translation>Qwen 0.6B — recognition</translation></message>
+    <message><source>Qwen ForcedAligner — alignment</source><translation>Qwen ForcedAligner — alignment</translation></message>
+    <message><source>Community-1 — diarization</source><translation>Community-1 — diarization</translation></message>
+    <message><source>Check files</source><translation>Check files</translation></message>
+    <message><source>Probe health</source><translation>Probe health</translation></message>
+    <message><source>Install in new folder</source><translation>Install in new folder</translation></message>
+    <message><source>Choose installed folder</source><translation>Choose installed folder</translation></message>
+</context>
+<context>
+    <name>LocalASRCards</name>
+    <message><source>Qwen local recognition</source><translation>Qwen local recognition</translation></message>
+    <message><source>Chinese (zh). Model choice is explicit; no automatic fallback.</source><translation>Chinese (zh). Model choice is explicit; no automatic fallback.</translation></message>
+    <message><source>Local speaker diarization</source><translation>Local speaker diarization</translation></message>
+    <message><source>Community-1 for Qwen or Whisper API. Ambiguous speakers remain unknown for review.</source><translation>Community-1 for Qwen or Whisper API. Ambiguous speakers remain unknown for review.</translation></message>
+    <message><source>Local audio chunk</source><translation>Local audio chunk</translation></message>
+    <message><source>Local stage deadline</source><translation>Local stage deadline</translation></message>
+    <message><source>Manage models</source><translation>Manage models</translation></message>
+    <message><source>Local ASR runtimes</source><translation>Local ASR runtimes</translation></message>
+    <message><source>Explicit install, file check and health probe. Opening settings does not start a model.</source><translation>Explicit install, file check and health probe. Opening settings does not start a model.</translation></message>
+</context>
+<context>
+    <name>LocalASRSettingWidget</name>
+    <message><source>Local ASR</source><translation>Local ASR</translation></message>
+</context>
+<context>
+    <name>LocalASRThread</name>
+    <message><source>Checking local installation...</source><translation>Checking local installation...</translation></message>
+    <message><source>Loading local model...</source><translation>Loading local model...</translation></message>
+    <message><source>Health ready. Probe released; inference has not been tested.</source><translation>Health ready. Probe released; inference has not been tested.</translation></message>
+    <message><source>Installed. Health and inference have not been tested.</source><translation>Installed. Health and inference have not been tested.</translation></message>
+</context>
 </TS>

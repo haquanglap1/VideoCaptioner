@@ -20,6 +20,11 @@ cache.disable_cache()
 
 
 @pytest.fixture(autouse=True)
+def isolated_gpu_lease(monkeypatch, tmp_path):
+    monkeypatch.setattr("videocaptioner.core.utils.gpu_lease.lease_path", lambda: tmp_path / "gpu.lock")
+
+
+@pytest.fixture(autouse=True)
 def isolated_asr_review(monkeypatch, tmp_path):
     monkeypatch.setattr("videocaptioner.core.asr.review.review_directory", lambda: tmp_path / "asr-review")
 

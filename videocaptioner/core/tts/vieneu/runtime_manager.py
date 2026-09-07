@@ -18,6 +18,7 @@ from uuid import uuid4
 import psutil
 import requests
 
+from videocaptioner.core.utils.gpu_lease import GPUBusyError, GPULease
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.subprocess_helper import child_environment
 
@@ -116,6 +117,7 @@ class VieNeuRuntimeManager:
         self._state_callbacks: list[Callable[[VieNeuRuntimeState, str], None]] = []
         self._log_tail: deque[str] = deque(maxlen=80)
         self._drain_threads: list[threading.Thread] = []
+        self._gpu_lease = GPULease()
 
     @property
     def state(self) -> VieNeuRuntimeState:
@@ -360,6 +362,7 @@ class VieNeuRuntimeManager:
             last_error: Exception | None = None
             for attempt in range(max(0, int(config.retry_count)) + 1):
                 try:
+                    self._gpu_lease.acquire()
                     self._session_token = secrets.token_urlsafe(32)
                     self._session_id = uuid4().hex
                     self._port = self._select_port(config.port)
@@ -386,7 +389,7 @@ class VieNeuRuntimeManager:
                     )
                     self._set_state(VieNeuRuntimeState.READY, "VieNeu Local ready")
                     return self._identity
-                except (VieNeuRuntimeIdentityError, VieNeuPortOwnershipError):
+                except (VieNeuRuntimeIdentityError, VieNeuPortOwnershipError, GPUBusyError):
                     self.shutdown(force=True)
                     raise
                 except VieNeuRuntimeCancelled:
@@ -457,6 +460,7 @@ class VieNeuRuntimeManager:
                 return False
             process = self._process
             if not process:
+                self._gpu_lease.close()
                 self._identity = None
                 self._set_state(VieNeuRuntimeState.STOPPED, "")
                 return True
@@ -503,6 +507,7 @@ class VieNeuRuntimeManager:
                 except Exception:
                     pass
             self._process = None
+            self._gpu_lease.close()
             self._identity = None
             self._session_token = ""
             self._session_id = ""

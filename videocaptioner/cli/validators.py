@@ -161,6 +161,17 @@ def validate_whisper_cpp() -> bool:
 def validate_transcribe(config: dict) -> bool:
     """Validate config for transcribe command."""
     asr = get(config, "transcribe.asr", "faster-whisper")
+    try:
+        from videocaptioner.core.asr.local.profiles import LocalASRConfig
+        local = LocalASRConfig(**get(config, "local_asr", {}))
+        if local.diarize and asr not in ("qwen-local", "whisper-api"):
+            raise ValueError("Local diarization requires Qwen Local or Whisper API.")
+        if asr == "qwen-local":
+            from videocaptioner.core.asr.alignment.contract import chinese_language
+            chinese_language(get(config, "transcribe.language", "auto"))
+    except (ValueError, TypeError) as exc:
+        output.error(str(exc))
+        return False
 
     if asr in ("soniox", "scribe"):
         if not get(config, f"{asr}.api_key"):

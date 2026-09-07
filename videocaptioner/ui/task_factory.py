@@ -29,6 +29,7 @@ from videocaptioner.core.entities import (
 from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.tts.tts_data import TTSConfig
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.common.local_asr_settings import local_config
 from videocaptioner.ui.common.native_asr_settings import native_config
 
 # Ngôn ngữ đích dùng chữ Hán/kana — không được lọc CJK trước khi gọi TTS.
@@ -101,6 +102,7 @@ class TaskFactory:
             whisper_model=cfg.whisper_model.value,
             # Whisper API 配置
             native_asr=native_config(cfg),
+            local_asr=local_config(),
             whisper_api_key=cfg.whisper_api_key.value,
             whisper_api_base=cfg.whisper_api_base.value,
             whisper_api_model=cfg.whisper_api_model.value,

@@ -98,6 +98,16 @@ khi tồn tại. `core/utils/installer.py` tải FFmpeg/Deno vào `AppData/bin/`
 
 GUI nối các bước qua `SubtitlePipelineThread`; CLI `process` chạy tuần tự các command.
 
+## Local ASR S5
+
+`core/asr/local/` chứa profile pin, installer, process owner, Qwen recognition, strict review và
+association pyannote toàn job. Qwen/aligner dùng recipe S2 nhưng cài riêng; pyannote có lock riêng.
+Recipe đóng gói ở `videocaptioner/resources/local_asr`; GPU libraries chỉ import trong sidecar.
+`core/utils/gpu_lease.py` điều phối một managed runtime mỗi lần, dùng cho S2/S5/VieNeu.
+Metadata có recognition/alignment/diarization typed; native S3 và review S4.1 giữ tương thích.
+GUI dùng `LocalASRThread` với supervisor S4.1; mở settings không chạy IO/model. CLI có `local-asr`
+và `local-diarize`. Chi tiết cài đặt/giới hạn tại [S5](asr-local-s5.md).
+
 ## LLM
 
 `core/llm/client.py` giữ một client OpenAI-compatible dùng chung. Credential là `LLMCredentials`

@@ -33,6 +33,9 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
+# S5 recipes under videocaptioner/resources are data, never GPU imports in the Qt process.
+hiddenimports += ["videocaptioner.core.asr.local.pipeline", "videocaptioner.core.asr.local.review",
+                  "videocaptioner.cli.commands.local_asr", "videocaptioner.ui.thread.local_asr_thread"]
 # S4 context schema and editor form; translate/conversation.md is included by the prompt tree above.
 hiddenimports += ["videocaptioner.core.translate.conversation",
                   "videocaptioner.ui.components.conversation_dialog"]
@@ -64,7 +67,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["torch", "torchaudio", "qwen_asr"],
+    excludes=["torch", "torchaudio", "qwen_asr", "pyannote", "torchcodec"],
     noarchive=False,
     optimize=0,
 )

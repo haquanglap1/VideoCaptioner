@@ -1,5 +1,55 @@
 # Project Status
 
+## 2026-09-07 (S5: Qwen local và hybrid diarization; dừng review)
+
+- Tiếp tục đúng worktree user chỉ định, nhánh `codex/asr-s3-native`, HEAD sạch ban đầu
+  **1bf4dd0**; xác minh code S4.1 **db23299** là ancestor. Không commit/push/tag/release/S6.
+  Giữ nguyên dependency Qt (`pyproject.toml`/`uv.lock`), AGENTS/CLAUDE và dữ liệu/artifact S4–S4.1.
+- Thêm Qwen 1.7B/0.6B được chọn tường minh, recognition → strict alignment S2 tuần tự;
+  runtime/model pin SHA, lock hash, download chủ động vào đích mới, verify inventory/revision.
+  Qwen dùng recipe S2 trong runtime mới; pyannote có runtime riêng. Mở settings không tải/nạp/API.
+- Diarization Community-1 toàn recording, policy overlap/coverage versioned, unknown/ambiguous
+  không bị gán đại. Provenance recognition/alignment/diarization tách bạch, giữ cue/token IDs,
+  override và context S4 qua pipeline/JSON/editor. `local-diarize` dùng output có timing sẵn;
+  không nhận dạng/upload lại. Native Soniox/Scribe không bị trộn label ngầm.
+- `local-asr-review-v1` giữ raw/chunk/coverage/pending stage; dùng lại GUI/CLI S4.1 và CommandStack.
+  GPU lease dùng chung S2/S5/VieNeu, báo busy thay vì unload job đang chạy; process ẩn, env lọc,
+  deadline/cancel/join hữu hạn. Không import GPU libraries vào Qt. Runtime là venv cài tại máy,
+  chưa phải bản portable phân phối độc lập.
+- **Full offline mã cuối: 1.066 passed, 4 skipped, 51 deselected, 144,10 s, exit 0**.
+  **Toàn CLI: 104 passed, 2,96 s, exit 0**; ruff pass, pyright **0 errors/0 warnings**, sync
+  translations và diff-check pass. 79 test S5 mới; QtMultimedia trước đây skip đã chạy pass trong
+  lượt này. 4 skip là TTS/service; 51 deselect integration/slow/llm. Python **3.12.13**, FFmpeg/venv
+  có sẵn, import đúng checkout; không sync/cài dependency Qt. Tests cô lập settings/cache/review/GPU
+  lease và wait QThread. Đã xem render settings/manager tiếng Việt; JSON sync, TS cập nhật,
+  không sửa QM vì thiếu lrelease.
+- Lượt full trước có một subprocess test Settings crash Windows `3221225477`; test riêng pass,
+  hai full tiếp theo **1.064** rồi **1.066** pass. Chưa xác định nguyên nhân crash ngắt quãng,
+  không claim đã sửa lỗi Qt. Test đầu cũng phát hiện dùng chung GPU lease với runtime thật;
+  fixture đã tách lease theo từng test trước gate cuối.
+- **Qwen runtime thật**: cả 0.6B/1.7B trên audio Trung public 4,204 s → strict alignment → JSON/SRT
+  **13 cue pass**. Inference cold/warm lần lượt **2,813/0,672 s** và **0,984/0,360 s**;
+  peak Torch allocation **1.876.073.984 / 4.698.543.616 byte**. Các lượt có cache/tải nền khác nhau,
+  không suy benchmark tốc độ/chất lượng. Restart/stop sạch, shutdown **0,890–0,938 s**, cancel
+  startup thật **1,250 s**. Phồn thể và silence có text vẫn bị strict guard từ chối.
+- **Pyannote mới nghiệm thu dependency import/CUDA**, chưa model inference: không có token/quyền
+  Community-1 được cung cấp trong phiên, không tự chấp nhận điều kiện hoặc tìm credential.
+  TorchCodec báo thiếu decoder DLL; adapter dùng waveform memory theo upstream. **Community-1/
+  hybrid API, speaker accuracy, Scribe online, GPT gateway→alignment→SRT, phồn thể strict và
+  chất lượng xưng hô bằng người đọc vẫn thiếu nghiệm thu**. Các gate EXE được ghi riêng bên dưới.
+- **Artifact Final** `dist/VideoCaptioner-ASR-S5-Review-20260907-Final/`: PyInstaller exit 0,
+  6 WARNING optional/platform, 0 ERROR, 6 SyntaxWarning upstream; **31.148.265 byte**, local
+  **2026-09-07 17:23:00**, SHA-256 **`1717175295241e722a3e5a516d903b85668a3372417260bf0e776e3f303fe9f3`**.
+  **215 module / 34 resource** khớp source, không bundle GPU libraries. Onedir trước smoke
+  **580 file / 237.647.944 byte**. GUI hidden **25 s**, WM_CLOSE **exit 0**, không process sót/
+  startup error marker. Giữ bản S5 đầu; không rebuild Final sau smoke.
+- **Workflow local từ EXE pass** cho cả Qwen 0.6B/1.7B: audio public → nhận dạng → strict alignment
+  → JSON → SRT, mỗi bản **1 cue 400–3680 ms**, giữ **13 token IDs** trong JSON. Transcribe lần lượt
+  **70,766 / 22,421 s** (gồm load/verify/alignment). Frozen review tổng hợp reject/resume cũng pass.
+  Đây là media/local-ASR từ EXE, **không phải API cloud hoặc nghiệm thu portable runtime**.
+- Hướng dẫn và giới hạn: [S5 local/hybrid](docs/dev/asr-local-s5.md). Manifest và gate artifact:
+  [bàn giao S5](docs/dev/asr-implementation-2026-09.md#bàn-giao-s5--2026-09-07).
+
 ## 2026-09-07 (chốt commit S4.1 và bàn giao prompt S5)
 
 - Theo yêu cầu user sau review, đã chốt **code S4.1** thành

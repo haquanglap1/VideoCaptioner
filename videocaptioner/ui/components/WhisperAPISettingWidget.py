@@ -122,6 +122,12 @@ class WhisperAPISettingWidget(QWidget):
         self.setting_group.addSettingCard(self.language_card)
         self.setting_group.addSettingCard(self.prompt_card)
         self.setting_group.addSettingCard(self.check_connection_card)
+        from .local_asr_cards import LocalASRCards
+        self.local_cards = LocalASRCards(self.setting_group)
+        for card in (self.local_cards.diarize, self.local_cards.timeout, self.local_cards.manager):
+            self.setting_group.addSettingCard(card)
+        for card in (self.local_cards.model, self.local_cards.chunk):
+            card.hide()
 
         # Connect the explicit probe action.
         self.check_connection_card.clicked.connect(self.on_check_connection)

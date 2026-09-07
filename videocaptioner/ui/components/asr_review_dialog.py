@@ -38,6 +38,10 @@ class ASRReviewDialog(QDialog):
         notice = QLabel(self.tr("Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override."))
         notice.setWordWrap(True)
         layout.addWidget(notice)
+        if getattr(review, "pending_diarization", False):
+            pending = QLabel(self.tr("Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio."))
+            pending.setWordWrap(True)
+            layout.addWidget(pending)
         self.transcript = QPlainTextEdit(review.text)
         self.transcript.setReadOnly(True)
         self.transcript.setMaximumHeight(110)
@@ -91,7 +95,8 @@ class ASRReviewDialog(QDialog):
                       str(token.start), str(token.end), str(times[0]) if times else "?",
                       str(times[1]) if times else "?",
                       self.tr(issues[token.id]) if token.id in issues else
-                      self.tr("Edited by user") if token.id in edits else self.tr("Native"))
+                      self.tr("Edited by user") if token.id in edits else
+                      self.tr("Aligned") if review.provider not in ("soniox", "scribe") else self.tr("Native"))
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
@@ -101,7 +106,7 @@ class ASRReviewDialog(QDialog):
         if selected >= 0:
             self.table.selectRow(selected)
             self.select_token()
-        units = "ms" if review.provider == "soniox" else "s"
+        units = "s" if review.provider == "scribe" else "ms"
         self.status.setText(self.tr("{0} token timing issue(s). Original units: {1}. Full validation is required before export.").format(len(issues), units))
 
     def select_token(self):

@@ -110,6 +110,13 @@ def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_native_asr_options(parser: argparse.ArgumentParser) -> None:
+    local = parser.add_argument_group("Local Qwen and hybrid diarization")
+    local.add_argument("--qwen-model", choices=["qwen-1.7b", "qwen-0.6b"])
+    local.add_argument("--local-diarize", action=argparse.BooleanOptionalAction, default=None)
+    local.add_argument("--qwen-runtime", metavar="DIRECTORY")
+    local.add_argument("--diarization-runtime", metavar="DIRECTORY")
+    local.add_argument("--local-chunk-ms", type=int)
+    local.add_argument("--local-timeout", type=int)
     group = parser.add_argument_group("Native Chinese ASR (Soniox / ElevenLabs)")
     group.add_argument("--asr-review", metavar="JSON", help="Save rejected native recognition for local timing review")
     for provider in ("soniox", "scribe"):
@@ -132,7 +139,7 @@ def _build_transcribe_parser(subparsers) -> None:
     asr = p.add_argument_group("ASR options")
     asr.add_argument(
         "--asr",
-        choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe"],
+        choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
         help="ASR engine (default: bijian). "
              "bijian/jianying: free, no setup, Chinese & English only. "
              "For other languages use whisper-api or whisper-cpp",
@@ -306,7 +313,7 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
     pipe.add_argument("--no-synthesize", action="store_true", help="Skip video synthesis (output subtitles only)")
 
-    pipe.add_argument("--asr", choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe"],
+    pipe.add_argument("--asr", choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
                       help="ASR engine (default: bijian)")
     pipe.add_argument("--language", metavar="CODE",
                       help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
@@ -416,6 +423,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=_get_version())
 
     subparsers = parser.add_subparsers(dest="command", metavar="command")
+    diarize = subparsers.add_parser("local-diarize", help="Add local speakers to existing timed subtitles without another ASR upload")
+    diarize.add_argument("input", help="Existing timed subtitle JSON or SRT")
+    diarize.add_argument("--audio", required=True)
+    diarize.add_argument("-o", "--output", required=True)
+    diarize.add_argument("--runtime")
+    diarize.add_argument("--timeout", type=int, default=180)
+    diarize.set_defaults(func=_run_local_diarize)
+    local = subparsers.add_parser("local-asr", help="Install/status/probe isolated S5 runtimes explicitly")
+    local.add_argument("action", choices=["status", "probe", "install"])
+    local.add_argument("--models", nargs="+", default=["qwen-1.7b", "aligner", "community-1"],
+                       choices=["qwen-1.7b", "qwen-0.6b", "aligner", "community-1"])
+    local.add_argument("--root", type=Path, help="Installed runtime root, or new install destination")
+    local.add_argument("--timeout", type=int, default=180)
+    local.set_defaults(func=_run_local_asr)
 
     _build_transcribe_parser(subparsers)
     _build_subtitle_parser(subparsers)
@@ -475,6 +496,10 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("whisper_api.request_profile", getattr(args, "whisper_request_profile", None))
 
     # Transcribe
+    for key, argument in (("model", "qwen_model"), ("diarize", "local_diarize"),
+                          ("runtime_root", "qwen_runtime"), ("diarization_root", "diarization_runtime"),
+                          ("chunk_ms", "local_chunk_ms"), ("timeout", "local_timeout")):
+        _set(f"local_asr.{key}", getattr(args, argument, None))
     _set("transcribe.asr", getattr(args, "asr", None))
     _set("transcribe.language", getattr(args, "language", None))
 
@@ -566,6 +591,16 @@ def _run_transcribe(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.transcribe import run
     config = _load_config(args)
     return run(args, config)
+
+
+def _run_local_asr(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.local_asr import run
+    return run(args)
+
+
+def _run_local_diarize(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.local_diarize import run
+    return run(args)
 
 
 def _run_asr_review(args: argparse.Namespace) -> int:

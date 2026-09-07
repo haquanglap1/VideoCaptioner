@@ -1,0 +1,5 @@
+# Independent Windows CPython 3.12 runtime. No Qt/project dependency changes.
+pyannote-audio==4.0.7
+torch==2.9.1+cu128
+torchaudio==2.9.1+cu128
+torchcodec==0.8.1

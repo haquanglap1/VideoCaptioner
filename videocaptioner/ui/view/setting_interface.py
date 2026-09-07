@@ -401,6 +401,8 @@ class SettingInterface(ScrollArea):
         from videocaptioner.ui.components.NativeASRSettingWidget import NativeASRCards
 
         self.nativeASRCards = {name: NativeASRCards(name, self.transcribeGroup) for name in ("soniox", "scribe")}
+        from videocaptioner.ui.components.local_asr_cards import LocalASRCards
+        self.localASRCards = LocalASRCards(self.transcribeGroup)
         for controls in self.nativeASRCards.values():
             for card in controls.cards:
                 card.setVisible(False)
@@ -534,6 +536,8 @@ class SettingInterface(ScrollArea):
 
         # Transcription cards
         self.transcribeGroup.addSettingCard(self.transcribeModelCard)
+        for card in self.localASRCards.cards:
+            self.transcribeGroup.addSettingCard(card)
         self.transcribeGroup.addSettingCard(self.fasterWhisperManagerCard)
         # Whisper API cards
         self.transcribeGroup.addSettingCard(self.whisperProfileCards.provider)
@@ -904,6 +908,9 @@ class SettingInterface(ScrollArea):
             for card in controls.cards:
                 card.setVisible(current is selected)
         is_whisper_api = current is TranscribeModelEnum.WHISPER_API
+        is_qwen = current is TranscribeModelEnum.QWEN_LOCAL
+        for card in self.localASRCards.cards:
+            card.setVisible(is_qwen or is_whisper_api and card in (self.localASRCards.diarize, self.localASRCards.manager, self.localASRCards.timeout))
         self.fasterWhisperManagerCard.setVisible(
             current is TranscribeModelEnum.FASTER_WHISPER
         )

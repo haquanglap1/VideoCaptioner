@@ -59,6 +59,9 @@ class TranscriptionSettingCard(QWidget):
             from .NativeASRSettingWidget import NativeASRSettingWidget
 
             widget = NativeASRSettingWidget("soniox" if value == TranscribeModelEnum.SONIOX.value else "scribe", self)
+        elif value == TranscribeModelEnum.QWEN_LOCAL.value:
+            from .local_asr_cards import LocalASRSettingWidget
+            widget = LocalASRSettingWidget(self)
         elif value == TranscribeModelEnum.FASTER_WHISPER.value and not is_macos():
             from .FasterWhisperSettingWidget import FasterWhisperSettingWidget
 

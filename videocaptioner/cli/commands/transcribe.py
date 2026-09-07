@@ -62,6 +62,7 @@ def run(args: Namespace, config: dict) -> int:
     # they are deliberately not exported to os.environ.
 
     # Build TranscribeConfig
+    from videocaptioner.core.asr.local.profiles import LocalASRConfig
     from videocaptioner.core.asr.native_profiles import NativeASRConfig
     from videocaptioner.core.entities import (
         FasterWhisperModelEnum,
@@ -72,6 +73,7 @@ def run(args: Namespace, config: dict) -> int:
     )
 
     asr_map = {
+        "qwen-local": TranscribeModelEnum.QWEN_LOCAL,
         "soniox": TranscribeModelEnum.SONIOX,
         "scribe": TranscribeModelEnum.SCRIBE,
         "faster-whisper": TranscribeModelEnum.FASTER_WHISPER,
@@ -94,6 +96,7 @@ def run(args: Namespace, config: dict) -> int:
     wcpp_model_enum = next((m for m in WhisperModelEnum if m.value == wcpp_model_str), None)
 
     transcribe_config = TranscribeConfig(
+        local_asr=LocalASRConfig(**get(config, "local_asr", {})),
         transcribe_model=asr_map.get(asr_engine),
         transcribe_language=language if language != "auto" else "",
         need_word_time_stamp=getattr(args, "word_timestamps", False),

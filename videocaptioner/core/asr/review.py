@@ -156,6 +156,9 @@ class NativeReview:
 
     @classmethod
     def from_dict(cls, data: dict) -> NativeReview:
+        if isinstance(data, dict) and data.get("schema") == "local-asr-review-v1":
+            from .local.review import LocalReview
+            return LocalReview.from_dict(data)
         try:
             raw = dict(data)
             if raw.pop("schema") != SCHEMA:

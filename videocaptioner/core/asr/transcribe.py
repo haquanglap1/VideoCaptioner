@@ -5,6 +5,11 @@ from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
 from videocaptioner.core.asr.faster_whisper import FasterWhisperASR
 from videocaptioner.core.asr.jianying import JianYingASR
+from videocaptioner.core.asr.local.pipeline import (
+    QwenLocalASR,
+    add_local_speakers,
+    diarization_preflight,
+)
 from videocaptioner.core.asr.native_api import NativeASR
 from videocaptioner.core.asr.whisper_api import WhisperAPI
 from videocaptioner.core.asr.whisper_cpp import WhisperCppASR
@@ -33,19 +38,35 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
         raise ValueError("Transcription model not set")
 
     # Create ASR instance based on model type
+    if config.local_asr.diarize:
+        if config.transcribe_model not in (TranscribeModelEnum.QWEN_LOCAL, TranscribeModelEnum.WHISPER_API):
+            raise ValueError("Local diarization supports Qwen Local or Whisper API; do not merge native speaker labels implicitly.")
+        diarization_preflight(config.local_asr)
+        # Fail local health before spending on gateway recognition.
+        if config.transcribe_model is TranscribeModelEnum.WHISPER_API:
+            from videocaptioner.core.asr.local.runtime import LocalRuntime
+            def check():
+                callback(0, "Checking local diarization before recognition")
+            runtime = LocalRuntime(diarization_preflight(config.local_asr, verify=True, check=check), config.local_asr.timeout)
+            try:
+                runtime.start(check)
+            finally:
+                runtime.close()
     asr = _create_asr_instance(audio_path, config)
 
     # Run transcription
     asr_data = asr.run(callback=callback)
 
     # Optimize subtitle timing if not using word timestamps
-    if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR)):
+    if config.local_asr.diarize:
+        return add_local_speakers(audio_path, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
+    if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR)):
         asr_data.optimize_timing()
 
     return asr_data
 
 
-def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI | NativeASR:
+def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI | NativeASR | QwenLocalASR:
     """Create appropriate ASR instance based on configuration.
 
     Args:
@@ -56,6 +77,8 @@ def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedAS
         ChunkedASR: Chunked ASR instance ready to run
     """
     model_type = config.transcribe_model
+    if model_type == TranscribeModelEnum.QWEN_LOCAL:
+        return QwenLocalASR(audio_path, config)
 
     if model_type in (TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE):
         expected = "soniox" if model_type == TranscribeModelEnum.SONIOX else "scribe"

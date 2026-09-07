@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional
 
+from videocaptioner.core.asr.local.profiles import LocalASRConfig
 from videocaptioner.core.asr.metadata import ASRMetadata
 from videocaptioner.core.asr.native_profiles import NativeASRConfig
 
@@ -131,6 +132,7 @@ class TranscribeModelEnum(Enum):
     WHISPER_CPP = "WhisperCpp"
     SONIOX = "Soniox v5 [API]"
     SCRIBE = "ElevenLabs Scribe v2 [API]"
+    QWEN_LOCAL = "Qwen3-ASR [Local]"
 
 
 class TranslatorServiceEnum(Enum):
@@ -588,6 +590,7 @@ class TranscribeConfig:
     whisper_api_provider: str = "custom"
     whisper_api_request_profile: str = "auto"
     native_asr: Optional[NativeASRConfig] = None
+    local_asr: LocalASRConfig = field(default_factory=LocalASRConfig)
 
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""

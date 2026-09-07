@@ -148,6 +148,17 @@ Kết quả Soniox/Scribe lỗi timing được giữ riêng để mở bằng *
 user sửa timing có undo/redo rồi validate/resume tại máy, không upload lại. CLI có lệnh `asr-review`.
 Xem [hướng dẫn S4.1, cấu hình timeout và review/resume](docs/dev/asr-s41.md).
 
+## Qwen local và hybrid người nói (S5)
+
+Chọn `Qwen3-ASR [Local]` trong GUI hoặc `--asr qwen-local --language zh` trong CLI.
+1.7B/0.6B và ForcedAligner chạy tuần tự trong runtime riêng; không đổi engine mặc định.
+**Quản lý mô hình** chỉ tải/nạp thử khi user bấm. `--local-diarize` thêm Community-1 cho
+Qwen hoặc Whisper API; model gated cần user chấp nhận điều kiện Hugging Face và nhập token ẩn.
+`local-diarize` dùng JSON/SRT đã có với âm thanh gốc, không nhận dạng/upload lại.
+Xem [cài đặt, cache/review, GPU và giới hạn nghiệm thu S5](docs/dev/asr-local-s5.md).
+Cả hai Qwen đã có smoke local trên clip public; diarization model/API thật và chất lượng
+speaker/xưng hô vẫn chưa nghiệm thu.
+
 ## Lồng tiếng Natural
 
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.

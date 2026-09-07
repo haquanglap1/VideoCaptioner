@@ -85,6 +85,8 @@ GUI_LLM_SERVICE_PREFIX: Dict[str, str] = {
 }
 
 DEFAULTS: Dict[str, Any] = {
+    "local_asr": {"model": "qwen-1.7b", "diarize": False, "chunk_ms": 120000, "timeout": 180,
+                  "runtime_root": "", "diarization_root": ""},
     **{provider: {"api_key": "", "api_base": profile.endpoint, "model": profile.model, "diarize": True}
        for provider, profile in NATIVE_PROFILES.items()},
     "llm": {
@@ -383,6 +385,9 @@ def save_config_value(key: str, value: str, config_path: Optional[Path] = None) 
         from videocaptioner.core.llm.request_policy import validate_request_timeout
 
         validate_request_timeout(value)
+    if key.startswith("local_asr."):
+        from videocaptioner.core.asr.local.profiles import LocalASRConfig
+        LocalASRConfig(**{key.split(".", 1)[1]: _parse_value(value, key)})
     path = config_path or CONFIG_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
 
