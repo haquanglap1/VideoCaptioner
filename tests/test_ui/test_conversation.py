@@ -26,8 +26,8 @@ def document():
 
 
 def test_dialog_is_local_keeps_stable_ids_and_reports_missing_context(qapp, monkeypatch):
-    monkeypatch.setattr("videocaptioner.core.translate.llm_translator.call_llm",
-                        lambda **kw: pytest.fail("Opening context must not call LLM"))
+    monkeypatch.setattr("videocaptioner.core.llm.owned_request.OwnedLLMRequest.__call__",
+                        lambda *a, **kw: pytest.fail("Opening context must not call LLM"))
     data = document()
     dialog = ConversationDialog(data.conversation_context, data.context_snapshot().cues)
     try:
@@ -114,6 +114,7 @@ def test_stale_table_result_does_not_overwrite_user_edit(qapp, monkeypatch):
         view.model._data["1"]["translated_subtitle"] = "User edit"
         errors = []
         monkeypatch.setattr(view, "_on_retranslate_error", errors.append)
+        view._retranslate_source = view._context_data
         view._on_retranslate_finished({"1": "Stale"})
         assert errors and view.model._data["1"]["translated_subtitle"] == "User edit"
     finally:
@@ -196,6 +197,8 @@ def test_application_shutdown_waits_for_context_worker_and_discards_cancelled_ou
         worker.start()
         assert entered.wait(5)
         view._shutdown_context_workers()
+        # Page shutdown returns immediately; the supervisor retains the worker.
+        assert worker.wait(5000)
         qapp.processEvents()
         assert not worker.isRunning() and not received
         assert worker.wait(1000)

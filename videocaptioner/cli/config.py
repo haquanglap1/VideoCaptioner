@@ -45,6 +45,7 @@ ENV_MAP: Dict[str, str] = {
     "VIDEOCAPTIONER_LLM_API_KEY": "llm.api_key",
     "VIDEOCAPTIONER_LLM_API_BASE": "llm.api_base",
     "VIDEOCAPTIONER_LLM_MODEL": "llm.model",
+    "VIDEOCAPTIONER_LLM_REQUEST_TIMEOUT": "llm.request_timeout",
     "VIDEOCAPTIONER_WHISPER_API_KEY": "whisper_api.api_key",
     "VIDEOCAPTIONER_WHISPER_API_BASE": "whisper_api.api_base",
     "VIDEOCAPTIONER_WHISPER_API_MODEL": "whisper_api.model",
@@ -90,6 +91,7 @@ DEFAULTS: Dict[str, Any] = {
         "api_key": "",
         "api_base": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
+        "request_timeout": 120,
     },
     "whisper_api": {
         "api_key": "",
@@ -377,6 +379,10 @@ def _parse_value(raw: str, key: str) -> Any:
 
 def save_config_value(key: str, value: str, config_path: Optional[Path] = None) -> None:
     """Set a single value in the config file. Creates the file if it doesn't exist."""
+    if key == "llm.request_timeout":
+        from videocaptioner.core.llm.request_policy import validate_request_timeout
+
+        validate_request_timeout(value)
     path = config_path or CONFIG_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -25,6 +25,7 @@ from .api_transcription import audio_attachment
 from .asr_data import ASRData
 from .native_profiles import NATIVE_PROFILES, NativeASRConfig
 from .native_result import native_cues, parse_native
+from .review import NativeReview, NativeReviewRequired
 
 logger = setup_logger("native_asr")
 Check = Callable[[], None]
@@ -175,7 +176,18 @@ class NativeASR:
             else:
                 response, scope = cached["response"], cached["scope"]
             check()
-            result = parse_native(response, self.config.provider, self.duration_ms, scope, self.config.diarize)
+            # Capture the recognition before strict timing validation can reject it.
+            review = NativeReview.capture(response, self.config.provider, self.config.model, scope,
+                                           self.duration_ms, self.config.diarize, self.word_timing, self.language)
+            try:
+                result = parse_native(response, self.config.provider, self.duration_ms, scope, self.config.diarize)
+            except ASRAPIError as exc:
+                try:
+                    review_path = review.save_new()
+                except OSError:
+                    review_path = None
+                self.state.status = "review_required"
+                raise NativeReviewRequired(review, str(exc), review_path) from None
             if enabled and cached is None:
                 # Cache only fields required by the parser, never remote IDs/raw error bodies.
                 field_name = "tokens" if self.config.provider == "soniox" else "words"
@@ -190,6 +202,8 @@ class NativeASR:
                 callback(100, f"Native ASR: {len(result)} timed speech spans; {observed} anonymous speaker labels observed. "
                          + " ".join(self.state.warnings))
             return result if self.word_timing else native_cues(result)
+        except NativeReviewRequired:
+            raise
         except NativeAPIError as exc:
             self.state.status = "timeout" if exc.timed_out else "failed"
             raise

@@ -184,6 +184,18 @@ def run(args: Namespace, config: dict) -> int:
         return EXIT.SUCCESS
 
     except Exception as e:
+        from videocaptioner.core.asr.review import NativeReviewRequired
+
+        if isinstance(e, NativeReviewRequired):
+            review_path = e.path
+            if getattr(args, "asr_review", None):
+                try:
+                    review_path = e.review.save(args.asr_review)
+                except OSError:
+                    output.error("Cannot save requested review path.")
+            if review_path:
+                output.warn(f"Recognition requires local review: {review_path}")
+                output.hint("Open ASR review in the GUI or use 'asr-review'; do not transcribe/upload again.")
         msg = output.clean_error(str(e))
         if progress:
             progress.fail(msg)

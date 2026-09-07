@@ -467,6 +467,16 @@ class SettingInterface(ScrollArea):
         )
 
         # Add the cards to the translation service group
+        self.requestTimeoutCard = RangeSettingCard(
+            cfg.llm_request_timeout, FIF.SPEED_HIGH,
+            self.tr("Translation request timeout (seconds)"),
+            self.tr("Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges."),
+            parent=self.translate_serviceGroup,
+        )
+        self.translate_serviceGroup.addSettingCard(self.requestTimeoutCard)
+        self.requestTimeoutCard.contentLabel.setWordWrap(True)
+        self.requestTimeoutCard.contentLabel.setFixedHeight(40)
+        self.requestTimeoutCard.setMinimumHeight(100)
         self.translate_serviceGroup.addSettingCard(self.translatorServiceCard)
         self.translate_serviceGroup.addSettingCard(self.needReflectTranslateCard)
         self.translate_serviceGroup.addSettingCard(self.deeplxEndpointCard)
@@ -843,6 +853,7 @@ class SettingInterface(ScrollArea):
 
     def __onTranslatorServiceChanged(self, service):
         openai_cards = [
+            self.requestTimeoutCard,
             self.needReflectTranslateCard,
             self.batchSizeCard,
         ]

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from videocaptioner.core.asr.review import NativeReviewRequired
 from videocaptioner.core.asr.transcribe import transcribe
 from videocaptioner.core.entities import TranscribeOutputFormatEnum, TranscribeTask
 from videocaptioner.core.utils.logger import setup_logger
@@ -16,6 +17,7 @@ class TranscriptThread(QThread):
     finished = pyqtSignal(TranscribeTask)
     progress = pyqtSignal(int, str)
     error = pyqtSignal(str)
+    review_required = pyqtSignal(object)
 
     def __init__(self, task: TranscribeTask):
         super().__init__()
@@ -35,6 +37,8 @@ class TranscriptThread(QThread):
             self._perform_transcription()
 
         except Exception as e:
+            if isinstance(e, NativeReviewRequired):
+                self.review_required.emit(e)
             logger.exception("转录过程中发生错误: %s", str(e))
             self.error.emit(str(e))
             self.progress.emit(100, self.tr("转录失败"))
@@ -115,6 +119,8 @@ class TranscriptThread(QThread):
             )
 
             self.task.asr_data = asr_data
+            if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
+                return
 
             # Save the configured subtitle formats.
             output_path = Path(self.task.output_path)

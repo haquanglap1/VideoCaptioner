@@ -1128,6 +1128,8 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>测试错误</source>
         <translation>Test error</translation>
     </message>
+    <message><source>Translation request timeout (seconds)</source><translation>Translation request timeout (seconds)</translation></message>
+    <message><source>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</source><translation>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</translation></message>
 </context>
 <context>
     <name>StyleNameDialog</name>
@@ -2017,6 +2019,7 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>请拖入音频或视频文件</source>
         <translation>Please drag audio or video files here</translation>
     </message>
+    <message><source>Open ASR review</source><translation>Open ASR review</translation></message>
 </context>
 <context>
     <name>VideoInfoCard</name>
@@ -2642,6 +2645,7 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>Translated selected cues; review Vietnamese pronouns.</source>
         <translation>Translated selected cues; review Vietnamese pronouns.</translation>
     </message>
+    <message><source>Cancel translation</source><translation>Cancel translation</translation></message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -3065,4 +3069,40 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <translation>speaker: conflicting confirmed entries</translation>
     </message>
 </context>
+
+
+<context>
+    <name>ASRReviewDialog</name>
+    <message><source>ASR timing review</source><translation>ASR timing review</translation></message>
+    <message><source>Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override.</source><translation>Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override.</translation></message>
+    <message><source>Token ID</source><translation>Token ID</translation></message>
+    <message><source>Speaker</source><translation>Speaker</translation></message>
+    <message><source>Text</source><translation>Text</translation></message>
+    <message><source>Original start</source><translation>Original start</translation></message>
+    <message><source>Original end</source><translation>Original end</translation></message>
+    <message><source>Start (ms)</source><translation>Start (ms)</translation></message>
+    <message><source>End (ms)</source><translation>End (ms)</translation></message>
+    <message><source>Review / provenance</source><translation>Review / provenance</translation></message>
+    <message><source>Apply timing override</source><translation>Apply timing override</translation></message>
+    <message><source>Undo</source><translation>Undo</translation></message>
+    <message><source>Redo</source><translation>Redo</translation></message>
+    <message><source>Save review as…</source><translation>Save review as…</translation></message>
+    <message><source>Validate and export…</source><translation>Validate and export…</translation></message>
+    <message><source>Close</source><translation>Close</translation></message>
+    <message><source>Unknown</source><translation>Unknown</translation></message>
+    <message><source>Edited by user</source><translation>Edited by user</translation></message>
+    <message><source>Native</source><translation>Native</translation></message>
+    <message><source>{0} token timing issue(s). Original units: {1}. Full validation is required before export.</source><translation>{0} token timing issue(s). Original units: {1}. Full validation is required before export.</translation></message>
+    <message><source>Save ASR review</source><translation>Save ASR review</translation></message>
+    <message><source>Review saved. Reopen this JSON to continue without uploading.</source><translation>Review saved. Reopen this JSON to continue without uploading.</translation></message>
+    <message><source>Cannot save review file.</source><translation>Cannot save review file.</translation></message>
+    <message><source>Export validated subtitles</source><translation>Export validated subtitles</translation></message>
+    <message><source>Choose JSON or SRT.</source><translation>Choose JSON or SRT.</translation></message>
+    <message><source>Full result exported. JSON retains cue IDs and edited provenance; SRT does not.</source><translation>Full result exported. JSON retains cue IDs and edited provenance; SRT does not.</translation></message>
+    <message><source>Subtitle output must not replace the review file.</source><translation>Subtitle output must not replace the review file.</translation></message>
+    <message><source>Open ASR review</source><translation>Open ASR review</translation></message>
+    <message><source>Zero-duration speech token</source><translation>Zero-duration speech token</translation></message>
+    <message><source>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</source><translation>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</translation></message>
+</context>
+
 </TS>

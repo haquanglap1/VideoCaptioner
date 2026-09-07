@@ -111,6 +111,7 @@ def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_native_asr_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Native Chinese ASR (Soniox / ElevenLabs)")
+    group.add_argument("--asr-review", metavar="JSON", help="Save rejected native recognition for local timing review")
     for provider in ("soniox", "scribe"):
         group.add_argument(f"--{provider}-api-key", metavar="KEY")
         group.add_argument(f"--{provider}-api-base", metavar="URL")
@@ -187,6 +188,8 @@ def _build_subtitle_parser(subparsers) -> None:
     llm.add_argument("--api-base", metavar="URL",
                      help="LLM API base URL (or set OPENAI_BASE_URL env var)")
     llm.add_argument("--model", metavar="NAME", help="LLM model name (e.g. gpt-4o-mini)")
+    llm.add_argument("--llm-timeout", type=int, metavar="SECONDS",
+                     help="Translation request deadline, 1–600 seconds (default: 120)")
 
     _add_output_options(p)
 
@@ -321,6 +324,8 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--prompt", metavar="TEXT", help="Custom prompt for LLM optimization/translation")
     pipe.add_argument("--thread-num", type=int, metavar="N", help="Concurrent threads (default: 4)")
     pipe.add_argument("--batch-size", type=int, metavar="N", help="Batch size (default: 20)")
+    pipe.add_argument("--llm-timeout", type=int, metavar="SECONDS",
+                      help="Translation request deadline, 1–600 seconds (default: 120)")
     pipe.add_argument("--dub", action="store_true", help="Add Natural/Legacy dubbing before synthesis")
     # Hidden options
     p.add_argument("--prompt-file", metavar="FILE", help=argparse.SUPPRESS)
@@ -414,6 +419,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     _build_transcribe_parser(subparsers)
     _build_subtitle_parser(subparsers)
+    review = subparsers.add_parser("asr-review", help="Validate/resume saved ASR review locally, without uploading")
+    review.add_argument("input", help="ASR review JSON")
+    review.add_argument("--set-timing", action="append", metavar="TOKEN_ID:START_MS:END_MS")
+    review.add_argument("--save-review", metavar="JSON", help="Save explicit timing overrides with the original tokens")
+    review.add_argument("-o", "--output", metavar="PATH", help="Export complete validated subtitles (.json or .srt)")
+    _add_common_options(review)
+    review.set_defaults(func=_run_asr_review)
     _build_synthesize_parser(subparsers)
     _build_dub_parser(subparsers)
     _build_process_parser(subparsers)
@@ -450,6 +462,7 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("llm.api_key", getattr(args, "api_key", None))
     _set("llm.api_base", getattr(args, "api_base", None))
     _set("llm.model", getattr(args, "model", None))
+    _set("llm.request_timeout", getattr(args, "llm_timeout", None))
 
     # Whisper API
     _set("whisper_api.api_key", getattr(args, "whisper_api_key", None))
@@ -553,6 +566,12 @@ def _run_transcribe(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.transcribe import run
     config = _load_config(args)
     return run(args, config)
+
+
+def _run_asr_review(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.asr_review import run
+
+    return run(args, {})
 
 
 def _run_subtitle(args: argparse.Namespace) -> int:

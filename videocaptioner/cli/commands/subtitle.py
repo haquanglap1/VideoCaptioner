@@ -90,6 +90,13 @@ def run(args: Namespace, config: dict) -> int:
         output.warn("--prompt/--prompt-file only works with LLM optimizer/translator")
 
     thread_num = get(config, "subtitle.thread_num", 4)
+    from videocaptioner.core.llm.request_policy import validate_request_timeout
+
+    try:
+        request_timeout = validate_request_timeout(get(config, "llm.request_timeout", 120))
+    except ValueError as exc:
+        output.error(str(exc))
+        return EXIT.USAGE_ERROR
     batch_size = get(config, "subtitle.batch_size", 20)
     max_cjk = get(config, "subtitle.max_word_count_cjk", 18)
     max_english = get(config, "subtitle.max_word_count_english", 12)
@@ -177,6 +184,7 @@ def run(args: Namespace, config: dict) -> int:
         output.warn(f"Input file contains 0 subtitle segments: {input_path}")
 
     progress = None if quiet else output.ProgressLine("Processing subtitles").start()
+    components = []
     _done_count = 0
     _total_count = max(len(asr_data.segments), 1)
 
@@ -211,6 +219,7 @@ def run(args: Namespace, config: dict) -> int:
                 max_word_count_cjk=max_cjk,
                 max_word_count_english=max_english,
             )
+            components.append(splitter)
             asr_data = splitter.split_subtitle(asr_data)
 
         # 2. Optimize
@@ -225,6 +234,7 @@ def run(args: Namespace, config: dict) -> int:
                 custom_prompt=custom_prompt,
                 update_callback=callback,
             )
+            components.append(optimizer)
             asr_data = optimizer.optimize_subtitle(asr_data)
             asr_data.remove_punctuation()
 
@@ -252,7 +262,10 @@ def run(args: Namespace, config: dict) -> int:
                 custom_prompt=custom_prompt,
                 is_reflect=need_reflect,
                 update_callback=callback,
+                request_timeout=request_timeout,
+                credentials=LLMCredentials(llm_api_key, llm_api_base) if needs_llm else None,
             )
+            components.append(translator)
             asr_data = translator.translate_subtitle(asr_data)
             asr_data.remove_punctuation()
 
@@ -285,3 +298,8 @@ def run(args: Namespace, config: dict) -> int:
             import traceback
             traceback.print_exc()
         return EXIT.RUNTIME_ERROR
+    finally:
+        for component in components:
+            close = getattr(component, "close", None)
+            if close is not None:
+                close()

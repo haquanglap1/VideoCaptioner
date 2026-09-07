@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 POLICY = "conversation-context-v1"
+REQUEST_POLICY = "conversation-request-v2"
 Status = Literal["unknown", "proposed", "confirmed", "locked"]
 
 
@@ -247,17 +248,47 @@ class ConversationSnapshot:
 
     def request_data(self, cue_ids: tuple[str, ...], radius: int = 4) -> dict:
         selected = set(cue_ids)
+        if selected - {cue.id for cue in self.cues}:
+            raise ValueError("Missing selected cue association.")
         indexes = {i for pos, cue in enumerate(self.cues) if cue.id in selected
                    for i in range(max(0, pos - radius), min(len(self.cues), pos + radius + 1))}
-        evidence_ids = {cue_id for f in fields(self.context) for item in getattr(self.context, f.name)
-                        for cue_id in item.evidence.cue_ids}
+        resolved = [c for c in self.resolved if c.id in selected]
+        characters = {i for c in resolved for i in (c.speaker_id, *c.addressee_ids, *c.mentioned_ids) if i}
+        # Retain the confirmed character glossary even for a short ambiguous selection.
+        characters.update(c.id for c in self.context.characters if c.evidence.status in ("confirmed", "locked"))
+        speakers = {c.speaker for c in self.cues if c.id in selected and c.speaker}
+        relevant: list[Character | Scene | SpeakerMapping | CueAssignment | AddressRule] = [
+            c for c in self.context.characters if c.id in characters]
+        relevant += [s for s in self.context.scenes if selected.intersection(s.cue_ids)]
+        relevant += [m for m in self.context.mappings if m.speaker_id in speakers
+                     and any(_applies(m.scope, cid, self.context) for cid in selected)]
+        relevant += [a for a in self.context.assignments
+                     if any(_applies(a.scope, cid, self.context) for cid in selected)]
+        relevant += [r for r in self.context.rules if any(
+            c.mode == "dialogue" and c.speaker_id == r.speaker_id
+            and set(c.addressee_ids) == set(r.addressee_ids) and _applies(r.scope, c.id, self.context)
+            for c in resolved)]
+        accepted = [item for item in relevant if item.evidence.status in ("confirmed", "locked")]
+        evidence_ids = {cid for item in accepted for cid in item.evidence.cue_ids}
         indexes.update(i for i, cue in enumerate(self.cues) if cue.id in evidence_ids)
+        # Empty/default fields carry no evidence. The prompt defines their unknown semantics once.
+        selected_data = [{key: value for key, value in asdict(c).items()
+                          if key != "review" and value and value != "unknown"} for c in resolved]
+        reviews: dict[str, list[str]] = {}
+        for cue in resolved:
+            for issue in cue.review:
+                if "conflict" in issue or "proposal" in issue:
+                    reviews.setdefault(issue, []).append(cue.id)
         return {
-            "policy": POLICY,
-            "characters": [asdict(c) for c in self.context.characters if c.evidence.status in ("confirmed", "locked")],
-            "selected": [asdict(c) for c in self.resolved if c.id in selected],
-            "source_window": [asdict(self.cues[i]) for i in sorted(indexes)],
-            "review": self.review,
+            "policy": REQUEST_POLICY,
+            "characters": [asdict(c) for c in self.context.characters
+                           if c.id in characters and c.evidence.status in ("confirmed", "locked")],
+            "selected": selected_data,
+            "source_window": [{key: value for key, value in asdict(self.cues[i]).items() if value}
+                              for i in sorted(indexes)],
+            "evidence": [{"entry_id": item.id, **asdict(item.evidence)} for item in accepted
+                         if item.evidence.cue_ids],
+            "review": {"document": self.review, "cues_by_issue": reviews} if self.review or reviews else {},
         }
 
 
@@ -313,7 +344,7 @@ def prepare_snapshot(cues: tuple[SourceCue, ...], context: ConversationContext) 
         resolved.append(ResolvedCue(cue.id, speaker, listeners, assignment.mentioned_ids if assignment else (),
                                     mode, rule.self_term if rule else "", rule.address_term if rule else "",
                                     tuple(issues)))
-    payload = {"context": context.to_dict(), "source": [asdict(c) for c in cues]}
+    payload = {"request_policy": REQUEST_POLICY, "context": context.to_dict(), "source": [asdict(c) for c in cues]}
     fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return ConversationSnapshot(context, cues, tuple(resolved), fingerprint, tuple(sorted(set(review))))
 

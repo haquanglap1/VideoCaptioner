@@ -57,6 +57,7 @@ from videocaptioner.ui.components.SearchReplaceDialog import SearchReplaceDialog
 from videocaptioner.ui.components.SubtitleSettingDialog import SubtitleSettingDialog
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.subtitle_thread import RetranslateThread, SubtitleThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
 
 class SubtitleTableModel(QAbstractTableModel):
@@ -567,17 +568,21 @@ class SubtitleInterface(QWidget):
             self.cancel_button.hide()
             return
         self.subtitle_optimization_thread = SubtitleThread(self.task)
-        self.subtitle_optimization_thread.finished.connect(
-            self.on_subtitle_optimization_finished
-        )
-        self.subtitle_optimization_thread.progress.connect(
-            self.on_subtitle_optimization_progress
-        )
-        self.subtitle_optimization_thread.update.connect(self.update_data)
-        self.subtitle_optimization_thread.update_all.connect(self.update_all)
-        self.subtitle_optimization_thread.error.connect(
-            self.on_subtitle_optimization_error
-        )
+        worker = self.subtitle_optimization_thread
+        retain_worker(worker)
+        source = self._context_data
+        version = generate_cache_key(self.current_context_document().to_document())
+        def accept_result(video_path, output_path):
+            if (self._context_data is not source
+                    or version != generate_cache_key(self.current_context_document().to_document())):
+                self.on_subtitle_optimization_error(self.tr("Context or subtitles changed; stale translation discarded."))
+                return
+            if worker.task.asr_data is not None:
+                self.update_all(worker.task.asr_data.to_json())
+            self.on_subtitle_optimization_finished(video_path, output_path)
+        connect_current(self, "subtitle_optimization_thread", worker, worker.finished, accept_result)
+        connect_current(self, "subtitle_optimization_thread", worker, worker.progress, self.on_subtitle_optimization_progress)
+        connect_current(self, "subtitle_optimization_thread", worker, worker.error, self.on_subtitle_optimization_error)
         self.subtitle_optimization_thread.set_custom_prompt_text(
             self.custom_prompt_text
         )
@@ -755,8 +760,6 @@ class SubtitleInterface(QWidget):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._shutdown_context_workers()
-        if hasattr(self, "subtitle_optimization_thread"):
-            self.subtitle_optimization_thread.stop()  # type: ignore
         super().closeEvent(event)
 
     def _shutdown_context_workers(self) -> None:
@@ -764,8 +767,7 @@ class SubtitleInterface(QWidget):
         for name in ("_retranslate_thread", "subtitle_optimization_thread"):
             worker = getattr(self, name, None)
             if worker is not None and worker.isRunning():
-                worker.stop()
-                worker.wait()
+                retire_worker(worker)
 
     def show_subtitle_settings(self) -> None:
         dialog = SubtitleSettingDialog(self.window())
@@ -862,10 +864,14 @@ class SubtitleInterface(QWidget):
         file_name = Path(self.subtitle_path).name if self.subtitle_path else ""
         document = self.current_context_document()
         self._retranslate_version = generate_cache_key(document.to_document())
+        self._retranslate_source = self._context_data
         self._retranslate_thread = RetranslateThread(selected_data, config, file_name, context_data=document)
-        self._retranslate_thread.finished.connect(self._on_retranslate_finished)
-        self._retranslate_thread.progress.connect(self.on_subtitle_optimization_progress)
-        self._retranslate_thread.error.connect(self._on_retranslate_error)
+        worker = self._retranslate_thread
+        retain_worker(worker)
+        connect_current(self, "_retranslate_thread", worker, worker.finished, self._on_retranslate_finished)
+        connect_current(self, "_retranslate_thread", worker, worker.progress, self.on_subtitle_optimization_progress)
+        connect_current(self, "_retranslate_thread", worker, worker.error, self._on_retranslate_error)
+        self.cancel_button.show()
         self._retranslate_thread.start()
 
     def current_context_document(self) -> ASRData:
@@ -886,7 +892,9 @@ class SubtitleInterface(QWidget):
 
     def _on_retranslate_finished(self, result: dict) -> None:
         self.start_button.setEnabled(True)
-        if self._retranslate_version != generate_cache_key(self.current_context_document().to_document()):
+        self.cancel_button.hide()
+        if (self._retranslate_source is not self._context_data
+                or self._retranslate_version != generate_cache_key(self.current_context_document().to_document())):
             self._on_retranslate_error(self.tr("Context or subtitles changed; stale translation discarded."))
             return
         self.model.update_data(result)
@@ -900,6 +908,7 @@ class SubtitleInterface(QWidget):
         )
 
     def _on_retranslate_error(self, error: str) -> None:
+        self.cancel_button.hide()
         self.start_button.setEnabled(True)
         self.progress_bar.error()
         self.status_label.setText(self.tr("重新翻译失败"))
@@ -930,19 +939,14 @@ class SubtitleInterface(QWidget):
 
     def cancel_optimization(self) -> None:
         """Cancel the running optimization."""
-        if hasattr(self, "subtitle_optimization_thread"):
-            self.subtitle_optimization_thread.stop()  # type: ignore
-            self.start_button.setEnabled(True)
-            self.cancel_button.hide()
-            self.progress_bar.resume()  # Back to the normal state
-            self.progress_bar.setValue(0)
-            self.status_label.setText(self.tr("已取消校正"))
-            InfoBar.warning(
-                self.tr("已取消"),
-                self.tr("字幕校正已取消"),
-                duration=INFOBAR_DURATION_WARNING,
-                parent=self,
-            )
+        self._shutdown_context_workers()
+        self.start_button.setEnabled(True)
+        self.cancel_button.hide()
+        self.progress_bar.resume()
+        self.progress_bar.setValue(0)
+        self.status_label.setText(self.tr("已取消校正"))
+        InfoBar.warning(self.tr("已取消"), self.tr("字幕校正已取消"),
+                        duration=INFOBAR_DURATION_WARNING, parent=self)
 
     def on_target_language_changed(self, language: str) -> None:
         """Target language changed from the signal bus."""

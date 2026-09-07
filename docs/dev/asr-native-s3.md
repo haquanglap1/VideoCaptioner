@@ -1,5 +1,10 @@
 # ASR S3 — Soniox v5 và ElevenLabs Scribe v2
 
+Tài liệu này ghi contract/baseline S3. Các phần bổ sung hiện tại: [context S4](asr-context-s4.md)
+và [review/resume S4.1](asr-s41.md). S4.1 giữ raw timing guard; kết quả cần review được lưu riêng,
+sửa bằng override tường minh và validate local. Metadata có thêm `token_ids` tùy chọn; group
+chứa timing đã sửa luôn mang provenance `edited`. Xem status/implementation cho gate mới nhất.
+
 Triển khai trên baseline S2 `d21251a5d1be3d4baceec5a3e8d6869ceb4877c5` (bao gồm code
 S2 `96470bf7`). Hai engine native được chọn tường minh; mặc định và preset Whisper/gateway
 S1 không đổi. Không dùng Qwen để tạo speaker, không triển khai S4–S6.

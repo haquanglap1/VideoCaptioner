@@ -20,6 +20,11 @@ cache.disable_cache()
 
 
 @pytest.fixture(autouse=True)
+def isolated_asr_review(monkeypatch, tmp_path):
+    monkeypatch.setattr("videocaptioner.core.asr.review.review_directory", lambda: tmp_path / "asr-review")
+
+
+@pytest.fixture(autouse=True)
 def isolated_gui_settings(tmp_path):
     """Point QConfig saves at a scratch file.
 
@@ -213,11 +218,12 @@ def mock_llm_client(monkeypatch, tmp_path):
         return _fake_llm_response(json.dumps(result, ensure_ascii=False))
 
     for target in (
-        "videocaptioner.core.translate.llm_translator.call_llm",
         "videocaptioner.core.optimize.optimize.call_llm",
         "videocaptioner.core.split.split_by_llm.call_llm",
     ):
         monkeypatch.setattr(target, fake_call_llm)
+    monkeypatch.setattr("videocaptioner.core.translate.llm_translator.LLMTranslator._request",
+                        lambda self, messages: fake_call_llm(messages, self.model))
 
     # Credential giả: SubtitleConfig của một số test đọc trực tiếp từ env, còn
     # get_llm_client() nhận credentials dạng object như GUI/CLI thật.
@@ -233,18 +239,8 @@ def mock_llm_client(monkeypatch, tmp_path):
         LLMCredentials(api_key="mock-key", base_url="https://mock.invalid/v1")
     )
 
-    # SubtitleThread verify kết nối LLM thật trước khi chạy — bỏ qua khi dùng mock.
-    # Import trong try: root conftest không được phụ thuộc PyQt5 (test CLI chạy
-    # không cần GUI extras).
-    try:
-        import videocaptioner.ui.thread.subtitle_thread  # noqa: F401
-    except Exception:
-        pass
-    else:
-        monkeypatch.setattr(
-            "videocaptioner.ui.thread.subtitle_thread.check_llm_connection",
-            lambda *args, **kwargs: (True, ""),
-        )
+    monkeypatch.setattr("videocaptioner.core.llm.owned_request.OwnedLLMRequest.__call__",
+                        lambda self, **kwargs: fake_call_llm(**kwargs))
 
     isolated_cache = Cache(str(tmp_path / "translate_results"))
     monkeypatch.setattr(

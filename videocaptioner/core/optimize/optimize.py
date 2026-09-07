@@ -41,6 +41,7 @@ class SubtitleOptimizer:
         model: str,
         custom_prompt: str,
         update_callback: Optional[Callable] = None,
+        request: Optional[Callable] = None,
     ):
         """初始化优化器
 
@@ -57,6 +58,7 @@ class SubtitleOptimizer:
         self.model = model
         self.custom_prompt = custom_prompt
         self.update_callback = update_callback
+        self.request = request
 
         self.is_running = True
         self.executor: Optional[ThreadPoolExecutor] = None
@@ -225,7 +227,7 @@ class SubtitleOptimizer:
         # Agent loop
         for step in range(MAX_STEPS):
             # 调用LLM
-            response = call_llm(
+            response = (self.request or call_llm)(
                 messages=messages,
                 model=self.model,
                 temperature=0.2,
@@ -412,9 +414,19 @@ class SubtitleOptimizer:
         self.is_running = False
 
         if self.executor:
+            self._closing_executor = self.executor
             try:
                 self.executor.shutdown(wait=False, cancel_futures=True)
             except Exception:
                 pass
             finally:
                 self.executor = None
+
+    def close(self):
+        """Join owned work from the subtitle worker after cooperative cancellation."""
+        self.stop()
+        executor = getattr(self, "_closing_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+            self._closing_executor = None
+        atexit.unregister(self.stop)

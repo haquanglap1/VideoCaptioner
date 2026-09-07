@@ -17,6 +17,7 @@ def split_by_llm(
     model: str = "gpt-4o-mini",
     max_word_count_cjk: int = 18,
     max_word_count_english: int = 12,
+    request=None,
 ) -> List[str]:
     """使用LLM进行文本断句（固定使用句子Segments）
 
@@ -31,7 +32,7 @@ def split_by_llm(
     """
     try:
         return _split_with_agent_loop(
-            text, model, max_word_count_cjk, max_word_count_english
+            text, model, max_word_count_cjk, max_word_count_english, request
         )
     except Exception as e:
         logger.error(f"Sentence splitting failed: {e}")
@@ -43,6 +44,7 @@ def _split_with_agent_loop(
     model: str,
     max_word_count_cjk: int,
     max_word_count_english: int,
+    request=None,
 ) -> List[str]:
     """使用agent loop 建立反馈循环进行文本断句，自动验证和修正"""
     prompt_path = "split/sentence"
@@ -64,7 +66,7 @@ def _split_with_agent_loop(
     last_result = None
 
     for step in range(MAX_STEPS):
-        response = call_llm(
+        response = (request or call_llm)(
             messages=messages,
             model=model,
             temperature=0.1,

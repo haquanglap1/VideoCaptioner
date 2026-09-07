@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from videocaptioner.core.asr.asr_data import ASRData
-from videocaptioner.core.asr.metadata import ASRAudioEvent
+from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
 from videocaptioner.core.entities import SubtitleLayoutEnum, SupportedSubtitleFormats
 from videocaptioner.core.translate.conversation import ConversationContext
 
@@ -45,8 +45,8 @@ def merge_rows(data: SubtitleTable, rows: Sequence[int]) -> SubtitleTable:
     if first < 0 or last >= len(items):
         raise IndexError(f"rows {rows} outside table of {len(items)} items")
     span = items[first : last + 1]
-    metadata = [item.get("asr_metadata") for item in span]
-    if any(item != metadata[0] for item in metadata):
+    metadata = [ASRMetadata.from_dict(item.get("asr_metadata")) for item in span]
+    if any(not item.same_source(metadata[0]) if item is not None else metadata[0] is not None for item in metadata):
         raise ValueError("Cannot merge different speakers or ASR sources; review required.")
     merged = {
         "start_time": span[0]["start_time"],
@@ -55,7 +55,11 @@ def merge_rows(data: SubtitleTable, rows: Sequence[int]) -> SubtitleTable:
         "translated_subtitle": " ".join(item["translated_subtitle"] for item in span),
     }
     if metadata[0] is not None:
-        merged["asr_metadata"] = metadata[0]
+        combined = metadata[0]
+        for item in metadata[1:]:
+            if item is not None:
+                combined = combined.with_tokens_from(item)
+        merged["asr_metadata"] = combined.to_dict()
         merged["end_time"] = max(item["end_time"] for item in span)
     return renumber(items[:first] + [merged] + items[last + 1 :])
 

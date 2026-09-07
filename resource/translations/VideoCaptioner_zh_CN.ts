@@ -1111,6 +1111,8 @@
         <source>测试错误</source>
         <translation type="unfinished"></translation>
     </message>
+    <message><source>Translation request timeout (seconds)</source><translation type="unfinished" /></message>
+    <message><source>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</source><translation type="unfinished" /></message>
 </context>
 <context>
     <name>StyleNameDialog</name>
@@ -2000,6 +2002,7 @@
         <source>请拖入音频或视频文件</source>
         <translation type="unfinished"></translation>
     </message>
+    <message><source>Open ASR review</source><translation type="unfinished" /></message>
 </context>
 <context>
     <name>VideoInfoCard</name>
@@ -2625,6 +2628,7 @@
         <source>Translated selected cues; review Vietnamese pronouns.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message><source>Cancel translation</source><translation type="unfinished" /></message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -3048,4 +3052,40 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+
+
+<context>
+    <name>ASRReviewDialog</name>
+    <message><source>ASR timing review</source><translation type="unfinished" /></message>
+    <message><source>Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override.</source><translation type="unfinished" /></message>
+    <message><source>Token ID</source><translation type="unfinished" /></message>
+    <message><source>Speaker</source><translation type="unfinished" /></message>
+    <message><source>Text</source><translation type="unfinished" /></message>
+    <message><source>Original start</source><translation type="unfinished" /></message>
+    <message><source>Original end</source><translation type="unfinished" /></message>
+    <message><source>Start (ms)</source><translation type="unfinished" /></message>
+    <message><source>End (ms)</source><translation type="unfinished" /></message>
+    <message><source>Review / provenance</source><translation type="unfinished" /></message>
+    <message><source>Apply timing override</source><translation type="unfinished" /></message>
+    <message><source>Undo</source><translation type="unfinished" /></message>
+    <message><source>Redo</source><translation type="unfinished" /></message>
+    <message><source>Save review as…</source><translation type="unfinished" /></message>
+    <message><source>Validate and export…</source><translation type="unfinished" /></message>
+    <message><source>Close</source><translation type="unfinished" /></message>
+    <message><source>Unknown</source><translation type="unfinished" /></message>
+    <message><source>Edited by user</source><translation type="unfinished" /></message>
+    <message><source>Native</source><translation type="unfinished" /></message>
+    <message><source>{0} token timing issue(s). Original units: {1}. Full validation is required before export.</source><translation type="unfinished" /></message>
+    <message><source>Save ASR review</source><translation type="unfinished" /></message>
+    <message><source>Review saved. Reopen this JSON to continue without uploading.</source><translation type="unfinished" /></message>
+    <message><source>Cannot save review file.</source><translation type="unfinished" /></message>
+    <message><source>Export validated subtitles</source><translation type="unfinished" /></message>
+    <message><source>Choose JSON or SRT.</source><translation type="unfinished" /></message>
+    <message><source>Full result exported. JSON retains cue IDs and edited provenance; SRT does not.</source><translation type="unfinished" /></message>
+    <message><source>Subtitle output must not replace the review file.</source><translation type="unfinished" /></message>
+    <message><source>Open ASR review</source><translation type="unfinished" /></message>
+    <message><source>Zero-duration speech token</source><translation type="unfinished" /></message>
+    <message><source>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</source><translation type="unfinished" /></message>
+</context>
+
 </TS>

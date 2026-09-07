@@ -142,6 +142,12 @@ Lưu JSON/project để giữ liên kết; SRT không giữ metadata. CLI hỗ t
 Xem [cách dùng, snapshot/cache và giới hạn S4](docs/dev/asr-context-s4.md).
 Chưa nghiệm thu chất lượng xưng hô bằng người đọc hoặc các workflow online còn thiếu S2/S3.
 
+S4.1 thêm deadline dịch **1–600 giây**, mặc định **120**. Với `gpt-5.6-terra`, đặt **300** trong
+Cài đặt → Dịch vụ dịch hoặc truyền `--llm-timeout 300` cho `subtitle`/`process`.
+Kết quả Soniox/Scribe lỗi timing được giữ riêng để mở bằng **Nhận dạng → Mở bản review ASR**;
+user sửa timing có undo/redo rồi validate/resume tại máy, không upload lại. CLI có lệnh `asr-review`.
+Xem [hướng dẫn S4.1, cấu hình timeout và review/resume](docs/dev/asr-s41.md).
+
 ## Lồng tiếng Natural
 
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.

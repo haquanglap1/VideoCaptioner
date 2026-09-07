@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+from threading import Event, Lock
 from typing import List
 
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -12,16 +13,17 @@ from videocaptioner.core.entities import (
     SubtitleTask,
     TranslatorServiceEnum,
 )
-from videocaptioner.core.llm.check_llm import check_llm_connection
-from videocaptioner.core.llm.client import LLMCredentials, configure_llm_client
+from videocaptioner.core.llm.client import LLMCredentials
 from videocaptioner.core.llm.context import (
     clear_task_context,
     generate_task_id,
     set_task_context,
     update_stage,
 )
+from videocaptioner.core.llm.owned_request import OwnedLLMRequest
 from videocaptioner.core.optimize.optimize import SubtitleOptimizer
 from videocaptioner.core.split.split import SubtitleSplitter
+from videocaptioner.core.subtitle.publication import SubtitleOutput, publish_subtitles
 from videocaptioner.core.translate.factory import TranslatorFactory
 from videocaptioner.core.translate.types import TranslatorType
 from videocaptioner.core.utils.logger import setup_logger
@@ -56,6 +58,8 @@ def create_translator_from_config(
         is_reflect=config.need_reflect,
         update_callback=callback,
         deeplx_endpoint=config.deeplx_endpoint or "",
+        request_timeout=config.llm_request_timeout,
+        credentials=LLMCredentials(config.api_key or "", config.base_url or ""),
     )
 
 
@@ -68,37 +72,33 @@ class SubtitleThread(QThread):
 
     def __init__(self, task: SubtitleTask):
         super().__init__()
-        self.task: SubtitleTask = task
+        self.source_task = task
+        self.task: SubtitleTask = deepcopy(task)
+        self._cancel = Event()
+        self._publication_lock = Lock()
+        self._active_thread = None
         self.subtitle_length = 0
         self.finished_subtitle_length = 0
         self.custom_prompt_text = ""
         self.optimizer = None
         self.translator = None
+        self.splitter = None
 
     def set_custom_prompt_text(self, text: str):
         self.custom_prompt_text = text
 
     def _setup_llm_config(self) -> SubtitleConfig:
-        """Verify the LLM config, register its credentials and return it."""
+        """Validate the captured settings; the actual job request checks the service."""
         config = self.task.subtitle_config
         if not config:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
         if config.base_url and config.api_key and config.llm_model:
-            success, message = check_llm_connection(
-                config.base_url,
-                config.api_key,
-                config.llm_model,
-            )
-            if not success:
-                raise Exception(f"{self.tr('LLM API 测试失败: ')}{message or ''}")
-            configure_llm_client(
-                LLMCredentials(api_key=config.api_key, base_url=config.base_url)
-            )
             return config
         else:
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
 
     def run(self):
+        self._active_thread = QThread.currentThread()
         # Task context for logs
         task_file = (
             Path(self.task.video_path) if self.task.video_path else Path(self.task.subtitle_path)
@@ -110,6 +110,9 @@ class SubtitleThread(QThread):
         )
 
         try:
+            if self.cancelled():
+                return
+            outputs = []
             logger.info(f"\n{self.task.subtitle_config.print_config()}")
 
             # The subtitle path is required from here on
@@ -118,13 +121,14 @@ class SubtitleThread(QThread):
 
             subtitle_config = self.task.subtitle_config
             assert subtitle_config is not None, self.tr("字幕配置为空")
+            request = OwnedLLMRequest(LLMCredentials(subtitle_config.api_key or "", subtitle_config.base_url or ""),
+                                      subtitle_config.llm_request_timeout, self.cancelled)
 
             asr_data = self.task.asr_data if self.task.asr_data is not None else ASRData.from_subtitle_file(subtitle_path)
 
             # 1. Split into word-level timestamps (unsegmented subtitles with split enabled)
             if subtitle_config.need_split and not asr_data.has_metadata and not asr_data.is_word_timestamp():
                 asr_data.split_to_word_segments()
-                self.update_all.emit(asr_data.to_json())
 
             # Verify the LLM configuration
             if self.need_llm(subtitle_config, asr_data):
@@ -141,13 +145,15 @@ class SubtitleThread(QThread):
                     model=subtitle_config.llm_model,
                     max_word_count_cjk=subtitle_config.max_word_count_cjk,
                     max_word_count_english=subtitle_config.max_word_count_english,
+                    request=request,
                 )
+                self.splitter = splitter
                 asr_data = splitter.split_subtitle(asr_data)
-                self.update_all.emit(asr_data.to_json())
+                if self.cancelled():
+                    return
 
             # 3. Optimize subtitles
-            # Chỉ gửi tên file, không gửi đường dẫn tuyệt đối: prompt này đi ra
-            # API LLM của bên thứ ba, không cần lộ cấu trúc thư mục của user.
+            # Only minimal filename context, never an absolute local path.
             context_info = f'The subtitles below are from a file named "{task_file.name}". Use this context to improve accuracy if needed.\n'
             custom_prompt = context_info + (subtitle_config.custom_prompt_text or "") + "\n"
             self.task.asr_data = asr_data
@@ -166,14 +172,14 @@ class SubtitleThread(QThread):
                     model=subtitle_config.llm_model,
                     custom_prompt=custom_prompt or "",
                     update_callback=self.callback,
+                    request=request,
                 )
                 self.optimizer = optimizer
                 asr_data = optimizer.optimize_subtitle(asr_data)
                 asr_data.remove_punctuation()
-                self.update_all.emit(asr_data.to_json())
 
             # 4. Translate subtitles
-            if self.isInterruptionRequested():
+            if self.cancelled():
                 return
             if subtitle_config.need_translate:
                 update_stage("translate")
@@ -197,13 +203,14 @@ class SubtitleThread(QThread):
                 )
 
                 self.translator = translator
+                if self.cancelled():
+                    return
                 asr_data = translator.translate_subtitle(asr_data)
-                if self.isInterruptionRequested():
+                if self.cancelled():
                     return
 
                 # Strip trailing punctuation
                 asr_data.remove_punctuation()
-                self.update_all.emit(asr_data.to_json())
 
                 # Save the translation (monolingual and bilingual layouts)
                 if self.task.need_next_task and self.task.video_path:
@@ -212,33 +219,24 @@ class SubtitleThread(QThread):
                             Path(self.task.subtitle_path).parent
                             / f"{Path(self.task.video_path).stem}-{layout.value}.srt"
                         )
-                        asr_data.save(
-                            save_path=save_path,
-                            ass_style=subtitle_config.subtitle_style or "",
-                            layout=layout,
-                        )
-                        logger.info(f"翻译字幕保存到：{save_path}")
+                        outputs.append(SubtitleOutput(save_path, layout, subtitle_config.subtitle_style or ""))
 
             # 5. Save subtitles
+            if self.cancelled():
+                return
             if self.task.need_next_task and self.task.video_path:
                 dubbing_path = (
                     Path(self.task.output_path or self.task.subtitle_path).parent
                     / f"{Path(self.task.video_path).stem}-dubbing-target.srt"
                 )
-                asr_data.to_srt(
-                    save_path=str(dubbing_path),
-                    layout=SubtitleLayoutEnum.ONLY_TRANSLATE,
-                )
+                outputs.append(SubtitleOutput(str(dubbing_path), SubtitleLayoutEnum.ONLY_TRANSLATE))
                 self.task.dubbing_subtitle_path = str(dubbing_path)
                 logger.info("Dubbing target subtitle saved to: %s", dubbing_path)
 
             self.task.asr_data = asr_data
-            asr_data.save(
-                save_path=self.task.output_path or "",
-                ass_style=subtitle_config.subtitle_style or "",
-                layout=subtitle_config.subtitle_layout or SubtitleLayoutEnum.ONLY_TRANSLATE,
-            )
-            logger.info(f"字幕保存到 {self.task.output_path}")
+            outputs.append(SubtitleOutput(self.task.output_path or "",
+                                           subtitle_config.subtitle_layout or SubtitleLayoutEnum.ONLY_TRANSLATE,
+                                           subtitle_config.subtitle_style or ""))
 
             # 6. Move files and clean up
             if self.task.need_next_task and self.task.video_path:
@@ -247,22 +245,28 @@ class SubtitleThread(QThread):
                 save_srt_path = (
                     Path(self.task.video_path).parent / f"{Path(self.task.video_path).stem}.srt"
                 )
-                asr_data.to_srt(
-                    save_path=str(save_srt_path),
-                    layout=subtitle_config.subtitle_layout,
-                )
+                outputs.append(SubtitleOutput(str(save_srt_path), subtitle_config.subtitle_layout))
+
+            if not publish_subtitles(asr_data, outputs, self.cancelled, self._publication_lock):
+                return
 
             self.progress.emit(100, self.tr("优化完成"))
             logger.info("优化完成")
+            self.source_task.asr_data = asr_data
+            self.source_task.dubbing_subtitle_path = self.task.dubbing_subtitle_path
+            self.update_all.emit(asr_data.to_json())
             self.finished.emit(self.task.video_path, self.task.output_path)
 
         except Exception as e:
+            if self.cancelled():
+                return
             logger.exception(f"字幕处理失败: {str(e)}")
             self.error.emit(str(e))
             self.progress.emit(100, self.tr("字幕处理失败"))
         finally:
-            if self.translator is not None:
-                self.translator.stop()
+            for component in (self.translator, self.optimizer, self.splitter):
+                if component is not None:
+                    getattr(component, "close", component.stop)()
             clear_task_context()
 
     def need_llm(self, subtitle_config: SubtitleConfig, asr_data: ASRData):
@@ -281,46 +285,26 @@ class SubtitleThread(QThread):
         )
 
     def callback(self, result: List[SubtitleProcessData]):
+        if self.cancelled():
+            raise RuntimeError("Subtitle processing cancelled.")
         self.finished_subtitle_length += len(result)
         # Rough progress estimate (0-100%)
         progress = min(int((self.finished_subtitle_length / max(self.subtitle_length, 1)) * 100), 100)
         self.progress.emit(progress, self.tr("{0}% 处理字幕").format(progress))
-        # Dict form for the UI
-        result_dict = {
-            str(data.index): data.translated_text or data.optimized_text or data.original_text
-            for data in result
-        }
-        self.update.emit(result_dict)
+        # Publish table text only after the whole job succeeds.
 
     def stop(self):
-        """Stop all processing."""
+        """Request cancellation; the worker joins its pools in finally."""
+        with self._publication_lock:
+            self._cancel.set()
         self.requestInterruption()
-        if self.translator is not None:
-            self.translator.stop()
-        if self.task.asr_data is not None and self.task.asr_data.conversation_context.enabled:
-            if self.optimizer is not None:
-                self.optimizer.stop()
-            return
-        try:
-            # Stop the optimizer first
-            if hasattr(self, "optimizer") and self.optimizer:
-                try:
-                    self.optimizer.stop()  # type: ignore
-                except Exception as e:
-                    logger.error(f"停止优化器时出错：{str(e)}")
+        for component in (self.translator, self.optimizer, self.splitter):
+            if component is not None:
+                component.stop()
 
-            # Terminate the thread
-            self.terminate()
-            # Wait up to 3 seconds
-            if not self.wait(3000):
-                logger.warning("线程未能在3秒内正常停止")
-
-            # Report progress
-            self.progress.emit(100, self.tr("已终止"))
-
-        except Exception as e:
-            logger.error(f"停止线程时出错：{str(e)}")
-            self.progress.emit(100, self.tr("终止时发生错误"))
+    def cancelled(self):
+        return self._cancel.is_set() or self.isInterruptionRequested() or bool(
+            self._active_thread and self._active_thread.isInterruptionRequested())
 
 
 class RetranslateThread(QThread):
@@ -345,8 +329,11 @@ class RetranslateThread(QThread):
         self.file_name = file_name
         self.total = len(selected_data)
         self.done = 0
+        self._cancel = Event()
 
     def _callback(self, result: List[SubtitleProcessData]):
+        if self._cancel.is_set():
+            raise RuntimeError("Translation cancelled.")
         self.done += len(result)
         pct = min(int(self.done / self.total * 100), 100)
         self.progress.emit(pct, self.tr("{0}% 翻译中").format(pct))
@@ -358,17 +345,16 @@ class RetranslateThread(QThread):
             stage="translate",
         )
         try:
+            if self._cancel.is_set():
+                return
             config = self.subtitle_config
             if not config.target_language:
                 raise Exception("目标语言未配置")
 
-            # LLM translation needs credentials registered for get_llm_client().
+            # The translator receives credentials directly from this job snapshot.
             if config.translator_service == TranslatorServiceEnum.OPENAI:
                 if not (config.base_url and config.api_key and config.llm_model):
                     raise Exception("LLM API 未配置，请检查 LLM 配置")
-                configure_llm_client(
-                    LLMCredentials(api_key=config.api_key, base_url=config.base_url)
-                )
 
             # ASRData containing only the selected rows
             asr_data = ASRData.from_json(self.selected_data)
@@ -376,7 +362,7 @@ class RetranslateThread(QThread):
             # Build the translator and translate
             translator = create_translator_from_config(config, callback=self._callback)
             self.translator = translator
-            if self.isInterruptionRequested():
+            if self._cancel.is_set() or self.isInterruptionRequested():
                 return
             if self.context_data is not None:
                 asr_data.conversation_context = self.context_data.conversation_context
@@ -392,18 +378,21 @@ class RetranslateThread(QThread):
             if not all(ids.values()):
                 ids = {key: value["cue_id"] for key, value in zip(sorted(ids, key=int), selected.values())}
             result = {key: by_id[cue_id] for key, cue_id in ids.items()}
-            if not self.isInterruptionRequested():
+            if not self._cancel.is_set() and not self.isInterruptionRequested():
                 self.finished.emit(result)
 
         except Exception as e:
+            if self._cancel.is_set():
+                return
             logger.exception(f"重新翻译失败: {e}")
             self.error.emit(str(e))
         finally:
             if self.translator is not None:
-                self.translator.stop()
+                getattr(self.translator, "close", self.translator.stop)()
             clear_task_context()
 
     def stop(self):
+        self._cancel.set()
         self.requestInterruption()
         if self.translator is not None:
             self.translator.stop()

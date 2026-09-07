@@ -84,7 +84,9 @@ khi tồn tại. `core/utils/installer.py` tải FFmpeg/Deno vào `AppData/bin/`
 3. **Translate** (`core/translate`): `TranslatorFactory` tạo translator; `BaseTranslator` chia chunk,
    chạy `ThreadPoolExecutor` qua `submit_with_context` (giữ contextvars), cache kết quả bằng diskcache.
    `LLMTranslator` dựng "global context" một lần cho cả phim và đưa fingerprint tất định của nguồn vào
-   cache key (không đưa output LLM ngẫu nhiên).
+   cache key (không đưa output LLM ngẫu nhiên). S4.1 dùng conversation snapshot đã resolve cùng
+   evidence theo selection, bỏ các unknown/review lặp; request LLM sở hữu credential/socket và
+   deadline hữu hạn theo job. Native ASR lỗi timing có storage review riêng, không vào cache success.
 4. **Subtitle** (`core/subtitle`): `ASRData` xuất SRT/ASS/TXT/JSON theo `SubtitleLayoutEnum`; style ASS
    từ `style_manager`; `ass_renderer` và `rounded_renderer` burn phụ đề bằng FFmpeg. `editing.py` chứa
    thao tác trên dict phụ đề (`ASRData.to_json()`) mà tab phụ đề dùng: gộp/xóa/chọn hàng, tìm-thay,
@@ -103,6 +105,9 @@ GUI nối các bước qua `SubtitlePipelineThread`; CLI `process` chạy tuần
 tường minh hoặc dùng bộ đã đăng ký, chỉ đọc `OPENAI_*` từ môi trường như fallback và không bao giờ ghi
 vào `os.environ`. `call_llm()` memoize theo diskcache; `request_logger` ghi request/response theo
 `ContextVar` để các thread song song không lẫn log. `core/llm/context.py` giữ `task_id`/stage cho log.
+Đường dịch S4.1 dùng `OwnedLLMRequest` và translation cache riêng, không dùng shared-client transport.
+`ui/thread/worker_lifecycle.py` giữ QThread đã hủy đến khi finished, thu hồi không chặn UI bằng wait dài.
+Chi tiết schema, timeout và review/resume tại [S4.1](asr-s41.md).
 
 ## Dubbing
 

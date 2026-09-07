@@ -657,6 +657,13 @@ class SubtitleConfig:
     subtitle_style: Optional[str] = None
     custom_prompt_text: Optional[str] = None
 
+    llm_request_timeout: int = 120
+
+    def __post_init__(self) -> None:
+        from videocaptioner.core.llm.request_policy import validate_request_timeout
+
+        self.llm_request_timeout = validate_request_timeout(self.llm_request_timeout)
+
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""
         if not key or len(key) <= 8:

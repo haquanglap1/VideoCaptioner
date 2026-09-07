@@ -30,8 +30,9 @@ Diarization chỉ cho nhãn speaker; không suy danh tính, tuổi, giới, quan
 
 Editor chỉ sửa `display_text` khi dịch selection; không tự đổi TTS text, voice hoặc timing.
 Một kết quả selection là một composite command có undo/redo. Nếu nội dung/ngữ cảnh thay đổi
-trong lúc dịch, kết quả cũ bị bỏ; user chạy lại sau khi review. Guard editor hiện bảo thủ:
-so sánh toàn project, nên cả thay đổi playhead/track cũng bỏ kết quả; nên pause preview khi dịch selection.
+trong lúc dịch, kết quả cũ bị bỏ; user chạy lại sau khi review. Từ **S4.1**, guard chỉ so sánh
+project identity và dữ liệu phụ đề/ngữ cảnh cần bảo vệ; playhead/zoom/track display không làm
+mất bản dịch. More → Hủy dịch dừng worker hợp tác. Xem [S4.1](asr-s41.md).
 
 Lưu **JSON** ở tab phụ đề hoặc **Save project** ở editor để giữ mọi liên kết. Editor vẫn dùng
 `editor-project-v1`, normal save ghi JSON + SRT; ASS chỉ qua Save as ASS. SRT không giữ ID/speaker/
@@ -92,10 +93,12 @@ nhiên không tham gia key. Đổi context chỉ tạo key mới, không xóa to
 snapshot cũ nhưng không được ghi đè state mới. Dữ liệu cache local theo chính sách hiện có của app.
 
 Đường LLM có context S4 giữ credential của job, dùng socket async sở hữu bởi worker, deadline
-120 s/request, không tự retry HTTP/network hoặc follow redirect. Validation response tối đa ba
+120 s/request mặc định (**S4.1 cho cấu hình 1–600 s**, ví dụ 300 s với `gpt-5.6-terra`), không tự
+retry HTTP/network hoặc follow redirect. Validation response tối đa ba
 lượt là các request có chủ đích. Hủy kiểm tra khoảng 100 ms, cancel/join task và đóng client trước
 ra khỏi request. HTTP lỗi chỉ báo status, không echo body/key. Hủy local không bảo đảm hủy phí/xử
-lý phía provider. Các translator không hỗ trợ context giữ transport cũ.
+lý phía provider. S4.1 áp dụng socket/deadline này cho mọi request LLM translation/brief, kể cả
+context trống. Google/Bing/DeepLX giữ transport riêng.
 
 ## Giới hạn nghiệm thu
 
@@ -104,7 +107,8 @@ benchmark người nghe, tên nhân vật, đại từ hoặc video dài bằng 
 bàn giao: Soniox nhận dạng được nhưng full parser dừng token 0 ms; Whisper gateway xuất được
 SRT cấp câu; GPT transcription trả text, chưa chạy alignment. Có bản Việt đủ 30 cue từ output
 Whisper + `gpt-5.6-terra`, dùng timeout riêng 300 s trong harness vì request mất 131.56 s;
-timeout app vẫn 120 s. Bản xem thử còn cần review ASR/ngôi/tên, không chứng minh chất lượng toàn bộ.
+timeout app ở snapshot S4 lúc đó vẫn 120 s. S4.1 đã đưa lựa chọn 300 s vào app; chưa chạy lại API
+thật với code mới. Bản xem thử còn cần review ASR/ngôi/tên, không chứng minh chất lượng toàn bộ.
 
 Scribe online, GPT transcription→alignment→SRT và workflow media/API từ process EXE vẫn **chưa
 nghiệm thu**. Phồn thể Qwen strict vẫn **chưa đạt acceptance**. Chi tiết từng lượt đo trong status

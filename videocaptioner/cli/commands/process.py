@@ -79,6 +79,7 @@ def run(args: Namespace, config: dict) -> int:
         whisper_api_key=getattr(args, "whisper_api_key", None),
         whisper_api_base=getattr(args, "whisper_api_base", None),
         whisper_model=None, whisper_prompt=None,
+        asr_review=getattr(args, "asr_review", None),
     )
     from videocaptioner.cli.commands.transcribe import run as transcribe_run
     ret = transcribe_run(tr_args, config)

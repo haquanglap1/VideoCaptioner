@@ -79,7 +79,7 @@ from videocaptioner.core.editor.presenter import (
     track_state_command,
 )
 from videocaptioner.core.editor.project_store import EditorProjectStore
-from videocaptioner.core.utils.cache import generate_cache_key
+from videocaptioner.core.editor.translation import translation_fingerprint
 from videocaptioner.ui.components.conversation_dialog import ConversationDialog
 from videocaptioner.ui.components.editor import (
     EditorTimelineView,
@@ -92,6 +92,7 @@ from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.editor_media_thread import EditorMediaThread, EditorRenderThread
 from videocaptioner.ui.thread.editor_voice_thread import EditorVoiceThread
 from videocaptioner.ui.thread.subtitle_thread import RetranslateThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
 EDITOR_DARK_STYLE = """
 QWidget#VideoEditorInterface {
@@ -257,6 +258,10 @@ class VideoEditorInterface(QWidget):
                                                 triggered=self.edit_conversation_context))
         self.command_bar.addHiddenAction(Action(FIF.SYNC, self.tr("Translate selected cues"),
                                                 triggered=self.translate_selected_cues))
+        self.cancel_translation_action = Action(FIF.CANCEL, self.tr("Cancel translation"),
+                                                 triggered=self.cancel_translation)
+        self.cancel_translation_action.setEnabled(False)
+        self.command_bar.addHiddenAction(self.cancel_translation_action)
         for kind, label in (
             (EditorLayerKind.BLUR, "Add Blur"),
             (EditorLayerKind.LOGO, "Add Logo"),
@@ -517,6 +522,7 @@ class VideoEditorInterface(QWidget):
         thread.start()
 
     def _retain_thread(self, thread) -> None:
+        retain_worker(thread)
         self._threads.add(thread)
         thread.finished.connect(lambda current=thread: self._threads.discard(current))
 
@@ -1056,12 +1062,15 @@ class VideoEditorInterface(QWidget):
         config = TaskFactory.create_subtitle_task(file_path=project.subtitle_path).subtitle_config
         if config is None:
             return
-        version = generate_cache_key(project.to_dict())
+        version = translation_fingerprint(project, ids)
         worker = RetranslateThread(selected, config, context_data=document)
         self._translation_worker = worker
+        retain_worker(worker)
+        self.cancel_translation_action.setEnabled(True)
 
         def apply_result(result):
-            if self.project is not project or version != generate_cache_key(project.to_dict()):
+            self.cancel_translation_action.setEnabled(False)
+            if self.project is not project or version != translation_fingerprint(project, ids):
                 self._show_error(self.tr("Context or subtitles changed; stale translation discarded."))
                 return
             self.command_stack.execute(CompositeCommand(
@@ -1069,26 +1078,30 @@ class VideoEditorInterface(QWidget):
                  for key, text in result.items()], "Translate selected cues"))
             self._show_success(self.tr("Translated selected cues; review Vietnamese pronouns."))
 
-        worker.finished.connect(apply_result)
-        worker.error.connect(self._show_error)
+        connect_current(self, "_translation_worker", worker, worker.finished, apply_result)
+        def show_error(error):
+            self.cancel_translation_action.setEnabled(False)
+            self._show_error(error)
+        connect_current(self, "_translation_worker", worker, worker.error, show_error)
         worker.start()
+
+    def cancel_translation(self):
+        worker = getattr(self, "_translation_worker", None)
+        if worker is not None and worker.isRunning():
+            retire_worker(worker)
+        self.cancel_translation_action.setEnabled(False)
 
     def shutdown(self) -> None:
         """Stop playback and workers; also runs on app quit, where closeEvent never fires."""
         worker = getattr(self, "_translation_worker", None)
         if worker is not None and worker.isRunning():
-            worker.stop()
-            worker.wait()
+            retire_worker(worker)
         self.preview.player.stop()
         for thread in tuple(self._threads):
             if not thread.isRunning():
                 continue
-            cancel = getattr(thread, "cancel", None)
-            if callable(cancel):
-                cancel()
-            else:
-                thread.requestInterruption()
-            thread.wait(5000)
+            retire_worker(thread)
+        self._signatures.clear()
         self._threads.clear()
         self._render_thread = None
 

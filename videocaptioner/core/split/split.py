@@ -96,6 +96,7 @@ class SubtitleSplitter:
         model,
         max_word_count_cjk: int = MAX_WORD_COUNT_CJK,
         max_word_count_english: int = MAX_WORD_COUNT_ENGLISH,
+        request=None,
     ):
         """Create the splitter.
 
@@ -109,6 +110,7 @@ class SubtitleSplitter:
         self.model = model
         self.max_word_count_cjk = max_word_count_cjk
         self.max_word_count_english = max_word_count_english
+        self.request = request
         self.is_running = True
         self._init_thread_pool()
 
@@ -300,6 +302,7 @@ class SubtitleSplitter:
         logger.debug(f"Calling API for segmentation,text length: {count_words(txt)}")
 
         sentences = split_by_llm(
+            request=self.request,
             text=txt,
             model=self.model,
             max_word_count_cjk=self.max_word_count_cjk,
@@ -786,9 +789,19 @@ class SubtitleSplitter:
             return
         self.is_running = False
         if hasattr(self, "executor") and self.executor is not None:
+            self._closing_executor = self.executor
             try:
                 self.executor.shutdown(wait=False, cancel_futures=True)
             except Exception as e:
                 logger.error(f"Error closing thread pool:{str(e)}")
             finally:
                 self.executor = None
+
+    def close(self):
+        """Join owned work from the subtitle worker after cooperative cancellation."""
+        self.stop()
+        executor = getattr(self, "_closing_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+            self._closing_executor = None
+        atexit.unregister(self.stop)

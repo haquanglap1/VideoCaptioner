@@ -21,7 +21,9 @@ def _timing(item: dict, start_key: str, end_key: str, scale: int, duration: int)
     return round(start * scale), round(end * scale)
 
 
-def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diarize: bool) -> ASRData:
+def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diarize: bool, *,
+                 token_ids: tuple[str, ...] | None = None,
+                 edited_token_ids: frozenset[str] = frozenset()) -> ASRData:
     if provider not in ("soniox", "scribe") or not isinstance(value, dict):
         raise ASRAPIError("Malformed native transcription; review required.")
     text = value.get("text")
@@ -32,7 +34,10 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
     events = []
     parts = []
     pending_space = ""
-    for item in items:
+    if token_ids is not None and len(token_ids) != len(items):
+        raise ASRAPIError("Missing native token association; review required.")
+    for index, item in enumerate(items):
+        token_id = token_ids[index] if token_ids is not None else f"token-{index + 1:06d}"
         if not isinstance(item, dict) or not isinstance(item.get("text"), str):
             raise ASRAPIError("Malformed native token; review required.")
         part = item["text"]
@@ -46,7 +51,8 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
         if speaker is not None and not isinstance(speaker, str):
             raise ASRAPIError("Malformed anonymous speaker label; review required.")
         speaker = speaker.strip() or None if speaker is not None else None
-        metadata = ASRMetadata(provider, scope, speaker if diarize else None)
+        metadata = ASRMetadata(provider, scope, speaker if diarize else None,
+                               "edited" if token_id in edited_token_ids else "native", token_ids=(token_id,))
         if kind == "spacing" or (part and part.isspace()):
             if part.strip():
                 raise ASRAPIError("Non-spacing text in a spacing token; review required.")
@@ -65,19 +71,22 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
             continue
         if start == end and any(char.isalnum() for char in part):
             raise ASRAPIError("Zero-duration speech token; review required.")
-        segment = ASRDataSeg(pending_space + part, start, end, metadata=metadata)
+        segment = ASRDataSeg(pending_space + part, start, end, metadata=metadata,
+                             cue_id=f"{provider}:{scope}:{token_id}")
         pending_space = ""
         # Join Latin subwords only when the provider supplied no word boundary.
         # CJK tokens already have usable measured character/subword spans.
-        if (provider == "soniox" and segments and segments[-1].metadata == metadata
+        if (provider == "soniox" and segments and metadata.same_source(segments[-1].metadata)
                 and segments[-1].end_time <= start
                 and re.search(r"[A-Za-z0-9]$", segments[-1].text)
                 and re.match(r"[A-Za-z0-9]", part)):
             segments[-1].text += part
             segments[-1].end_time = end
-        elif not any(char.isalnum() for char in part) and segments and segments[-1].metadata == metadata:
+            segments[-1].metadata = segments[-1].metadata.with_tokens_from(metadata)
+        elif not any(char.isalnum() for char in part) and segments and metadata.same_source(segments[-1].metadata):
             segments[-1].text += part
             segments[-1].end_time = max(segments[-1].end_time, end)
+            segments[-1].metadata = segments[-1].metadata.with_tokens_from(metadata)
         else:
             segments.append(segment)
     if "".join(parts) != text:
@@ -93,12 +102,14 @@ def native_cues(data: ASRData, max_chars: int = 40) -> ASRData:
     cues: list[ASRDataSeg] = []
     for seg in data.segments:
         previous = cues[-1] if cues else None
-        if (previous is not None and previous.metadata == seg.metadata
+        if (previous is not None and seg.metadata is not None and seg.metadata.same_source(previous.metadata)
                 and previous.end_time <= seg.start_time <= previous.end_time + 800
                 and len(previous.text) + len(seg.text) <= max_chars
                 and not re.search(r"[。！？.!?]\s*$", previous.text)):
             previous.text += seg.text
             previous.end_time = seg.end_time
+            if previous.metadata is not None and seg.metadata is not None:
+                previous.metadata = previous.metadata.with_tokens_from(seg.metadata)
         else:
             cues.append(seg.clone())
     return data.with_segments(cues)

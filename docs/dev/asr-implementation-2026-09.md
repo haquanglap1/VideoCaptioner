@@ -8,7 +8,8 @@ phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptanc
 Theo yêu cầu riêng đầu phiên S4, 50 file S3 được commit `327c214` và push lên
 `origin/codex/asr-s3-native` trước khi sửa S4. Sau các lượt review/online và xuất SRT xem thử,
 user yêu cầu submit: **code S4 đã chốt tại `8558082945575d551a4c38cdc4943c395254a583`**.
-Session tiếp theo: [củng cố S4.1 trước S5](asr-step-4-followup-prompt.md).
+S4.1 đã được triển khai theo [followup trước S5](asr-step-4-followup-prompt.md), chưa commit/push;
+xem [bàn giao S4.1](#bàn-giao-s41--2026-09-07) và [hướng dẫn sử dụng](asr-s41.md).
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
@@ -646,6 +647,144 @@ videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
 videocaptioner/ui/components/conversation_dialog.py
 videocaptioner/ui/thread/subtitle_thread.py
 videocaptioner/ui/view/subtitle_interface.py
+videocaptioner/ui/view/video_editor_interface.py
+```
+
+## Bàn giao S4.1 — 2026-09-07
+
+Baseline đúng **47d1cec** trên `codex/asr-s3-native`, working tree sạch lúc bắt đầu; commit code
+S4 **8558082** là ancestor. Thực hiện đủ A–C của followup; không commit/push/tag/release hoặc
+làm S5–S6. [Hướng dẫn S4.1](asr-s41.md) mô tả config/CLI, schema review, override và lifecycle.
+
+### Thay đổi và validation
+
+- Deadline LLM translation/brief 1–600 s (mặc định 120), chọn 300 qua GUI hoặc `--llm-timeout`;
+  schema/validation dùng chung, job chụp credential/config/nguồn trước khi chạy. Không đổi
+  model/endpoint và không tự retry HTTP/network POST. Cancel đóng socket và join công việc của job.
+- Payload policy `conversation-request-v2`, schema lưu vẫn `conversation-context-v1`; giữ
+  glossary, selection/context windows và bằng chứng theo rules/lock/scope. 30 câu tổng hợp:
+  **11.595 → 2.044 byte UTF-8 (−82,37%)** cho khối context. Không claim token, tiền hoặc chất lượng.
+- Native response lỗi timing/coverage có typed/local `asr-review-v1` tách cache success;
+  raw recognition được kiểm tra fingerprint, override `user` và CommandStack undo/redo. GUI/CLI
+  mở lại và resume tại máy; lexical zero-time chưa sửa vẫn exit 5/không xuất prefix success.
+  Giữ scope/cue/token IDs và overlap; group có override luôn `edited`. Không thay remote cleanup.
+- Stale guard editor bỏ playhead/zoom/display state, bảo vệ source/context và target selection.
+  Worker dừng hợp tác, không terminate QThread; UI giữ reference qua supervisor đến finished,
+  app quit vẫn xử lý Qt events khi join. Old signals không reset worker mới; file output staging
+  tránh publish trong lúc cancel. Giữ JSON+SRT normal save, ASS chỉ khi user chọn.
+- **Full offline cuối: 986 passed / 5 skipped / 51 deselected, 92,17 s**, tăng 76 test so với
+  baseline 910. Gồm toàn CLI và mọi domain gần sửa. Gate gần source cuối **427 passed**;
+  ruff toàn source/tests pass; pyright **0 errors/0 warnings**; sync translations/diff-check pass.
+  Python **3.12.13**, import đúng checkout, venv/FFmpeg có sẵn; không cài/sync/thay dependency.
+- Tests tổng hợp whole word/subword/CJK, known/unknown/overlap, review roundtrip/edit/undo/resume,
+  no-success-cache/no-resubmit, deadline/late-response/cancel/cleanup, 1–9 cue và stale source/lock,
+  playback/zoom, output staging và QThread wait. Settings/config/env/cache/review cô lập.
+- Full đầu tìm compatibility của `stop().executor`; đã giữ public state cũ và dùng private owner
+  để join. Một regression cancel tìm deadlock khi chờ future đã bị hủy; collection/join đã sửa.
+  Rà cuối thêm dấu hủy bền vững vì Qt xóa interruption flag trước khi GUI nhận queued signal;
+  **30 tests UI/lifecycle pass**, rồi full cuối trên pass. Artifact Final dùng tên/scratch mới,
+  giữ nguyên bản S4.1 đầu đã smoke và có AppData.
+  5 skip: native QtMultimedia playback + 4 TTS/service. 51 deselect theo integration/slow/llm,
+  warning offline là audioop deprecation. Không tính offline/mock/skip thành inference acceptance.
+- Đã xem render dialog review và card timeout tiếng Việt; chỉnh label timeout hết cắt dòng.
+  JSON vi sync cả hai vị trí; TS en/zh cập nhật. Thiếu lrelease, không sửa QM bằng tay;
+  chuỗi zh mới dùng fallback English. AGENTS/CLAUDE và dependency lock giữ nguyên.
+
+### Gate artifact riêng S4.1
+
+1. Duy nhất `VideoCaptioner.spec`, tên **VideoCaptioner-ASR-S41-Review-20260907-Final**, scratch riêng
+   `build/ASR-S41-Review-20260907-Final` và cache PyInstaller riêng. **Exit 0; 6 WARNING; 0 ERROR**.
+   Warning: optional WebAssembly `js`, `curl_cffi`/`yt_dlp_ejs` data collection, hidden import
+   `tzdata`/`sip`, AppKit macOS. Thêm **6 SyntaxWarning upstream** (4 pydub, 2 modelscope).
+2. Artifact **`dist/VideoCaptioner-ASR-S41-Review-20260907-Final/`**, giữ nguyên onedir khi phân phối.
+   EXE **31.093.132 byte**, timestamp local **2026-09-07 15:35:00**, SHA-256
+   `2ab4c85035ba64fd59fe96d5686b75ac00139644936bd960a206a419803e4284`.
+   Trước smoke **573 file / 237.245.477 byte**. Đối chiếu từ archive của chính EXE: **202 module**
+   (bao gồm nested bytecode) khớp source cuối; prompt và JSON vi bundle/fallback khớp bytes;
+   không có Torch/Qwen/Torchaudio. Không rebuild sau khi smoke tạo AppData.
+3. **Frozen local resume pass**: `asr-review` trên JSON tổng hợp lỗi trả **exit 5**, không có SRT;
+   explicit override→JSON trả **exit 0**, mở lại→SRT trả **exit 0**, giữ token ID/scope/edited và
+   timing đúng override. `subtitle --help` từ EXE exit 0. Không có provider request hoặc FFmpeg
+   trong các command resume này.
+4. **Startup GUI từ artifact pass**: hidden launch, đúng cửa sổ Qt VideoCaptioner, sống **25 s**;
+   working set **100.245.504 byte**, WM_CLOSE vào đúng PID/window → **exit 0**, **0 process sót**,
+   **0 Traceback/ERROR/CRITICAL** trong startup logs/stderr. Stderr chỉ có kiểm tra phiên bản.
+   **Workflow media/ASR/LLM API thật từ EXE chưa nghiệm thu**; local JSON và startup là gate riêng.
+
+EXE S4 hiện có vẫn SHA-256 `08dd40819c91152c7fd778b4f81036101ee6db43208844089efc595f58fda252`.
+Không ghi đè/xóa media, AppData, work-dir hay artifact S4. Validation log/screenshot/synthetic JSON
+và helper của phiên S4.1 nằm trong scratch ignored riêng, không đưa vào Git.
+
+### Giới hạn vẫn giữ
+
+Không inference ASR/LLM thật trong phiên S4.1: checkout không có settings LLM và env key
+LLM/native trống; không lấy key từ S4, checkout khác, log/script/lịch sử. Soniox online trước
+đây đã nhận dạng nhưng full parser dừng token 0 ms; không dùng prefix cũ để claim full success.
+**Scribe online, GPT transcription→alignment→SRT, phồn thể Qwen strict, speaker accuracy và chất
+lượng ngôi/xưng hô được người đọc chấm vẫn còn thiếu**. Không làm benchmark corpus, tự gán voice,
+Qwen ASR/pyannote, S5–S6 hoặc đổi mặc định.
+
+### Manifest S4.1 so với baseline 47d1cec
+
+56 file thay đổi/thêm mới, chưa commit. Không có media, credential, AppData, build/dist, QM hoặc
+lockfile trong danh sách:
+
+```text
+README.md
+VideoCaptioner.spec
+docs/dev/architecture.md
+docs/dev/asr-context-s4.md
+docs/dev/asr-implementation-2026-09.md
+docs/dev/asr-native-s3.md
+docs/dev/asr-s41.md
+resource/translations/VideoCaptioner_en_US.ts
+resource/translations/VideoCaptioner_vi_VN.json
+resource/translations/VideoCaptioner_zh_CN.ts
+resource/translations/VideoCaptioner_zh_HK.ts
+status.md
+tests/conftest.py
+tests/test_asr/test_review.py
+tests/test_cli/test_asr_review.py
+tests/test_cli/test_config.py
+tests/test_subtitle/test_publication.py
+tests/test_translate/test_request_policy.py
+tests/test_ui/test_conversation.py
+tests/test_ui/test_s41.py
+videocaptioner/cli/commands/asr_review.py
+videocaptioner/cli/commands/process.py
+videocaptioner/cli/commands/subtitle.py
+videocaptioner/cli/commands/transcribe.py
+videocaptioner/cli/config.py
+videocaptioner/cli/main.py
+videocaptioner/core/asr/metadata.py
+videocaptioner/core/asr/native_api.py
+videocaptioner/core/asr/native_result.py
+videocaptioner/core/asr/review.py
+videocaptioner/core/editor/translation.py
+videocaptioner/core/entities.py
+videocaptioner/core/llm/owned_request.py
+videocaptioner/core/llm/request_policy.py
+videocaptioner/core/optimize/optimize.py
+videocaptioner/core/prompts/translate/conversation.md
+videocaptioner/core/split/split.py
+videocaptioner/core/split/split_by_llm.py
+videocaptioner/core/subtitle/editing.py
+videocaptioner/core/subtitle/publication.py
+videocaptioner/core/translate/base.py
+videocaptioner/core/translate/conversation.py
+videocaptioner/core/translate/factory.py
+videocaptioner/core/translate/llm_translator.py
+videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
+videocaptioner/ui/common/config.py
+videocaptioner/ui/components/asr_review_dialog.py
+videocaptioner/ui/task_factory.py
+videocaptioner/ui/thread/subtitle_pipeline_thread.py
+videocaptioner/ui/thread/subtitle_thread.py
+videocaptioner/ui/thread/transcript_thread.py
+videocaptioner/ui/thread/worker_lifecycle.py
+videocaptioner/ui/view/setting_interface.py
+videocaptioner/ui/view/subtitle_interface.py
+videocaptioner/ui/view/transcription_interface.py
 videocaptioner/ui/view/video_editor_interface.py
 ```
 

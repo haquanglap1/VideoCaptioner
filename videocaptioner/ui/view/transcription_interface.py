@@ -57,6 +57,7 @@ from videocaptioner.ui.components.TranscriptionSettingDialog import (
     TranscriptionSettingDialog,
 )
 from videocaptioner.ui.thread.video_info_thread import VideoInfoThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker
 
 DEFAULT_THUMBNAIL_PATH = RESOURCE_PATH / "assets" / "default_thumbnail.jpg"
 
@@ -341,11 +342,23 @@ class VideoInfoCard(CardWidget):
         from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 
         self.transcript_thread = TranscriptThread(self.task)
-        self.transcript_thread.finished.connect(self.on_transcript_finished)
-        self.transcript_thread.progress.connect(self.on_transcript_progress)
-        self.transcript_thread.error.connect(self.on_transcript_error)
+        worker = self.transcript_thread
+        retain_worker(worker)
+        connect_current(self, "transcript_thread", worker, worker.finished, self.on_transcript_finished)
+        connect_current(self, "transcript_thread", worker, worker.progress, self.on_transcript_progress)
+        connect_current(self, "transcript_thread", worker, worker.error, self.on_transcript_error)
+        connect_current(self, "transcript_thread", worker, worker.review_required, self.on_review_required)
         self.transcript_thread.start()
         return True
+
+    def on_review_required(self, error):
+        from videocaptioner.ui.components.asr_review_dialog import ASRReviewDialog
+
+        # Defer until failure slots have restored the progress controls.
+        self._pending_review = error.review
+        def show_review():
+            ASRReviewDialog(error.review, self.window(), review_path=error.path).exec_()
+        QTimer.singleShot(0, show_review)
 
     def _validate_transcription_runtime(self, task: TranscribeTask) -> bool:
         config = task.transcribe_config
@@ -482,6 +495,8 @@ class TranscriptionInterface(QWidget):
         self.open_file_action = Action(FluentIcon.FOLDER, self.tr("打开文件"))
         self.open_file_action.triggered.connect(self._on_file_select)
         self.command_bar.addAction(self.open_file_action)
+        self.command_bar.addAction(Action(FluentIcon.EDIT, self.tr("Open ASR review"),
+                                          triggered=self.open_asr_review))
 
         self.command_bar.addSeparator()
 
@@ -519,6 +534,17 @@ class TranscriptionInterface(QWidget):
         )
 
         self.main_layout.addWidget(self.command_bar)
+
+    def open_asr_review(self):
+        from videocaptioner.core.asr.review import NativeReview, review_directory
+        from videocaptioner.ui.components.asr_review_dialog import ASRReviewDialog
+
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("Open ASR review"), str(review_directory()), "JSON (*.json)")
+        if path:
+            try:
+                ASRReviewDialog(NativeReview.load(path), self, review_path=Path(path)).exec_()
+            except ValueError as exc:
+                InfoBar.error(self.tr("Review required"), str(exc), parent=self)
 
     def _setup_signals(self) -> None:
         """设置信号连接"""

@@ -2,7 +2,7 @@
 
 import atexit
 from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 from threading import Lock
 from typing import Callable, List, Optional, cast
 
@@ -19,6 +19,8 @@ logger = setup_logger("subtitle_translator")
 
 class BaseTranslator(ABC):
     """Translator base class."""
+
+    require_complete_result = False
 
     def __init__(
         self,
@@ -134,7 +136,13 @@ class BaseTranslator(ABC):
                 raise
             future_to_chunk[future] = chunk
 
-        for future in as_completed(future_to_chunk):
+        def completed():
+            pending = set(future_to_chunk)
+            while pending and self.is_running:
+                done, pending = wait(pending, timeout=0.1)
+                yield from done
+
+        for future in completed():
             if not self.is_running:
                 break
             try:
@@ -148,9 +156,16 @@ class BaseTranslator(ABC):
                 translated_list.extend(future_to_chunk[future])
 
         # Raise if all or most translations failed
+        # stop() only requests cancellation from the GUI. The job itself joins every
+        # submitted task before its QThread can finish or its state can be reused.
+        for future in future_to_chunk:
+            try:
+                future.result()
+            except Exception:
+                pass
         if failed_count > 0 and total_segments > 0:
             fail_rate = failed_count / total_segments
-            if fail_rate >= 0.5:
+            if fail_rate >= 0.5 or self.require_complete_result:
                 cause = type(first_error).__name__ if first_error else "unknown"
                 detail = str(first_error) if first_error else ""
                 raise RuntimeError(
@@ -189,8 +204,9 @@ class BaseTranslator(ABC):
                 cached_result = None
                 self._cache.delete(cache_key)
             if cached_result is not None:
-                # Cache hit vẫn phải báo tiến độ, nếu không progress bar sẽ đứng
-                # và bảng phụ đề không hiển thị phần lấy từ cache.
+                if not self.is_running:
+                    raise RuntimeError("Translation cancelled.")
+                # Cache hits still report progress.
                 if self.update_callback:
                     self.update_callback(cached_result)
                 return cached_result
@@ -239,9 +255,19 @@ class BaseTranslator(ABC):
 
         self.is_running = False
         if hasattr(self, "executor") and self.executor is not None:
+            self._closing_executor = self.executor
             try:
                 self.executor.shutdown(wait=False, cancel_futures=True)
             except Exception as e:
                 logger.error(f"Error closing thread pool: {str(e)}")
             finally:
                 self.executor = None
+
+    def close(self):
+        """Join the pool from the owning worker, never from a UI cancellation slot."""
+        self.stop()
+        executor = getattr(self, "_closing_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+            self._closing_executor = None
+        atexit.unregister(self.stop)

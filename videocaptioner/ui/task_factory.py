@@ -204,6 +204,7 @@ class TaskFactory:
             need_translate=cfg.need_translate.value,
             need_optimize=cfg.need_optimize.value,
             thread_num=cfg.thread_num.value,
+            llm_request_timeout=cfg.llm_request_timeout.value,
             batch_size=cfg.batch_size.value,
             # 字幕布局、样式
             subtitle_layout=cfg.subtitle_layout.value,  # Now returns SubtitleLayoutEnum

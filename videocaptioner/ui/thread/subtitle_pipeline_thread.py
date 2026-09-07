@@ -36,9 +36,16 @@ class SubtitlePipelineThread(QThread):
         super().__init__()
         self.task = task
         self.has_error = False
+        self._active_worker = None
 
     def stop(self):
         self.requestInterruption()
+        if self._active_worker is not None:
+            stop = getattr(self._active_worker, "stop", None)
+            if stop is not None:
+                stop()
+            else:
+                self._active_worker.requestInterruption()
 
     def run(self):
         try:
@@ -84,13 +91,14 @@ class SubtitlePipelineThread(QThread):
                 completed_at=self.task.completed_at,
             )
             transcript_thread = TranscriptThread(transcribe_task)
+            self._active_worker = transcript_thread
             transcript_thread.progress.connect(
                 lambda value, msg: self.progress.emit(int(value * t_end / 100), msg)
             )
             transcript_thread.error.connect(handle_error)
             transcript_thread.run()
 
-            if self.has_error:
+            if self.has_error or self.isInterruptionRequested():
                 logger.info("转录过程中发生错误，终止流程")
                 return
 
@@ -110,6 +118,7 @@ class SubtitlePipelineThread(QThread):
                 completed_at=self.task.completed_at,
             )
             optimization_thread = SubtitleThread(subtitle_task)
+            self._active_worker = optimization_thread
             s_range = s_end - s_start
             optimization_thread.progress.connect(
                 lambda value, msg: self.progress.emit(int(s_start + value * s_range / 100), msg)
@@ -117,7 +126,7 @@ class SubtitlePipelineThread(QThread):
             optimization_thread.error.connect(handle_error)
             optimization_thread.run()
 
-            if self.has_error:
+            if self.has_error or self.isInterruptionRequested():
                 logger.info("字幕优化过程中发生错误，终止流程")
                 return
 
@@ -146,6 +155,7 @@ class SubtitlePipelineThread(QThread):
                     completed_at=self.task.completed_at,
                 )
                 dubbing_thread = DubbingThread(dubbing_task)
+                self._active_worker = dubbing_thread
                 d_range = d_end - d_start
                 dubbing_thread.progress.connect(
                     lambda value, msg: self.progress.emit(int(d_start + value * d_range / 100), msg)
@@ -177,6 +187,7 @@ class SubtitlePipelineThread(QThread):
                 completed_at=self.task.completed_at,
             )
             synthesis_thread = VideoSynthesisThread(synthesis_task)
+            self._active_worker = synthesis_thread
             v_range = v_end - v_start
             synthesis_thread.progress.connect(
                 lambda value, msg: self.progress.emit(int(v_start + value * v_range / 100), msg)
@@ -195,3 +206,5 @@ class SubtitlePipelineThread(QThread):
         except Exception as e:
             logger.exception("处理失败: %s", str(e))
             self.error.emit(str(e))
+        finally:
+            self._active_worker = None

@@ -140,6 +140,7 @@ class Config(QConfig):
     deeplx_endpoint = ConfigItem("Translate", "DeeplxEndpoint", "")
     batch_size = RangeConfigItem("Translate", "BatchSize", 10, RangeValidator(5, 50))
     thread_num = RangeConfigItem("Translate", "ThreadNum", 10, RangeValidator(1, 50))
+    llm_request_timeout = RangeConfigItem("Translate", "RequestTimeout", 120, RangeValidator(1, 600))
 
     # ------------------- 转录配置 -------------------
     transcribe_model = OptionsConfigItem(

@@ -1,6 +1,6 @@
 """Optional provenance shared by subtitles and the editor; no speaker inference."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from typing import Literal
 
 
@@ -12,6 +12,17 @@ class ASRMetadata:
     speaker: str | None = None
     timing: Literal["native", "edited"] = "native"
     speaker_override: str | None = None
+    token_ids: tuple[str, ...] = field(default=(), compare=False)
+
+    def same_source(self, other: "ASRMetadata | None") -> bool:
+        return other is not None and (self.provider, self.scope, self.speaker, self.speaker_override) == (
+            other.provider, other.scope, other.speaker, other.speaker_override)
+
+    def with_tokens_from(self, other: "ASRMetadata") -> "ASRMetadata":
+        if not self.same_source(other):
+            raise ValueError("Cannot merge different ASR provenance.")
+        return replace(self, timing="edited" if "edited" in (self.timing, other.timing) else "native",
+                       token_ids=tuple(dict.fromkeys((*self.token_ids, *other.token_ids))))
 
     @property
     def speaker_id(self) -> str | None:
@@ -34,7 +45,10 @@ class ASRMetadata:
         override = value.get("speaker_override")
         if override is not None and not isinstance(override, str):
             raise ValueError("Invalid speaker override.")
-        return cls(value["provider"], value["scope"], value.get("speaker"), value.get("timing", "native"), override)
+        tokens = value.get("token_ids", ())
+        if not isinstance(tokens, (list, tuple)) or any(not isinstance(t, str) or not t for t in tokens):
+            raise ValueError("Invalid ASR token association.")
+        return cls(value["provider"], value["scope"], value.get("speaker"), value.get("timing", "native"), override, tuple(tokens))
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,54 @@
 # Project Status
 
+## 2026-09-07 (S4.1: deadline dịch, local ASR review/resume và lifecycle; dừng review)
+
+- Đúng checkout user chỉ định, nhánh `codex/asr-s3-native`, baseline **47d1cec** sạch;
+  S4 **8558082** là ancestor. Hoàn thành phạm vi A–C của followup, **không commit/push/tag/release**,
+  không làm S5–S6. Giữ media/AppData/work-dir và artifact S4 hiện có; EXE S4 vẫn khớp SHA-256 bàn giao.
+- Timeout chung có validation **1–600 s**, default cũ **120**; GUI/CLI/SubtitleConfig/factory đã nối,
+  dùng `--llm-timeout 300` cho `gpt-5.6-terra` mà không cần harness. Model/endpoint không đổi ngầm.
+  Worker snapshot config/credential/source; LLM request sở hữu socket, deadline/cancel/join hữu hạn,
+  không retry HTTP POST tự động. Thất bại batch LLM không publish một kết quả thiếu thành success.
+- Request context policy **conversation-request-v2**, schema persistence vẫn v1. Bỏ fields/review
+  unknown lặp, giữ glossary, source window và evidence theo selection/rules/lock. Nguồn tổng hợp
+  30 cue: **11.595 → 2.044 byte UTF-8, giảm 82,37%** cho khối context; không claim token/chi phí.
+- Native ASR giữ `asr-review-v1` riêng trước khi báo lỗi timing/coverage. GUI mở lại, hiển thị token/
+  ngữ cảnh/lý do, chỉnh ms tường minh, undo/redo qua CommandStack; CLI `asr-review` validate/resume
+  local, không upload. Giữ raw và overrides/provenance; group có override mang `edited`, token IDs
+  xuyên JSON/editor. Guard zero-time/coverage/speaker/scope/overlap và remote cleanup/409 vẫn giữ.
+- Stale guard editor theo project/source/cue/timing/speaker/context/selected target; playback/zoom
+  không làm mất bản dịch. Selection chỉ đổi display_text. QThread không terminate; UI cancel/close
+  giữ worker qua supervisor, app quit tiếp tục xử lý Qt events khi join. Signal cũ không reset job
+  mới. Subtitle output được staging trước commit; hủy trong request/staging không ghi output một phần.
+- **Full offline mã cuối: 986 passed, 5 skipped, 51 deselected, 92,17 s** (baseline 910 + 76 test).
+  Gồm toàn CLI, ASR, translate, subtitle, editor, UI/thread. Gate gần code cuối **427 passed**;
+  ruff toàn source/tests pass, pyright **0 errors/0 warnings**, sync translations và diff-check pass.
+  Python **3.12.13**, import đúng checkout, dùng venv/FFmpeg có sẵn; không cài/sync dependency.
+  Cô lập settings/config/cache/review; QThread tests wait. Skip: native QtMultimedia playback và
+  4 TTS/service; deselect integration/slow/llm. 1 warning offline là audioop deprecation.
+- Full đầu tìm khác biệt `stop().executor`; đã giữ API cũ và thêm private owner để join. Regression
+  cancel còn phát hiện wait treo trên future bị hủy, đã sửa collection/join. Final suite trên đã pass.
+  Rà cuối thêm regression signal xếp hàng sau khi Qt xóa interruption flag: dùng dấu hủy riêng,
+  **30 tests UI/lifecycle pass** trước full cuối. Bản Final dùng output mới, không rebuild bản đã smoke.
+  Đã render dialog review và card timeout tiếng Việt, sửa mô tả bị cắt; JSON vi sync, TS en/zh cập nhật.
+  Thiếu lrelease nên QM giữ nguyên, zh mới fallback English.
+- **Artifact cuối** `dist/VideoCaptioner-ASR-S41-Review-20260907-Final/`, scratch riêng, duy nhất spec.
+  PyInstaller **exit 0, 6 WARNING optional/platform, 0 ERROR**; thêm 6 SyntaxWarning upstream
+  (4 pydub, 2 modelscope). **202 module bytecode** từ EXE khớp source, prompt và 2 JSON vi khớp bytes;
+  không bundle Torch/Qwen/Torchaudio. EXE **31.093.132 byte**, timestamp local **2026-09-07 15:35:00**,
+  SHA-256 **2ab4c85035ba64fd59fe96d5686b75ac00139644936bd960a206a419803e4284**.
+  Onedir trước smoke **573 file / 237.245.477 byte**; phân phối nguyên thư mục.
+- **Frozen local review smoke pass**: JSON tổng hợp lỗi trả **exit 5**, không tạo SRT partial;
+  explicit override + export JSON **exit 0**, mở lại và export SRT **exit 0**, giữ edited/token/scope.
+  `subtitle --help` từ EXE pass. **GUI startup pass 25 s**, đúng cửa sổ Qt, WM_CLOSE → **exit 0**,
+  **0 process sót / 0 Traceback-ERROR-CRITICAL**. Không rebuild sau khi artifact có AppData.
+- **Không chạy API/media thật trong phiên S4.1**: worktree không có settings LLM, env key LLM/native
+  trống; không tìm/copy key từ S4/checkout khác/log. Scribe online, GPT→alignment→SRT, phồn thể
+  Qwen strict, speaker accuracy và chất lượng xưng hô/người đọc vẫn còn thiếu nghiệm thu.
+  Frozen local JSON và startup không thay thế workflow media/API từ EXE.
+- Hướng dẫn: [S4.1](docs/dev/asr-s41.md). Manifest file và gate:
+  [bàn giao S4.1](docs/dev/asr-implementation-2026-09.md#bàn-giao-s41--2026-09-07).
+
 ## 2026-09-07 (chốt commit S4 và chuẩn bị session S4.1)
 
 - Theo yêu cầu user sau khi xuất SRT xem thử, đã chốt **code S4** thành
