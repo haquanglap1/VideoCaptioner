@@ -478,9 +478,9 @@ class VideoEditorInterface(QWidget):
             return
         subtitle, _ = QFileDialog.getOpenFileName(
             self,
-            self.tr("Open SRT"),
+            self.tr("Open subtitles"),
             str(Path(path).parent),
-            self.tr("SubRip Subtitle (*.srt)"),
+            self.tr("Subtitles with optional ASR metadata (*.srt *.json)"),
         )
         if subtitle:
             self.open_in_editor(path, subtitle)

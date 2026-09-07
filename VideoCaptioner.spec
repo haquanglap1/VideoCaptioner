@@ -34,6 +34,10 @@ datas = [
 binaries = []
 hiddenimports = []
 hiddenimports += collect_submodules("videocaptioner")
+# Native settings/probe pages load lazily; explicitly retain their frozen entry points.
+hiddenimports += ["videocaptioner.core.asr.native_api",
+                  "videocaptioner.ui.components.NativeASRSettingWidget",
+                  "videocaptioner.ui.thread.native_asr_thread"]
 tmp_ret = collect_all("qfluentwidgets")
 datas += tmp_ret[0]
 binaries += tmp_ret[1]

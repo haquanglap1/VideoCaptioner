@@ -165,7 +165,9 @@ def run(args: Namespace, config: dict) -> int:
 
     # Load subtitle data
     from videocaptioner.core.asr.asr_data import ASRData
-    asr_data = ASRData.from_subtitle_file(str(input_path))
+    asr_data = getattr(args, "asr_data", None)
+    if asr_data is None:
+        asr_data = ASRData.from_subtitle_file(str(input_path))
 
     if len(asr_data.segments) == 0 and not quiet:
         output.warn(f"Input file contains 0 subtitle segments: {input_path}")
@@ -183,7 +185,7 @@ def run(args: Namespace, config: dict) -> int:
 
     try:
         # 1. Split (if word-level timestamps available)
-        if need_split and asr_data.is_word_timestamp():
+        if need_split and (asr_data.has_metadata or asr_data.is_word_timestamp()):
             if progress:
                 progress.update(5, "Splitting subtitles...")
             from videocaptioner.core.split.split import SubtitleSplitter

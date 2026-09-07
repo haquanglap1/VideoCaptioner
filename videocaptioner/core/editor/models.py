@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
 
+from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
+
 EDITOR_PROJECT_SCHEMA = "editor-project-v1"
 MIN_CUE_DURATION_MS = 50
 
@@ -116,6 +118,7 @@ class EditorCue:
     fit_status: str = "pending"
     fit_ratio: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    asr_metadata: ASRMetadata | None = None
 
     @property
     def duration_ms(self) -> int:
@@ -137,6 +140,7 @@ class EditorCue:
             display_text=display,
             tts_text=str(data.get("tts_text", display)),
             speaker=str(data.get("speaker", "")),
+            asr_metadata=ASRMetadata.from_dict(data.get("asr_metadata")),
             voice=str(data.get("voice", "")),
             voice_speed=float(data.get("voice_speed", 1.0)),
             voice_settings=sanitize_voice_settings(dict(data.get("voice_settings", {}) or {})),
@@ -238,6 +242,7 @@ class EditorProject:
     schema_version: str = EDITOR_PROJECT_SCHEMA
     is_dirty: bool = field(default=False, repr=False, compare=False)
     _cue_index_cache: Any = field(default=None, repr=False, compare=False)
+    audio_events: list[ASRAudioEvent] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.duration_ms = max(0, int(self.duration_ms))
@@ -298,26 +303,30 @@ class EditorProject:
         start_ms, end_ms = int(start_ms), int(end_ms)
         if start_ms < 0:
             raise ValueError("Cue start must be non-negative")
-        if end_ms - start_ms < MIN_CUE_DURATION_MS:
+        native = bool(excluding_id and self.cue_by_id(excluding_id).asr_metadata)
+        if end_ms - start_ms < (1 if native else MIN_CUE_DURATION_MS):
             raise ValueError(f"Cue duration must be at least {MIN_CUE_DURATION_MS} ms")
         if self.duration_ms and end_ms > self.duration_ms:
             raise ValueError("Cue end exceeds video duration")
         for cue in self.cues:
             if cue.id == excluding_id:
                 continue
-            if start_ms < cue.end_ms and end_ms > cue.start_ms:
+            if start_ms < cue.end_ms and end_ms > cue.start_ms and not (native and cue.asr_metadata):
                 raise ValueError(f"Cue timing overlaps {cue.id}")
 
     def validate_all_cues(self) -> None:
-        previous: EditorCue | None = None
+        max_end = 0
+        max_legacy_end = 0
         for cue in sorted(self.cues, key=lambda item: (item.start_ms, item.end_ms, item.id)):
-            if cue.start_ms < 0 or cue.end_ms - cue.start_ms < MIN_CUE_DURATION_MS:
+            if cue.start_ms < 0 or cue.end_ms - cue.start_ms < (1 if cue.asr_metadata else MIN_CUE_DURATION_MS):
                 raise ValueError(f"Invalid timing for {cue.id}")
             if self.duration_ms and cue.end_ms > self.duration_ms:
                 raise ValueError(f"Cue {cue.id} exceeds video duration")
-            if previous and cue.start_ms < previous.end_ms:
-                raise ValueError(f"Cue {cue.id} overlaps {previous.id}")
-            previous = cue
+            if cue.start_ms < (max_legacy_end if cue.asr_metadata else max_end):
+                raise ValueError(f"Cue {cue.id} overlaps a cue without native ASR provenance")
+            max_end = max(max_end, cue.end_ms)
+            if cue.asr_metadata is None:
+                max_legacy_end = max(max_legacy_end, cue.end_ms)
 
     def touch(self) -> None:
         self.updated_at = utc_now_iso()
@@ -336,6 +345,7 @@ class EditorProject:
             "height": self.height,
             "fps": self.fps,
             "cues": [cue.to_dict() for cue in self.cues],
+            "audio_events": [event.to_dict() for event in self.audio_events],
             "tracks": [track.to_dict() for track in self.tracks],
             "layers": [layer.to_dict() for layer in self.layers],
             "voice_settings": sanitize_voice_settings(self.voice_settings),
@@ -361,6 +371,7 @@ class EditorProject:
             height=int(data.get("height", 0)),
             fps=float(data.get("fps", 0.0)),
             cues=[EditorCue.from_dict(item) for item in data.get("cues", [])],
+            audio_events=[ASRAudioEvent.from_dict(item) for item in data.get("audio_events", [])],
             tracks=[EditorTrack.from_dict(item) for item in data.get("tracks", [])],
             layers=[EditorLayer.from_dict(item) for item in data.get("layers", [])],
             voice_settings=sanitize_voice_settings(dict(data.get("voice_settings", {}) or {})),

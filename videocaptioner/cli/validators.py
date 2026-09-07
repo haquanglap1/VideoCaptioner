@@ -161,6 +161,11 @@ def validate_transcribe(config: dict) -> bool:
     """Validate config for transcribe command."""
     asr = get(config, "transcribe.asr", "faster-whisper")
 
+    if asr in ("soniox", "scribe"):
+        if not get(config, f"{asr}.api_key"):
+            output.error(f"Configure {asr}.api_key for the selected native provider.")
+            return False
+        return True
     if asr == "whisper-api":
         return validate_whisper_api(config)
     if asr == "faster-whisper":

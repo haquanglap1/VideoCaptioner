@@ -10,6 +10,7 @@ from langdetect import LangDetectException, detect
 
 from ..entities import SubtitleLayoutEnum
 from ..utils.text_utils import is_mainly_cjk
+from .metadata import ASRAudioEvent, ASRMetadata
 
 # 多语言分词模式(支持词级和字符级语言)
 _WORD_SPLIT_PATTERN = (
@@ -51,12 +52,22 @@ def handle_long_path(path: str) -> str:
 
 class ASRDataSeg:
     def __init__(
-        self, text: str, start_time: int, end_time: int, translated_text: str = ""
+        self, text: str, start_time: int, end_time: int, translated_text: str = "",
+        metadata: Optional[ASRMetadata] = None
     ):
+        self.metadata = metadata
         self.text = text
         self.translated_text = translated_text
         self.start_time = start_time
         self.end_time = end_time
+
+    @property
+    def speaker(self) -> Optional[str]:
+        return self.metadata.speaker_id if self.metadata else None
+
+    def clone(self, *, text: Optional[str] = None) -> "ASRDataSeg":
+        return ASRDataSeg(self.text if text is None else text, self.start_time, self.end_time,
+                          self.translated_text, self.metadata)
 
     def to_srt_ts(self) -> str:
         """Convert to SRT timestamp format"""
@@ -104,10 +115,18 @@ class ASRDataSeg:
 
 
 class ASRData:
-    def __init__(self, segments: List[ASRDataSeg]):
+    def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None):
+        self.events = list(events or [])
         filtered_segments = [seg for seg in segments if seg.text and seg.text.strip()]
         filtered_segments.sort(key=lambda x: x.start_time)
         self.segments = filtered_segments
+
+    def with_segments(self, segments: List[ASRDataSeg]) -> "ASRData":
+        return ASRData(segments, self.events)
+
+    @property
+    def has_metadata(self) -> bool:
+        return bool(self.events) or any(seg.metadata is not None for seg in self.segments)
 
     def __iter__(self):
         return iter(self.segments)
@@ -170,6 +189,8 @@ class ASRData:
         Returns:
             修改后的ASRData实例
         """
+        if self.has_metadata:
+            raise ValueError("Cannot estimate word timing for native ASR; review required.")
         CHARS_PER_PHONEME = 4
         new_segments = []
 
@@ -209,6 +230,8 @@ class ASRData:
 
     def remove_punctuation(self) -> "ASRData":
         """Remove trailing Chinese punctuation (comma, period) from segments."""
+        if self.has_metadata:
+            return self
         punctuation = r"[，。]"
         for seg in self.segments:
             seg.text = re.sub(f"{punctuation}+$", "", seg.text.strip())
@@ -239,7 +262,7 @@ class ASRData:
             self.to_txt(save_path=save_path, layout=layout)
         elif save_path.endswith(".json"):
             with open(save_path, "w", encoding="utf-8") as f:
-                json.dump(self.to_json(), f, ensure_ascii=False, indent=2)
+                json.dump(self.to_document(), f, ensure_ascii=False, indent=2)
         elif save_path.endswith(".ass"):
             self.to_ass(save_path=save_path, style_str=ass_style, layout=layout)
         else:
@@ -315,7 +338,15 @@ class ASRData:
                 "original_subtitle": segment.text,
                 "translated_subtitle": segment.translated_text,
             }
+            if segment.metadata is not None:
+                result_json[str(i)]["asr_metadata"] = segment.metadata.to_dict()
         return result_json
+
+    def to_document(self) -> dict:
+        if self.events:
+            return {"schema": "asr-native-v1", "cues": self.to_json(),
+                    "events": [event.to_dict() for event in self.events]}
+        return self.to_json()
 
     def to_ass(
         self,
@@ -450,8 +481,10 @@ class ASRData:
             or start_index > end_index
         ):
             raise IndexError("Invalid segment index")
+        span = self.segments[start_index : end_index + 1]
+        metadata = merge_metadata(span)
         merged_start_time = self.segments[start_index].start_time
-        merged_end_time = self.segments[end_index].end_time
+        merged_end_time = max(seg.end_time for seg in span)
         if merged_text is None:
             merged_text = "".join(
                 seg.text for seg in self.segments[start_index : end_index + 1]
@@ -461,7 +494,7 @@ class ASRData:
             if seg.translated_text
         )
         merged_seg = ASRDataSeg(merged_text, merged_start_time, merged_end_time,
-                                translated_text=merged_translated)
+                                translated_text=merged_translated, metadata=metadata)
         self.segments[start_index : end_index + 1] = [merged_seg]
 
     def merge_with_next_segment(self, index: int) -> None:
@@ -470,12 +503,13 @@ class ASRData:
             raise IndexError("Index out of range or no next segment to merge")
         current_seg = self.segments[index]
         next_seg = self.segments[index + 1]
+        metadata = merge_metadata([current_seg, next_seg])
         merged_text = f"{current_seg.text} {next_seg.text}"
         merged_translated = ""
         if current_seg.translated_text or next_seg.translated_text:
             merged_translated = f"{current_seg.translated_text} {next_seg.translated_text}".strip()
-        merged_seg = ASRDataSeg(merged_text, current_seg.start_time, next_seg.end_time,
-                                translated_text=merged_translated)
+        merged_seg = ASRDataSeg(merged_text, current_seg.start_time, max(current_seg.end_time, next_seg.end_time),
+                                translated_text=merged_translated, metadata=metadata)
         self.segments[index] = merged_seg
         del self.segments[index + 1]
 
@@ -491,7 +525,7 @@ class ASRData:
         Returns:
             Self for method chaining
         """
-        if self.is_word_timestamp() or not self.segments:
+        if self.has_metadata or self.is_word_timestamp() or not self.segments:
             return self
 
         for i in range(len(self.segments) - 1):
@@ -552,6 +586,10 @@ class ASRData:
     @staticmethod
     def from_json(json_data: dict) -> "ASRData":
         """Create ASRData from JSON data"""
+        if json_data.get("schema") == "asr-native-v1":
+            data = ASRData.from_json(json_data["cues"])
+            data.events = [ASRAudioEvent.from_dict(item) for item in json_data.get("events", [])]
+            return data
         segments = []
         for i in sorted(json_data.keys(), key=int):
             segment_data = json_data[i]
@@ -560,6 +598,7 @@ class ASRData:
                 translated_text=segment_data["translated_subtitle"],
                 start_time=segment_data["start_time"],
                 end_time=segment_data["end_time"],
+                metadata=ASRMetadata.from_dict(segment_data.get("asr_metadata")),
             )
             segments.append(segment)
         return ASRData(segments)
@@ -852,3 +891,11 @@ class ASRData:
             segments.append(segment)
 
         return ASRData(segments)
+
+
+def merge_metadata(segments: List[ASRDataSeg]) -> Optional[ASRMetadata]:
+    """Reject merges across provenance/speaker boundaries, including known to unknown."""
+    first = segments[0].metadata if segments else None
+    if any(seg.metadata != first for seg in segments):
+        raise ValueError("Cannot merge different speakers or ASR sources; review required.")
+    return first

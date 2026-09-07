@@ -142,6 +142,11 @@ class SubtitleSplitter:
             else:
                 asr_data = subtitle_data
 
+            if asr_data.has_metadata:
+                from videocaptioner.core.asr.native_result import native_cues
+
+                return native_cues(asr_data, self.max_word_count_cjk)
+
             if not asr_data.is_word_timestamp():
                 asr_data = asr_data.split_to_word_segments()
 

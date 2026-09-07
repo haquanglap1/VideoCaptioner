@@ -98,6 +98,10 @@ class SettingInterface(ScrollArea):
         # ASR service card
         self.__createASRServiceCards()
 
+        for controls in self.nativeASRCards.values():
+            for card in controls.cards:
+                self.transcribeGroup.addSettingCard(card)
+
         # LLM cards
         self.__createLLMServiceCards()
 
@@ -394,6 +398,13 @@ class SettingInterface(ScrollArea):
             self.transcribeGroup,
         )
 
+        from videocaptioner.ui.components.NativeASRSettingWidget import NativeASRCards
+
+        self.nativeASRCards = {name: NativeASRCards(name, self.transcribeGroup) for name in ("soniox", "scribe")}
+        for controls in self.nativeASRCards.values():
+            for card in controls.cards:
+                card.setVisible(False)
+
         # Whisper API cards start hidden; shown only when Whisper API is selected
         self.whisperApiBaseCard.setVisible(False)
         self.whisperApiKeyCard.setVisible(False)
@@ -522,6 +533,10 @@ class SettingInterface(ScrollArea):
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
         self.transcribeGroup.addSettingCard(self.whisperApiModelCard)
         self.transcribeGroup.addSettingCard(self.checkWhisperConnectionCard)
+
+        for controls in self.nativeASRCards.values():
+            for card in controls.cards:
+                self.transcribeGroup.addSettingCard(card)
 
         # LLM cards
         self.llmGroup.addSettingCard(self.llmServiceCard)
@@ -873,6 +888,10 @@ class SettingInterface(ScrollArea):
             current = enum_from_display(TranscribeModelEnum, model_name, self.tr)
         except ValueError:
             current = None
+        for name, controls in self.nativeASRCards.items():
+            selected = TranscribeModelEnum.SONIOX if name == "soniox" else TranscribeModelEnum.SCRIBE
+            for card in controls.cards:
+                card.setVisible(current is selected)
         is_whisper_api = current is TranscribeModelEnum.WHISPER_API
         self.fasterWhisperManagerCard.setVisible(
             current is TranscribeModelEnum.FASTER_WHISPER

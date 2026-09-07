@@ -55,6 +55,8 @@ class ChunkMerger:
         """
         if not chunks:
             raise ValueError("chunks must not be empty")
+        if len(chunks) > 1 and any(chunk.has_metadata for chunk in chunks):
+            raise ValueError("Native ASR requires request-scoped merge/overlap review; fuzzy chunk merge is disabled.")
 
         if len(chunks) == 1:
             logger.debug("只有一个 chunk，直接返回")
@@ -264,6 +266,7 @@ class ChunkMerger:
                 start_time=seg.start_time + offset,
                 end_time=seg.end_time + offset,
                 translated_text=seg.translated_text,
+                metadata=seg.metadata,
             )
             for seg in segments
         ]

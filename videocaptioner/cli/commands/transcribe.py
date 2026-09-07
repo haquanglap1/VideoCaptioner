@@ -62,6 +62,7 @@ def run(args: Namespace, config: dict) -> int:
     # they are deliberately not exported to os.environ.
 
     # Build TranscribeConfig
+    from videocaptioner.core.asr.native_profiles import NativeASRConfig
     from videocaptioner.core.entities import (
         FasterWhisperModelEnum,
         TranscribeConfig,
@@ -71,6 +72,8 @@ def run(args: Namespace, config: dict) -> int:
     )
 
     asr_map = {
+        "soniox": TranscribeModelEnum.SONIOX,
+        "scribe": TranscribeModelEnum.SCRIBE,
         "faster-whisper": TranscribeModelEnum.FASTER_WHISPER,
         "whisper-api": TranscribeModelEnum.WHISPER_API,
         "bijian": TranscribeModelEnum.BIJIAN,
@@ -94,6 +97,11 @@ def run(args: Namespace, config: dict) -> int:
         transcribe_model=asr_map.get(asr_engine),
         transcribe_language=language if language != "auto" else "",
         need_word_time_stamp=getattr(args, "word_timestamps", False),
+        native_asr=NativeASRConfig(
+            asr_engine, api_key=get(config, f"{asr_engine}.api_key", ""),
+            api_base=get(config, f"{asr_engine}.api_base", ""), model=get(config, f"{asr_engine}.model", ""),
+            diarize=get(config, f"{asr_engine}.diarize", True),
+        ) if asr_engine in ("soniox", "scribe") else None,
         # FasterWhisper options
         faster_whisper_model=fw_model_enum,
         faster_whisper_model_dir=None,
@@ -154,6 +162,8 @@ def run(args: Namespace, config: dict) -> int:
 
         from videocaptioner.core.asr.transcribe import transcribe
         asr_data = transcribe(audio_path, transcribe_config, callback=callback)
+
+        args.asr_data = asr_data
 
         # Save output
         asr_data.save(save_path=output_path)

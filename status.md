@@ -1,5 +1,43 @@
 # Project Status
 
+## 2026-09-07 (ASR S3: native Soniox/Scribe và speaker metadata; dừng để review)
+
+- Baseline đúng `origin/codex/asr-s2-alignment` tại `d21251a5d1be3d4baceec5a3e8d6869ceb4877c5`,
+  đã xác minh code S2 `96470bf7` là ancestor. Worktree riêng, nhánh `codex/asr-s3-native`;
+  giữ nguyên checkout master và các tài liệu untracked của user. Chưa commit/push.
+- Native Soniox `stt-async-v5` upload/submit/poll/result, Scribe `scribe_v2` multipart/words/events;
+  không ép qua Whisper route, không đổi mặc định, không dùng key gateway. Toàn file có preflight
+  byte/duration; GET retry/deadline hữu hạn, POST không tự resubmit khi acceptance không chắc chắn.
+  Hủy in-flight local và cleanup tài nguyên đúng job; giới hạn remote cancellation/chi phí hiển thị rõ.
+- `ASRMetadata` optional với speaker anonymous scope riêng mỗi request; canonical ms có validation,
+  giữ overlapping speech và events riêng. Không tạo timestamp/speaker giả, không suy danh tính/xưng hô.
+  Cache có version, hash audio/provider/endpoint/model/language/options/speaker policy, giữ scope;
+  không lưu remote IDs/credential/raw error body. Cache S1/S2 không bị trộn.
+- Speaker/events giữ qua copy, split theo span đo, optimize một cue mỗi request, translate input,
+  GUI/CLI in-memory handoff, JSON/editor. Merge khác speaker/source bị chặn; legacy fuzzy chunk merger
+  từ chối native metadata. Editor giữ `editor-project-v1`, cue IDs, CommandStack và JSON+SRT normal save.
+  Cue native chưa có explicit text boundary nên nút split editor dừng review; không dùng chia chữ/timing
+  ước lượng. SRT không tự chèn speaker; JSON giữ metadata. Preview overlay còn hiển thị một active cue.
+- CLI/GUI thêm engine/config/probe tường minh, key riêng theo provider/endpoint, không network khi mở
+  settings; worker giữ contextvars, cancel và wait. Đã render kiểm tra settings tiếng Việt và sửa mô tả
+  bị cắt dòng. TS có chuỗi en/zh mới, JSON vi đồng bộ; chưa compile QM mới do thiếu lrelease trong
+  toolchain hiện có, nên chuỗi mới ở locale zh dùng fallback English trong artifact hiện tại.
+- Gate core đầy đủ cuối: **862 passed, 5 skipped, 51 deselected**, 96,71 s (baseline 768 + 94 test mới).
+  Skip: native playback/TTS cần dịch vụ; deselect: integration/slow/llm. Ruff toàn source/tests pass;
+  pyright 0 errors/0 warnings; toàn CLI + native ASR/pipeline/UI 171 pass; sau sửa chiều cao label,
+  17 tests settings/UI pass. Sync translations và diff-check pass. Không đổi/cài dependency.
+- **Chưa nghiệm thu Soniox/Scribe online**: không có key native trong worktree/env, không lấy key/media
+  từ checkout khác. Giữ nguyên khoản thiếu S2: GPT gateway→SRT chưa nghiệm thu và phồn thể Qwen strict
+  chưa đạt acceptance. S2 local alignment/EXE startup đã đo ở baseline, không suy thêm từ mock S3.
+- EXE review cuối: PyInstaller exit 0, 6 warnings optional/platform, 0 errors; 36 module bytecode
+  khớp source. EXE 31.023.698 byte, SHA-256 `0e3be9f4…3761ebec`, timestamp máy 10:13:24.
+  Onedir 572 file / 237.121.067 byte trước smoke. GUI hidden có đúng cửa sổ Qt, sống qua 25 s,
+  WM_CLOSE → exit 0, 0 process sót/0 startup error markers. Workflow media/API từ EXE chưa đo.
+- Hợp đồng, limits/retry/cancel, lựa chọn kỹ thuật và giới hạn:
+  [ASR native S3](docs/dev/asr-native-s3.md). Artifact và danh sách file:
+  [bàn giao S3](docs/dev/asr-implementation-2026-09.md#bàn-giao-s3--2026-09-07).
+- Dừng ở S3 để review; không triển khai S4–S6, bảng nhân vật/addressee/xưng hô, gán giọng hoặc pyannote.
+
 ## 2026-09-07 (ASR S2: JSON → alignment tiếng Trung, dừng để review)
 
 - Baseline đúng `origin/codex/asr-s1-api-profiles`, commit

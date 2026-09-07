@@ -107,6 +107,15 @@ def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--report", metavar="PATH")
 
 
+def _add_native_asr_options(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group("Native Chinese ASR (Soniox / ElevenLabs)")
+    for provider in ("soniox", "scribe"):
+        group.add_argument(f"--{provider}-api-key", metavar="KEY")
+        group.add_argument(f"--{provider}-api-base", metavar="URL")
+        group.add_argument(f"--{provider}-model", metavar="MODEL")
+        group.add_argument(f"--{provider}-diarize", action=argparse.BooleanOptionalAction, default=None)
+
+
 def _build_transcribe_parser(subparsers) -> None:
     p = subparsers.add_parser(
         "transcribe",
@@ -120,7 +129,7 @@ def _build_transcribe_parser(subparsers) -> None:
     asr = p.add_argument_group("ASR options")
     asr.add_argument(
         "--asr",
-        choices=["bijian", "jianying", "whisper-api", "whisper-cpp"],
+        choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe"],
         help="ASR engine (default: bijian). "
              "bijian/jianying: free, no setup, Chinese & English only. "
              "For other languages use whisper-api or whisper-cpp",
@@ -148,6 +157,7 @@ def _build_transcribe_parser(subparsers) -> None:
     p.add_argument("--fw-vad-threshold", type=float, help=argparse.SUPPRESS)
     p.add_argument("--fw-voice-extraction", action="store_true", help=argparse.SUPPRESS)
 
+    _add_native_asr_options(p)
     p.set_defaults(func=_run_transcribe)
 
 
@@ -291,7 +301,7 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
     pipe.add_argument("--no-synthesize", action="store_true", help="Skip video synthesis (output subtitles only)")
 
-    pipe.add_argument("--asr", choices=["bijian", "jianying", "whisper-api", "whisper-cpp"],
+    pipe.add_argument("--asr", choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe"],
                       help="ASR engine (default: bijian)")
     pipe.add_argument("--language", metavar="CODE",
                       help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
@@ -318,6 +328,7 @@ def _build_process_parser(subparsers) -> None:
     _add_style_options(p)
     _add_dubbing_options(p)
 
+    _add_native_asr_options(p)
     p.set_defaults(func=_run_process)
 
 
@@ -442,6 +453,9 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("whisper_api.api_key", getattr(args, "whisper_api_key", None))
     _set("whisper_api.api_base", getattr(args, "whisper_api_base", None))
     _set("whisper_api.model", getattr(args, "whisper_model", None))
+    for provider in ("soniox", "scribe"):
+        for key in ("api_key", "api_base", "model", "diarize"):
+            _set(f"{provider}.{key}", getattr(args, f"{provider}_{key}", None))
     _set("whisper_api.provider", getattr(args, "whisper_provider", None))
     _set("whisper_api.request_profile", getattr(args, "whisper_request_profile", None))
 

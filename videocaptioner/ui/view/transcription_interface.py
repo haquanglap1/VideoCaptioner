@@ -437,6 +437,7 @@ class VideoInfoCard(CardWidget):
 
 
 class TranscriptionInterface(QWidget):
+    recognized = pyqtSignal(object)
     """转录界面类,用于显示视频信息和转录进度"""
 
     finished = pyqtSignal(str, str)
@@ -631,7 +632,10 @@ class TranscriptionInterface(QWidget):
         """转录完成处理"""
         self.is_processing = False
         if task.need_next_task:
-            self.finished.emit(task.output_path, task.file_path)
+            if task.asr_data is not None and task.asr_data.has_metadata:
+                self.recognized.emit(task)
+            else:
+                self.finished.emit(task.output_path, task.file_path)
 
             InfoBar.success(
                 self.tr("转录完成"),

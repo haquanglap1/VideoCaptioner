@@ -1302,6 +1302,14 @@
         <source>字幕校正已取消</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Review required</source>
+        <translation>需要检查</translation>
+    </message>
+    <message>
+        <source>Cannot merge different speakers or ASR sources.</source>
+        <translation>无法合并不同说话人或 ASR 来源。</translation>
+    </message>
 </context>
 <context>
     <name>SubtitlePipelineThread</name>
@@ -2577,6 +2585,14 @@
     <message><source>Display subtitle</source><translation>显示字幕</translation></message>
     <message><source>TTS text</source><translation>TTS 文本</translation></message>
     <message><source>Visual Layers</source><translation>视觉图层</translation></message>
+    <message>
+        <source>Open subtitles</source>
+        <translation>打开字幕</translation>
+    </message>
+    <message>
+        <source>Subtitles with optional ASR metadata (*.srt *.json)</source>
+        <translation>字幕和可选 ASR 元数据 (*.srt *.json)</translation>
+    </message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -2729,6 +2745,52 @@
     <message>
         <source>Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).</source>
         <translation type="unfinished"/>
+    </message>
+</context>
+<context>
+    <name>NativeASRCards</name>
+    <message>
+        <source>Anonymous speaker labels</source>
+        <translation>匿名说话人标签</translation>
+    </message>
+    <message>
+        <source>Labels belong to one request; unknown speakers remain unknown.</source>
+        <translation>标签只属于单次请求；未知说话人保持未知。</translation>
+    </message>
+    <message>
+        <source>Check service</source>
+        <translation>检查服务</translation>
+    </message>
+    <message>
+        <source>No audio upload. Cancel stops local waiting; remote recognition may continue and incur charges.</source>
+        <translation>不上传音频。取消仅停止本地等待；远程识别可能继续并产生费用。</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>API Base URL</source>
+        <translation>API Base URL</translation>
+    </message>
+    <message>
+        <source>API Key</source>
+        <translation>API Key</translation>
+    </message>
+</context>
+<context>
+    <name>NativeASRProbeThread</name>
+    <message>
+        <source>Service probe passed. Recognition, timing and speakers are not tested.</source>
+        <translation>服务检查通过。尚未测试识别、时间戳和说话人。</translation>
+    </message>
+    <message>
+        <source>Service probe cancelled.</source>
+        <translation>已取消服务检查。</translation>
+    </message>
+    <message>
+        <source>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</source>
+        <translation>服务检查失败。请检查端点、密钥和读取权限；尚未测试 ASR 权限。</translation>
     </message>
 </context>
 </TS>

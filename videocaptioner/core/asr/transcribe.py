@@ -5,6 +5,7 @@ from videocaptioner.core.asr.bcut import BcutASR
 from videocaptioner.core.asr.chunked_asr import ChunkedASR
 from videocaptioner.core.asr.faster_whisper import FasterWhisperASR
 from videocaptioner.core.asr.jianying import JianYingASR
+from videocaptioner.core.asr.native_api import NativeASR
 from videocaptioner.core.asr.whisper_api import WhisperAPI
 from videocaptioner.core.asr.whisper_cpp import WhisperCppASR
 from videocaptioner.core.entities import TranscribeConfig, TranscribeModelEnum
@@ -38,13 +39,13 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
     asr_data = asr.run(callback=callback)
 
     # Optimize subtitle timing if not using word timestamps
-    if not config.need_word_time_stamp and not isinstance(asr, AlignedAPI):
+    if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR)):
         asr_data.optimize_timing()
 
     return asr_data
 
 
-def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI:
+def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI | NativeASR:
     """Create appropriate ASR instance based on configuration.
 
     Args:
@@ -55,6 +56,12 @@ def _create_asr_instance(audio_path: str, config: TranscribeConfig) -> ChunkedAS
         ChunkedASR: Chunked ASR instance ready to run
     """
     model_type = config.transcribe_model
+
+    if model_type in (TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE):
+        expected = "soniox" if model_type == TranscribeModelEnum.SONIOX else "scribe"
+        if config.native_asr is None or config.native_asr.provider != expected:
+            raise ValueError("Configure credentials for the selected native ASR provider.")
+        return NativeASR(audio_path, config.native_asr, config.transcribe_language, config.need_word_time_stamp)
 
     if model_type == TranscribeModelEnum.JIANYING:
         return _create_jianying_asr(audio_path, config)
@@ -112,7 +119,7 @@ def _create_whisper_cpp_asr(audio_path: str, config: TranscribeConfig) -> Chunke
     )
 
 
-def _create_whisper_api_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI:
+def _create_whisper_api_asr(audio_path: str, config: TranscribeConfig) -> ChunkedASR | AlignedAPI | NativeASR:
     """Create Whisper API ASR instance with chunking support."""
     profile = resolve_profile(
         config.whisper_api_model or "whisper-1",

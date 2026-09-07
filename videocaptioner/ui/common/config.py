@@ -216,6 +216,17 @@ class Config(QConfig):
     faster_whisper_prompt = ConfigItem("FasterWhisper", "Prompt", "")
 
     # ------------------- Whisper API 配置 -------------------
+    soniox_api_base = ConfigItem("Soniox", "ApiBase", "https://api.soniox.com/v1")
+    soniox_api_key = ConfigItem("Soniox", "ApiKey", "")
+    soniox_model = ConfigItem("Soniox", "Model", "stt-async-v5")
+    soniox_diarize = ConfigItem("Soniox", "Diarize", True, BoolValidator())
+    soniox_endpoint_keys = ConfigItem("Soniox", "EndpointKeys", {})
+    scribe_api_base = ConfigItem("Scribe", "ApiBase", "https://api.elevenlabs.io/v1")
+    scribe_api_key = ConfigItem("Scribe", "ApiKey", "")
+    scribe_model = ConfigItem("Scribe", "Model", "scribe_v2")
+    scribe_diarize = ConfigItem("Scribe", "Diarize", True, BoolValidator())
+    scribe_endpoint_keys = ConfigItem("Scribe", "EndpointKeys", {})
+
     whisper_api_base = ConfigItem("WhisperAPI", "WhisperApiBase", "")
     whisper_api_key = ConfigItem("WhisperAPI", "WhisperApiKey", "")
     whisper_api_model = OptionsConfigItem("WhisperAPI", "WhisperApiModel", "")
@@ -408,3 +419,6 @@ qconfig.load(SETTINGS_PATH, cfg)
 from .whisper_settings import WhisperSettings  # noqa: E402
 
 whisper_settings = WhisperSettings(cfg)
+from .native_asr_settings import NativeASRSettings  # noqa: E402
+
+native_asr_settings = [NativeASRSettings(cfg, name) for name in ("soniox", "scribe")]

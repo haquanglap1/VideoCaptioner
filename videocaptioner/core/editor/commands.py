@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Protocol
 from uuid import uuid4
+
+from videocaptioner.core.asr.metadata import ASRMetadata
 
 from .models import EditorCue, EditorLayer, EditorProject
 
@@ -153,14 +155,18 @@ class EditCueTimingCommand:
     end_ms: int
     description: str = "Edit cue timing"
     _old_timing: tuple[int, int] | None = field(default=None, init=False)
+    _old_metadata: ASRMetadata | None = field(default=None, init=False)
 
     def execute(self) -> None:
         cue = self.project.cue_by_id(self.cue_id)
         if self._old_timing is None:
             self._old_timing = (cue.start_ms, cue.end_ms)
+            self._old_metadata = cue.asr_metadata
         self.project.validate_cue_timing(self.start_ms, self.end_ms, excluding_id=cue.id)
         cue.start_ms = int(self.start_ms)
         cue.end_ms = int(self.end_ms)
+        if cue.asr_metadata is not None:
+            cue.asr_metadata = replace(cue.asr_metadata, timing="edited")
         self.project.cues.sort(key=lambda item: (item.start_ms, item.end_ms, item.id))
         self.project.touch()
 
@@ -169,6 +175,7 @@ class EditCueTimingCommand:
             return
         cue = self.project.cue_by_id(self.cue_id)
         cue.start_ms, cue.end_ms = self._old_timing
+        cue.asr_metadata = self._old_metadata
         self.project.cues.sort(key=lambda item: (item.start_ms, item.end_ms, item.id))
         self.project.touch()
 
@@ -266,6 +273,8 @@ class SplitCueCommand:
     def execute(self) -> None:
         cue = self.project.cue_by_id(self.cue_id)
         split_ms = int(self.split_ms)
+        if cue.asr_metadata is not None:
+            raise ValueError("Native cue split needs an explicit text boundary; review the measured ASR spans.")
         if split_ms - cue.start_ms < 50 or cue.end_ms - split_ms < 50:
             raise ValueError("Split point must leave at least 50 ms on both sides")
         if self._original is None:

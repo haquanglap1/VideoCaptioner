@@ -114,7 +114,9 @@ class TranscriptThread(QThread):
                 callback=self.progress_callback,
             )
 
-            # 保存字幕文件（根据配置的输出格式）
+            self.task.asr_data = asr_data
+
+            # Save the configured subtitle formats.
             output_path = Path(self.task.output_path)
             output_format_enum = self.task.transcribe_config.output_format
             base_path = output_path.with_suffix("")

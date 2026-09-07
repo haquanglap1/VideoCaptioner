@@ -2,13 +2,14 @@
 
 Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
-gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1 và S2 đã có code
-và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. Gateway GPT→SRT
-chưa nghiệm thu vì thiếu key; S3–S6 chưa triển khai. Code S2 đã commit theo yêu cầu user sau bàn giao.
+gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-07: **S1–S3 có code
+và gate offline; S2 đã đo alignment local thật trên clip Trung công khai**. GPT gateway→SRT,
+phồn thể alignment S2 và native Soniox/Scribe online còn thiếu acceptance. S4–S6 chưa triển khai.
+Code S2 đã commit theo yêu cầu user sau bàn giao; S3 đang dừng để review, chưa commit/push.
 
 Prompt S2 đã thực hiện: [bàn giao yêu cầu](asr-step-2-prompt.md).
 Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
-Prompt session tiếp theo: [thực hiện S3](asr-step-3-prompt.md).
+Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ## Mục tiêu sản phẩm đã chốt
 
@@ -24,7 +25,7 @@ Prompt session tiếp theo: [thực hiện S3](asr-step-3-prompt.md).
 | --- | --- | --- | --- |
 | S1 (offline hoàn tất) | Nền API tương thích và preset videocaptioner.cn/Groq/OpenAI/Custom | Code hiện có | Request/probe/parser theo capability, cache cách ly, config cũ hoạt động; text-only có giới hạn rõ ràng; gate offline |
 | S2 (code/offline + local smoke, chờ gateway) | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | Runtime alignment riêng đã đo; còn thiếu key để nghiệm thu GPT gateway→SRT |
-| S3 | Soniox v5 và Scribe v2, timestamp + speaker native | S1 | ASR mới đưa speaker xuyên split/optimize/translate input/editor; save/load speaker không mất |
+| S3 (code/offline, chờ native API) | Soniox v5 và Scribe v2, timestamp + speaker native | S1 | ASR mới đưa speaker xuyên split/optimize/translate input/editor; save/load speaker không mất |
 | S4 | Quan hệ người nói/người nghe và xưng hô Trung→Việt | S3; đường hybrid nối sau S5 | Mapping theo cặp/cảnh, user override, dịch lại và cache nhất quán, có review trường hợp mơ hồ |
 | S5 | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Chạy Windows tách Qt, pin model, đo VRAM/speed, giữ speaker trong toàn job |
 | S6 | Benchmark, chọn preset mặc định và nghiệm thu EXE | S2–S5 | Có kết quả thực trên video Trung, CER/timing/speaker/xưng hô, artifact và workflow thật |
@@ -344,10 +345,139 @@ videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
 
 ### Đầu vào S3
 
-S3 chưa triển khai. Có thể dùng `ASRData`/canonical ms, registry/request/parser S1 và contract
+Tại thời điểm bàn giao S2, S3 chưa triển khai. Có thể dùng `ASRData`/canonical ms, registry/request/parser S1 và contract
 alignment S2; metadata speaker chưa thêm. Không giả định word/character alignment là speaker
 identity. Trước khi nghiệm thu GPT→SRT cần key gateway đúng quyền model và bộ clip Trung được
 user cho phép; cần đánh giá tiếp độ phủ policy strict/phồn thể trước chọn mặc định sản phẩm.
+
+## Bàn giao S3 — 2026-09-07
+
+Code chạy từ baseline `d21251a5d1be3d4baceec5a3e8d6869ceb4877c5`, không phải master;
+nhánh review `codex/asr-s3-native`, không commit/push/tag/GitHub. S2 ancestor đã xác minh.
+Thiết kế, nguồn provider đã đọc, cấu hình, lifecycle, metadata/cache và giới hạn được ghi trong
+[ASR native S3](asr-native-s3.md).
+
+### Validation
+
+- Python **3.12.13**, dùng interpreter project có sẵn và PYTHONPATH trỏ đúng worktree; đã xác minh
+  `videocaptioner.__file__`. Không sync/thay dependency, không đọc credential/media checkout nguồn.
+- Ruff toàn `videocaptioner/ tests/` pass; pyright toàn source **0 errors, 0 warnings**.
+- Toàn CLI cùng native ASR/pipeline/settings mới: **171 passed**. Full offline cuối:
+  **862 passed, 5 skipped, 51 deselected**, 96,71 s; thêm **94 test** so với baseline 768.
+  Marker `not integration and not slow and not llm`; Qt offscreen, FFmpeg có sẵn, basetemp ngắn,
+  config/env/cache test giữ cơ chế cô lập. Skip gồm native playback và TTS cần service/API;
+  warning full suite còn audioop deprecation. Không tính skip/offline thành online acceptance.
+- Rà render settings tiếng Việt với font Noto Sans SC trong app resources: sửa chiều cao QLabel
+  cho phần giải thích dài; **17 tests settings/UI pass** sau sửa layout này. Chỉnh layout cuối
+  không đổi core đã full-test. JSON vi được đồng bộ, TS en/zh cập nhật. Máy thiếu `lrelease`
+  trên PATH/môi trường project; không cài package hay sửa QM thủ công. QM giữ bản baseline,
+  chuỗi zh mới hiện fallback English; Vietnamese JSON mới có trong artifact.
+- Test request/parser/cancel của cả hai provider, poll backoff/deadline, job failed, malformed/missing
+  timing/IDs, ambiguous submit không lặp, giới hạn bytes/duration, tiếng Trung/tên/số/dấu câu,
+  subwords, silence/events, unknown speakers và overlap. Cancel trước upload, trong từng stage,
+  giữa upload→submit, cleanup 409 không xóa input của job đang chạy; Scribe chỉ xóa transcript ID
+  response vừa trả. HTTP/body/key không lọt vào error output.
+- Test cache fingerprint/invalidation/scope, CLI precedence/boolean/key isolation, settings không
+  network, contextvars và QThread wait. Pipeline giữ speaker/events qua split/merge/optimize/translate,
+  editor import/save/load/undo/redo; regression unknown speaker không đổi provenance và legacy fuzzy
+  chunk merge không làm mất metadata. Giữ guards S1/S2 qua suite baseline.
+- Regression cuối tách connection failure khỏi timeout thay vì phân loại theo chuỗi lỗi;
+  **67 native API tests pass** trước full suite cuối. Một test deadline 20 ms từng fail do timer
+  Windows cho mock kịp completed; đã dùng clock điều khiển, chỉ hết hạn sau khi thấy processing.
+  Full suite cuối ở trên đã pass với regression và test clock mới.
+- `sync_translations.py --check` và `git diff --check` pass. Các file validation log/media/cache/
+  screenshot/build chỉ ở vùng ignored của worktree, không track.
+
+### Giới hạn và đầu vào S4
+
+Không có native key cấu hình trong worktree/env nên **Soniox/Scribe online chưa chạy**. Không
+đổi việc này thành pass từ probe/catalog/mock. **GPT gateway→SRT và phồn thể S2 vẫn chưa nghiệm thu**;
+không nạp/copy runtime Qwen từ checkout khác. Runtime alignment vẫn riêng, không bundle GPU vào Qt.
+
+Cloud xử lý toàn file; ngoài cap sẽ dừng, không tự chia/chắp speaker. Metadata unknown giữ unknown;
+overlap giữ mọi cue, nhưng overlay preview chỉ chọn một active cue. Split editor native hiện dừng
+review vì thiếu text boundary tường minh; user vẫn sửa text/timing/speaker qua CommandStack.
+Optimizer native một cue mỗi request tránh dịch chuyển association giữa người nói, nhưng có thể
+tăng số request/độ trễ so với batch cũ. Không đổi prompt dịch theo quan hệ hay tự gán giọng.
+S4 có thể dùng metadata typed, ID scoped và speaker override đã persist, chưa có bảng nhân vật/
+người nghe/quy tắc xưng hô hoặc benchmark chất lượng.
+
+### Gate artifact S3
+
+1. **PyInstaller exit 0**, `VideoCaptioner.spec --clean --noconfirm`, tên
+   `VideoCaptioner-ASR-S3-Review-20260907`. **6 WARNING, 0 ERROR**: optional WebAssembly `js`,
+   `curl_cffi`/`yt_dlp_ejs` data collection, hidden imports `tzdata`/`sip`, AppKit macOS.
+   Lượt build tăng dần từng giữ bytecode UI cũ; artifact bàn giao đã build sạch lại và được
+   đối chiếu **36 module thay đổi (cả nested code) khớp source cuối**, cùng JSON vi bundle/fallback.
+   Không có Torch/Qwen/Torchaudio trong PYZ, không bundle GPU runtime/model.
+2. **Artifact tồn tại**: `dist/VideoCaptioner-ASR-S3-Review-20260907/`, nguyên thư mục onedir.
+   EXE **31.023.698 byte**, timestamp máy **2026-09-07 10:13:24**, SHA-256
+   `0e3be9f494e4f82a76274c7563175cf222cfcb03feea8f5e91db6b343761ebec`.
+   Trước smoke: **572 file / 237.121.067 byte**. Chỉ thay output do phiên này tạo, kiểm tra chưa có
+   AppData trước rebuild; không đụng artifact/data của user hoặc phân phối riêng file EXE.
+3. **Smoke startup từ chính artifact pass**: process sống qua **25 s**, working set **99.835.904 byte**.
+   Launcher chạy hidden; EnumWindows đúng PID xác minh cửa sổ Qt
+   `Trợ lý phụ đề Kaka -- VideoCaptioner`. Gửi WM_CLOSE vào chính cửa sổ đó, **graceful exit 0**,
+   **0 process artifact sót**, log **0 Traceback/ERROR/CRITICAL**. Env child lọc OPENAI_*/
+   VIDEOCAPTIONER_*, dùng FFmpeg đã có; AppData mới nằm riêng trong artifact.
+4. **Workflow media/API từ EXE chưa nghiệm thu**. Chưa có key Soniox/Scribe trong worktree/env;
+   các test provider là offline MockTransport. Không gộp startup với recognition/timing/speaker
+   thật, GPT gateway→SRT hoặc benchmark chất lượng phồn thể/timing/diarization.
+
+### Danh sách file S3
+
+```text
+README.md
+VideoCaptioner.spec
+docs/dev/asr-implementation-2026-09.md
+docs/dev/asr-native-s3.md
+resource/translations/VideoCaptioner_en_US.ts
+resource/translations/VideoCaptioner_vi_VN.json
+resource/translations/VideoCaptioner_zh_CN.ts
+resource/translations/VideoCaptioner_zh_HK.ts
+status.md
+tests/test_asr/test_native_asr.py
+tests/test_asr/test_speaker_pipeline.py
+tests/test_cli/test_native_asr.py
+tests/test_ui/test_native_asr.py
+videocaptioner/cli/commands/process.py
+videocaptioner/cli/commands/subtitle.py
+videocaptioner/cli/commands/transcribe.py
+videocaptioner/cli/config.py
+videocaptioner/cli/main.py
+videocaptioner/cli/validators.py
+videocaptioner/core/asr/asr_data.py
+videocaptioner/core/asr/chunk_merger.py
+videocaptioner/core/asr/metadata.py
+videocaptioner/core/asr/native_api.py
+videocaptioner/core/asr/native_profiles.py
+videocaptioner/core/asr/native_result.py
+videocaptioner/core/asr/transcribe.py
+videocaptioner/core/editor/adapters.py
+videocaptioner/core/editor/commands.py
+videocaptioner/core/editor/models.py
+videocaptioner/core/editor/project_store.py
+videocaptioner/core/entities.py
+videocaptioner/core/optimize/optimize.py
+videocaptioner/core/split/split.py
+videocaptioner/core/subtitle/editing.py
+videocaptioner/core/translate/base.py
+videocaptioner/resources/translations/VideoCaptioner_vi_VN.json
+videocaptioner/ui/common/config.py
+videocaptioner/ui/common/native_asr_settings.py
+videocaptioner/ui/components/NativeASRSettingWidget.py
+videocaptioner/ui/components/transcription_setting_card.py
+videocaptioner/ui/task_factory.py
+videocaptioner/ui/thread/native_asr_thread.py
+videocaptioner/ui/thread/subtitle_pipeline_thread.py
+videocaptioner/ui/thread/subtitle_thread.py
+videocaptioner/ui/thread/transcript_thread.py
+videocaptioner/ui/view/home_interface.py
+videocaptioner/ui/view/setting_interface.py
+videocaptioner/ui/view/subtitle_interface.py
+videocaptioner/ui/view/transcription_interface.py
+videocaptioner/ui/view/video_editor_interface.py
+```
 
 ## Chi tiết các gói tiếp theo
 

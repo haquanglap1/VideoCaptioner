@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
+from videocaptioner.core.asr.metadata import ASRMetadata
 from videocaptioner.core.dubbing.models import DubbingCue, DubbingReport
 
 from .models import EditorCue, EditorProject, stable_cue_id
@@ -24,28 +25,39 @@ def cues_from_asr(asr_data: ASRData) -> list[EditorCue]:
                 source_text=source,
                 display_text=display,
                 tts_text=display,
+                speaker=segment.speaker or "",
+                asr_metadata=segment.metadata,
             )
         )
     return cues
+
+
+def cue_metadata(cue: EditorCue) -> ASRMetadata | None:
+    metadata = cue.asr_metadata
+    if cue.speaker == ((metadata.speaker_id or "") if metadata else ""):
+        return metadata
+    if not cue.speaker and metadata is None:
+        return None
+    return ASRMetadata("user", metadata.scope if metadata else "editor", cue.speaker or None, "edited")
 
 
 def project_to_asr(project: EditorProject, *, display_only: bool = False) -> ASRData:
     segments: list[ASRDataSeg] = []
     for cue in sorted(project.cues, key=lambda item: (item.start_ms, item.end_ms, item.id)):
         if display_only:
-            segments.append(ASRDataSeg(cue.display_text, cue.start_ms, cue.end_ms))
+            segments.append(ASRDataSeg(cue.display_text, cue.start_ms, cue.end_ms, metadata=cue_metadata(cue)))
         else:
             translated = cue.display_text if cue.display_text != cue.source_text else ""
             segments.append(
-                ASRDataSeg(cue.source_text or cue.display_text, cue.start_ms, cue.end_ms, translated)
+                ASRDataSeg(cue.source_text or cue.display_text, cue.start_ms, cue.end_ms, translated, cue_metadata(cue))
             )
-    return ASRData(segments)
+    return ASRData(segments, project.audio_events)
 
 
 def project_to_tts_asr(project: EditorProject) -> ASRData:
     return ASRData(
         [
-            ASRDataSeg(cue.tts_text, cue.start_ms, cue.end_ms)
+            ASRDataSeg(cue.tts_text, cue.start_ms, cue.end_ms, metadata=cue_metadata(cue))
             for cue in sorted(project.cues, key=lambda item: (item.start_ms, item.end_ms, item.id))
         ]
     )

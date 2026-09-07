@@ -115,6 +115,23 @@ Xem [cài runtime, policy và giới hạn S2](docs/dev/asr-alignment-s2.md). Pr
 và mức timing thực tế; nút kiểm tra căn thời gian chỉ probe local theo yêu cầu.
 Nếu yêu cầu word timestamp nhưng response chỉ có segment, chọn lại chế độ câu hoặc model có word timing.
 
+## ASR native có nhãn người nói (S3)
+
+Chọn riêng `Soniox v5 [API]` (`stt-async-v5`) hoặc `ElevenLabs Scribe v2 [API]`
+(`scribe_v2`). Cấu hình key đúng provider trong Cài đặt; hai engine này không dùng key gateway.
+Nhãn người nói ẩn danh và timing native được giữ qua pipeline và Video Editor; audio events
+tách khỏi lời thoại. `Check service` chỉ kiểm tra dịch vụ/quyền đọc, chưa kiểm thử inference.
+
+```bash
+uv run --frozen videocaptioner config set soniox.api_key <soniox-key>
+uv run --frozen videocaptioner transcribe video.mp4 --asr soniox --language zh -o subtitles.json
+```
+
+JSON giữ metadata; SRT không tự chèn tên/nhãn speaker vào chữ. File xử lý nguyên vẹn trong giới
+hạn provider/app, không tự chia rồi gán cùng speaker giữa các request. Hủy local không bảo đảm
+hủy xử lý hoặc phí phía provider. Xem [hợp đồng, giới hạn và trạng thái nghiệm thu S3](docs/dev/asr-native-s3.md).
+S3 chưa có nghiệm thu API thật; không thay trạng thái GPT gateway→SRT/phồn thể còn thiếu của S2.
+
 ## Lồng tiếng Natural
 
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from videocaptioner.core.asr.asr_data import ASRData
+from videocaptioner.core.asr.metadata import ASRAudioEvent
 from videocaptioner.core.entities import SubtitleLayoutEnum, SupportedSubtitleFormats
 
 SubtitleTable = Dict[str, Dict[str, Any]]
@@ -43,12 +44,18 @@ def merge_rows(data: SubtitleTable, rows: Sequence[int]) -> SubtitleTable:
     if first < 0 or last >= len(items):
         raise IndexError(f"rows {rows} outside table of {len(items)} items")
     span = items[first : last + 1]
+    metadata = [item.get("asr_metadata") for item in span]
+    if any(item != metadata[0] for item in metadata):
+        raise ValueError("Cannot merge different speakers or ASR sources; review required.")
     merged = {
         "start_time": span[0]["start_time"],
         "end_time": span[-1]["end_time"],
         "original_subtitle": " ".join(item["original_subtitle"] for item in span),
         "translated_subtitle": " ".join(item["translated_subtitle"] for item in span),
     }
+    if metadata[0] is not None:
+        merged["asr_metadata"] = metadata[0]
+        merged["end_time"] = max(item["end_time"] for item in span)
     return renumber(items[:first] + [merged] + items[last + 1 :])
 
 
@@ -172,12 +179,15 @@ def task_folder(output_path: Optional[str], subtitle_path: str) -> str:
 
 
 def write_editor_handoff(
-    data: SubtitleTable, handoff_dir: Path, task_id: str, video_path: str
+    data: SubtitleTable, handoff_dir: Path, task_id: str, video_path: str,
+    *, events: Optional[List[ASRAudioEvent]] = None,
 ) -> Path:
     """Persist the current table as SRT for the Video Editor without touching
     the task's source subtitle file."""
     handoff_dir.mkdir(parents=True, exist_ok=True)
     name = task_id or Path(video_path).stem
-    target = handoff_dir / f"{name}.srt"
-    ASRData.from_json(data).to_srt(save_path=str(target))
+    asr_data = ASRData.from_json(data)
+    asr_data.events = list(events or [])
+    target = handoff_dir / f"{name}.{'json' if asr_data.has_metadata else 'srt'}"
+    asr_data.save(str(target))
     return target

@@ -89,15 +89,20 @@ class SubtitleOptimizer:
             }
 
             # 分批处理
-            chunks = self._split_chunks(subtitle_dict)
+            # One source cue per request prevents fuzzy alignment from moving text between speakers.
+            chunks = ([{key: text} for key, text in subtitle_dict.items()] if asr_data.has_metadata
+                      else self._split_chunks(subtitle_dict))
 
             # 并行优化
             optimized_dict = self._parallel_optimize(chunks)
 
-            # 创建新segments
+            if asr_data.has_metadata and set(optimized_dict) != set(subtitle_dict):
+                raise ValueError("Optimization changed cue association; review required.")
+
+            # Create segments without changing their source metadata.
             new_segments = self._create_segments(asr_data.segments, optimized_dict)
 
-            return ASRData(new_segments)
+            return asr_data.with_segments(new_segments)
 
         except Exception as e:
             logger.error(f"Optimization failed: {str(e)}")
@@ -395,11 +400,7 @@ class SubtitleOptimizer:
             新的Subtitle segment列表
         """
         return [
-            ASRDataSeg(
-                text=optimized_dict.get(str(i), seg.text),
-                start_time=seg.start_time,
-                end_time=seg.end_time,
-            )
+            seg.clone(text=optimized_dict.get(str(i), seg.text))
             for i, seg in enumerate(original_segments, 1)
         ]
 

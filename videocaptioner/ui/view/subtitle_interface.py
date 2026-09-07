@@ -514,7 +514,9 @@ class SubtitleInterface(QWidget):
         if not self.task:
             return
         original_subtitle_save_path = Path(str(self.task.subtitle_path))
-        asr_data = ASRData.from_subtitle_file(str(original_subtitle_save_path))
+        asr_data = task.asr_data if task.asr_data is not None else ASRData.from_subtitle_file(str(original_subtitle_save_path))
+        if asr_data.has_metadata:
+            task.asr_data = asr_data
         self.model._data = asr_data.to_json()
         self.model.layoutChanged.emit()
         self.status_label.setText(self.tr("已加载文件"))
@@ -536,10 +538,18 @@ class SubtitleInterface(QWidget):
         self.cancel_button.show()
 
         if need_create_task:
-            # Write the current table back to the source file so merges/deletes/edits survive
+            current = ASRData.from_json(self.model._data)
+            if self.task and self.task.asr_data is not None:
+                current.events = list(self.task.asr_data.events)
+            # JSON handoffs must remain JSON when rerunning edits.
             if self.model._data:
-                ASRData.from_json(self.model._data).to_srt(save_path=self.subtitle_path)
+                if Path(self.subtitle_path).suffix.lower() == ".json":
+                    current.save(self.subtitle_path)
+                else:
+                    current.to_srt(save_path=self.subtitle_path)
             self.task = TaskFactory.create_subtitle_task(file_path=self.subtitle_path)
+            if current.has_metadata:
+                self.task.asr_data = current
         if not self.task:
             self.start_button.setEnabled(True)
             self.cancel_button.hide()
@@ -773,7 +783,12 @@ class SubtitleInterface(QWidget):
         if not rows or len(rows) < 2:
             return
         self.subtitle_table.clearSelection()
-        self.model.update_all(editing.merge_rows(self.model._data, rows))
+        try:
+            self.model.update_all(editing.merge_rows(self.model._data, rows))
+        except ValueError:
+            InfoBar.warning(self.tr("Review required"), self.tr("Cannot merge different speakers or ASR sources."),
+                            duration=4000, parent=self)
+            return
         InfoBar.success(
             self.tr("合并成功"),
             self.tr("已成功合并选中的字幕行"),
@@ -939,6 +954,7 @@ class SubtitleInterface(QWidget):
                 CACHE_PATH / "editor_handoff",
                 str(getattr(self.task, "task_id", "") or ""),
                 video_path,
+                events=self.task.asr_data.events if self.task and self.task.asr_data is not None else None,
             )
         except Exception as exc:
             InfoBar.error(

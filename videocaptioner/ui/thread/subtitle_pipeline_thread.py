@@ -100,6 +100,7 @@ class SubtitlePipelineThread(QThread):
             # 创建字幕任务
             subtitle_task = SubtitleTask(
                 subtitle_path=transcribe_task.output_path or "",
+                asr_data=transcribe_task.asr_data,
                 video_path=self.task.file_path,
                 output_path=self.task.output_path,
                 subtitle_config=self.task.subtitle_config,

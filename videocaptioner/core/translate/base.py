@@ -47,7 +47,7 @@ class BaseTranslator(ABC):
 
             # Convert ASRData into a SubtitleProcessData list
             translate_data_list = [
-                SubtitleProcessData(index=i, original_text=seg.text)
+                SubtitleProcessData(index=i, original_text=seg.text, asr_metadata=seg.metadata)
                 for i, seg in enumerate(asr_data.segments, 1)
             ]
 
@@ -65,7 +65,7 @@ class BaseTranslator(ABC):
                 asr_data.segments, translated_list
             )
 
-            return ASRData(new_segments)
+            return asr_data.with_segments(new_segments)
         except Exception as e:
             logger.error(f"Translation failed: {str(e)}")
             raise RuntimeError(f"Translation failed: {str(e)}")

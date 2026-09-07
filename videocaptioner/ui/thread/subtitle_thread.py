@@ -117,10 +117,10 @@ class SubtitleThread(QThread):
             subtitle_config = self.task.subtitle_config
             assert subtitle_config is not None, self.tr("字幕配置为空")
 
-            asr_data = ASRData.from_subtitle_file(subtitle_path)
+            asr_data = self.task.asr_data if self.task.asr_data is not None else ASRData.from_subtitle_file(subtitle_path)
 
             # 1. Split into word-level timestamps (unsegmented subtitles with split enabled)
-            if subtitle_config.need_split and not asr_data.is_word_timestamp():
+            if subtitle_config.need_split and not asr_data.has_metadata and not asr_data.is_word_timestamp():
                 asr_data.split_to_word_segments()
                 self.update_all.emit(asr_data.to_json())
 
@@ -130,7 +130,7 @@ class SubtitleThread(QThread):
                 subtitle_config = self._setup_llm_config()
 
             # 2. Re-segment word-level subtitles into sentences
-            if asr_data.is_word_timestamp():
+            if asr_data.is_word_timestamp() or (asr_data.has_metadata and subtitle_config.need_split):
                 update_stage("split")
                 self.progress.emit(5, self.tr("字幕断句..."))
                 logger.info("正在字幕断句...")
@@ -148,6 +148,7 @@ class SubtitleThread(QThread):
             # API LLM của bên thứ ba, không cần lộ cấu trúc thư mục của user.
             context_info = f'The subtitles below are from a file named "{task_file.name}". Use this context to improve accuracy if needed.\n'
             custom_prompt = context_info + (subtitle_config.custom_prompt_text or "") + "\n"
+            self.task.asr_data = asr_data
             self.subtitle_length = len(asr_data.segments)
 
             if subtitle_config.need_optimize:
@@ -223,6 +224,7 @@ class SubtitleThread(QThread):
                 self.task.dubbing_subtitle_path = str(dubbing_path)
                 logger.info("Dubbing target subtitle saved to: %s", dubbing_path)
 
+            self.task.asr_data = asr_data
             asr_data.save(
                 save_path=self.task.output_path or "",
                 ass_style=subtitle_config.subtitle_style or "",
@@ -256,7 +258,7 @@ class SubtitleThread(QThread):
     def need_llm(self, subtitle_config: SubtitleConfig, asr_data: ASRData):
         return (
             subtitle_config.need_optimize
-            or asr_data.is_word_timestamp()
+            or (asr_data.is_word_timestamp() and not asr_data.has_metadata)
             or (
                 subtitle_config.need_translate
                 and subtitle_config.translator_service

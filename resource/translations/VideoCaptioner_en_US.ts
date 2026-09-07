@@ -1319,6 +1319,14 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>字幕校正已取消</source>
         <translation>Subtitle correction has been canceled</translation>
     </message>
+    <message>
+        <source>Review required</source>
+        <translation>Review required</translation>
+    </message>
+    <message>
+        <source>Cannot merge different speakers or ASR sources.</source>
+        <translation>Cannot merge different speakers or ASR sources.</translation>
+    </message>
 </context>
 <context>
     <name>SubtitlePipelineThread</name>
@@ -2594,6 +2602,14 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message><source>Display subtitle</source><translation>Display subtitle</translation></message>
     <message><source>TTS text</source><translation>TTS text</translation></message>
     <message><source>Visual Layers</source><translation>Visual Layers</translation></message>
+    <message>
+        <source>Open subtitles</source>
+        <translation>Open subtitles</translation>
+    </message>
+    <message>
+        <source>Subtitles with optional ASR metadata (*.srt *.json)</source>
+        <translation>Subtitles with optional ASR metadata (*.srt *.json)</translation>
+    </message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -2746,6 +2762,52 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message>
         <source>Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).</source>
         <translation>Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).</translation>
+    </message>
+</context>
+<context>
+    <name>NativeASRCards</name>
+    <message>
+        <source>Anonymous speaker labels</source>
+        <translation>Anonymous speaker labels</translation>
+    </message>
+    <message>
+        <source>Labels belong to one request; unknown speakers remain unknown.</source>
+        <translation>Labels belong to one request; unknown speakers remain unknown.</translation>
+    </message>
+    <message>
+        <source>Check service</source>
+        <translation>Check service</translation>
+    </message>
+    <message>
+        <source>No audio upload. Cancel stops local waiting; remote recognition may continue and incur charges.</source>
+        <translation>No audio upload. Cancel stops local waiting; remote recognition may continue and incur charges.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>API Base URL</source>
+        <translation>API Base URL</translation>
+    </message>
+    <message>
+        <source>API Key</source>
+        <translation>API Key</translation>
+    </message>
+</context>
+<context>
+    <name>NativeASRProbeThread</name>
+    <message>
+        <source>Service probe passed. Recognition, timing and speakers are not tested.</source>
+        <translation>Service probe passed. Recognition, timing and speakers are not tested.</translation>
+    </message>
+    <message>
+        <source>Service probe cancelled.</source>
+        <translation>Service probe cancelled.</translation>
+    </message>
+    <message>
+        <source>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</source>
+        <translation>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</translation>
     </message>
 </context>
 </TS>

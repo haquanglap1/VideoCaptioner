@@ -4,7 +4,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional
 
+from videocaptioner.core.asr.metadata import ASRMetadata
+from videocaptioner.core.asr.native_profiles import NativeASRConfig
+
 if TYPE_CHECKING:
+    from videocaptioner.core.asr.asr_data import ASRData
     from videocaptioner.core.dubbing.config import DubbingConfig
     from videocaptioner.core.translate.types import TargetLanguage
 
@@ -22,6 +26,7 @@ class SubtitleProcessData:
     original_text: str
     translated_text: str = ""
     optimized_text: str = ""
+    asr_metadata: Optional[ASRMetadata] = None
 
 
 class SupportedAudioFormats(Enum):
@@ -99,6 +104,7 @@ class TranscribeOutputFormatEnum(Enum):
     ASS = "ASS"
     VTT = "VTT"
     TXT = "TXT"
+    JSON = "JSON"
     ALL = "All"
 
 
@@ -122,6 +128,8 @@ class TranscribeModelEnum(Enum):
     WHISPER_API = "Whisper [API] ✨"
     FASTER_WHISPER = "FasterWhisper ✨"
     WHISPER_CPP = "WhisperCpp"
+    SONIOX = "Soniox v5 [API]"
+    SCRIBE = "ElevenLabs Scribe v2 [API]"
 
 
 class TranslatorServiceEnum(Enum):
@@ -480,6 +488,8 @@ def _get_all_languages_except_auto() -> list[TranscribeLanguageEnum]:
 
 
 ASR_LANGUAGE_CAPABILITIES: dict[TranscribeModelEnum, ASRLanguageCapability] = {
+    TranscribeModelEnum.SONIOX: ASRLanguageCapability([TranscribeLanguageEnum.CHINESE], True),
+    TranscribeModelEnum.SCRIBE: ASRLanguageCapability([TranscribeLanguageEnum.CHINESE], True),
     TranscribeModelEnum.BIJIAN: ASRLanguageCapability(
         supported_languages=[
             TranscribeLanguageEnum.CHINESE,
@@ -576,6 +586,7 @@ class TranscribeConfig:
     faster_whisper_prompt: Optional[str] = None
     whisper_api_provider: str = "custom"
     whisper_api_request_profile: str = "auto"
+    native_asr: Optional[NativeASRConfig] = None
 
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""
@@ -741,6 +752,7 @@ class TranscribeTask:
     selected_audio_track_index: int = 0
 
     transcribe_config: Optional[TranscribeConfig] = None
+    asr_data: Optional["ASRData"] = field(default=None, repr=False)
 
 
 @dataclass
@@ -768,6 +780,7 @@ class SubtitleTask:
     need_next_task: bool = True
 
     subtitle_config: Optional[SubtitleConfig] = None
+    asr_data: Optional["ASRData"] = field(default=None, repr=False)
 
 
 @dataclass

@@ -901,5 +901,17 @@
   "Starting Chinese alignment runtime...": "Đang khởi động runtime căn thời gian tiếng Trung...",
   "Chinese alignment ready. Probe runtime released.": "Căn thời gian tiếng Trung sẵn sàng. Đã giải phóng runtime kiểm tra.",
   "Chinese alignment runtime failed.": "Runtime căn thời gian tiếng Trung bị lỗi.",
-  "Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).": "Nhận dạng thành công nhưng không có dấu thời gian. Xuất phụ đề cần runtime căn thời gian tiếng Trung (S2) sẵn sàng."
+  "Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).": "Nhận dạng thành công nhưng không có dấu thời gian. Xuất phụ đề cần runtime căn thời gian tiếng Trung (S2) sẵn sàng.",
+  "Anonymous speaker labels": "Nhãn người nói ẩn danh",
+  "Cancel": "Hủy",
+  "Cannot merge different speakers or ASR sources.": "Không thể gộp các người nói hoặc nguồn ASR khác nhau.",
+  "Check service": "Kiểm tra dịch vụ",
+  "Labels belong to one request; unknown speakers remain unknown.": "Nhãn chỉ có hiệu lực trong một yêu cầu; người nói chưa rõ được giữ nguyên.",
+  "No audio upload. Cancel stops local waiting; remote recognition may continue and incur charges.": "Không tải âm thanh lên. Hủy chỉ dừng chờ tại máy; dịch vụ có thể tiếp tục nhận dạng và tính phí.",
+  "Open subtitles": "Mở phụ đề",
+  "Review required": "Cần kiểm tra",
+  "Service probe cancelled.": "Đã hủy kiểm tra dịch vụ.",
+  "Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.": "Kiểm tra dịch vụ thất bại. Kiểm tra endpoint, key và quyền đọc; chưa kiểm thử quyền ASR.",
+  "Service probe passed. Recognition, timing and speakers are not tested.": "Kiểm tra dịch vụ thành công. Chưa kiểm thử nhận dạng, thời gian và người nói.",
+  "Subtitles with optional ASR metadata (*.srt *.json)": "Phụ đề và metadata ASR (*.srt *.json)"
 }

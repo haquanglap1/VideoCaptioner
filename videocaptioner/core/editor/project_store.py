@@ -77,6 +77,7 @@ class EditorProjectStore:
         project.height = int(height)
         project.fps = float(fps)
         project.cues = cues
+        project.audio_events = list(asr_data.events)
         project.validate_all_cues()
         project.is_dirty = False
         return project

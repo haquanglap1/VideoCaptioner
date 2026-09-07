@@ -93,6 +93,7 @@ def run(args: Namespace, config: dict) -> int:
         processed_path = str(out_dir / f"{path.stem}_processed.srt")
         sub_args = Namespace(
             input=subtitle_path, output=processed_path,
+            asr_data=getattr(tr_args, "asr_data", None),
             format=get(config, "output.format", "srt"),
             no_optimize=no_optimize, no_translate=no_translate, no_split=no_split,
             verbose=verbose, quiet=quiet, config=getattr(args, "config", None),
