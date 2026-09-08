@@ -1,5 +1,80 @@
 # Project Status
 
+## 2026-09-08 (prompt bàn giao sau Lifetime; user yêu cầu chốt tài liệu)
+
+- User yêu cầu prompt phiên tiếp theo, rồi yêu cầu submit/push tài liệu. Manifest chốt gồm
+  **status.md**, **docs/dev/asr-implementation-2026-09.md** và
+  **docs/dev/asr-post-lifetime-next-session-prompt.md**, từ baseline **16e410d**; code Lifetime
+  **e6c0074** giữ nguyên. Các dòng “không commit/push” bên dưới mô tả thời điểm review trước
+  yêu cầu chốt này; quyền submit hiện tại không tự áp dụng cho thay đổi ở phiên sau.
+- [Prompt mới](docs/dev/asr-post-lifetime-next-session-prompt.md) cập nhật local hybrid,
+  native playback và hủy decode trực tiếp trên Lifetime đều đã pass. Ưu tiên checkpoint chất
+  lượng từ output/audio đã có và khoanh vùng gate còn mở; không lặp gate pass hoặc retry Whisper
+  vì 429 cũ. Giữ Scribe/phồn thể/chất lượng/SIP ngắt quãng riêng, không mở S6.
+- Lưu prompt không tạo phiên/task/automation. Không thay media/AppData/runtime/artifact hoặc
+  dependency; không full/build/API mới chỉ để chốt tài liệu. Git/diff/scan kiểm tra trước submit.
+
+## 2026-09-08 (Lifetime: hủy decode trực tiếp trên binary đã pass — dừng review)
+
+- Theo yêu cầu tiếp tục, giữ HEAD **16e410d**, nhánh **codex/asr-s3-native** và hai thay đổi tài
+  liệu của lượt trước. Scratch mới **VC-Lifetime-Cancel-20260908-0714**, chỉ copy EXE + `_internal/`,
+  AppData/cache/temp/lease riêng; **580 file / 237.667.204 byte** khớp hash gốc trước/sau.
+  Lifetime vẫn **b2dfe869…b38a75f78**, Final cũ **45761316…f91649**; không đổi runtime/media user.
+- **Đã bổ sung gate còn thiếu: hủy kiểm tra nguồn giữa decode ngay trên EXE Lifetime.**
+  Nguồn FFmpeg concat hữu hạn từ PCM tổng hợp, không network/model hoặc mock/delay decoder.
+  FFmpeg PID **31208** đã chạy **13,618 s** trước click đóng review, sample process gần nhất
+  **66 ms trước click** vẫn chạy. App gọi taskkill cho cây process của job; monitor 50 ms ghi
+  toàn bộ child của lượt hủy biến mất sau **0,875 s** tính từ yêu cầu đóng qua UI tool.
+  Lệnh click+capture trả về **0,483 s** (không phải đo riêng handler Qt); thư mục decode tạm đã dọn.
+- GUI vẫn phản hồi; mở lại review, chạy worker mới xác minh FLAC khớp, lưu bằng native picker.
+  Typed reload giữ nguyên raw/2 token/1 override/identity/pending. Không tự xuất kết quả từ lượt
+  hủy hoặc đổi liên kết nguồn. Không signal lỗi muộn quan sát được trên GUI/log sau hủy.
+- **PID 59068**, sống **374,719 s**, RSS trước đóng **202.395.648 byte**, đóng X **exit 0**.
+  Sau hơn 25 s: không process test hoặc decode temp còn lại, không Application Error/WER mới
+  khớp binary; log chỉ update-check, không traceback/InfoBar. Không tái hiện crash SIP.
+- Chỉ cập nhật **status.md** và **docs/dev/asr-implementation-2026-09.md**; không sửa code,
+  build/full/static/GPU/ASR/API mới hoặc dependency. Helper đọc evidence ban đầu lỗi encoding
+  Windows, đã sửa UTF-8 và verify pass; không chạy lại workflow để che lỗi. Diff-check/scan mới
+  pass trước bàn giao. Giữ Scribe/phồn thể strict/chất lượng người đọc và SIP ngắt quãng còn mở.
+  **Dừng review, không S6/commit/push.**
+
+## 2026-09-07 (agent nghiệm thu local/media trên Lifetime — dừng review)
+
+- Tiếp tục đúng **codex/asr-s3-native**, HEAD **16e410d**, code Lifetime **e6c0074** và S5.2
+  **073510d** là ancestor; checkout sạch đầu lượt. Chỉ cập nhật hai tài liệu trạng thái, không
+  sửa code/dependency/model/policy, không build/full/API mới, S6 hoặc commit/push.
+- Scratch mới chỉ copy EXE + `_internal/`: **580 file / 237.667.204 byte**. So SHA-256 toàn bộ
+  file copy/gốc trước và sau GUI pass; Lifetime giữ **b2dfe869…b38a75f78**, Final cũ giữ
+  **45761316…f91649**. Không copy AppData/media/log của artifact; runtime Qwen R2/Community-1
+  dùng nguyên tại chỗ. Python **3.12.13**, import đúng checkout, FFmpeg/config/cache/temp/lease cô lập.
+- **Lifetime Qwen 0.6B → strict alignment → Community-1 thật pass**, audio Trung public
+  **4,204 s / 67.263 sample**. Status Qwen/aligner/Community-1 exit 0; health Qwen+aligner
+  **55,171 s**, Community-1 **23,438 s**, đều exit 0, khác gate inference.
+  Job **exit 0 / 40,844 s**, cache **MISS** (cache mới trống; sau job có đủ ba namespace),
+  **1 cue / 13 token IDs / 400–3680 ms / 1 speaker assigned**, identity khớp và pending false.
+  EXE xuất SRT **exit 0 / 0,281 s**, text/timing khớp JSON; không review/retry/clamp/token drop.
+  Lease acquire/release lại pass, không bridge còn lại. Không dùng thời gian smoke so tốc độ.
+- **Native source editor: 7 passed / 1 warning / 6,04 s / exit 0**, không skip; gồm H.264
+  Play/seek, poster, selection/playhead/inspector, layout và timeline. **GUI Lifetime thật** phát
+  video tổng hợp 12 s, frame/playhead tiến và inspector chuyển cue; seek **2.010 ms** rồi Play
+  tiếp đúng frame. Sau hết video, seek cập nhật vị trí; frame mới xuất hiện khi Play tiếp.
+  Lưu/mở lại project JSON+SRT giữ hai cue/IDs/text/timing và playhead **1.000 ms**, không ASS.
+- Review GUI: mở fixture tổng hợp, FFmpeg xác minh FLAC khớp, save qua native picker rồi reopen;
+  typed reload giữ raw/2 token/1 override/identity/pending. Reopen yêu cầu xác minh nguồn lại.
+  Lượt tone dài trên binary đã decode xong **trước** khi đóng review, nên không tính là hủy
+  giữa decode. Test bổ sung **source Qt native + FFmpeg thật** đóng dialog khi process decode
+  đang chạy: close **0,016 s**, join/cleanup **0,578 s**, không late signal/worker/process sót,
+  review không đổi. File chooser do harness cấp; decoder/worker/lifecycle không mock.
+- **GUI Lifetime PID 69912** sống **696,797 s**, RSS snapshot **319.356.928 byte**, đóng X
+  **exit 0**; sau đóng hơn 25 s không process/bridge còn lại, không Application Error/WER mới
+  khớp artifact. Log chỉ update-check, không traceback/InfoBar. Đây là smoke mới, không chứng
+  minh mọi crash SIP đã hết; hủy giữa decode trực tiếp trên binary vẫn chưa được quan sát.
+- Đã chuẩn bị audio public, JSON/SRT thật và clip có phụ đề để user nghe/đọc chung tại checkpoint.
+  **Chất lượng text/timing/speaker chưa có xác nhận của user**; clip một giọng không nghiệm thu
+  speaker accuracy/xưng hô. Whisper pass vẫn thuộc Final cũ; không xin key/gọi lại API.
+  Scribe/phồn thể strict và SIP ngắt quãng còn mở. Evidence chi tiết giữ local trong scratch
+  **VC-Lifetime-Media-20260907-2334**; không đưa transcript/media/path riêng tư/credential vào Git.
+
 ## 2026-09-07 (chốt code GUI Lifetime và prompt phiên agent tự nghiệm thu)
 
 - Theo yêu cầu user commit/push, code và kết quả nghiệm thu đã chốt thành
