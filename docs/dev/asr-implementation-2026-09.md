@@ -43,6 +43,48 @@ Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ## Bàn giao S5.2 — 2026-09-07
 
+User yêu cầu chốt/push tài liệu và [prompt OCR phiên tiếp theo](ocr-next-session-prompt.md)
+từ baseline **fb2bfad**, giữ code Lifetime **e6c0074**. Manifest năm file gồm status,
+implementation, prompt ASR Việt cũ, kế hoạch OCR và prompt OCR mới. Hướng tiếp theo giữ
+local OCR và AI đọc cùng 13 crop để so sánh, chưa chọn mặc định/model vision trả phí.
+ASR S1–S5/S5.2 có code nhưng **chưa hoàn tất nghiệm thu**; OCR-0 mới là thiết kế,
+S6 chưa được giao. Quyền submit này không chuyển thành quyền submit cho phiên sau.
+
+**Yêu cầu tiếp theo ngày 2026-09-08:** user yêu cầu thống kê phương pháp đọc phụ đề
+trong hình và lập kế hoạch tích hợp OCR. [Kế hoạch OCR](../plans/video-subtitle-ocr-integration-plan.md)
+hoàn thành phần thống kê/thiết kế OCR-0; engine local, PTS streaming, contract và GUI
+nằm ở OCR-1→OCR-4 chưa triển khai. Prototype 13 câu vẫn do agent đọc ảnh, không phải
+engine OCR đã pass; kế hoạch không biến lượt ASR bị từ chối bên dưới thành thành công.
+
+### Clip user chọn ngày 2026-09-08: chưa đạt đường ASR tự động
+
+Thử 60 s đầu của video 111,333 s user chỉ định, WAV 960.000 sample. Một job EXE
+Lifetime/Qwen 0.6B **exit 5 / 46,375 s**, giữ **94 token** và review đầy đủ; raw lexical
+khớp nhận dạng nhưng **6 token** lỗi timing: hai zero-duration, hai interval đảo và ba
+overlap (một token thuộc hai loại). Không override hoặc nhận dạng lại; Community-1 chưa
+được chạy, pending true. So phụ đề Trung đã có trong hình còn thấy ASR nghe sai chữ.
+
+Bản Việt xem thử là **bản đối chiếu độc lập 13 cue**, đọc chữ Trung trong hình và đo thời
+điểm hiển thị ở 25 mẫu/s (40 ms), không là sửa word timing để ép ASR pass. Google trên
+EXE **exit 0 / 15,047 s**, nhưng sai thuật ngữ; giữ riêng với bản agent biên tập. Export
+target-only **exit 0 / 0,312 s**; export đầu thiếu lựa chọn layout nên ra song ngữ và làm
+assertion helper sai, không gọi lại translator. App ASS synthesis bản biên tập **exit 0 /
+8,141 s**, video/audio/duration và frame trước/trong/sau cue pass. Chưa có phản hồi chất
+lượng bản Việt mới; chưa thử 51,333 s còn lại hoặc nghiệm thu speaker/xưng hô/S6.
+
+Evidence ở `build/asr-session-evidence/VC-UserClip-20260908-114035/`. Final verify giữ
+nguồn/sample/raw review/identity và 580 hash bundle; lease giải phóng, không job còn lại.
+EXE + `_internal` bản thử đã dọn vào Thùng rác; giữ artifact/runtime gốc. Không sửa code,
+model/policy, dependency, full/build hoặc gate cũ; chỉ cập nhật ba tài liệu bàn giao.
+
+**Vị trí evidence sau dọn ngày 2026-09-08:** bảy thư mục VC-* đã gom vào
+`build/asr-session-evidence/`, giữ basename; không còn cạnh checkout. Đối chiếu
+2.710 file trước/sau move giữ SHA-256/size/mtime. Xem mapping tại
+`relocation-20260908.json` trong root evidence và prompt mới nhất. Bản sao binary,
+cache và build intermediates đã chuyển vào Thùng rác theo yêu cầu user; metadata
+build có ZIP kiểm tra hash. Artifact gốc/runtime/media/output nghiệm thu giữ lại;
+đường dẫn trong script/report lịch sử chưa được viết lại, không rerun helper cũ.
+
 Sau lượt phụ đề Việt, user yêu cầu commit/push tài liệu và
 [prompt phiên tiếp theo mới nhất](asr-vietnamese-next-session-prompt.md), từ baseline
 **d820ca0**. Manifest gồm status, implementation và prompt mới; code **e6c0074** không đổi.

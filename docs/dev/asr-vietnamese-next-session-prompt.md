@@ -1,5 +1,9 @@
 # Prompt phiên tiếp theo — sau phụ đề Việt trên Lifetime EXE
 
+**Bàn giao mới nhất sau clip thực tế và kế hoạch OCR:**
+[OCR local và AI đọc ảnh](ocr-next-session-prompt.md). Tài liệu dưới đây giữ snapshot
+ASR trước đó; không dùng phần baseline/manifest lịch sử này thay prompt mới.
+
 Tiếp tục tại checkout **VideoCaptioner-ASR-S3** user chỉ định, nhánh **codex/asr-s3-native**.
 Đọc đầy đủ `AGENTS.md`, `README.md`, phần mới nhất `status.md` và phần bàn giao S5.2 trong
 `docs/dev/asr-implementation-2026-09.md`. Đọc tài liệu domain/source liên quan khi cần;
@@ -7,6 +11,12 @@ không dùng prompt cũ để phục hồi gate đã pass hoặc checkpoint user
 
 ## 1. Mục tiêu user và quyền hiện tại
 
+- **Yêu cầu mới nhất sau clip thực tế:** thống kê cách đọc phụ đề trong hình và lập
+  kế hoạch tích hợp OCR vào app. Đã hoàn thành OCR-0 tại
+  [`docs/plans/video-subtitle-ocr-integration-plan.md`](../plans/video-subtitle-ocr-integration-plan.md).
+  OCR-1→OCR-4 chưa được triển khai; phiên vừa rồi chỉ làm kế hoạch, không cài model/dependency.
+  Khi user giao triển khai, bắt đầu engine local trên crop đã có rồi PTS streaming /
+  contract / GUI theo plan; không gọi bản đọc ảnh bằng agent là engine OCR đã pass.
 - Mục tiêu là **audio/video tiếng Trung → phụ đề tiếng Việt**. User không biết tiếng Trung.
   Agent tự đối chiếu phần Trung và tự kiểm thử kỹ thuật; chỉ đưa bản Việt để user đánh giá
   cách diễn đạt/dễ đọc khi cần. Không giao user chấm chữ Trung hoặc xác nhận từng nút.
@@ -91,6 +101,18 @@ tái hiện thuộc app; giữ nghiêm coverage/script/timing và báo giới h�
 
 ## 5. Công việc còn lại và cách tiếp tục
 
+**Cập nhật sau khi user chọn media, 2026-09-08:** đã thử 60 s đầu của video 111,333 s;
+không hỏi lại đường dẫn. Resolve file gốc từ `reports/source-preflight.json` trong
+`build/asr-session-evidence/VC-UserClip-20260908-114035/`, không chép path/tên media vào Git.
+Một job Lifetime/Qwen 0.6B exit 5 / 46,375 s, 94 token, sáu token lỗi timing; raw review
+giữ nguyên/0 override/pending true, Community-1 chưa chạy. Chữ ASR còn khác phụ đề Trung
+trong hình. Đọc `reports/asr-diagnosis.json` trước; không chạy lại cùng job để thử vận may.
+`outputs/reference-vi-preview.mp4` và `reference-vi-edited.srt` là **bản biên tập đối chiếu
+13 cue từ phụ đề có sẵn trong hình**, timing hiển thị đo ở 25 mẫu/s; không phải ASR đã pass.
+Bản Google từ cùng reference giữ riêng vì sai thuật ngữ. User chưa phản hồi bản Việt này;
+51,333 s còn lại chưa thử. EXE test đã dọn; artifact/runtime gốc giữ nguyên. Quyền chọn clip
+không tự mở S6, đổi pin/model/policy, job có phí hoặc commit/push.
+
 1. Ưu tiên mục tiêu phụ đề Việt. Dịch/xuất/ghép trên EXE cho clip mẫu đã pass; không thêm lượt
    giống vậy. Nếu user muốn tiến sang video thực tế nhiều câu/người nói, cần xác định một
    media cụ thể và phạm vi thử nhỏ; không quét media riêng hoặc tự mở corpus S6. Agent chuẩn
@@ -113,7 +135,15 @@ tái hiện thuộc app; giữ nghiêm coverage/script/timing và báo giới h�
 
 ## 6. Vị trí evidence và runtime
 
-Resolve scratch **cạnh checkout** theo basename; không tìm credential:
+Sau yêu cầu dọn thư mục ngày 2026-09-08, resolve các scratch dưới
+**`build/asr-session-evidence/` trong checkout ASR-S3**, giữ basename bên dưới;
+không còn nằm cạnh checkout. Bảy thư mục đã được di chuyển cùng volume, kiểm tra
+**2.710 file** khớp SHA-256/size/mtime. `relocation-20260908.json` ở root evidence
+giữ mapping đường dẫn cũ/mới. Script/report lịch sử có thể còn đường dẫn cũ;
+không chạy lại helper create-only trực tiếp. Các bản sao EXE/`_internal` dùng test,
+cache và build intermediates đã dọn vào Thùng rác; artifact gốc/runtime vẫn giữ
+nguyên. Metadata build đã nén và kiểm tra từng file trong report cleanup của
+`VC-Lifetime-VI-Review-20260908-092244`. Không tìm credential:
 
 - **VC-Lifetime-VI-Review-20260908-092244**: `README.md`; `outputs/lifetime-vi.json`,
   `outputs/lifetime-vi.srt`, `outputs/lifetime-vi-captioned.mp4`; `reports/frozen-google.json`,

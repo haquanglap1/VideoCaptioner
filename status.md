@@ -1,5 +1,72 @@
 # Project Status
 
+## 2026-09-08 (chốt tài liệu và prompt so sánh OCR local / AI đọc ảnh)
+
+- User yêu cầu **prompt next session và submit/push**. Manifest từ baseline **fb2bfad**
+  gồm status, implementation, prompt ASR Việt cũ, kế hoạch OCR và
+  [prompt OCR mới](docs/dev/ocr-next-session-prompt.md); code Lifetime **e6c0074** không đổi.
+- User thấy agent đọc ảnh tốt; giữ OCR local và AI đọc ảnh như hai lựa chọn, pilot
+  cùng nội dung **13 crop** trước khi chọn mặc định. Hiện chỉ có contact sheet và
+  video mẫu, chưa lưu 13 crop độc lập; prompt yêu cầu chuẩn bị đúng input chung, tách
+  đọc chữ khỏi dịch, giữ số token/RSS chưa đo và quyền model/endpoint cho job có phí.
+- Làm rõ theo câu hỏi của user: **plan ASR đã có, triển khai/nghiệm thu chưa hoàn tất**.
+  S1–S5/S5.2 có code; 60 s clip thực tế còn fail, OCR-0 mới là kế hoạch; S6 chưa giao.
+- Quyền commit/push lần này chỉ chốt manifest hiện tại, không tự khởi chạy phiên,
+  pilot, tải model hoặc cho phép submit thay đổi mới. Chỉ kiểm tra Git/diff/link/scan
+  tài liệu; không lặp full/static/build/API/media hoặc thay runtime/artifact/data.
+
+## 2026-09-08 (thống kê prototype và lập kế hoạch OCR phụ đề video)
+
+- Theo yêu cầu user, hoàn thành **OCR-0: thống kê và thiết kế**, lưu tại
+  [kế hoạch tích hợp OCR](docs/plans/video-subtitle-ocr-integration-plan.md).
+  Prototype chỉ tự động quét/gom thời gian; **agent đọc chữ, chưa chạy engine OCR**.
+- Tổng hợp evidence có sẵn: 60 s, khoảng **1.500 mẫu danh nghĩa** ở 25 mẫu/s, 13 cue /
+  94 ký tự; ROI đúng loại dải hình chuyển động gây 33 nhóm ở lượt đầu. Lệnh quét cuối
+  **2,664 s** chưa gồm engine đọc chữ; token agent/RSS đỉnh chưa có phép đo riêng.
+  Không diễn giải 40 ms lưới mẫu thành sai số timing hoặc 99,13% giảm ảnh thành giảm token.
+- Đề xuất RapidOCR + ONNX CPU trong runtime riêng, PTS-aware streaming, typed visual
+  identity/metadata, review và nối bảng phụ đề/editor. Năm gói OCR-0→OCR-4; **OCR-1 trở
+  đi chưa làm**. Không dùng AudioIdentity cho OCR, không đổi strict ASR hoặc mặc định engine.
+- Report thống kê mới giữ trong job evidence hiện có; không quét media/inference lại,
+  cài dependency/model, build, tạo thư mục cạnh checkout, S6 hoặc commit/push.
+  Chỉ thêm plan và cập nhật ba tài liệu bàn giao; diff/scan/link kiểm tra khi bàn giao.
+
+## 2026-09-08 (clip user chọn: ASR chưa đạt; có bản Việt đối chiếu 60 giây)
+
+- User cung cấp một video cụ thể dài **111,333 s**; thử **60 s đầu**, không quét media
+  hoặc mở corpus S6. Input **960.000 sample**, giữ hash/mtime file gốc. Evidence nằm tại
+  **`build/asr-session-evidence/VC-UserClip-20260908-114035/`**, không transcript/media vào Git.
+- Một job **EXE Lifetime / Qwen 0.6B**, **exit 5 / 46,375 s**: nhận dạng **94 token**,
+  raw lexical khớp text ASR nhưng strict alignment chặn **6 token** (32, 35, 49, 73, 76,
+  94): hai zero-duration, hai interval đảo, ba overlap có một token thuộc hai loại.
+  Giữ review/identity, **0 override**, pending true; **chưa chạy tới Community-1**.
+  Đối chiếu chữ Trung trong hình còn thấy ASR nghe sai. Không nhận dạng lại/đổi model/policy.
+- Tạo **bản đối chiếu riêng 13 cue** từ phụ đề Trung có sẵn trong hình, agent đọc và dịch;
+  thời điểm hiển thị đo **25 mẫu/s, độ phân giải 40 ms**, không là acoustic word timing
+  hoặc kết quả ASR đã pass. Google trên EXE **exit 0 / 15,047 s** nhưng sai vài thuật ngữ;
+  giữ bản Google riêng. Export target-only **exit 0 / 0,312 s** giữ text/timing từ JSON.
+  Export đầu mặc định song ngữ làm assertion helper sai; không dịch lại để sửa layout.
+- Ghép **bản Việt biên tập** bằng app ASS renderer **exit 0 / 8,141 s**; ffprobe và
+  frame trước/trong/sau cue pass, chữ Việt đủ dấu và tách dòng Trung gốc. Audio vẫn là
+  nguồn gốc, không TTS. Bản Việt mới chưa có phản hồi user; 51,333 s còn lại chưa thử.
+- Final verify giữ file nguồn/sample/review, identity, **580 hash bundle**, lease đã
+  acquire/release lại, không process job/request temp/ASS persist. Đã dọn EXE + `_internal`
+  bản test vào Thùng rác ngay sau lượt; artifact/runtime gốc giữ nguyên. Helper phân tích
+  đầu thiếu NumPy, chuyển sang Pillow đã có; không cài dependency. Không sửa code sản phẩm,
+  full/static/build hoặc gate cũ; giữ ba file tài liệu đã sửa, **chưa S6/commit/push**.
+
+## 2026-09-08 (dọn dữ liệu thử và gom evidence theo yêu cầu user)
+
+- Chuyển **390 mục / 20.441 file / 3,247 GiB** dữ liệu build/test và chín bản sao
+  binary vào Thùng rác; xác minh đủ 390 mục, không gọi đây là dung lượng đã giải phóng.
+  Giữ 10 artifact gốc, runtime/model, media, AppData thật và output/report nghiệm thu.
+  Metadata của mười build work giữ trong ZIP **70 file**, đã đối chiếu hash từng entry.
+- Gom bảy thư mục **VC-*** từ cạnh checkout vào **`build/asr-session-evidence/`**;
+  **2.710 file** giữ SHA-256/size/mtime, không còn thư mục VC-* tại vị trí cũ. Mapping
+  nằm trong `relocation-20260908.json`; prompt tiếp tục đã cập nhật nơi tìm evidence.
+  Script/report cũ giữ nguyên nội dung và có thể còn đường dẫn lịch sử.
+- Không đổi code, runtime/artifact hoặc chạy lại gate; chưa S6/commit/push.
+
 ## 2026-09-08 (chốt tài liệu và prompt sau nghiệm thu phụ đề Việt)
 
 - User yêu cầu **commit/push và prompt next session**. Manifest chốt từ baseline **d820ca0**
