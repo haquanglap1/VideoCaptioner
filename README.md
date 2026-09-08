@@ -169,6 +169,21 @@ Xem [cài đặt, cache/review, GPU và giới hạn nghiệm thu S5](docs/dev/a
 Qwen và Community-1 đã có smoke local/hybrid từ source và EXE trên audio public.
 Chất lượng speaker/xưng hô vẫn chưa nghiệm thu.
 
+Để lấy **văn bản nhận dạng** từ Qwen, chọn định dạng **TXT** trong GUI hoặc xuất
+`.txt` qua CLI. Luồng này chỉ cần model nhận dạng, không nạp ForcedAligner hoặc
+Community-1:
+
+```bash
+uv run --frozen videocaptioner transcribe clip.wav --asr qwen-local --language zh \
+  --qwen-model qwen-1.7b --qwen-runtime path/to/installed-runtime -o transcript.txt
+```
+
+Nếu xuất phụ đề mà căn thời gian thất bại, transcript đầy đủ được lưu riêng thành
+TXT (thêm hậu tố số nếu file đã có). GUI nhận dạng riêng báo kết quả TXT và giữ
+review để mở sau; pipeline cần phụ đề vẫn dừng. CLI yêu cầu timed subtitle giữ
+exit code lỗi nếu chưa tạo được định dạng đã yêu cầu. TXT không chứa nhãn người nói.
+Xem [so sánh model và kế hoạch hoàn thiện ASR](docs/plans/asr-completion-2026-09.md).
+
 S5.2 thêm kiểm tra recording khi mở JSON/review hoặc chạy `local-diarize`: fingerprint PCM toàn
 nguồn, chặn audio khác dù cùng duration; dữ liệu cũ vẫn mở và báo chưa xác minh. Gateway Whisper
 và GPT → alignment → Community-1 đã có smoke API từ source trên audio public ngắn; GPT cũng qua

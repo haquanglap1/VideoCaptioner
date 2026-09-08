@@ -164,10 +164,23 @@ def run(args: Namespace, config: dict) -> int:
                 return EXIT.RUNTIME_ERROR
             audio_path = temp_audio.name
 
-        from videocaptioner.core.asr.transcribe import transcribe
+        from videocaptioner.core.asr.transcribe import recognize_text, transcribe
         from videocaptioner.core.translate.conversation import load_context
         context_path = get(config, "translate.conversation_context", "")
         context = load_context(context_path) if context_path else None
+        if asr_engine == "qwen-local" and Path(output_path).suffix.lower() == ".txt":
+            result = recognize_text(audio_path, transcribe_config, callback=callback)
+            result.save_text(output_path)
+            args.transcript_path = str(output_path)
+            if transcribe_config.local_asr.diarize:
+                output.warn("TXT contains speech text only; speaker association was not run.")
+            if context is not None:
+                output.warn("TXT cannot retain conversation context.")
+            if progress:
+                progress.finish(f"Speech recognition complete -> {output_path}")
+            if quiet:
+                print(output_path)
+            return EXIT.SUCCESS
         asr_data = transcribe(audio_path, transcribe_config, callback=callback)
         if context is not None:
             asr_data.conversation_context = context
@@ -191,6 +204,18 @@ def run(args: Namespace, config: dict) -> int:
         from videocaptioner.core.asr.review import NativeReviewRequired
 
         if isinstance(e, NativeReviewRequired):
+            from videocaptioner.core.asr.api_transcription import TranscriptionResult
+            from videocaptioner.core.asr.local.review import LocalReview
+
+            if isinstance(e.review, LocalReview) and e.review.recognition_complete:
+                try:
+                    transcript = TranscriptionResult(e.review.text).save_text(
+                        Path(output_path).with_suffix(".txt"), unique=True)
+                    args.transcript_path = str(transcript)
+                    output.warn(f"Speech recognition is complete and saved: {transcript}")
+                    output.warn("The requested subtitles still need valid timing; recognition does not need to be repeated.")
+                except OSError:
+                    output.warn("Could not save a TXT copy; recognized speech remains in the local review.")
             review_path = e.path
             if getattr(args, "asr_review", None):
                 try:

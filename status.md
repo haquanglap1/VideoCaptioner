@@ -1,5 +1,110 @@
 # Project Status
 
+## 2026-09-09 (chốt snapshot speech-to-text và prompt tiếp tục)
+
+- User yêu cầu **prompt next session, submit và push**. Snapshot từ nền
+  **669c0da** gồm **17 file**: bảy code, ba test, README/status/prompt/plan và
+  ba tài liệu audit Parakeet/attention/Qwen CTC đã có từ các lượt trước.
+- [Prompt bàn giao](docs/dev/asr-completion-next-session-prompt.md) được rút gọn
+  theo yêu cầu mới nhất: phụ đề vẫn cần timing câu/đoạn; TXT recovery bảo toàn
+  recognition, chưa thay thế SRT. Ưu tiên tiếp theo là timing cue rồi tải model,
+  file dài/tốc độ, người nói và EXE. Các audit cũ giữ trong báo cáo/evidence riêng.
+- Kế thừa 226 test + kiểm tra UI cuối, ruff/pyright đã pass; lượt chốt chỉ rà
+  manifest/diff, nội dung Git và liên kết. Không model/API/test/build mới.
+  **Qwen timed output, tự tải model và EXE mới vẫn chưa hoàn tất; OCR dừng.**
+- Quyền submit áp dụng cho snapshot này, không tự cho phép commit/push công việc
+  của phiên tiếp theo. Build/dist/media/runtime/AppData giữ tại máy, không đưa lên Git.
+
+## 2026-09-09 (speech-to-text độc lập với aligner, đổi ưu tiên nghiệm thu)
+
+- User chốt ưu tiên **chữ đúng, nhanh, ổn định; người nói tùy chọn**, dịch giữ
+  gpt-5.6-terra. Timestamp từng chữ không còn chặn acceptance của recognition.
+  **User bổ sung: workflow phụ đề vẫn cần timestamp câu/đoạn.** TXT là bản giữ
+  kết quả chữ; chưa coi TXT recovery là hoàn tất SRT/ASS hoặc đầu vào timed cho LLM.
+  [So sánh model và plan hoàn thiện](docs/plans/asr-completion-2026-09.md).
+- Qwen TXT trong GUI/CLI chỉ chạy nhận dạng, không cần aligner/Community-1. Timed
+  export nhận dạng trước; aligner thiếu/lỗi vẫn giữ full text và xuất TXT riêng,
+  không ghi đè file cũ. Standalone GUI trả TXT, không ép mở modal timing; pipeline
+  cần SRT dừng riêng. CLI TXT exit 0, timed output chưa tạo được vẫn exit 5.
+- Giữ raw/timestamp, nhận dạng partial/hủy không thành complete. Không đổi model/
+  frontend/chunk/timeout/cache/default hoặc LLM; lỗi file dài cũ vẫn còn. Kế hoạch
+  tiếp theo: timing câu/đoạn → tự tải model đang chọn → file dài/tốc độ → người
+  nói → EXE mới. Fix này chưa làm Qwen xuất được SRT trên mọi input lỗi timing.
+- **226 test offline local ASR/CLI/UI pass / 17,44 s**, gồm 13 case mới; ruff và
+  pyright app pass (sửa import ordering). Chỉnh UI cuối bỏ modal được kiểm tra riêng.
+  Không model inference/API mới, download weight, full suite, build/GUI EXE.
+  EXE TimingGuard cũ chưa chứa fix; chỉ source được sửa, không commit/push.
+- Kế thừa benchmark chữ: cùng 28 clip Qwen 1.7B **21,04% CER**, 0.6B **22,00%**,
+  FWW large-v3 **36,74%**. Recognition 28/32, 28/32, 32/32; không nhầm timing
+  fail với recognition fail. Chỉ tổng hợp evidence đã có, không chấm/chạy lại.
+- **Fix trả transcript đã có ở source; ASR sản phẩm còn bước hoàn thiện. OCR dừng.**
+  Giữ các tài liệu/audit cũ làm lịch sử, không tiếp tục chuỗi preflight aligner theo
+  ưu tiên cũ. Những file thay đổi từ trước được giữ nguyên nội dung.
+
+## 2026-09-09 (điều kiện head Qwen CTC sau probe attention)
+
+- ASR-S3/`codex/asr-s3-native`, HEAD/tracking tại máy **669c0da**; giữ bốn thay
+  đổi tài liệu cũ, không commit/push. [Báo cáo](docs/dev/asr-qwen-ctc-eligibility-2026-09.md),
+  evidence riêng `VC-ASR-Completion-20260908-140534/s6-qwen-ctc-eligibility-20260909/`.
+- Head JazerJu Qwen CTC pin **9c59b40add48e8ada2b9586f2d7763b8cdcb63e8** đủ
+  class riêng cho **89/91** mẫu cũ; user 94 ký tự đủ, thiếu `滯` và `诶` ở tập
+  đầy đủ. Hai chữ không có ID đơn trong tokenizer Qwen local, không chỉ bị compact
+  pruning. Không ghép byte/chia subword/đổi script; **dừng trước weight**.
+- Mapping conditional theo tokenizer local; training encoder revision/hash chưa
+  xác minh. Example xuất span BPE và có bỏ ID/state; source frontend mặc định
+  cắt input 30 s trong runtime hiện có. Chỉ rà AST/config, không acoustic probe,
+  không suy thành lỗi S6 cũ hoặc sửa timestamp theo hằng số 1/13 s của wrapper.
+- Contract/hash trước GET và coverage: **6 file nhỏ / 1.717.789 byte**; fetch
+  exit 0, validation pass, **744 file bảo vệ / 110 nguồn** giữ hash/mtime. Coverage
+  exit 1 ở bước in console Unicode sau khi lưu validation; giữ lỗi, không chấm lại.
+  Source review exit 0. **0 weight / 0 inference / 0 API ASR-dịch**; app/runtime/
+  artifact giữ nguyên, kế thừa 595 ASR/CLI + TimingGuard, không lặp gate cũ.
+- **ASR chưa đạt; OCR dừng.** Không dispatch head này từ evidence hiện tại;
+  reference dịch còn cần key mới nhập kín và các tiêu chí chất lượng vẫn mở.
+
+## 2026-09-09 (audit mask encoder Qwen và probe acoustic giới hạn)
+
+- Tiếp tục ASR-S3/`codex/asr-s3-native`, HEAD/tracking ref tại máy **669c0da**;
+  giữ ba thay đổi tài liệu Parakeet đầu phiên, không commit/push.
+  [Báo cáo](docs/dev/asr-qwen-attention-audit-2026-09.md), evidence riêng
+  `VC-ASR-Completion-20260908-140534/s6-qwen-attention-audit-20260909/`.
+- Xác nhận encoder Qwen có mask helper nhưng không nối vào layer; SDPA/eager
+  bỏ qua `cu_seqlens`. CPU **12 attention + 24 encoder synthetic**: mask khớp
+  oracle từng block, sai số tối đa **7,45e-9**, perturb block khác không còn ảnh
+  hưởng block đầu. Không gọi synthetic là acoustic pass. Giữ hai lỗi setup/
+  assertion; `run03` exit 0/11,078 s, **301 file bảo vệ** giữ hash/mtime.
+- Chốt contract trước đúng **ba forward ForcedAligner** (user, một chunk meeting,
+  silence), cùng checkpoint/BF16/SDPA/text/audio, chỉ nối mask trong RAM. User còn
+  **5 item có cờ**, meeting **12**: cả hai **strict fail**, RMS chưa chạy; silence
+  bị strict chặn. Giữ raw và logits 5.000 class; không sửa timestamp/giải tie.
+- Host exit 0/16,953 s, validation pass, **340 file bảo vệ** giữ hash/mtime, process/
+  lease đóng. **0 weight download / 0 API ASR-dịch**. Candidate chưa vào app/runtime;
+  không lặp benchmark/scoring/full/static/build/GUI, kế thừa 595 ASR/CLI + TimingGuard.
+- **ASR chưa đạt; OCR dừng.** Mask wiring chưa đủ giải quyết timing, không lặp probe
+  hoặc sweep precision/window từ cùng bằng chứng. Dịch reference vẫn thiếu key mới
+  nhập kín; các tiêu chí phồn thể/stress/xưng hô/sửa tay/genre vẫn mở.
+
+## 2026-09-09 (khảo sát điều kiện Parakeet CTC, sau bàn giao 669c0da)
+
+- Xác minh ASR-S3/`codex/asr-s3-native`: HEAD, tracking ref tại máy và remote
+  branch đều **669c0da**, working tree ban đầu sạch. Không commit/push phiên mới.
+  [Báo cáo](docs/dev/asr-parakeet-eligibility-2026-09.md), evidence mới
+  `VC-ASR-Completion-20260908-140534/s6-parakeet-eligibility-20260908/`.
+- Parakeet CTC Mandarin là head khác các ứng viên đã đo. Model gốc NGC yêu cầu
+  đăng nhập; chưa xác minh tokenizer/checkpoint gốc. Chỉ chấm dictionary của bản
+  chuyển đổi FluidInference pin **ad0da3a453ce93ae53263f9a757ad365ce90bd58**:
+  **90/91** mẫu đủ nguyên chữ, target user đủ; thiếu bốn chữ phồn thể. Không gán
+  kết quả/license/benchmark conversion cho NVIDIA gốc; **dừng trước weight**.
+- Contract snapshot trước tải/coverage, đúng 91 ID/hash/số ký tự cũ. Tải **8 file
+  metadata/card/vocabulary / 515.668 byte**; fetch/coverage exit 0, validation pass.
+  **275 file bảo vệ** và **101 nguồn mẫu** giữ hash/mtime, inventory có thể giao.
+  **0 weight / 0 inference / 0 API ASR-dịch**, không lặp preflight/scoring/decoder/
+  parity/benchmark cũ hoặc full/static app/build/GUI. App/scorer/tests/dependency/
+  runtime/media/AppData/artifact nguyên vẹn; kế thừa 595 ASR/CLI và TimingGuard.
+- **ASR chưa đạt; OCR dừng.** Chưa có cơ sở acoustic dispatch mới; không đổi
+  script/head để chữa coverage hoặc lặp dictionary conversion này. Reference dịch
+  cần key mới nhập kín; các tiêu chí chất lượng còn mở như prompt bàn giao.
+
 ## 2026-09-08 (chốt các audit sau S6 và prompt phiên tiếp theo)
 
 - User yêu cầu **commit/push và prompt next session**. Snapshot **chín file** từ

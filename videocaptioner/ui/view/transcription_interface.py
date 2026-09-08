@@ -43,6 +43,7 @@ from videocaptioner.core.entities import (
     SupportedAudioFormats,
     SupportedVideoFormats,
     TranscribeModelEnum,
+    TranscribeOutputFormatEnum,
     TranscribeTask,
     VideoInfo,
 )
@@ -424,9 +425,10 @@ class VideoInfoCard(CardWidget):
         )
 
     def on_transcript_finished(self, task):
-        """转录完成处理"""
+        """Report text recovery separately from a completed timed export."""
         self.start_button.setEnabled(True)
-        self.start_button.setText(self.tr("转录完成"))
+        self.start_button.setText(self.tr("Nhận dạng hoàn tất (TXT)")
+                                  if task.transcript_path and task.asr_data is None else self.tr("转录完成"))
         self.start_button.setToolTip("")
         self.progress_ring.hide()
         self.finished.emit(task)
@@ -655,8 +657,16 @@ class TranscriptionInterface(QWidget):
             )
 
     def _on_transcript_finished(self, task: TranscribeTask):
-        """转录完成处理"""
+        """Offer the transcript without forcing the subtitle timing editor."""
         self.is_processing = False
+        if (not task.need_next_task and task.transcript_path and task.asr_data is None
+                and task.transcribe_config and task.transcribe_config.output_format is not TranscribeOutputFormatEnum.TXT):
+            InfoBar.warning(
+                self.tr("Đã lưu transcript TXT"),
+                self.tr("Lời nói đã được nhận dạng. Phụ đề chưa xuất được vì thời gian chưa hợp lệ."),
+                duration=INFOBAR_DURATION_WARNING,
+                parent=self,
+            )
         if task.need_next_task:
             if task.asr_data is not None and task.asr_data.has_metadata:
                 self.recognized.emit(task)

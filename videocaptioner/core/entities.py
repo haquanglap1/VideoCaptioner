@@ -764,6 +764,8 @@ class TranscribeTask:
 
     transcribe_config: Optional[TranscribeConfig] = None
     asr_data: Optional["ASRData"] = field(default=None, repr=False)
+    # Separate from timed subtitle output, including recovery after alignment failure.
+    transcript_path: Optional[str] = None
 
 
 @dataclass

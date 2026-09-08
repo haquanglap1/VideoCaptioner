@@ -4,6 +4,7 @@ import asyncio
 import math
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 import httpx
@@ -66,6 +67,25 @@ class TranscriptionResult:
     text: str = field(repr=False)
     words: list[ASRDataSeg] = field(default_factory=list, repr=False)
     segments: list[ASRDataSeg] = field(default_factory=list, repr=False)
+
+    def save_text(self, path: str | Path, *, unique: bool = False) -> Path:
+        """Save recognized speech without manufacturing subtitle timestamps."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not unique:
+            path.write_text(self.text, encoding="utf-8")
+            return path
+        # Automatic recovery must not replace a user's existing transcript.
+        for index in range(1, 1001):
+            candidate = path if index == 1 else path.with_name(f"{path.stem}-{index}{path.suffix}")
+            try:
+                handle = candidate.open("x", encoding="utf-8")
+            except FileExistsError:
+                continue
+            with handle:
+                handle.write(self.text)
+            return candidate
+        raise FileExistsError("No unused transcript output name is available.")
 
     @property
     def timing_level(self) -> str:

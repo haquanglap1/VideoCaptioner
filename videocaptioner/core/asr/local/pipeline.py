@@ -1,4 +1,4 @@
-"""Sequential recognition → strict alignment → optional whole-job speaker association."""
+"""Independent speech recognition, optional subtitle alignment and speaker association."""
 
 import hashlib
 import json
@@ -16,6 +16,7 @@ from ..alignment.contract import (
     chinese_language,
     validate_alignment,
 )
+from ..api_transcription import TranscriptionResult
 from ..asr_data import ASRData
 from ..audio_identity import identify_audio, require_audio_match
 from ..metadata import ASRMetadata, StageProvenance
@@ -53,9 +54,19 @@ class QwenLocalASR:
         self.options = config.local_asr
         chinese_language(config.transcribe_language)
         self.recognition_layout = locate(self.options.model, self.options.runtime_root)
-        self.alignment_layout = locate("aligner", self.options.runtime_root)
 
     def run(self, callback=None) -> ASRData:
+        result = self._run(callback, align=True)
+        assert isinstance(result, ASRData)
+        return result
+
+    def recognize(self, callback=None) -> TranscriptionResult:
+        """Return complete text without requiring or loading the aligner."""
+        result = self._run(callback, align=False)
+        assert isinstance(result, TranscriptionResult)
+        return result
+
+    def _run(self, callback, *, align: bool) -> ASRData | TranscriptionResult:
         options = self.options
         stage, progress = "Local recognition", 0
 
@@ -66,7 +77,6 @@ class QwenLocalASR:
         audio = decode_audio(self.audio_path, check)
         identity = identify_audio(audio, check)
         self.recognition_layout = locate(options.model, options.runtime_root, verify=True, check=check)
-        self.alignment_layout = locate("aligner", options.runtime_root, verify=True, check=check)
         chunks = split_audio(audio, check, options.chunk_ms)
         cache = get_asr_cache() if is_cache_enabled() else None
         texts, raw = [], []
@@ -92,22 +102,27 @@ class QwenLocalASR:
                 texts.append(text)
                 if cache is not None:
                     cache.set(key, {"text": text}, expire=86400 * 2)
-                progress = (index + 1) * 45 // len(chunks)
+                progress = (index + 1) * (45 if align else 100) // len(chunks)
         finally:
             runtime.close()
+        check()
+        if not align:
+            return TranscriptionResult(text="".join(texts))
         stage = "Strict Chinese alignment"
-        runtime = LocalRuntime(self.alignment_layout, options.timeout)
+        alignment_runtime = None
         failure, rejected_chunks = "", []
         try:
+            alignment_layout = locate("aligner", options.runtime_root, verify=True, check=check)
+            alignment_runtime = LocalRuntime(alignment_layout, options.timeout)
             for index, ((chunk, offset), text) in enumerate(zip(chunks, texts)):
                 check()
                 binary = wav_bytes(chunk)
                 key = stage_key("alignment", binary, "aligner", [POLICY, text, "Chinese", "cuda-bfloat16-sdpa"])
                 items = cache.get(key) if cache is not None else None
                 if items is None:
-                    if text and runtime.state != "ready":
-                        runtime.start(check)
-                    items = runtime.request(binary, text, check) if text else []
+                    if text and alignment_runtime.state != "ready":
+                        alignment_runtime.start(check)
+                    items = alignment_runtime.request(binary, text, check) if text else []
                 if not isinstance(items, list) or any(not isinstance(i, dict) or not isinstance(i.get("text"), str) for i in items):
                     raise LocalRuntimeError("Malformed alignment response.")
                 raw.append(items)
@@ -124,7 +139,8 @@ class QwenLocalASR:
             check()  # Cancellation must not publish a review or a successful result.
             failure = str(exc)
         finally:
-            runtime.close()
+            if alignment_runtime is not None:
+                alignment_runtime.close()
         review = LocalReview.capture_chunks(stage=provenance, scope=scope,
                     durations=[(offset, len(chunk)) for chunk, offset in chunks], texts=texts, raw=raw,
                     word_timing=True, audio_identity=identity)

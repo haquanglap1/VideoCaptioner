@@ -4,6 +4,7 @@ from copy import deepcopy
 from videocaptioner.core.asr.aligned_api import AlignedAPI
 from videocaptioner.core.asr.alignment.audio import decode_audio
 from videocaptioner.core.asr.api_profiles import resolve_profile
+from videocaptioner.core.asr.api_transcription import TranscriptionResult
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.asr.audio_identity import identify_audio
 from videocaptioner.core.asr.bcut import BcutASR
@@ -20,6 +21,14 @@ from videocaptioner.core.asr.native_api import NativeASR
 from videocaptioner.core.asr.whisper_api import WhisperAPI
 from videocaptioner.core.asr.whisper_cpp import WhisperCppASR
 from videocaptioner.core.entities import TranscribeConfig, TranscribeModelEnum
+
+
+def recognize_text(audio_path: str, config: TranscribeConfig, callback=None) -> TranscriptionResult:
+    """Recognize plain text; Qwen does not need alignment or speaker models."""
+    if config.transcribe_model is TranscribeModelEnum.QWEN_LOCAL:
+        return QwenLocalASR(audio_path, deepcopy(config)).recognize(callback)
+    data = transcribe(audio_path, config, callback)
+    return TranscriptionResult(text=data.to_txt(), segments=data.segments)
 
 
 def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRData:

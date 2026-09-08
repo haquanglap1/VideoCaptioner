@@ -4,9 +4,15 @@ from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from videocaptioner.core.asr.api_transcription import TranscriptionResult
+from videocaptioner.core.asr.local.review import LocalReview
 from videocaptioner.core.asr.review import NativeReviewRequired
-from videocaptioner.core.asr.transcribe import transcribe
-from videocaptioner.core.entities import TranscribeOutputFormatEnum, TranscribeTask
+from videocaptioner.core.asr.transcribe import recognize_text, transcribe
+from videocaptioner.core.entities import (
+    TranscribeModelEnum,
+    TranscribeOutputFormatEnum,
+    TranscribeTask,
+)
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import video2audio
 
@@ -26,6 +32,8 @@ class TranscriptThread(QThread):
     def run(self):
         try:
             self.task.started_at = datetime.datetime.now()
+            self.task.asr_data = None
+            self.task.transcript_path = None
             logger.info(f"\n{self.task.transcribe_config.print_config()}")
 
             self._validate_task()
@@ -37,11 +45,34 @@ class TranscriptThread(QThread):
             self._perform_transcription()
 
         except Exception as e:
+            message = str(e)
             if isinstance(e, NativeReviewRequired):
+                recovered = self._recover_transcript(e)
+                if recovered:
+                    if not self.task.need_next_task:
+                        self.task.output_path = self.task.transcript_path
+                        self.progress.emit(100, self.tr("Nhận dạng hoàn tất; đã lưu TXT. Phụ đề cần kiểm tra thời gian."))
+                        self.finished.emit(self.task)
+                        return
+                    message = self.tr("Đã lưu transcript TXT. Pipeline phụ đề dừng vì thời gian chưa hợp lệ: ") + str(self.task.transcript_path)
                 self.review_required.emit(e)
-            logger.exception("转录过程中发生错误: %s", str(e))
-            self.error.emit(str(e))
+            logger.exception("Transcription output could not be completed: %s", message)
+            self.error.emit(message)
             self.progress.emit(100, self.tr("转录失败"))
+
+    def _recover_transcript(self, error: NativeReviewRequired) -> bool:
+        review = error.review
+        if (not isinstance(review, LocalReview) or not review.recognition_complete
+                or not self.task.output_path or self.isInterruptionRequested()
+                or QThread.currentThread().isInterruptionRequested()):
+            return False
+        try:
+            saved = TranscriptionResult(review.text).save_text(
+                Path(self.task.output_path).with_suffix(".txt"), unique=True)
+        except OSError:
+            return False
+        self.task.transcript_path = str(saved)
+        return True
 
     def _validate_task(self):
         """验证任务配置"""
@@ -111,7 +142,20 @@ class TranscriptThread(QThread):
             self.progress.emit(20, self.tr("语音转录中"))
             logger.info("开始语音转录")
 
-            # 进行转录
+            config = self.task.transcribe_config
+            if (config.transcribe_model is TranscribeModelEnum.QWEN_LOCAL
+                    and config.output_format is TranscribeOutputFormatEnum.TXT
+                    and not self.task.need_next_task):
+                result = recognize_text(temp_audio_path, config, callback=self.progress_callback)
+                if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
+                    return
+                saved = result.save_text(Path(self.task.output_path).with_suffix(".txt"))
+                self.task.output_path = self.task.transcript_path = str(saved)
+                self.progress.emit(100, self.tr("Đã lưu transcript TXT; không chạy căn thời gian hoặc gán người nói."))
+                self.finished.emit(self.task)
+                return
+
+            # Timed exports keep their subtitle validation contract.
             asr_data = transcribe(
                 temp_audio_path,
                 self.task.transcribe_config,
