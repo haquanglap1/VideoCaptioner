@@ -25,7 +25,10 @@ MODELS = {
 }
 PROTOCOL = "local-asr-v1"
 RECOGNITION_POLICY = "qwen-text-v1"
-DIARIZATION_POLICY = "overlap-conservative-v1"
+DIARIZATION_POLICY = "overlap-conservative-model-window-v2"
+# The pinned Community-1 segmentation uses 10-second windows with a 10% step.
+DIARIZATION_WINDOW_MS = 10000
+DIARIZATION_WINDOW_STEP_MS = 1000
 
 
 @dataclass(frozen=True)

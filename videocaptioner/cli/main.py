@@ -126,6 +126,13 @@ def _add_native_asr_options(parser: argparse.ArgumentParser) -> None:
         group.add_argument(f"--{provider}-diarize", action=argparse.BooleanOptionalAction, default=None)
 
 
+def _add_faster_whisper_options(group) -> None:
+    group.add_argument("--fw-program", metavar="EXE", help="Existing Faster-Whisper executable")
+    group.add_argument("--fw-model-dir", metavar="DIR", help="Directory containing installed Faster-Whisper models")
+    group.add_argument("--fw-model", metavar="NAME", help="Faster-Whisper model (default: large-v3)")
+    group.add_argument("--fw-device", choices=["auto", "cpu", "cuda"], help="Faster-Whisper device")
+
+
 def _build_transcribe_parser(subparsers) -> None:
     p = subparsers.add_parser(
         "transcribe",
@@ -139,7 +146,7 @@ def _build_transcribe_parser(subparsers) -> None:
     asr = p.add_argument_group("ASR options")
     asr.add_argument(
         "--asr",
-        choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
+        choices=["bijian", "jianying", "faster-whisper", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
         help="ASR engine (default: bijian). "
              "bijian/jianying: free, no setup, Chinese & English only. "
              "For other languages use whisper-api or whisper-cpp",
@@ -160,9 +167,10 @@ def _build_transcribe_parser(subparsers) -> None:
     asr.add_argument("--whisper-model", metavar="NAME",
                      help="Model name for whisper-api (default: whisper-1) "
                           "or whisper-cpp (default: large-v2)")
+    _add_faster_whisper_options(asr)
 
     # Advanced options (configurable via 'config set', hidden from --help)
-    for arg in ["--fw-model", "--fw-device", "--fw-vad-method", "--fw-prompt", "--whisper-prompt"]:
+    for arg in ["--fw-vad-method", "--fw-prompt", "--whisper-prompt"]:
         p.add_argument(arg, help=argparse.SUPPRESS)
     p.add_argument("--fw-vad-threshold", type=float, help=argparse.SUPPRESS)
     p.add_argument("--fw-voice-extraction", action="store_true", help=argparse.SUPPRESS)
@@ -313,8 +321,9 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
     pipe.add_argument("--no-synthesize", action="store_true", help="Skip video synthesis (output subtitles only)")
 
-    pipe.add_argument("--asr", choices=["bijian", "jianying", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
+    pipe.add_argument("--asr", choices=["bijian", "jianying", "faster-whisper", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
                       help="ASR engine (default: bijian)")
+    _add_faster_whisper_options(pipe)
     pipe.add_argument("--language", metavar="CODE",
                       help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
     pipe.add_argument("--whisper-provider", choices=["custom", "videocaptioner", "groq", "openai"])
@@ -505,6 +514,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("transcribe.language", getattr(args, "language", None))
 
     # FasterWhisper
+    _set("transcribe.faster_whisper.program", getattr(args, "fw_program", None))
+    _set("transcribe.faster_whisper.model_dir", getattr(args, "fw_model_dir", None))
     _set("transcribe.faster_whisper.model", getattr(args, "fw_model", None))
     _set("transcribe.faster_whisper.device", getattr(args, "fw_device", None))
     _set("transcribe.faster_whisper.vad_method", getattr(args, "fw_vad_method", None))

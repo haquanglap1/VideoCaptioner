@@ -1,5 +1,31 @@
 # Kế hoạch thực thi ASR tiếng Trung → phụ đề tiếng Việt
 
+**Ưu tiên hiện tại:** hoàn tất ASR trước OCR. User đã chọn AliMeeting Eval công khai
+cùng clip hiện có để làm S6; bỏ nghiệm thu Scribe. Đã đo 32 clip / 66,9079 phút;
+**chưa đạt nghiệm thu sản phẩm**. Xem [kết quả S6](asr-s6-results-2026-09.md), gồm
+raw CER/timing/DER, model-window fix, CLI/sentence fix và EXE S6-Review hiện tại.
+Lượt [sau S6](asr-s6-followup-2026-09.md) thêm sentence 31/32 clip có interval hợp lệ,
+stress có output nhưng CER cao, pilot CTC chưa đạt acoustic acceptance và guard
+Faster-Whisper chặn interval không dương. EXE mới nhất là **S6-TimingGuard**;
+không đổi model mặc định hoặc coi guard đã sửa chất lượng chữ/timing của model.
+Đọc [prompt ASR mới](asr-completion-next-session-prompt.md); các câu “chưa giao S6”
+ở lịch sử bên dưới không thay thế chỉ đạo mới này.
+
+Sửa gom cue trước local speaker association đã qua full **1.156 pass / 5 skip /
+51 deselect**, static/sync pass. Replay clip cũ **30 → 9 cue**, hết 15 cue một chữ;
+3 assigned / 6 unknown ở cấp câu, chưa nghiệm thu speaker accuracy. CER/TextGrid/DER
+tool có 18 test; DER khớp pyannote.metrics trên tutorial Anh cũ, chưa tính thành S6 Trung.
+
+Artifact **VideoCaptioner-ASR-CueAssembly-20260908**: build **exit 0 / 190,921 s**,
+6 optional/platform warnings, 0 error, 6 upstream SyntaxWarning. EXE **31.162.855 byte**,
+SHA-256 **87d357843622dfb187e69080a04f5b6015527d81af155995d3d1eb9cbd9c69b4**;
+onedir 575 file / 237.663.927 byte; 218 module/PYZ khớp source. Workflow EXE dùng loopback
+replay word output đã lưu rồi Community-1 thật: **exit 0 / 30,25 s**, 9 cue, text/timing
+khớp core, identity giữ, pending clear. Đây là nghiệm thu nhánh gom cue mới, không gọi
+ASR/API online lại. GUI sống **25,453 s**, WM_CLOSE đúng PID, exit 0. Sáu mục build/test
+tạm (1.478 file / 408.518.136 byte) đã vào Thùng rác sau lưu/so hash diagnostics;
+artifact, media và runtime gốc giữ nguyên. Code mới chưa commit/push.
+
 Ngày: 2026-09-07. User đã chấp nhận hướng trong
 [kế hoạch nghiên cứu](asr-provider-plan-2026-09.md). Tài liệu này chia hướng đó thành các
 gói có thể triển khai và nghiệm thu riêng. Trạng thái cập nhật 2026-09-08: **S5.2 đã có identity
@@ -42,6 +68,40 @@ Hướng dẫn và giới hạn: [runtime alignment S2](asr-alignment-s2.md).
 Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ## Bàn giao S5.2 — 2026-09-07
+
+### Chỉ đạo mới: hoàn tất ASR trước OCR — 2026-09-08
+
+User tạm dừng OCR, loại nghiệm thu ElevenLabs/Scribe và chọn gateway/gpt-5.6-terra
+cho dịch, deadline 300 s. [Prompt hoàn tất ASR](asr-completion-next-session-prompt.md)
+là bàn giao hiện tại; quyền submit tài liệu ở 63941a8 không áp dụng code mới.
+
+Qwen 1.7B trên mẫu 60 s vẫn **exit 5 / 54,422 s**, 94 token và sáu vị trí timing lỗi
+như 0.6B. Không đổi aligner/strict policy. Baseline Faster-Whisper VAD on có **88 word,
+không lỗi interval** trong lượt **16,922 s**, nhưng còn lỗi chữ; VAD off thêm lời ở intro
+và bốn cue 0 ms. Community-1 core riêng **21,047 s**, ba nhãn, 71 assigned/17 unknown,
+identity/pending đúng; 30 cue sau grouping còn mảnh quá ngắn. Chưa phải acoustic accuracy.
+
+Gateway dịch 9 câu gom trước diarization, giữ source/timing/IDs/identity/pending: **exit 0,
+159,11 s, một request**, 11.190 token do gateway báo (8.891 cached trong prompt).
+Lỗi tên ASR còn trong bản Việt; chưa nghiệm thu directed rules. Key chỉ RAM/password,
+owner và worker đã thoát. Không dùng bản này để suy ASR/S6 hoàn tất.
+
+Phát hiện và sửa lỗi plain LLM response: sau budget validate, không được lấy source
+điền câu thiếu hoặc cache dict sai như success. `complete-llm-response-v1` đổi fingerprint,
+không xóa cache thật. Bốn regression red→green + repair/cache pass; **166 test gần/CLI**,
+full **1.124 pass / 5 skip / 51 deselect / 97,09 s**, ruff/pyright/translations pass.
+
+Build **VideoCaptioner-ASR-TranslationGuard-20260908**, spec duy nhất từ source snapshot
+cô lập AppData: exit 0 / 186,313 s, 6 warnings/0 errors/6 SyntaxWarnings; EXE 31.161.608
+byte, SHA-256 **90c1abd9bd12aabe187243ee7b13468aeccf728bc9512b439672fb787a3d55a0**.
+575 file / 237.662.680 byte, 218 module khớp; 5 file giảm là generated resource pyc.
+EXE loopback malformed chặn đúng exit 5/no output, case đủ exit 0/two cues; GUI startup
+25,546 s/exit 0. App render bản ASR→Terra 8,282 s, stream/duration/frame pass. Online
+job bắt đầu trước sửa; nhánh malformed mới được kiểm bằng tests và EXE, không gọi API lại.
+
+Evidence dưới `build/asr-session-evidence/VC-ASR-Completion-20260908-140534/`.
+Không cài/đổi runtime/model, không OCR/commit/push. Alignment/phồn thể, ngắt câu và
+speaker/xưng hô, tập nhãn/đo S6 vẫn còn thiếu. Scribe loại khỏi scope theo user, không API pass.
 
 User yêu cầu chốt/push tài liệu và [prompt OCR phiên tiếp theo](ocr-next-session-prompt.md)
 từ baseline **fb2bfad**, giữ code Lifetime **e6c0074**. Manifest năm file gồm status,

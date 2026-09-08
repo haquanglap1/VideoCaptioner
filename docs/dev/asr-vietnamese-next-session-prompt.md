@@ -1,8 +1,9 @@
 # Prompt phiên tiếp theo — sau phụ đề Việt trên Lifetime EXE
 
-**Bàn giao mới nhất sau clip thực tế và kế hoạch OCR:**
-[OCR local và AI đọc ảnh](ocr-next-session-prompt.md). Tài liệu dưới đây giữ snapshot
-ASR trước đó; không dùng phần baseline/manifest lịch sử này thay prompt mới.
+**Bàn giao mới nhất: [hoàn tất ASR trước OCR](asr-completion-next-session-prompt.md).**
+User đã yêu cầu tạm dừng OCR, bỏ nghiệm thu Scribe và chọn gateway/gpt-5.6-terra cho
+dịch. Tài liệu dưới đây giữ snapshot ASR trước đó; không dùng baseline/quyền hoặc các
+dòng "chưa S6" lịch sử thay mục tiêu/điều kiện nghiệm thu trong prompt mới.
 
 Tiếp tục tại checkout **VideoCaptioner-ASR-S3** user chỉ định, nhánh **codex/asr-s3-native**.
 Đọc đầy đủ `AGENTS.md`, `README.md`, phần mới nhất `status.md` và phần bàn giao S5.2 trong

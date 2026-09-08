@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any
+from typing import Any, Callable
 
 from .api_profiles import ASRAPIError
 from .asr_data import ASRData, ASRDataSeg
@@ -97,7 +97,8 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
     return ASRData(segments, events)
 
 
-def native_cues(data: ASRData, max_chars: int = 40) -> ASRData:
+def native_cues(data: ASRData, max_chars: int = 40, *,
+                can_join: Callable[[ASRDataSeg, ASRDataSeg], bool] | None = None) -> ASRData:
     """Group only measured, adjacent spans of one source; preserve overlapping speech."""
     cues: list[ASRDataSeg] = []
     for seg in data.segments:
@@ -105,7 +106,8 @@ def native_cues(data: ASRData, max_chars: int = 40) -> ASRData:
         if (previous is not None and seg.metadata is not None and seg.metadata.same_source(previous.metadata)
                 and previous.end_time <= seg.start_time <= previous.end_time + 800
                 and len(previous.text) + len(seg.text) <= max_chars
-                and not re.search(r"[。！？.!?]\s*$", previous.text)):
+                and not re.search(r"[。！？.!?]\s*$", previous.text)
+                and (can_join is None or can_join(previous, seg))):
             previous.text += seg.text
             previous.end_time = seg.end_time
             if previous.metadata is not None and seg.metadata is not None:

@@ -22,6 +22,7 @@ class LLMTranslator(BaseTranslator):
     require_complete_result = True
 
     MAX_STEPS = 3
+    RESPONSE_POLICY = "complete-llm-response-v1"
     # Max source characters sent when building the global context (head/middle/tail sampled beyond)
     CONTEXT_MAX_CHARS = 12000
     # Below this many cues no global context is built: a "whole-film brief" summarised
@@ -157,14 +158,12 @@ class LLMTranslator(BaseTranslator):
             result_dict = self._agent_loop(prompt, subtitle_dict)
 
             processed_result = self._extract_translations(result_dict)
-            if snapshot is not None and snapshot.context.enabled and set(processed_result) != set(subtitle_dict):
-                raise ValueError("Malformed contextual translation; review required.")
+            if set(processed_result) != set(subtitle_dict):
+                raise ValueError("Malformed translation; every input cue requires a translation.")
 
             # Write results back into SubtitleProcessData
             for data in subtitle_chunk:
-                data.translated_text = processed_result.get(
-                    str(data.index), data.original_text
-                )
+                data.translated_text = processed_result[str(data.index)]
             return subtitle_chunk
         except openai.RateLimitError as e:
             logger.error(f"OpenAI Rate Limit Error: {str(e)}")
@@ -182,10 +181,8 @@ class LLMTranslator(BaseTranslator):
     def _extract_translations(self, result_dict: Any) -> Dict[str, str]:
         """Extract translations from the LLM result, skipping malformed entries.
 
-        Only strings are accepted (in reflective mode the nested dict's
-        ``native_translation``). Malformed entries are **left out** so the
-        caller falls back to the source text; f-stringing them would write
-        ``{'initial_translation': ...}`` verbatim into the subtitles.
+        Reflective mode extracts ``native_translation``. Malformed entries are
+        left out so the caller rejects the incomplete batch before publication.
         """
         if not isinstance(result_dict, dict):
             return {}
@@ -201,7 +198,7 @@ class LLMTranslator(BaseTranslator):
                 processed[str(key)] = text
             else:
                 logger.warning(
-                    "字幕 #%s 的译文结构不合法（%s），回退到原文",
+                    "Subtitle #%s has a malformed translation structure (%s)",
                     key,
                     type(value).__name__,
                 )
@@ -215,8 +212,6 @@ class LLMTranslator(BaseTranslator):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(subtitle_dict, ensure_ascii=False)},
         ]
-        last_response_dict = None
-        last_error = ""
         # LLM feedback loop
         for _ in range(self.MAX_STEPS):
             if not self.is_running:
@@ -225,7 +220,6 @@ class LLMTranslator(BaseTranslator):
             response_dict = json_repair.loads(
                 response.choices[0].message.content.strip()
             )
-            last_response_dict = response_dict
             is_valid, error_message = self._validate_llm_response(
                 response_dict, subtitle_dict
             )
@@ -233,7 +227,6 @@ class LLMTranslator(BaseTranslator):
                 # _validate_llm_response already proved this is a str->str dict.
                 return cast(Dict[str, str], response_dict)
             else:
-                last_error = error_message
                 messages.append(
                     {
                         "role": "assistant",
@@ -247,21 +240,10 @@ class LLMTranslator(BaseTranslator):
                     }
                 )
 
-        # Still invalid after all retries: return the last response and let
-        # _extract_translations filter per entry (bad ones fall back to the source).
-        # Not a dict at all: raise so the whole chunk counts as failed (BaseTranslator keeps the source).
+        # Reject incomplete batches before source-text fallbacks can enter the success cache.
         if self.conversation_snapshot is not None and self.conversation_snapshot.context.enabled:
             raise ValueError("Malformed contextual translation; review required.")
-        if not isinstance(last_response_dict, dict):
-            raise ValueError(
-                f"LLM 返回结构在 {self.MAX_STEPS} 次重试后仍不可用: {last_error}"
-            )
-        logger.warning(
-            "LLM 返回结构在 %d 次重试后仍不完全合法（%s），逐条降级处理",
-            self.MAX_STEPS,
-            last_error,
-        )
-        return last_response_dict
+        raise ValueError(f"Malformed translation after {self.MAX_STEPS} responses; review required.")
 
     def _request(self, messages):
         """Every translation request owns its socket and immutable job credentials."""
@@ -367,6 +349,7 @@ class LLMTranslator(BaseTranslator):
         model = self.model
         settings_sig = hashlib.md5(
             f"{self.custom_prompt}\n{self.source_signature}\n"
+            f"{self.RESPONSE_POLICY}\n"
             f"conversation-request-v2\n{self.conversation_snapshot.fingerprint if self.conversation_snapshot else ''}"
             f"\n{self._credentials.base_url if self._credentials else ''}"
             .encode("utf-8")

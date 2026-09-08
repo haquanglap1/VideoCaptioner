@@ -1,5 +1,187 @@
 # Project Status
 
+## 2026-09-08 (chốt ASR/S6 và prompt tiếp tục theo yêu cầu user)
+
+- User yêu cầu **commit/push và prompt sang session sau**. Snapshot 28 file từ nền
+  `63941a8` gồm code ASR/CLI/translation guards, regression, công cụ chấm reference,
+  báo cáo S6/CTC và tài liệu bàn giao; thay đổi OCR chỉ giữ trạng thái dừng.
+- [Prompt tiếp tục](docs/dev/asr-completion-next-session-prompt.md) phân biệt commit
+  bàn giao với ghi chú chưa commit trong lịch sử; giữ **ASR chưa đạt nghiệm thu**,
+  endpoint/model/scope, raw evidence và các giới hạn acoustic/quality còn mở.
+- Chỉ kiểm tra manifest, diff, nội dung đưa lên Git và liên kết tài liệu cho lượt chốt;
+  kế thừa 595 ASR/CLI pass, ruff/pyright và frozen TimingGuard đã đo. Không chạy lại
+  full/static/build/model/API hoặc đưa build/dist/media/runtime/AppData vào Git.
+- Quyền submit này chốt snapshot hiện tại; không tự cho phép commit/push công việc
+  của phiên sau, tạo tag/release hoặc chuyển sang OCR.
+
+## 2026-09-08 (sau S6: đo sentence/stress, CTC chưa đạt; guard interval và EXE mới)
+
+- Tiếp tục đúng `codex/asr-s3-native`, nền `63941a8`; giữ thay đổi cũ, không commit/push.
+  [Báo cáo tiếp nối](docs/dev/asr-s6-followup-2026-09.md), evidence mới trong
+  `VC-ASR-Completion-20260908-140534/s6-followup-20260908-204000/`. OCR vẫn dừng.
+- User giải phóng GPU; đo 31 clip sentence mới và stress, tái dùng một frozen output
+  cũ. Corpus 1.093 cue: **31/32** clip có mọi interval hợp lệ; CER cùng 28 **36,78%**,
+  đủ 32 **40,53%**. Biên 35/1.673 utterance khớp: median **185 ms**, p95 **530 ms**;
+  không so như cùng tập 30 word-mode utterance cũ. Stress 26,2308 phút có 617 cue
+  dương/trong bounds nhưng CER thô **64,94%**, đuôi 22.897 ms chưa gán nhãn: chưa
+  đạt chất lượng. Batch **exit 0 / 1.949,984 s**; không gọi đây là full app pipeline.
+- [Contract CTC](docs/dev/asr-ctc-candidate-2026-09.md) pin trước tải/inference.
+  SenseVoiceSmall có đủ ký tự 91 mẫu, tải một weight đã so SHA vào evidence riêng;
+  không cài gói hoặc đổi runtime. Pilot giữ raw logits/path: phồn thể/user qua strict
+  và RMS nhưng chỉ **9/13 / 2/94** target có frame argmax hỗ trợ; user 99,8% blank.
+  Meeting chỉ một trong năm chunk qua cả guard; negative silence bị chặn. **Chưa
+  đạt acoustic acceptance, không đưa backend vào app hoặc sửa script/timestamp.**
+- Sentence `R8008_M8013-c04` có cue **10.870→10.870 ms**. Sửa FWW chặn `start >= end`
+  trước lọc marker, ở cả hai mode; không publish prefix hoặc bỏ cue để pass. Regression
+  **6 red → green**, tổng **8 pass**; ASR/CLI **595 pass / 13 deselect / 43,80 s**.
+  Ruff pass, pyright **0/0** với Python project được chỉ rõ; lượt thiếu `.venv` ban đầu
+  là setup failure. Không lặp full/sync/API; không đổi dependency hoặc resource.
+- EXE **VideoCaptioner-ASR-S6-TimingGuard-20260908**: build **exit 0 / 215,141 s**,
+  sáu optional/platform warning, 0 error, sáu SyntaxWarning; **218 module/PYZ khớp**.
+  EXE **31.164.833 byte**, SHA-256
+  **cdfecfafe7009129e2446923ddbe515db8b121b06f2b72808031ee2ccb4a093a**.
+  GUI **25,594 s / exit 0**; frozen raw replay lỗi sentence/word đều **exit 5, không
+  output**, hợp lệ **exit 0 / 22 cue** giữ text/timing. Ba fixture replay, **0 model/API
+  request**; artifact gốc giữ nguyên, bản smoke riêng, không chạm junction cũ bị chặn.
+- Có 21 nhãn tên/số chẩn đoán và rubric Việt cho 12 câu reference; chưa là điểm chất
+  lượng độc lập. Sáu cờ số của FWW là khác dạng chữ số, không tự tính thành sai giá trị.
+  Dịch reference vẫn **0 request/no key**; còn acoustic timing, tên nhân vật/xưng hô,
+  phút sửa tay và genre/dialect. **ASR chưa hoàn tất nghiệm thu.**
+- Theo câu hỏi user, đã xác nhận model FWW hiện tại là **large-v3 FP16, model.bin
+  3.087.284.237 byte (2,88 GiB)**; không cần tải thêm chỉ vì tên “Whisper 3 GB”.
+
+## 2026-09-08 (đã đo S6 local; sửa CLI/sentence/model window; chưa nghiệm thu)
+
+- User chọn public corpus + clip hiện có. AliMeeting Eval đã tải/CRC64/gzip pass;
+  chuẩn bị **32 clip / 66,9079 phút** từ tám recording, không bung toàn archive.
+  [Báo cáo S6](docs/dev/asr-s6-results-2026-09.md) là kết quả hiện tại;
+  [prompt ASR](docs/dev/asr-completion-next-session-prompt.md) đã cập nhật. OCR vẫn dừng.
+- Qwen 0.6B và 1.7B đều có transcript đủ ở **28/32**; CER cùng 28 clip **22,00% /
+  21,04%**. Một timeout và ba preflight không có khoảng ngắt; strict alignment
+  **0/28 đạt** cho cả hai. Faster-Whisper có text 32/32, CER cùng tập **36,74%**;
+  word timing chỉ **5/32** có mọi interval hợp lệ. Không suy default mới từ các số này.
+- Community-1 có 11 response kéo sang phần đệm cuối. Đã sửa giới hạn theo window
+  10 s/hop 1 s của model pin và số sample thực; giữ nguyên raw span, cue/word timing,
+  threshold 80% và runtime. Replay **32/32** pass adapter. DER raw trong UEM toàn bộ:
+  **20,66%** không collar, **14,90%** collar tổng 250 ms, có overlap. Không xác nhận danh tính.
+- CLI hỗ trợ chọn Faster-Whisper với executable/model directory tường minh; không
+  lệ thuộc PATH hoặc tự thay executable đã chọn. `process --no-split` dùng sentence
+  timing khi chỉ dịch/optimize; native FWW boundaries không bị display timing cũ đổi.
+- Full sau model-window fix **1.187 pass / 5 skip / 51 deselect / 114,72 s**; sau sửa
+  cuối giữ native boundaries, regression red→green và ASR/CLI **587 pass / 13 deselect /
+  38,88 s**. Ruff/pyright/sync pass. Không đổi dependency hoặc chính sách strict word.
+- EXE **VideoCaptioner-ASR-S6-Review-20260908**: build exit 0 / 208,719 s, 6 optional
+  warnings, 0 error, 6 SyntaxWarning; 218 module/PYZ khớp. EXE 31.164.611 byte,
+  SHA-256 **c9604ea57d8e34bfb267f5191ec6b719e5cb72eec206d4d4d2a483d51e730426**.
+  GUI 25,844 s/exit 0. Process user WAV → native sentence → replay bản dịch đã đo →
+  SRT Việt: **exit 0 / 29,25 s / 9 cue**, child one_word=0, sentence=true, không API mới.
+  SRT trùng hash bản đã render nên không lặp synthesis. Corpus sentence smoke:
+  **58 cue hợp lệ / 69,938 s**; EXE local-diarize **31,219 s**, giữ text/timing/IDs/identity.
+- Film text chấm trên bản chép caption cũ: CER 0.6B **12,77%**, 1.7B **6,38%**,
+  FWW **7,45%**; không dùng caption visibility làm acoustic timing. Bản Việt vẫn
+  truyền lỗi ASR về tước hiệu/thuật ngữ/câu hỏi. Không có nghiệm thu ngôn ngữ toàn tuyến.
+- Phép đo dịch mới trên 12 câu reference đã chuẩn bị, ô key kết thúc chưa có key,
+  **0 request**. Gate gateway cũ 9 cue/11.190 token giữ nguyên, không gọi lại hoặc xin Scribe.
+- Stress 26 phút chưa pass; speech-gap trên user clip không chữa được strict timing.
+  Còn alignment thay thế, quality/genre/pronoun/reference và phút sửa tay. **ASR chưa
+  hoàn tất nghiệm thu; không chuyển OCR, không tự commit/push.**
+- Đã dọn tiếp 10 mục build/test tạm (1.824 file / 356.069.728 byte) vào Thùng rác,
+  giữ source snapshot/diagnostics đã nén và so hash. Bộ duyệt tự động chặn gỡ junction
+  của `s6-final-build/smoke-app`; giữ nguyên host/link đó và mọi artifact, không đổi
+  sang lệnh xóa khác để vượt chặn. Media/AppData thật/runtime giữ nguyên.
+
+## 2026-09-08 (S6 được chọn nguồn; sửa gom cue trước gán speaker)
+
+- User đã chọn **corpus công khai + clip hiện có** để hoàn tất ASR trước OCR. Đang
+  tải AliMeeting Eval từ nguồn OpenSLR119, dùng một bản dưới root evidence. File
+  `.partial` có kích thước cấp sẵn, **không chứng minh tải xong**; trạng thái/receipt
+  nằm ở `datasets/AliMeeting-Eval/range-state.json`. Không đổi scope thành Scribe
+  hoặc gửi corpus sang LLM trả phí khi chưa có job/credential tương ứng.
+- Sửa ngắt câu local diarization: gom word theo punctuation/gap/provenance và chỉ
+  nối khi toàn khoảng cue không có quá một speaker, rồi đo coverage ở cấp cue.
+  Ngưỡng 80% giữ nguyên; không nối qua turn/overlap/người chen trong khoảng trống.
+  Word mode, cue có context hoặc bản dịch giữ ranh giới. Không đổi text/token IDs,
+  timing gốc, manual override, audio identity hoặc engine/model pin.
+- Replay từ 88 word + 13 span đã lưu: **30 → 9 cue; 15 → 0 cue một chữ**. Kết quả
+  mới **3 assigned / 6 unknown ở cấp câu**; không nhầm với 71/17 ở cấp word hoặc
+  suy speaker accuracy tăng. Không inference/API lại. Evidence `cue-assembly-replay.json`,
+  output `faster-hybrid-readable.json` trong job ASR Completion hiện có.
+- Test gần **184 pass / 14,31 s**, sau đó thêm case mixed timing. Full sau thay đổi
+  **1.156 pass / 5 skip / 51 deselect / 110,49 s**; ruff, pyright 0/0 và translation
+  sync pass. Artifact TranslationGuard trước đó chưa chứa sửa gom cue này.
+- Artifact mới **VideoCaptioner-ASR-CueAssembly-20260908**: build **exit 0 / 190,921 s**,
+  6 optional/platform warning, 0 error, 6 upstream SyntaxWarning; 218 module/PYZ khớp.
+  EXE **31.162.855 byte**, SHA-256
+  **87d357843622dfb187e69080a04f5b6015527d81af155995d3d1eb9cbd9c69b4**.
+  EXE replay word đã lưu qua loopback + Community-1 thật **exit 0 / 30,25 s**, đúng 9 cue,
+  text/timing/identity/pending đúng. Không ASR/API trả phí lại. GUI **25,453 s**, đóng
+  đúng PID exit 0. Sáu mục temp/build/test (1.478 file / 408.518.136 byte) đã vào Thùng
+  rác; giữ diagnostics đã so hash, artifact/media/runtime. Code chưa commit/push.
+- Thêm `scripts/asr_acceptance.py`: đọc TextGrid dài với quote/multiline đúng,
+  CER giữ script/case/numbers và DER có overlap/global speaker mapping. **18 test**;
+  đối chiếu DER trên raw tutorial tiếng Anh cũ khớp pyannote.metrics: 5,2033% không
+  collar; 1,31685% collar tổng 250 ms quanh biên. Đây không phải nghiệm thu Trung S6.
+  Bộ chọn clip giữ ranh giới utterance, chuẩn bị kênh đầu far-field theo recipe công
+  khai; chưa có kết quả corpus nên chưa chọn mặc định hoặc gọi ASR hoàn tất.
+- Bổ sung timing score chỉ trên full utterance khớp duy nhất và đúng ranh giới word,
+  báo coverage cùng median/p95; không nội suy timing chữ từ nhãn câu. Metrics hiện
+  **24 test pass / 1,14 s** (full 1.156 phía trên có trước sáu test timing bổ sung).
+- Stress public **26,2308 phút**, Qwen 1.7B/chunk 120 s mặc định: **exit 5 / 443,969 s**,
+  lỗi inference, chưa output/review. Cache job xác nhận bốn chunk đầu đã nhận dạng,
+  lỗi ở vùng **464,2–581,65 s**. Thử riêng vùng đó với chunk tối đa 30 s: **5/5 đoạn
+  nhận dạng xong / 31,813 s** gồm load, chưa alignment. Dùng 30 s làm cấu hình ứng viên
+  cho corpus; chưa đổi mặc định hoặc coi toàn stress đã pass. Giữ cache/raw/lỗi cũ.
+- Nhãn AliMeeting đã đọc đủ tám bản ghi. TextGrid xmax là cuối vùng gán nhãn, có thể
+  ngắn hơn audio (bản đầu có đuôi 22,897 s ngoài nhãn); không đổi offset/scale để ép
+  hai duration bằng nhau. Chọn clip trong vùng nhãn, stress giữ audio đầy đủ và đánh
+  dấu đuôi ngoài vùng chấm. Setup guard chuẩn bị dữ liệu đã sửa theo khác biệt này.
+
+## 2026-09-08 (ASR trước OCR; bỏ Scribe; sửa guard dịch thiếu và build riêng)
+
+- User yêu cầu **làm hết ASR rồi mới sang OCR**; OCR pilot tạm dừng. User bỏ nghiệm
+  thu ElevenLabs/Scribe và chọn gateway **api.videocaptioner.cn / gpt-5.6-terra** cho
+  dịch. [Prompt mới](docs/dev/asr-completion-next-session-prompt.md) thay thứ tự cũ;
+  không tự commit/push code mới. ASR/S6 vẫn chưa hoàn tất, không lấy source/test pass
+  hoặc hạng mục user bỏ qua làm nghiệm thu toàn sản phẩm.
+- Qwen 1.7B đã cài, cùng mẫu 60 s/pin aligner/strict policy: source CLI **exit 5 /
+  54,422 s**, 94 token, vẫn sáu vị trí timing lỗi như 0.6B. Chữ có cải thiện nhưng
+  chưa chữa alignment; giữ raw/identity/pending, không clamp hoặc OCR thay ASR.
+- Baseline Faster-Whisper large-v3 đã có: VAD off thêm chữ đầu clip/bốn cue 0 ms;
+  VAD `silero_v4_fw` **exit 0 / 16,922 s**, 88 word / 94 ký tự, bounds/timing hợp lệ
+  nhưng còn sai từ/tên. Core Community-1 **21,047 s**, 13 span / 3 nhãn, 71 assigned /
+  17 unknown; giữ identity và xóa pending sau diarization. Gom sau đó có 30 cue, còn
+  mảnh quá ngắn; chưa nghiệm thu speaker accuracy. Đây là các stage tường minh, không
+  một lệnh full pipeline mới hoặc benchmark so tốc độ model.
+- Dịch 9 cue gom trước diarization từ ASR thật bằng model user chọn: **exit 0 /
+  159,11 s / 1 request**, timeout 300 s; giữ source/IDs/timing/metadata/identity/pending.
+  Gateway báo **11.190 token** (10.879 prompt gồm 8.891 cached, 311 completion), chưa
+  có giá thực. Key chỉ password/RAM, owner/worker đã thoát. Tên sai từ ASR còn trong
+  bản Việt; directed pronoun rules chưa được chấm. Không xin/gọi lại key cho gate này.
+- Sửa `llm_translator.py`: response còn thiếu/sai sau ba lần validate phải fail batch,
+  không điền source text rồi cache như bản dịch thành công; namespace cache mới tránh
+  đọc fallback cũ, không xóa cache user. Regression mới **4 red → green**, 1 repair/cache
+  pass; gần + CLI **166 pass / 5,07 s**. Full **1.124 pass / 5 skip / 51 deselect /
+  97,09 s**, ruff pass, pyright 0/0, translations sync. Không đổi ASR/alignment policy.
+- Artifact **VideoCaptioner-ASR-TranslationGuard-20260908**: build **exit 0 / 186,313 s**,
+  6 optional/platform warnings, 0 error, 6 upstream SyntaxWarning; **218 module/PYZ khớp**.
+  EXE **31.161.608 byte**, local **14:57:10**, SHA-256
+  **90c1abd9bd12aabe187243ee7b13468aeccf728bc9512b439672fb787a3d55a0**;
+  onedir **575 file / 237.662.680 byte**, chỉ thiếu 5 generated resource pyc so với Lifetime.
+- EXE loopback: malformed **3 request → exit 5 / không output**; response đủ **1 request
+  → exit 0 / 2 cue**, không cache hỏng. GUI startup **25,546 s**, WM_CLOSE đúng PID,
+  **exit 0**. Render bản ASR→Terra bằng EXE mới **exit 0 / 8,282 s**, ffprobe/frame pass;
+  đây là bản giữ nguyên lỗi nguồn, không bản Việt biên tập từ hình. API job khởi động
+  trước code fix; nhánh lỗi mới nghiệm thu bằng regression/EXE loopback, không paid rerun.
+- Evidence giữ trong **VC-ASR-Completion-20260908-140534** dưới root evidence đã gom;
+  media/runtime/model/binary gốc giữ nguyên. Ba lỗi setup baseline helper được ghi riêng,
+  không tính exit 0 thiếu output là pass. Còn alignment/phồn thể, ngắt câu, chất lượng
+  speaker/xưng hô và bộ nhãn S6; **không chuyển OCR hoặc tự commit/push**.
+- Preflight CTC chỉ đọc metadata/vocab public của model Chinese dùng trong danh sách
+  WhisperX: 3.503 mục, thiếu ký tự ở cả text Qwen 1.7B/reference/phồn thể. Không tải
+  weight **1.276.296.151 byte**, không inference/đổi script để ép coverage. Đã khoanh
+  AliMeeting/AISHELL-4 làm nguồn nhãn S6 và hỏi user chọn nguồn; chưa tải corpus.
+  Sáu mục build/test tạm đã vào Thùng rác, metadata/log cần giữ được nén và so hash.
+
 ## 2026-09-08 (chốt tài liệu và prompt so sánh OCR local / AI đọc ảnh)
 
 - User yêu cầu **prompt next session và submit/push**. Manifest từ baseline **fb2bfad**

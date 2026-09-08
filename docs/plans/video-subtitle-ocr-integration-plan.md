@@ -1,5 +1,9 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Tạm dừng theo chỉ đạo mới ngày 2026-09-08: hoàn tất ASR trước, rồi mới làm OCR.**
+Theo [prompt ASR hiện tại](../dev/asr-completion-next-session-prompt.md); các gói OCR
+bên dưới chưa được khởi chạy và không thay thế lỗi/tiêu chí nghiệm thu ASR còn mở.
+
 Ngày 2026-09-08. Trạng thái: **thống kê prototype và thiết kế, chưa triển khai tính năng**.
 Baseline code Lifetime `e6c0074`, HEAD `fb2bfad`, nhánh `codex/asr-s3-native`.
 Giữ các thay đổi tài liệu đang có. User giao lập kế hoạch OCR; không tự mở S6,

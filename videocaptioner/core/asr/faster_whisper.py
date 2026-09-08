@@ -16,6 +16,7 @@ from videocaptioner.core.utils.subprocess_helper import child_environment
 
 from ..utils.logger import setup_logger
 from ..utils.subprocess_helper import StreamReader
+from .api_profiles import MissingTimingError
 from .asr_data import ASRData, ASRDataSeg
 from .base import BaseASR
 from .status import ASRStatus
@@ -37,6 +38,22 @@ def _is_valid_program(path: Optional[str]) -> bool:
 def _which_valid(program: str) -> Optional[str]:
     path = shutil.which(program)
     return path if _is_valid_program(path) else None
+
+
+def resolve_program(configured: str, device: str) -> str:
+    """Honor an explicit executable before looking for an installed default."""
+    if configured:
+        selected = configured if _is_valid_program(configured) else _which_valid(configured)
+        if selected:
+            return selected
+        raise EnvironmentError("Chương trình Faster Whisper đã chọn không hợp lệ hoặc không tồn tại.")
+    names = ("faster-whisper-xxl",) if device == "cuda" else (
+        "faster-whisper-xxl", "faster-whisper", "faster_whisper")
+    for name in names:
+        selected = _which_valid(name)
+        if selected:
+            return selected
+    raise EnvironmentError("Không tìm thấy chương trình Faster Whisper hợp lệ. Vui lòng chọn chương trình đã cài.")
 
 
 class FasterWhisperASR(BaseASR):
@@ -117,30 +134,9 @@ class FasterWhisperASR(BaseASR):
             self.one_word = 0
             self.sentence = True
 
-        # Pick the binary by device
-        if self.device == "cpu":
-            xxl_program = _which_valid("faster-whisper-xxl")
-            cpu_program = _which_valid("faster-whisper")
-            if xxl_program:
-                self.faster_whisper_program = xxl_program
-            elif cpu_program:
-                self.faster_whisper_program = cpu_program
-                self.vad_method = ""
-            else:
-                raise EnvironmentError(
-                    "Không tìm thấy chương trình Faster Whisper hợp lệ. "
-                    "Vui lòng tải lại chương trình trong phần Quản lý mô hình."
-                )
-        elif self.device == "cuda":
-            xxl_program = _which_valid("faster-whisper-xxl")
-            if not xxl_program:
-                raise EnvironmentError(
-                    "Không tìm thấy Faster Whisper GPU hợp lệ. "
-                    "Tệp chương trình có thể bị hỏng hoặc chưa tải xong. "
-                    "Vui lòng tải lại bản GPU trong Quản lý mô hình, "
-                    "hoặc đổi Thiết bị chạy sang cpu nếu chỉ dùng bản CPU."
-                )
-            self.faster_whisper_program = xxl_program
+        self.faster_whisper_program = resolve_program(self.faster_whisper_program, self.device)
+        if Path(self.faster_whisper_program).stem.lower() in ("faster-whisper", "faster_whisper"):
+            self.vad_method = ""
 
     def _build_command(self, audio_input: str) -> List[str]:
         """Build command line arguments for faster-whisper."""
@@ -228,6 +224,10 @@ class FasterWhisperASR(BaseASR):
 
     def _make_segments(self, resp_data: str) -> List[ASRDataSeg]:
         asr_data = ASRData.from_srt(resp_data)
+
+        # Reject before filtering: native sentence mode can also emit zero-length cues.
+        if any(seg.start_time >= seg.end_time for seg in asr_data):
+            raise MissingTimingError("Faster-Whisper returned a non-positive native interval; review required.")
 
         # Keywords that mark hallucinated text
         hallucination_keywords = [

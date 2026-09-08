@@ -107,6 +107,8 @@ DEFAULTS: Dict[str, Any] = {
         "asr": "bijian",
         "language": "auto",
         "faster_whisper": {
+            "program": "",
+            "model_dir": "",
             "model": "large-v3",
             "device": "auto",
             "vad_filter": True,

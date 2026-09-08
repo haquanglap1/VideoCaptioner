@@ -4,9 +4,10 @@ import hashlib
 import json
 from dataclasses import dataclass, replace
 
-from ..asr_data import ASRData
+from ..asr_data import ASRData, ASRDataSeg
 from ..metadata import ASRMetadata, SpeakerAssociation, StageProvenance
-from .profiles import DIARIZATION_POLICY, MODELS
+from ..native_result import native_cues
+from .profiles import DIARIZATION_POLICY, DIARIZATION_WINDOW_MS, DIARIZATION_WINDOW_STEP_MS, MODELS
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,19 @@ def validate_spans(items: object, duration_ms: int) -> tuple[SpeakerSpan, ...]:
             raise ValueError("Invalid local diarization timing or speaker.")
         spans.append(SpeakerSpan(start, end, speaker))
     return tuple(sorted(set(spans), key=lambda s: (s.start_ms, s.end_ms, s.speaker)))
+
+
+def validate_model_spans(items: object, duration_ms: int, *, samples: int | None = None) -> tuple[SpeakerSpan, ...]:
+    """Retain predictions within the pinned model's final padded analysis window."""
+    if type(duration_ms) is not int or duration_ms <= 0:
+        raise ValueError("Invalid local diarization duration.")
+    samples = duration_ms * 16 if samples is None else samples
+    if type(samples) is not int or samples <= 0 or abs(samples - duration_ms * 16) > 8:
+        raise ValueError("Invalid canonical diarization sample count.")
+    step = DIARIZATION_WINDOW_STEP_MS * 16
+    window_end = max(DIARIZATION_WINDOW_MS, (samples + step - 1) // step * step // 16)
+    # Raw spans stay unchanged. Association below intersects them with valid source cues.
+    return validate_spans(items, window_end)
 
 
 def _coverage(intervals: list[tuple[int, int]]) -> int:
@@ -79,6 +93,35 @@ def associate(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int, s
         copy.metadata = replace(metadata, speaker=speaker, diarization=association)
         result.append(copy)
     return data.with_segments(result)
+
+
+def assemble_diarized_cues(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int,
+                           scope: str, recognition: StageProvenance) -> ASRData:
+    """Assemble readable cues, then measure speaker coverage on each complete cue."""
+    validate_source(data, duration_ms)
+    # Reviewed context and translations refer to existing cue IDs and boundaries.
+    if data.conversation_context.enabled or any(s.translated_text for s in data):
+        return associate(data, spans, duration_ms, scope, recognition)
+    prepared = []
+    for seg in data:
+        copy = seg.clone()
+        if copy.metadata is None:
+            copy.metadata = ASRMetadata(recognition.provider, scope, recognition=recognition,
+                                        timing="imported" if recognition.provider == "imported" else "native")
+        prepared.append(copy)
+
+    def can_join(previous: ASRDataSeg, following: ASRDataSeg) -> bool:
+        if (previous.metadata is not None and following.metadata is not None
+                and previous.metadata.timing != following.metadata.timing
+                and "edited" not in (previous.metadata.timing, following.metadata.timing)):
+            return False
+        # Include intervening silence: a second speaker in the gap must block a join.
+        labels = {s.speaker for s in spans
+                  if s.start_ms < following.end_time and s.end_ms > previous.start_time}
+        return len(labels) <= 1
+
+    grouped = native_cues(data.with_segments(prepared), can_join=can_join)
+    return associate(grouped, spans, duration_ms, scope, recognition)
 
 
 def diarization_key(audio_hash: str, data: ASRData) -> str:

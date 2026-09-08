@@ -1,5 +1,10 @@
 # Prompt phiên tiếp theo — OCR local và AI đọc ảnh cho phụ đề Việt
 
+**TẠM DỪNG theo chỉ đạo mới của user: làm hết ASR rồi mới sang OCR.**
+Ưu tiên [bàn giao hoàn tất ASR](asr-completion-next-session-prompt.md). Nội dung pilot
+OCR dưới đây là kế hoạch giữ lại, không được tự khởi chạy khi ASR còn chưa hoàn tất.
+Scribe đã được user loại khỏi nghiệm thu; LLM chọn gateway/gpt-5.6-terra theo prompt ASR mới.
+
 Tiếp tục ở checkout **VideoCaptioner-ASR-S3** user chỉ định, nhánh **codex/asr-s3-native**.
 Đọc đầy đủ `AGENTS.md`, `README.md`, phần mới nhất `status.md`,
 [kế hoạch OCR](../plans/video-subtitle-ocr-integration-plan.md) và phần mới nhất của

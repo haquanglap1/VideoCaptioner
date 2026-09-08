@@ -41,6 +41,11 @@ Khi chạy `uv run videocaptioner` không kèm tham số, ứng dụng sẽ mở
 # Nhận dạng giọng nói sang phụ đề
 uv run videocaptioner transcribe video.mp4 --asr bijian
 
+# Dùng Faster-Whisper và model đã cài ở vị trí riêng
+uv run --frozen videocaptioner transcribe video.mp4 --asr faster-whisper \
+  --fw-program path/to/faster-whisper-xxl.exe --fw-model-dir path/to/models \
+  --fw-model large-v3 --fw-device cuda --language zh
+
 # Dịch phụ đề
 uv run videocaptioner subtitle input.srt --translator bing --target-language en
 
@@ -62,6 +67,11 @@ uv run videocaptioner vieneu rollback
 
 # Xử lý toàn bộ: nhận dạng -> tối ưu/dịch -> ghép video
 uv run videocaptioner process video.mp4 --target-language vi
+
+# Chỉ dịch các câu có timing từ ASR; không yêu cầu timestamp từng từ
+uv run videocaptioner process video.mp4 --asr faster-whisper \
+  --fw-program path/to/faster-whisper-xxl.exe --fw-model-dir path/to/models \
+  --fw-device cuda --language zh --no-optimize --no-split --translator llm --target-language vi
 
 # Toàn bộ pipeline với target-only artifact riêng cho TTS
 uv run videocaptioner process video.mp4 --target-language vi --dub \

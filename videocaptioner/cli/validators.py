@@ -128,8 +128,23 @@ def validate_ffmpeg() -> bool:
     return True
 
 
-def validate_faster_whisper() -> bool:
+def validate_faster_whisper(config: dict | None = None) -> bool:
     """Check that FasterWhisper executable is available."""
+    configured = get(config or {}, "transcribe.faster_whisper.program", "")
+    model_dir = get(config or {}, "transcribe.faster_whisper.model_dir", "")
+    if model_dir and (not isinstance(model_dir, str) or not Path(model_dir).is_dir()):
+        output.error("Faster-Whisper model directory does not exist.")
+        return False
+    if configured:
+        from videocaptioner.core.asr.faster_whisper import resolve_program
+        try:
+            if not isinstance(configured, str):
+                raise ValueError("Faster-Whisper program must be a path or executable name.")
+            resolve_program(configured, get(config or {}, "transcribe.faster_whisper.device", "auto"))
+        except (OSError, ValueError) as exc:
+            output.error(str(exc))
+            return False
+        return True
     if not shutil.which("faster-whisper-xxl") and not shutil.which("faster-whisper") and not shutil.which("faster_whisper"):
         output.error("FasterWhisper not found on PATH")
         output.hint("Download from the GUI (Settings > FasterWhisper), or install manually.")
@@ -181,7 +196,7 @@ def validate_transcribe(config: dict) -> bool:
     if asr == "whisper-api":
         return validate_whisper_api(config)
     if asr == "faster-whisper":
-        return validate_faster_whisper()
+        return validate_faster_whisper(config)
     if asr == "whisper-cpp":
         return validate_whisper_cpp()
     # bijian/jianying: no config needed (public endpoints)

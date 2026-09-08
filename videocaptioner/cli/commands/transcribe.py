@@ -106,8 +106,9 @@ def run(args: Namespace, config: dict) -> int:
             diarize=get(config, f"{asr_engine}.diarize", True),
         ) if asr_engine in ("soniox", "scribe") else None,
         # FasterWhisper options
+        faster_whisper_program=get(config, "transcribe.faster_whisper.program", "") or None,
         faster_whisper_model=fw_model_enum,
-        faster_whisper_model_dir=None,
+        faster_whisper_model_dir=get(config, "transcribe.faster_whisper.model_dir", "") or None,
         faster_whisper_device=get(config, "transcribe.faster_whisper.device", "auto"),
         faster_whisper_vad_filter=get(config, "transcribe.faster_whisper.vad_filter", True),
         faster_whisper_vad_method=vad_enum,

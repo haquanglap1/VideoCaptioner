@@ -21,7 +21,13 @@ from ..audio_identity import identify_audio, require_audio_match
 from ..metadata import ASRMetadata, StageProvenance
 from ..native_result import native_cues
 from ..review import NativeReviewRequired
-from .diarization import associate, diarization_key, validate_source, validate_spans
+from .diarization import (
+    assemble_diarized_cues,
+    associate,
+    diarization_key,
+    validate_model_spans,
+    validate_source,
+)
 from .profiles import MODELS, RECOGNITION_POLICY, LocalASRConfig
 from .review import LocalReview
 from .runtime import LocalRuntime, LocalRuntimeError, locate
@@ -171,14 +177,15 @@ def add_local_speakers(audio_path: str, data: ASRData, config, *, aligned: bool,
         if raw is None:
             runtime.start(check)
             raw = runtime.request(binary, check=check)
-        spans = validate_spans(raw, len(audio))
-        result = associate(data, spans, len(audio), scope, recognition)
+        spans = validate_model_spans(raw, len(audio), samples=int(audio.frame_count()))
+        assemble = associate if config.need_word_time_stamp else assemble_diarized_cues
+        result = assemble(data, spans, len(audio), scope, recognition)
         result.pending_diarization = False
         check()
         # Ambiguous associations remain usable with unknown speakers; they are not success-cache entries.
         if cache is not None and all(s.metadata and s.metadata.diarization and
                                      s.metadata.diarization.status == "assigned" for s in result.segments):
             cache.set(key, raw, expire=86400 * 2)
-        return result if config.need_word_time_stamp else native_cues(result)
+        return result
     finally:
         runtime.close()

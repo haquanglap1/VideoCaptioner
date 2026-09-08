@@ -68,8 +68,8 @@ def run(args: Namespace, config: dict) -> int:
     subtitle_path = str(out_dir / f"{path.stem}.srt")
     dubbing_subtitle_path = str(out_dir / f"{path.stem}_dubbing-target.srt")
 
-    # Only use word timestamps if subtitle processing (split/optimize) will run
-    need_word_ts = not (no_optimize and no_translate and no_split)
+    # Translation and cue-preserving optimization can use native sentence timing.
+    need_word_ts = not no_split and not (no_optimize and no_translate)
     tr_args = Namespace(
         input=str(path), output=subtitle_path, format="srt", word_timestamps=need_word_ts,
         verbose=verbose, quiet=quiet, config=getattr(args, "config", None),

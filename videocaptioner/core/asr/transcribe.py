@@ -87,7 +87,8 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
         asr_data.pending_diarization = config.local_asr.diarize
         if config.local_asr.diarize:
             return add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
-        if not config.need_word_time_stamp and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR)):
+        if (not config.need_word_time_stamp and config.transcribe_model is not TranscribeModelEnum.FASTER_WHISPER
+                and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR))):
             asr_data.optimize_timing()
         return asr_data
 
