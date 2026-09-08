@@ -1,5 +1,107 @@
 # Project Status
 
+## 2026-09-08 (chốt các audit sau S6 và prompt phiên tiếp theo)
+
+- User yêu cầu **commit/push và prompt next session**. Snapshot **chín file** từ
+  nền `2f8e0a8` gồm dev scorer/test định vị entity, bốn báo cáo segmentation/parity/
+  CTC preflight/decoder Qwen, cập nhật contract CTC, status và prompt bàn giao.
+- [Prompt tiếp tục](docs/dev/asr-completion-next-session-prompt.md) phân biệt nền
+  đo với HEAD bàn giao, ghi thứ tự đọc các audit mới và trạng thái evidence chỉ
+  ở máy. **ASR chưa đạt; OCR dừng**; quyền submit này không áp dụng cho phiên sau.
+- Lượt chốt chỉ rà manifest/diff, nội dung Git và liên kết tài liệu; kế thừa 12 test
+  scorer, ruff/pyright scorer, audit validation và gate 595 ASR/CLI + TimingGuard.
+  Không lặp model/API, scoring, full/static/build/GUI. Giữ evidence/media/runtime/
+  AppData/artifact tại máy, không đưa vào commit hoặc đổi code ứng dụng.
+
+## 2026-09-08 (audit decoder Qwen và phân loại raw S6)
+
+- Tiếp tục ASR-S3/`codex/asr-s3-native`, HEAD **2f8e0a8**, giữ tám file thay đổi
+  cũ; không commit/push. [Báo cáo](docs/dev/asr-qwen-decoder-audit-2026-09.md),
+  evidence `VC-ASR-Completion-20260908-140534/s6-qwen-decoder-audit-20260908/`.
+- Năm file Qwen decoder/utils/model/processor/config **khớp từng byte** với source
+  upstream pin; revision model vẫn như runtime. CPU **12 case pass**: đủ 5.000
+  class timestamp qua FP32/BF16 synthetic logits và ba bridge, sai số **0 ms**.
+  Không lỗi làm tròn ms hoặc bản sửa upstream liên quan làm cơ sở inference mới;
+  không suy synthetic decoder pass thành acoustic parity/ASR pass.
+- Raw S6: mỗi nhánh **28/32 clip, 141 chunk**; Qwen 0.6B **533 zero / 77 reversed /
+  588 overlap**, Qwen 1.7B **519 / 89 / 628**. Cờ có thể giao nhau; mọi endpoint
+  nằm trên lưới 80 ms. User giữ sáu item có cờ, không sửa raw. Chỉ phân loại, không
+  chấm lại CER/entity/strict/RMS hoặc giải thích mọi lỗi bằng một nguyên nhân.
+- Tải **12 file nhỏ / 155.551 byte**. Lỗi setup selector AST ban đầu giữ riêng;
+  `run02/validation.json` pass, CPU **exit 0 / 9,656 s**. **231 file bảo vệ** và
+  **348 file nguồn raw** giữ hash/mtime (có thể giao nhau). **0 weight / 0 model
+  inference / 0 API ASR-dịch**; không đổi app/scorer/tests/runtime/artifact hoặc
+  lặp full/static/build/GUI. Gate 595 ASR/CLI và TimingGuard được kế thừa.
+- **ASR chưa đạt; OCR dừng.** Chưa có cơ sở acoustic dispatch mới; dịch reference
+  cần key mới nhập kín, không tìm credential cũ. Các tiêu chí chất lượng vẫn mở.
+
+## 2026-09-08 (preflight OmniASR CTC v2 và FireRedASR2-AED)
+
+- Tiếp tục đúng ASR-S3/`codex/asr-s3-native`, HEAD **2f8e0a8**, giữ bảy file thay
+  đổi cũ; không commit/push. [Báo cáo](docs/dev/asr-ctc-second-preflight-2026-09.md),
+  evidence `VC-ASR-Completion-20260908-140534/s6-ctc-second-preflight-20260908/`.
+- Trên đúng 91 ID/hash/số ký tự preflight cũ: OmniASR CTC v2 đủ vocabulary **73/91**,
+  FireRedASR2-AED **84/91**. Omni thiếu một ký tự target user; FireRed thiếu bốn chữ
+  phồn thể và năm Latin thường. **Dừng cả hai trước tải weight**; không ghép head,
+  đổi script/case hoặc unknown. Đủ dictionary không là acoustic/timing pass.
+- Source pin cho thấy Omni CTC v2 dùng chung tokenizer giữa các size; FireRed có
+  raw CTC nhưng wrapper sửa/kéo/chia đều timestamp, không phù hợp strict raw của
+  job. Không mang wrapper vào app, không lặp SenseVoice/window/benchmark/scoring cũ.
+- Contract snapshot trước tải/coverage; **17 file nhỏ / 532.893 byte**, receipts
+  khớp. Validation pass: **195 file bảo vệ** và **100 file nguồn mẫu** giữ hash/mtime
+  (có thể giao nhau). **0 weight download / 0 model inference / 0 API ASR-dịch**;
+  chỉ HTTP GET công khai metadata/code. App/scorer/tests/dependency/runtime/artifact
+  giữ nguyên, kế thừa 595 ASR/CLI + TimingGuard, không lặp full/static/build/GUI.
+- **ASR chưa đạt; OCR dừng.** Chưa có ứng viên acoustic đủ cơ sở dispatch. Dịch
+  reference chưa key mới; phồn thể, stress quality, xưng hô, sửa tay và genre còn mở.
+
+## 2026-09-08 (audit parity acoustic và mở rộng rubric số/đơn vị)
+
+- Tiếp tục ASR-S3, HEAD **2f8e0a8**, nhánh tracking đúng; giữ sáu file thay đổi của
+  lượt trước. [Báo cáo mới](docs/dev/asr-acoustic-parity-2026-09.md), evidence
+  `VC-ASR-Completion-20260908-140534/s6-acoustic-parity-20260908/`. **ASR chưa đạt;
+  OCR vẫn dừng**, không commit/push hoặc đổi default.
+- Audit CPU **54/54** feature khớp từng bit với frontend upstream pin và phép LFR
+  độc lập, max error **0**. AST encoder khác cách đặt maxlen của mask, không ảnh
+  hưởng single input không padding của pilot. Chưa có căn cứ lỗi frontend/encoder
+  để dispatch acoustic khác; không lặp SenseVoice/window sweep. Process **exit 0 /
+  10,844 s**, không load weight; 0 acoustic inference mới.
+- Rà reference 32 clip, 125 ứng viên số kèm đơn vị; đóng băng **79 nhãn / 11 clip**,
+  65 vị trí mới và 14 trùng bộ cũ; giữ 46 mục ngoài phạm vi/chưa chấm cùng lý do.
+  Cùng 54 ID có recognition đầy đủ: Qwen 0.6B **40 khớp / 4 ambiguous**, Qwen 1.7B
+  **48 / 1**, FWW word/sentence cùng **40 / 10**. 25 nhãn khác thiếu Qwen output;
+  không dùng denominators khác nhau để chọn engine. Đây là textual correspondence,
+  chưa là full entity/value/speaker accuracy; giữ giới hạn ký hiệu phần trăm.
+- Evidence validation pass; 67 file nguồn và 51 file bảo vệ cũ giữ hash/mtime
+  (hai inventory có thể giao nhau). Chỉ thêm report/harness riêng và cập nhật tài
+  liệu; không sửa app/scorer/tests/runtime/artifact. Kế thừa 595 ASR/CLI và EXE
+  TimingGuard, không rerun full/static app/build/GUI/API. Reference dịch 0 request,
+  chưa key mới; acoustic/phồn thể, stress, xưng hô, sửa tay và genre/dialect còn mở.
+
+## 2026-09-08 (kiểm tra segmentation CTC và định vị nhãn tên/số)
+
+- Tiếp tục checkout ASR-S3, `codex/asr-s3-native`, HEAD **2f8e0a8**, trạng thái đầu
+  sạch. [Báo cáo mới](docs/dev/asr-ctc-segmentation-audit-2026-09.md); evidence riêng
+  `VC-ASR-Completion-20260908-140534/s6-alignment-audit-20260908/`. **ASR chưa đạt;
+  OCR vẫn dừng**, không commit/push hoặc đổi engine mặc định.
+- Chốt contract trước một thử nghiệm mới: cùng 60 s/960.000 sample và nguyên target
+  94 ký tự; chỉ chia acoustic thành 4 × 15 s rồi ghép emissions, không chia/đổi text.
+  Frame hỗ trợ tăng **2/94 → 37/94**, blank **99,8% → 96,2%**; cửa sổ cuối toàn blank.
+  Strict/RMS pass không đủ acoustic acceptance: **57 target chưa có frame hỗ trợ**.
+  Không tích hợp backend, sửa raw hoặc thử thêm window tùy tiện. Host **exit 0 /
+  8,437 s**, worker **4,203 s**, peak CUDA allocated **1.011.769.344 byte**; process
+  và lease đóng, model/runtime/raw/input giữ hash/mtime. Chỉ bốn acoustic inference.
+- Thêm dev scorer `scripts/asr_entity_acceptance.py`: định vị nhãn bằng mọi đường
+  Levenshtein tối thiểu, giữ ambiguity và rubric số tường minh; không dùng dò literal
+  nơi khác trong clip làm pass. 21 nhãn cũ: mỗi Qwen **15/18** nhãn có output đầy đủ
+  khớp tại vị trí, 3 chưa chấm; FWW word/sentence cùng **17/21**, gồm sáu dạng digits
+  tương đương. Chưa là speaker/entity accuracy toàn corpus; không đổi CER/ASR text.
+- 12 test mới pass / 0,35 s (đối chiếu 225 cặp chuỗi với mọi edit path), ruff hai file
+  mới pass, pyright scorer 0/0 bằng Python project đã có; không lặp full,
+  ASR/CLI, build, EXE smoke hoặc gateway đã đo. Không đổi code app/dependency/resource.
+  Reference dịch chưa có key mới, 0 API request; còn acoustic/phồn thể, stress quality,
+  nhãn đầy đủ, xưng hô, phút sửa tay và genre/dialect.
+
 ## 2026-09-08 (chốt ASR/S6 và prompt tiếp tục theo yêu cầu user)
 
 - User yêu cầu **commit/push và prompt sang session sau**. Snapshot 28 file từ nền

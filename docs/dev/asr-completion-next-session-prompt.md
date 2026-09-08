@@ -1,14 +1,111 @@
 # Tiếp tục ASR sau benchmark S6
 
 Làm tại checkout VideoCaptioner-ASR-S3 user chỉ định, nhánh `codex/asr-s3-native`.
-Commit bàn giao chứa prompt này chốt code ASR/CLI, guard dịch thiếu, tests và tài liệu
-S6 từ nền lịch sử **63941a8**. Xác minh HEAD và tracking branch bằng `git log -1`
-và `git status --short --branch`; các ghi chú “chưa commit” ở báo cáo cũ là trạng thái
-tại thời điểm đo. Quyền commit/push lượt bàn giao đã dùng, không tự áp dụng cho thay đổi mới.
+Commit bàn giao chứa prompt này chốt **chín file** scorer/tests và tài liệu audit
+segmentation, parity, OmniASR/FireRed và decoder Qwen từ nền **2f8e0a8**.
+Commit `2f8e0a8` trước đó đã chốt code ASR/CLI, guard dịch thiếu và S6 từ `63941a8`.
+Xác minh HEAD và tracking branch bằng `git log -1` và `git status --short --branch`.
+Mốc `2f8e0a8` và ghi chú “chưa commit” trong báo cáo cũ là trạng thái lúc đo;
+không reset checkout về mốc đó. Quyền commit/push lượt bàn giao đã dùng, không
+tự áp dụng cho thay đổi mới. Evidence trong `build/` và artifact trong `dist/`
+giữ tại máy, không nằm trong commit; không tải lại hoặc force-add chúng vào Git.
 Đọc đầy đủ AGENTS.md, README.md, phần mới nhất của status.md, rồi
-`docs/dev/asr-s6-results-2026-09.md`, `docs/dev/asr-s6-followup-2026-09.md` và
-`docs/dev/asr-ctc-candidate-2026-09.md`. Đọc thêm implementation theo đúng phần cần xử lý.
+`docs/dev/asr-qwen-decoder-audit-2026-09.md`,
+`docs/dev/asr-ctc-second-preflight-2026-09.md`, `docs/dev/asr-acoustic-parity-2026-09.md`,
+`docs/dev/asr-ctc-segmentation-audit-2026-09.md`, `docs/dev/asr-s6-results-2026-09.md`,
+`docs/dev/asr-s6-followup-2026-09.md` và `docs/dev/asr-ctc-candidate-2026-09.md`.
+Đọc thêm implementation theo đúng phần cần xử lý.
 Chạy `git status --short --branch` trước sửa; không reset/stash hoặc bỏ thay đổi hiện có.
+
+## Lượt audit decoder Qwen — đọc trước các snapshot bên dưới
+
+Đọc [audit decoder Qwen](asr-qwen-decoder-audit-2026-09.md). Evidence riêng
+`s6-qwen-decoder-audit-20260908/` cùng job Completion, output đúng ở `run02/`;
+giữ cả lỗi setup selector AST và helper/report gốc. Nền đo **2f8e0a8**;
+tài liệu audit đã nằm trong snapshot bàn giao chứa prompt này.
+
+- Năm file decoder/utils/model/processor/config khớp từng byte với upstream pin;
+  revision model không đổi. CPU 12 case, đủ **5.000 class**, FP32/BF16 synthetic
+  logits qua ba bridge: **0 ms** sai số. Không lỗi đổi ms hoặc bản sửa upstream
+  liên quan để dispatch lại; synthetic logits không là acoustic parity.
+- Raw hai nhánh: mỗi nhánh 28/32 clip, 141 chunk; zero-duration **533/519**,
+  reversed **77/89**, overlap **588/628**, cờ có thể giao nhau. Mọi endpoint nằm
+  trên lưới 80 ms; user vẫn sáu item có cờ. Không sửa raw, chấm lại timing/quality
+  hoặc suy lỗi duy nhất từ lưới. Raw Qwen không có logits để chấm margin/precision.
+- **12 file metadata/code nhỏ / 155.551 byte**, validation pass; **231 file bảo
+  vệ và 348 nguồn raw** giữ hash/mtime, inventory có thể giao. **0 weight / 0 model
+  inference / 0 API ASR-dịch**. Không lặp audit này, preflight/scoring/benchmark cũ
+  hoặc full/static/build/GUI đã pass. App/scorer/tests/runtime/artifact giữ nguyên.
+- **ASR chưa đạt; OCR dừng.** Cần cơ sở acoustic mới trước dispatch; reference dịch
+  vẫn cần key mới nhập kín, không tìm credential cũ. Giữ các tiêu chí chất lượng mở.
+
+## Lượt preflight hai head mới — đọc trước các snapshot bên dưới
+
+Đọc [preflight OmniASR/FireRed](asr-ctc-second-preflight-2026-09.md). Evidence riêng
+`s6-ctc-second-preflight-20260908/` cùng job Completion; giữ report/helper cũ.
+Nền đo `2f8e0a8`; tài liệu audit đã nằm trong snapshot bàn giao chứa prompt này.
+
+- Chốt contract metadata-only trước tải/coverage; đúng 91 ID/hash/số ký tự cũ.
+  OmniASR CTC v2 **73/91** đủ vocab, thiếu một chữ của target user. FireRedASR2-AED
+  **84/91**, thiếu bốn chữ phồn thể và năm Latin thường. Không tải weight, không
+  ghép head/đổi script/case hoặc dùng unknown; đủ dictionary chưa là acoustic pass.
+- Omni CTC v2 dùng chung vocabulary giữa các size; tăng size không chữa coverage
+  này. FireRed timestamp helper có kéo biên/clamp/chia đều fallback, không dùng
+  wrapper đó để vượt strict raw. Raw CTC head chưa được chạy.
+- Tải 17 file metadata/code/tokenizer nhỏ, **532.893 byte**. `validation.json`
+  pass, 195 file bảo vệ và 100 file nguồn mẫu giữ hash/mtime; inventory có thể giao.
+  **0 weight / 0 inference / 0 API ASR-dịch**, không đổi app/scorer/tests/runtime/
+  artifact hoặc lặp gate cũ. Không chạy lại scoring tên/số hoặc hai preflight này.
+- **ASR chưa đạt; OCR dừng.** Hai ứng viên không đủ contract, chưa có head mới
+  được duyệt tải. Cần cơ sở mới trước acoustic dispatch. Dịch reference vẫn cần
+  key mới nhập kín, không tìm credential cũ; giữ các tiêu chí chất lượng còn mở.
+
+## Lượt parity/số-đơn vị — đọc trước các snapshot bên dưới
+
+Đọc [audit parity acoustic và rubric số mở rộng](asr-acoustic-parity-2026-09.md).
+Evidence mới `s6-acoustic-parity-20260908/` cùng job Completion cũ; không ghi đè
+helper/report hoặc chạy lại scoring/dispatch. Nền đo `2f8e0a8`; tài liệu audit đã
+nằm trong snapshot bàn giao chứa prompt này, các evidence trước còn nguyên.
+
+- CPU frontend **54/54 khớp từng bit**, max diff 0, gồm PCM hiện có/silence và 42
+  biên LFR synthetic. So bảy định nghĩa encoder với FunASR pin: khác mask maxlen
+  không ảnh hưởng single unpadded input của pilot. **Không tìm thấy lỗi harness
+  làm cơ sở dispatch acoustic mới**; không suy parity là model/ASR pass.
+- Rà reference 32 clip: 125 ứng viên → **79 nhãn số/đơn vị tại 11 clip**; 65 vị trí
+  mới và 14 trùng bộ 21 nhãn, không cộng dồn. Giữ 46 mục ngoài phạm vi/chưa chấm.
+  Contract/reference/scorer hash khóa trước scoring; không chấm theo literal nơi khác.
+- Cùng 54 ID có recognition đầy đủ: Qwen 0.6B **40 khớp / 4 ambiguous**, Qwen 1.7B
+  **48 / 1**, FWW word/sentence **40 / 10**. Trên đủ 79 ID, hai Qwen đều có 25 nhãn
+  thiếu output. Giữ ambiguity, phạm vi grammar, số trần/tên/stress chưa bao phủ và
+  giới hạn `%` của policy lexical; chưa là full entity/value/speaker accuracy.
+- `audit-validation.json` pass, 67 source và 51 file bảo vệ cũ giữ hash/mtime; hai
+  inventory có thể giao nhau. **0 model inference, 0 API**; app/scorer/tests/runtime/
+  artifact giữ nguyên. Không lặp gate 595 ASR/CLI/TimingGuard/full/build/GUI đã pass.
+- **ASR chưa đạt, OCR dừng.** Cần giả thuyết acoustic mới có cơ sở; reference dịch
+  vẫn cần key mới nhập kín. Không tìm credential cũ hoặc đổi scope online.
+
+## Lượt audit từ 2f8e0a8 — đọc trước snapshot bên dưới
+
+Đọc [audit segmentation/nhãn mới](asr-ctc-segmentation-audit-2026-09.md). Thay đổi
+scorer/tests/tài liệu đã nằm trong snapshot bàn giao chứa prompt này. Evidence cùng job cũ:
+`s6-alignment-audit-20260908/`; không ghi đè report/helper hoặc chạy lại dispatch.
+
+- Đã thử đúng một cấu hình mới trên cùng user WAV 60 s: 4 × 15 s, giữ nguyên target
+  Qwen 94 ký tự, ghép 4 × 250 emissions trước CTC. Frame support **37/94** so với
+  2/94 nguyên 60 s; blank **96,2%**, cửa sổ cuối **100%**. Strict/RMS pass nhưng chưa
+  đạt acoustic, không thêm backend/window sweep hoặc lặp phép đo này. Đọc
+  `diagnostic.json`, `validation.json`, `contract-at-dispatch.md`, `preservation.json`.
+- Có dev scorer mới `scripts/asr_entity_acceptance.py`, 12 test synthetic; định vị
+  trên mọi edit path tối thiểu, không giải tie để tăng match. `entity-localization.json`:
+  mỗi Qwen 15/18 nhãn có recognition đầy đủ khớp, ba chưa chấm; FWW word/sentence
+  cùng 17/21 (11 exact + sáu digits tương đương). Chưa là full entity/speaker accuracy.
+  Bộ 21 nhãn vẫn chưa đủ phạm vi, không thay điểm CER hoặc sửa text/timing ASR.
+- Không đổi code app hoặc artifact. Kế thừa 595 ASR/CLI và EXE TimingGuard dưới đây;
+  không build/full test/API lại chỉ để tăng số pass. Bốn acoustic inference mới,
+  0 API; reference dịch vẫn cần key job mới nhập kín, không tìm credential cũ.
+- ASR tiếp tục **chưa đạt nghiệm thu**, OCR dừng. Cần giả thuyết acoustic có cơ sở
+  mới trước dispatch khác; không coi chia ngắn là fix đã thành công. Giữ phần còn
+  mở về phồn thể, stress quality, nhãn/quan hệ xưng hô, phút sửa tay và genre/dialect.
 
 ## Kết quả lượt tiếp nối — ưu tiên hơn snapshot S6 bên dưới
 

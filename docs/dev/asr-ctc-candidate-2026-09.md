@@ -1,5 +1,19 @@
 # Ứng viên alignment CTC sau S6
 
+[Preflight hai head tiếp theo](asr-ctc-second-preflight-2026-09.md): OmniASR CTC v2
+đủ nguyên ký tự ở 73/91 mẫu, FireRedASR2-AED 84/91; đều thiếu coverage của contract.
+Không tải weight/inference hoặc ghép head/đổi script; đường timestamp FireRed có
+postprocessing không phù hợp strict raw. SenseVoice và các report cũ giữ nguyên.
+
+[Audit parity tiếp theo](asr-acoustic-parity-2026-09.md) kiểm tra CPU: 54 trường hợp
+feature khớp từng bit với frontend pin và LFR độc lập; khác mask encoder không ảnh
+hưởng single unpadded input. Không tìm thấy cơ sở lỗi harness để dispatch thêm,
+không acoustic inference mới hoặc nghiệm thu backend từ parity.
+
+Lượt tiếp từ `2f8e0a8` có [audit segmentation được kiểm soát](asr-ctc-segmentation-audit-2026-09.md):
+giữ nguyên 94 ký tự, thử 4 × 15 s. Frame support tăng nhưng acoustic vẫn fail;
+không tích hợp backend. Contract và kết quả pilot gốc bên dưới giữ nguyên.
+
 Đây là contract thử nghiệm, **chưa phải backend sản phẩm hoặc nghiệm thu timing**.
 Giữ Qwen/ForcedAligner/Community-1 đang cài, engine mặc định và `strict-raw-v1`.
 Không dùng OCR, đổi script, thay chữ đồng âm, unknown hoặc sửa timestamp sau suy luận.
