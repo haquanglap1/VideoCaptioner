@@ -8,7 +8,13 @@ hybrid source pass; phiên nghiệm thu tiếp đã chạy **một job Whisper E
 S5.1 đã đo Qwen/Community-1 local-hybrid. Sau crash SIP, bản GUI Lifetime đã sửa hai vấn đề vòng đời
 Qt có regression và qua smoke review/editor/đóng app; chưa kết luận mọi crash ngắt quãng đã hết.
 Phiên agent tự nghiệm thu tiếp đã đo **Qwen 0.6B → alignment → Community-1 → JSON/SRT trên
-Lifetime**, native H.264 playback/seek và thêm một lượt GUI shutdown exit 0; quality vẫn chờ user.
+Lifetime**, native H.264 playback/seek và thêm một lượt GUI shutdown exit 0; chất lượng nhiều
+speaker/xưng hô vẫn chưa nghiệm thu. User đã chấp nhận bản dịch Việt của clip mẫu **4,204 s**
+sau khi chạy Google trong source app trên output Lifetime; đây chưa phải full workflow trên EXE.
+Lượt tiếp đã bổ sung **dịch Google → SRT Việt → ghép phụ đề cứng trên cùng EXE Lifetime**,
+dùng ASR đã có và video nền tổng hợp + audio public; chuỗi evidence theo từng command, chưa
+nghiệm thu full video/corpus hoặc một lượt `process` mới xuyên suốt. Phồn thể đã khoanh riêng
+raw token 7 bị đảo **2080→2000 ms**, lexical đủ; giữ policy chặn và chưa đánh dấu phồn thể đạt.
 Ngày 2026-09-08 bổ sung **hủy kiểm tra nguồn khi FFmpeg đang decode trực tiếp trên Lifetime**,
 phục hồi review và shutdown exit 0; gate hủy binary không còn là khoản chưa đo của lượt trước.
 Native online, phồn thể strict và chất lượng speaker/xưng hô vẫn còn thiếu nghiệm thu.
@@ -37,12 +43,103 @@ Prompt S3 đã thực hiện: [yêu cầu S3](asr-step-3-prompt.md).
 
 ## Bàn giao S5.2 — 2026-09-07
 
+Sau lượt phụ đề Việt, user yêu cầu commit/push tài liệu và
+[prompt phiên tiếp theo mới nhất](asr-vietnamese-next-session-prompt.md), từ baseline
+**d820ca0**. Manifest gồm status, implementation và prompt mới; code **e6c0074** không đổi.
+Prompt ghi user đã chấp nhận bản Việt mẫu, không biết tiếng Trung; kế thừa gate EXE dịch/
+export/synthesis và lỗi phồn thể token 7 đã có raw. Các dòng chưa submit trong phần review
+là trạng thái trước yêu cầu chốt này. Quyền commit/push không tự chuyển sang phiên sau;
+không mở S6 hoặc tạo task/automation khi lưu prompt.
+
 User yêu cầu chốt/push tài liệu sau các lượt review và thêm
 [prompt phiên tiếp theo sau Lifetime](asr-post-lifetime-next-session-prompt.md). Manifest gồm
 status, implementation và prompt mới, từ baseline **16e410d**; không đổi code **e6c0074**.
 Các dòng không submit trong phần đo là trạng thái trước yêu cầu chốt. Phiên sau tiếp tục tự
 kiểm thử kỹ thuật, chỉ gom checkpoint chất lượng/media/job có phí; không tự kế thừa quyền push
 hoặc mở S6, không lặp gate Lifetime đã pass. Lưu prompt không khởi chạy phiên/task mới.
+
+### Tiếp tục 2026-09-08: dịch/xuất/ghép Việt từ EXE và lỗi phồn thể cụ thể
+
+Theo yêu cầu tiếp tục sau khi user chấp nhận bản dịch mẫu, giữ HEAD **d820ca0** và code
+**e6c0074**, không sửa code/pin/policy. Scratch mới chỉ copy EXE + `_internal`, **580 file /
+237.667.204 byte**, AppData/cache/config/temp riêng; không sao chép runtime hoặc dữ liệu user.
+
+| Gate mới | Kết quả và phạm vi |
+| --- | --- |
+| Dịch Google trên Lifetime EXE | JSON ASR đã có → JSON Việt, **exit 0 / 2,219 s / 1 cue**, cache mới. Không nhận dạng/upload audio lại; không paid API |
+| Bảo toàn và SRT trên cùng EXE | Source text/IDs/timing/speaker/provenance/identity/context/pending giữ nguyên; export **exit 0 / 0,438 s**, target-only SRT khớp JSON **400–3680 ms**, không dịch/split/optimize lại |
+| Synthesis trên cùng EXE | App ASS renderer ghép phụ đề cứng từ SRT Việt, **exit 0 / 1,063 s**. Video đầu vào mới chưa có chữ: nền tổng hợp **960×540** + audio public **4,204 s** |
+| Media verification | ffprobe có audio/video và duration đúng. Frame **0,16 / 1,5 / 3,92 s**: không chữ / đầy đủ dấu Việt, không cắt chữ / hết chữ. Không phải viewing aid FFmpeg-only; chưa đại diện video tự nhiên dài hoặc corpus |
+| Phồn thể: inference chẩn đoán | Một request ForcedAligner S5 R2, revision **c7cbfc20…2b7**, policy **strict-raw-v1**, deadline **180 s**, cùng **67.263 sample** và reference phồn thể tường minh do agent chuẩn bị. Không yêu cầu user chấm chữ Trung |
+| Phồn thể: raw và lexical | **13 token**, toàn lexical khớp thứ tự/script. Chỉ **token 7**, start **2080 ms**, end **2000 ms**, đảo **−80 ms**. Không zero-length/overlap/bounds defect ở các token còn lại. Đây là raw mới lưu trước validator, không suy nguyên request lịch sử |
+| Phồn thể: quyết định | Validator đúng khi từ chối `start < end`; thông báo hiện tại gộp với zero-length/overlap/out-of-audio. **Chưa đạt phồn thể**; không swap/clamp/drop token/normalize script/override hoặc xuất phụ đề thành công từ case này |
+| Runtime chẩn đoán | Tổng **48,297 s**, load **43,953 s**, inference **1,360 s**; helper exit 0 do thu bằng chứng xong, khác alignment accepted. Process/reader đóng, lease acquire/release lại được; manifest/lock/bridge/audio nguyên vẹn. Không benchmark |
+
+ASR Lifetime đã pass trước đó được kế thừa; dịch/export/synthesis trên cùng binary là bằng
+chứng mới theo từng command, không gọi đây là một lệnh `process` mới toàn tuyến hoặc S6.
+Final verify giữ **580 hash file gốc/copy**, hash Final cũ và hash/mtime năm file evidence;
+không process test/request temp hoặc ASS persist. Helper monitor ban đầu tính cả Python venv
+launcher của chính nó; snapshot độc lập rỗng, loại/report ancestor của monitor rồi verify pass.
+Không chạy lại inference/workflow vì lỗi helper đó; không có code fix hoặc SIP symptom mới.
+
+Output/script/report chi tiết tại **VC-Lifetime-VI-Review-20260908-092244**, không transcript/
+media/absolute local path/credential vào Git. Chỉ cập nhật status và implementation, giữ các
+thay đổi tài liệu trước; diff-check/scan pass. Không full/static/build/GUI/playback/cancel lại,
+không đổi dependency/model/policy hoặc dữ liệu/runtime/artifact gốc. Scribe, phồn thể strict,
+chất lượng nhiều speaker/xưng hô và SIP ngắt quãng còn mở; **dừng review, chưa S6/commit/push**.
+
+### Bổ sung 2026-09-08: chuyển checkpoint sang phụ đề tiếng Việt
+
+User xác nhận giọng đọc ổn nhưng không biết tiếng Trung; mục tiêu là **audio Trung → phụ đề
+Việt**. Không suy xác nhận chữ Trung/timing/speaker. Agent phụ trách đối chiếu nguồn và kỹ thuật;
+checkpoint cho user tập trung vào cách diễn đạt/dễ đọc của phụ đề Việt, giữ audio Trung gốc.
+
+Sau khi xem kết quả, user xác nhận **không có vấn đề với bản dịch mẫu**. Ghi nhận chấp nhận
+bản Việt của clip **4,204 s / 1 cue**, không suy nghiệm thu video dài/nhiều speaker/xưng hô
+hoặc đối chiếu chữ Trung. Xác nhận này không tự mở S6, paid job hoặc quyền commit/push.
+
+| Gate mới | Kết quả và phạm vi |
+| --- | --- |
+| Bản Việt biên tập | Agent dịch câu từ output có sẵn, tạo SRT/preview riêng; ghi rõ nguồn dịch là agent, không phải translator của app |
+| Dịch tự động trong source app | CLI command handler `subtitle`, Google → Vietnamese, tắt optimize/split, target-only. **Exit 0 / 1,953 s / 1 cue**, translation không rỗng. Agent dùng Google không cần key; không coi lựa chọn này là user đã chọn job LLM có phí |
+| Bảo toàn dữ liệu | Typed reload giữ source text/cue ID/timing/speaker/provenance/identity/context/pending; SRT Việt **400–3680 ms**. JSON đầu vào nguyên vẹn, không ASR hoặc upload audio lại |
+| Chất lượng câu dịch | Agent nhận thấy một lựa chọn từ của Google kém sát nghĩa hơn bản biên tập; giữ hai bản riêng. Một cue pass không nghiệm thu chất lượng nhiều speaker/xưng hô hoặc corpus |
+| Preview Việt | SRT Google thật + audio Trung gốc, FFmpeg render mới; ffprobe có audio/video và duration đúng, frame có dấu Việt/không cắt chữ. Đây là viewing aid, không nghiệm thu app synthesis hoặc EXE |
+
+Config/AppData/cache/temp cô lập, không tìm key hoặc dùng paid API. Pydub có warning thiếu FFmpeg
+trên PATH ở lượt dịch text-only; render dùng binary FFmpeg hiện có bằng path tường minh. Không
+cài dependency hoặc rerun gate đã pass. Evidence/output giữ local tại
+**VC-Vietnamese-Preview-20260908-091203**; file gốc và hai artifact EXE không bị ghi đè.
+Chỉ cập nhật status/implementation, giữ phần review trước; diff-check/scan pass. **Dừng review,
+không S6/commit/push**. Kiểm thử LLM trong app vẫn cần lựa chọn model/endpoint và credential kín;
+user không phải xác nhận từng nút hoặc tự thẩm định chữ Trung.
+
+### Rà sau Lifetime 2026-09-08: checkpoint và giới hạn phồn thể — dừng review
+
+Tiếp tục từ HEAD **d820ca0**, đúng nhánh, checkout sạch; Lifetime **e6c0074** và S5.2 **073510d**
+là ancestor, không đổi code/tests/spec/dependency. Đã đưa clip/audio public cùng JSON/SRT thật
+cho user chấm chung text, cue **400–3680 ms** và tính nhất quán một giọng. **Chưa có phản hồi
+chất lượng**; không suy speaker accuracy nhiều giọng hoặc xưng hô Trung→Việt từ clip này.
+
+Audit chỉ đọc bằng Python **3.12.13**, **exit 0**: WAV PCM16 mono 16 kHz giữ **67.263 sample**,
+identity khớp JSON; JSON/SRT khớp **1 cue / 13 token IDs / 400–3680 ms**. Năm file evidence giữ
+hash/mtime; hash EXE Lifetime **b2dfe869…b38a75f78** và Final **45761316…f91649** khớp bàn giao.
+Không gọi đây là lượt inference/export/build mới. Audit dùng standard library, không import
+app config, mở GUI/decoder/model hoặc đọc settings/credential.
+
+| Gate còn mở | Bằng chứng và điều kiện tiếp theo |
+| --- | --- |
+| Phồn thể strict | S2/S5 ghi cùng câu public dạng phồn thể bị từ chối. Report `S5-validation/strict-negative-smoke.json` ghi revision **c7cbfc20…2b7** và lỗi **zero-length/overlap/out-of-audio**, nhưng thiếu input chính xác, identity theo case và raw spans. Request debug còn lại có text rỗng, không đại diện case này |
+| Phân loại lexical/timing | `validate_alignment()` kiểm tra từng prefix lexical trước timing và dừng ở lỗi đầu. Lỗi timing đã ghi chưa chứng minh coverage lexical toàn câu, chưa chỉ ra token/time hoặc tách được zero-length với overlap/bounds. `LocalReview.resume()` vẫn validate toàn text; override timing không sửa được thiếu/đổi chữ |
+| Phép đo phồn thể nhỏ tiếp | Đã chuẩn bị đặc tả dùng đúng WAV public **4,204 s**, reference phồn thể tường minh, một request ForcedAligner riêng trên runtime S5 R2/pin cũ, timeout **180 s**, scratch mới cô lập. Giữ raw trước validate, báo mọi lỗi timing và lexical riêng; không nhận dạng lại, normalize script, clamp, bỏ token hoặc xuất prefix. **Chưa chạy/chưa coi reference đề xuất là request lịch sử** |
+| Scribe | Contract code đã đối chiếu: ElevenLabs, **scribe_v2**, endpoint **https://api.elevenlabs.io/v1/speech-to-text**, Chinese/native diarization/word timing; audio đề xuất là clip public trên. Chưa chọn job/nhập key đúng provider, chưa health/inference. Không tìm credential cũ hoặc dùng key gateway |
+| SIP | Không có triệu chứng hoặc giả thuyết kiểm chứng mới trong lượt review này. Không mở stress/GUI loop; giữ shutdown pass kế thừa và giới hạn crash ngắt quãng chưa tái hiện tất định |
+
+Evidence và đặc tả chi tiết giữ local tại **VC-PostLifetime-Review-20260908-085948**; không đưa
+transcript/media/absolute local path/credential vào Git. Chỉ cập nhật status và implementation;
+diff-check/scan tài liệu mới pass. Full/static/build/local hybrid/playback/hủy binary
+giữ evidence kế thừa; Whisper/GPT API giữ đúng snapshot cũ. **Dừng review, không S6/commit/push**,
+không đổi media/AppData/runtime/artifact hoặc dependency.
 
 ### Bổ sung 2026-09-08: hủy decode trực tiếp trên Lifetime — dừng review
 
@@ -631,7 +728,7 @@ videocaptioner/ui/view/setting_interface.py
 | S2 (code/offline + GPT gateway smoke S5.2) | Nhận dạng text-only → alignment tiếng Trung → SRT | S1 | GPT gateway→strict alignment→SRT đã qua source/EXE trên clip public ngắn; phồn thể chưa đạt |
 | S3 (code/offline, chờ native API) | Soniox v5 và Scribe v2, timestamp + speaker native | S1 | ASR mới đưa speaker xuyên split/optimize/translate input/editor; save/load speaker không mất |
 | S4 (code/offline; chờ nghiệm thu ngôn ngữ) | Quan hệ người nói/người nghe và xưng hô Trung→Việt | S3; đường hybrid nối sau S5 | Mapping theo cặp/cảnh, user override, dịch lại và cache nhất quán; chưa có benchmark người nghe/xưng hô |
-| S5 (local-hybrid + gateway S5.2, dừng review) | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Qwen/Community-1 source/EXE; GPT hybrid source/EXE; Whisper source pass, EXE HTTP 429; còn thiếu chất lượng/Qt teardown |
+| S5 (local-hybrid + gateway S5.2, dừng review) | Qwen3-ASR local và diarization pyannote cho local/gateway | S2; reuse speaker contract S3 | Qwen hybrid trên Lifetime, playback/hủy decode binary đã pass; GPT hybrid source/Final, Whisper source/Final đã pass sau 429 cũ; còn chất lượng/phồn thể và giới hạn SIP ngắt quãng |
 | S6 | Benchmark, chọn preset mặc định và nghiệm thu EXE | S2–S5 | Có kết quả thực trên video Trung, CER/timing/speaker/xưng hô, artifact và workflow thật |
 
 Mốc nghiên cứu A được tách thành xác minh tài liệu trong S1 và smoke API thật khi có credential

@@ -1,5 +1,105 @@
 # Project Status
 
+## 2026-09-08 (chốt tài liệu và prompt sau nghiệm thu phụ đề Việt)
+
+- User yêu cầu **commit/push và prompt next session**. Manifest chốt từ baseline **d820ca0**
+  gồm **status.md**, **docs/dev/asr-implementation-2026-09.md** và
+  **docs/dev/asr-vietnamese-next-session-prompt.md**; code Lifetime **e6c0074** giữ nguyên.
+  Các dòng chưa commit/push dưới đây ghi thời điểm review trước yêu cầu này; quyền chốt tài
+  liệu không tự áp dụng cho thay đổi phiên sau.
+- [Prompt mới](docs/dev/asr-vietnamese-next-session-prompt.md) giữ mục tiêu Trung→Việt, user
+  không biết tiếng Trung và đã chấp nhận bản Việt mẫu. Kế thừa dịch/export/synthesis trên
+  Lifetime đã pass; giữ phồn thể token 7 đảo **2080→2000 ms** là chưa đạt, không đo lại cùng case
+  hoặc phục hồi nợ raw chưa có. Scribe/nhiều speaker/xưng hô/SIP và S6 giữ đúng giới hạn.
+- Fetch xác nhận local/remote cùng baseline; hai EXE giữ hash bàn giao. Chỉ kiểm tra manifest,
+  diff/scan/link tài liệu trước chốt; không full/static/build/API/media lại. Không đổi dữ liệu,
+  runtime/artifact hoặc tạo task/automation mới; chưa mở S6/tag/release.
+
+## 2026-09-08 (tiếp tục: phụ đề Việt trên Lifetime EXE và chẩn đoán phồn thể)
+
+- Giữ HEAD **d820ca0**, code Lifetime **e6c0074**, nhánh và hai thay đổi tài liệu trước đó.
+  Scratch mới **VC-Lifetime-VI-Review-20260908-092244** chỉ copy EXE + `_internal`, **580 file /
+  237.667.204 byte**, so hash từng file; AppData/config/cache/profile/temp/source-host riêng.
+- **Google → JSON Việt trên EXE Lifetime pass**, **exit 0 / 2,219 s / 1 cue**, cache mới;
+  giữ nguyên source text/cue ID/timing/speaker/provenance/identity/context/pending. **Cùng EXE
+  xuất SRT Việt pass**, **exit 0 / 0,438 s**, text/timing khớp JSON **400–3680 ms**, không dịch
+  hoặc ASR lại. Không upload audio hoặc gọi paid API.
+- **Ghép phụ đề cứng bằng EXE pass**, app ASS renderer, **exit 0 / 1,063 s**. Input video mới
+  là nền tổng hợp **960×540** + audio public gốc **4,204 s**; ffprobe audio/video/duration pass.
+  Frame **0,16 / 1,5 / 3,92 s** lần lượt không chữ / chữ Việt đầy đủ dấu / hết chữ. Đây là app
+  synthesis thật trên clip tổng hợp, khác viewing aid trước; không suy full video/corpus/S6.
+  Chuỗi bằng chứng trên cùng Lifetime đã có ASR kế thừa → dịch/export/synthesis mới theo từng
+  command, không chạy lại ASR hoặc gọi đây là một lệnh `process` mới xuyên suốt.
+- **Phồn thể đã khoanh lỗi cụ thể bằng một request aligner local**: reference do agent chuẩn
+  bị, audio cũ **67.263 sample**, pin **c7cbfc20…2b7**, `strict-raw-v1`, timeout **180 s**.
+  Giữ raw trước validate: **13 token, lexical toàn câu đúng**, chỉ **token 7** có interval đảo
+  **2080→2000 ms (−80 ms)**; không mất chữ/script. Validator chặn đúng `start < end` trong
+  thông báo gộp, **phồn thể vẫn chưa đạt**, không swap/clamp/override hoặc xuất SRT ép pass.
+  Diagnostic **48,297 s**, load **43,953 s**, inference **1,360 s**, exit 0 của helper thu bằng
+  chứng không phải alignment accepted. Không benchmark hoặc nhận dạng lại.
+- Runtime/reader đã đóng, lease acquire/release lại được, manifest/lock/bridge và audio nguyên
+  vẹn. Final verify: **580 hash gốc/copy**, Final cũ và hash/mtime năm file evidence giữ nguyên;
+  không process test/request temp hoặc ASS persist. Helper monitor ban đầu đếm nhầm Python
+  launcher của chính nó; snapshot độc lập rỗng, sửa filter ancestor và verify pass, không rerun job.
+- Chỉ sửa **status.md** và **docs/dev/asr-implementation-2026-09.md**; evidence/transcript/output
+  mới giữ local. Diff-check/scan pass; không full/static/build/GUI/playback/cancel lại, không
+  đổi code/dependency/model/policy hoặc media/AppData/runtime/artifact gốc. Giữ Scribe, chất
+  lượng nhiều speaker/xưng hô và giới hạn SIP; **dừng review, chưa S6/commit/push**.
+
+## 2026-09-08 (user làm rõ đầu ra tiếng Việt; dịch Google từ output Lifetime)
+
+- Sau khi xem kết quả, user xác nhận **không có vấn đề với bản dịch mẫu**. Checkpoint bản Việt
+  của clip **4,204 s / 1 cue** được chấp nhận; không mở rộng thành nghiệm thu video dài,
+  nhiều người nói/xưng hô, đối chiếu chữ Trung hoặc cho phép bắt đầu S6/paid job/commit/push.
+- User xác nhận **giọng đọc ổn**, đồng thời nói không biết tiếng Trung và muốn phụ đề **tiếng
+  Việt dịch từ tiếng Trung**. Không coi đây là xác nhận text Trung/timing/speaker accuracy.
+  Checkpoint tiếp theo phải đưa phụ đề Việt; agent tự đối chiếu phần nguồn Trung và kỹ thuật,
+  không yêu cầu user chấm chữ Trung. Clip vẫn dùng audio Trung gốc, không phải TTS mới.
+- Tạo SRT Việt biên tập trong phiên và preview riêng từ audio/output đã có; ghi rõ không phải
+  kết quả translator của app. Sau đó agent dùng Google không cần key cho một lượt dịch public
+  bằng **CLI command handler của source app**, config/AppData/cache/temp riêng; không dùng
+  credential/paid job, không ASR/upload audio lại hoặc chạy EXE.
+- **Google → JSON/SRT Việt pass**, command handler **exit 0 / 1,953 s / 1 cue**; kiểm tra
+  translation không rỗng, giữ source text/IDs/timing/speaker/provenance/identity/context/pending.
+  SRT target-only giữ **400–3680 ms**. Google dùng một từ diễn đạt chưa sát bằng phương án agent
+  đề xuất; giữ nguyên output để review, không gọi exit 0 là chứng minh chất lượng ngôn ngữ chung.
+- Render preview từ SRT Google thật + audio gốc bằng FFmpeg, ffprobe audio/video/duration pass;
+  đã xem frame có dấu Việt, không cắt chữ. Đây là viewing aid ngoài app synthesis, không phải
+  gate EXE/S6. Warning pydub thiếu FFmpeg trên PATH ở lượt dịch text-only không ảnh hưởng kết quả;
+  render sau đó dùng FFmpeg hiện có bằng path tường minh, không cài dependency.
+- Output/report mới giữ tại **VC-Vietnamese-Preview-20260908-091203**, không ghi đè output cũ.
+  Chỉ sửa hai tài liệu status/implementation, giữ thay đổi review trước; diff-check/scan pass.
+  Không lặp full/static/build/runtime, không đổi media/AppData/runtime/artifact gốc, không
+  S6/commit/push. Job LLM có phí vẫn cần user chọn model/endpoint và nhập credential kín.
+
+## 2026-09-08 (sau Lifetime: checkpoint chất lượng và rà phồn thể — dừng review)
+
+- Tiếp tục đúng nhánh **codex/asr-s3-native**, HEAD bàn giao **d820ca0**, checkout sạch;
+  **e6c0074** và **073510d** là ancestor. Không có diff code/tests/spec/dependency từ Lifetime
+  đến HEAD. Đọc prompt post-Lifetime và evidence mới nhất, không phục hồi nợ Whisper 429,
+  playback hoặc hủy decode binary đã pass.
+- Đã đưa clip/audio public và JSON/SRT có sẵn cho một checkpoint text/timing/giọng nhất quán.
+  **Chưa nhận phản hồi chất lượng của user**; một giọng không đủ nghiệm thu nhiều speaker/xưng hô.
+  Audit chỉ đọc bằng Python **3.12.13**, **exit 0**: PCM identity **67.263 sample**, JSON/SRT
+  khớp **1 cue / 13 token IDs / 400–3680 ms**. Hash và mtime của năm file evidence đã đọc giữ
+  nguyên; EXE Lifetime **b2dfe869…b38a75f78**, Final **45761316…f91649** khớp bàn giao.
+  Đây là đối chiếu output lưu sẵn, không phải lượt ASR/media acceptance mới.
+- Rà phồn thể: report **S5-validation/strict-negative-smoke.json** ghi lỗi timing tổng hợp
+  **zero-length/overlap/out-of-audio**, cùng revision aligner **c7cbfc20…2b7**. Report không
+  lưu input chính xác, identity theo case hoặc raw spans; request debug còn lại có text rỗng,
+  không thể dùng làm input phồn thể. Validator kiểm tra lexical từng token trước timing rồi
+  dừng ở lỗi đầu, nên chưa xác định token/time lỗi hoặc coverage lexical toàn câu. Resume
+  vẫn kiểm tra toàn text; sửa timing không khắc phục thiếu/đổi chữ. Không sửa policy/code.
+- Chuẩn bị đặc tả một phép đo aligner riêng trên WAV public đã có, reference phồn thể tường
+  minh, giữ raw trước validate để phân loại lexical/timing; **chưa chạy inference mới**.
+  Scribe đã khoanh provider ElevenLabs / **scribe_v2** / route **speech-to-text** và cùng clip
+  **4,204 s**, nhưng chưa được chọn hoặc nhập key đúng provider. SIP không có triệu chứng hoặc
+  giả thuyết kiểm chứng mới; không mở stress/GUI loop.
+- Evidence audit và đặc tả phép đo giữ local tại **VC-PostLifetime-Review-20260908-085948**.
+  Chỉ cập nhật **status.md** và **docs/dev/asr-implementation-2026-09.md**; giữ full/static/build/
+  runtime/playback/cancel là evidence kế thừa, không rerun. Diff-check/scan tài liệu mới pass;
+  không đổi media/AppData/runtime/artifact, không S6/commit/push.
+
 ## 2026-09-08 (prompt bàn giao sau Lifetime; user yêu cầu chốt tài liệu)
 
 - User yêu cầu prompt phiên tiếp theo, rồi yêu cầu submit/push tài liệu. Manifest chốt gồm
