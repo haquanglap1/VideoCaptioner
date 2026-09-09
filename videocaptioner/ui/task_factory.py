@@ -19,6 +19,7 @@ from videocaptioner.core.entities import (
     FullProcessTask,
     LLMServiceEnum,
     SubtitleConfig,
+    SubtitleLayoutEnum,
     SubtitleTask,
     SynthesisConfig,
     SynthesisTask,
@@ -239,6 +240,7 @@ class TaskFactory:
         subtitle_path: str,
         need_next_task: bool = False,
         task_id: Optional[str] = None,
+        input_subtitle_layout: Optional[SubtitleLayoutEnum] = None,
     ) -> SynthesisTask:
         """Create a video synthesis task."""
         output_path = str(
@@ -263,6 +265,7 @@ class TaskFactory:
             subtitle_path=subtitle_path,
             output_path=output_path,
             synthesis_config=config,
+            input_subtitle_layout=input_subtitle_layout,
             need_next_task=need_next_task,
         )
         if task_id:
@@ -429,6 +432,7 @@ class TaskFactory:
         subtitle_path: str,
         task_id: Optional[str] = None,
         display_subtitle_path: Optional[str] = None,
+        cache_root: Optional[str] = None,
     ) -> DubbingTask:
         """Tạo dubbing task."""
         output_path = str(
@@ -443,6 +447,7 @@ class TaskFactory:
             display_subtitle_path=display_subtitle_path or subtitle_path,
             output_path=output_path,
             dubbing_config=dubbing_config,
+            cache_root=cache_root,
         )
         if task_id:
             task.task_id = task_id

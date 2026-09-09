@@ -112,9 +112,10 @@ def test_gui_managed_provider_hides_api_configuration_and_keeps_local_ai(qapp, t
     set_vieneu_service_for_tests(service)
     widget = DubbingInterface()
     try:
-        assert widget.provider_combo.count() == 4
+        assert widget.provider_combo.count() == 5
         assert widget.provider_combo.itemText(2) == "Local AI"
         assert widget.provider_combo.itemText(3) == "VieNeu Local"
+        assert widget.provider_combo.itemText(4) == "OmniVoice Local"
         widget.provider_combo.setCurrentIndex(3)
         qapp.processEvents()
         assert widget.vieneu_widget.isVisible() is False  # parent widget is not shown yet

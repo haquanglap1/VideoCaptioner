@@ -5,10 +5,13 @@ Hỗ trợ 2 chế độ:
 - Thủ công: người dùng chọn video + SRT rồi bấm "Lồng tiếng"
 """
 
+from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QVBoxLayout,
@@ -18,12 +21,14 @@ from qfluentwidgets import (
     BodyLabel,
     ComboBox,
     EditableComboBox,
+    FlowLayout,
     InfoBar,
     InfoBarPosition,
     LineEdit,
     PrimaryPushButton,
     ProgressBar,
     PushButton,
+    ScrollArea,
     Slider,
     SpinBox,
     StrongBodyLabel,
@@ -32,16 +37,18 @@ from qfluentwidgets import (
 
 from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.dubbing import presets
+from videocaptioner.core.dubbing.review import DubbingReview
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.tts.vieneu.model_updater import VieNeuUpdateCheck
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.components.dubbing_review_dialog import DubbingReviewDialog
 from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
 from videocaptioner.ui.components.omnivoice_panel import OmniVoicePanel
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.audio_merge_thread import AudioMergeThread
-from videocaptioner.ui.thread.dubbing_thread import DubbingThread
+from videocaptioner.ui.thread.dubbing_thread import DubbingReviewFileThread, DubbingThread
 from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
 
 logger = setup_logger("dubbing_interface")
@@ -114,6 +121,13 @@ class DubbingInterface(QWidget):
         self.setObjectName("DubbingInterface")
         self._task: DubbingTask | None = None
         self._thread: DubbingThread | None = None
+        self._review_thread: DubbingReviewFileThread | None = None
+        self._job_busy = False
+        self._closing = False
+        self._job_result: DubbingTask | None = None
+        self._job_error = ""
+        self._job_cancelled = False
+        self._file_result: DubbingReview | None = None
         self._is_pipeline_mode = False
         self._pending_report_data: dict = {}
         self._vieneu_threads: set[VieNeuRuntimeThread] = set()
@@ -123,7 +137,17 @@ class DubbingInterface(QWidget):
         self._init_ui()
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.scroll_area = ScrollArea(self)
+        self.scroll_content = QWidget()
+        self.scroll_area.setWidget(self.scroll_content)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.enableTransparentBackground()
+        self.scroll_area.viewport().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.scroll_content.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        outer_layout.addWidget(self.scroll_area)
+        layout = QVBoxLayout(self.scroll_content)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(12)
 
@@ -324,7 +348,9 @@ class DubbingInterface(QWidget):
         self.start_delay_spinbox.setSingleStep(100)
         self.start_delay_spinbox.setValue(cfg.dubbing_max_start_delay_ms.value)
         row5f.addWidget(self.start_delay_spinbox)
-        row5f.addWidget(BodyLabel(self.tr("Gợi ý: 2500 ms, tốc độ 1.00–1.05×; ưu tiên LLM rút lời dài")))
+        start_delay_hint = BodyLabel(self.tr("Gợi ý: 2500 ms, tốc độ 1.00–1.05×; ưu tiên LLM rút lời dài"))
+        start_delay_hint.setWordWrap(True)
+        row5f.addWidget(start_delay_hint)
         row5f.addStretch()
         settings_layout.addLayout(row5f)
 
@@ -475,6 +501,38 @@ class DubbingInterface(QWidget):
         row_sub.addStretch()
         settings_layout.addLayout(row_sub)
 
+        row_display = QHBoxLayout()
+        row_display.addWidget(BodyLabel(self.tr("SRT hiển thị (tùy chọn):")))
+        self.display_subtitle_path_edit = LineEdit()
+        self.display_subtitle_path_edit.setPlaceholderText(self.tr("Để trống để dùng file phụ đề phía trên"))
+        self.display_subtitle_path_edit.setFixedWidth(350)
+        row_display.addWidget(self.display_subtitle_path_edit)
+        self.browse_display_btn = PushButton(self.tr("Duyệt"))
+        self.browse_display_btn.setFixedWidth(60)
+        self.browse_display_btn.clicked.connect(self._browse_display_subtitle)
+        row_display.addWidget(self.browse_display_btn)
+        row_display.addStretch()
+        settings_layout.addLayout(row_display)
+
+        row_cache = QHBoxLayout()
+        row_cache.addWidget(BodyLabel(self.tr("Thư mục WAV cache (tùy chọn):")))
+        self.cache_root_edit = LineEdit()
+        self.cache_root_edit.setPlaceholderText(self.tr("Để trống để dùng cache mặc định của ứng dụng"))
+        self.cache_root_edit.setFixedWidth(350)
+        row_cache.addWidget(self.cache_root_edit)
+        self.browse_cache_btn = PushButton(self.tr("Duyệt"))
+        self.browse_cache_btn.setFixedWidth(60)
+        self.browse_cache_btn.clicked.connect(self._browse_cache_root)
+        row_cache.addWidget(self.browse_cache_btn)
+        row_cache.addStretch()
+        settings_layout.addLayout(row_cache)
+        cache_hint = BodyLabel(self.tr(
+            "Chọn thư mục chứa trực tiếp các file WAV/JSON cache (v1). "
+            "Đường dẫn cache không lưu trong kế hoạch; chọn lại khi mở kế hoạch ở phiên mới."
+        ))
+        cache_hint.setWordWrap(True)
+        settings_layout.addWidget(cache_hint)
+
         # Manual dub button
         self.manual_dub_btn = PrimaryPushButton(self.tr("▶ Lồng tiếng"))
         self.manual_dub_btn.setFixedWidth(160)
@@ -484,6 +542,11 @@ class DubbingInterface(QWidget):
         self.open_editor_btn.setFixedWidth(180)
         self.open_editor_btn.clicked.connect(self._open_in_video_editor)
         settings_layout.addWidget(self.open_editor_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.editor_scope_label = BodyLabel(self.tr(
+            "Video Editor mở video và phụ đề. Duyệt lời đọc và tiếp tục kế hoạch ở tab Lồng tiếng."
+        ))
+        self.editor_scope_label.setWordWrap(True)
+        settings_layout.addWidget(self.editor_scope_label)
 
         # --- Separator ---
         settings_layout.addSpacing(10)
@@ -533,6 +596,29 @@ class DubbingInterface(QWidget):
         layout.addWidget(self.settings_widget)
         self.settings_widget.setEnabled(cfg.dubbing_enabled.value)
 
+        review_row = FlowLayout()
+        self.review_btn = PushButton(self.tr("Duyệt / sửa lời đọc"))
+        self.review_btn.clicked.connect(self._edit_review)
+        self.save_review_btn = PushButton(self.tr("Lưu kế hoạch"))
+        self.save_review_btn.clicked.connect(self._save_review)
+        self.open_review_btn = PushButton(self.tr("Mở kế hoạch"))
+        self.open_review_btn.clicked.connect(self._open_review)
+        self.import_review_btn = PushButton(self.tr("Nhập checkpoint cũ"))
+        self.import_review_btn.clicked.connect(self._import_review)
+        self.resume_btn = PrimaryPushButton(self.tr("Tiếp tục lời đã duyệt"))
+        self.resume_btn.clicked.connect(self._resume_review)
+        for button in (self.review_btn, self.save_review_btn, self.open_review_btn, self.import_review_btn, self.resume_btn):
+            review_row.addWidget(button)
+        layout.addLayout(review_row)
+        self.review_label = BodyLabel(self.tr("Chưa có kế hoạch lời đọc."))
+        self.review_label.setWordWrap(True)
+        layout.addWidget(self.review_label)
+        self.cancel_job_btn = PushButton(self.tr("Hủy thao tác"))
+        self.cancel_job_btn.clicked.connect(self.request_stop)
+        self.cancel_job_btn.setVisible(False)
+        layout.addWidget(self.cancel_job_btn)
+        self._refresh_review_actions()
+
         # Spacer
         layout.addStretch()
 
@@ -544,6 +630,7 @@ class DubbingInterface(QWidget):
         layout.addWidget(self.progress_bar)
 
         self.status_label = BodyLabel("")
+        self.status_label.setWordWrap(True)
         self.status_label.setVisible(False)
         layout.addWidget(self.status_label)
         self._update_timing_controls()
@@ -553,21 +640,28 @@ class DubbingInterface(QWidget):
 
     def set_task(self, task: DubbingTask):
         """Đặt task trước khi bắt đầu xử lý (pipeline mode)."""
+        if self._job_busy:
+            raise RuntimeError("Lồng tiếng đang bận; chờ worker kết thúc trước khi đổi task")
         self._task = task
+        if task.cache_root is None:
+            task.cache_root = self.cache_root_edit.text().strip() or None
+        self.cache_root_edit.setText(task.cache_root or "")
         self._is_pipeline_mode = True
+        self._pending_report_data = task.dubbing_report or {}
+        self._refresh_review_actions()
 
     def process(self):
         """Bắt đầu dubbing (pipeline mode)."""
-        if not self._task:
+        if self._job_busy or not self._task:
             return
 
         config = self._task.dubbing_config
         if not config or not config.enabled:
-            # Dubbing tắt — emit finished ngay để chuyển sang synthesis
+            # Synthesis must keep the display layout even when speech is skipped.
             logger.info("Dubbing tắt, bỏ qua")
             self.finished.emit(
                 self._task.video_path or "",
-                self._task.subtitle_path or "",
+                self._task.display_subtitle_path or self._task.subtitle_path or "",
             )
             return
 
@@ -595,8 +689,24 @@ class DubbingInterface(QWidget):
         if path:
             self.subtitle_path_edit.setText(path)
 
+    def _browse_display_subtitle(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.tr("Chọn phụ đề hiển thị"), "", self.tr("Subtitle Files (*.srt *.ass *.vtt)")
+        )
+        if path:
+            self.display_subtitle_path_edit.setText(path)
+
+    def _browse_cache_root(self):
+        path = QFileDialog.getExistingDirectory(
+            self, self.tr("Chọn thư mục chứa WAV và JSON cache (v1)"), self.cache_root_edit.text().strip()
+        )
+        if path:
+            self.cache_root_edit.setText(path)
+
     def _start_manual_dub(self):
         """Bắt đầu lồng tiếng thủ công."""
+        if self._job_busy:
+            return
         video_path = self.video_path_edit.text().strip()
         subtitle_path = self.subtitle_path_edit.text().strip()
 
@@ -626,7 +736,11 @@ class DubbingInterface(QWidget):
         # Create task
         self._is_pipeline_mode = False
         try:
-            task = TaskFactory.create_dubbing_task(video_path, subtitle_path)
+            task = TaskFactory.create_dubbing_task(
+                video_path, subtitle_path,
+                display_subtitle_path=self.display_subtitle_path_edit.text().strip() or None,
+                cache_root=self.cache_root_edit.text().strip() or None,
+            )
         except ValueError as exc:
             InfoBar.warning(self.tr("Kiểm tra cấu hình lồng tiếng"), str(exc), duration=5000,
                             position=InfoBarPosition.BOTTOM, parent=self.window())
@@ -658,6 +772,8 @@ class DubbingInterface(QWidget):
 
     def _start_merge_audio(self):
         """Ghép audio ngoài vào video bằng các tuỳ chọn âm thanh phía trên."""
+        if self._job_busy:
+            return
         video_path = self.merge_video_path_edit.text().strip()
         audio_path = self.merge_audio_path_edit.text().strip()
 
@@ -692,8 +808,7 @@ class DubbingInterface(QWidget):
         self.progress_bar.setVisible(True)
         self.status_label.setVisible(True)
         self.status_label.setText(self.tr("Đang ghép audio..."))
-        self.merge_audio_btn.setEnabled(False)
-        self.manual_dub_btn.setEnabled(False)
+        self._set_job_busy(True)
 
         self._merge_thread = AudioMergeThread(
             video_path,
@@ -706,13 +821,16 @@ class DubbingInterface(QWidget):
         self._merge_thread.progress.connect(self._on_progress)
         self._merge_thread.error.connect(self._on_merge_error)
         self._merge_thread.finished.connect(self._on_merge_finished)
+        QThread.finished.__get__(self._merge_thread).connect(self._on_merge_stopped)
         self._merge_thread.start()
+
+    def _on_merge_stopped(self):
+        self._merge_thread.wait()
+        self._set_job_busy(False)
 
     def _on_merge_error(self, error_msg: str):
         self.progress_bar.setVisible(False)
         self.status_label.setText(self.tr("Ghép audio thất bại"))
-        self.merge_audio_btn.setEnabled(True)
-        self.manual_dub_btn.setEnabled(True)
         InfoBar.error(
             self.tr("Lỗi ghép audio"),
             error_msg,
@@ -724,8 +842,6 @@ class DubbingInterface(QWidget):
     def _on_merge_finished(self, output_path: str):
         self.progress_bar.setValue(100)
         self.status_label.setText(self.tr("Ghép audio hoàn tất!"))
-        self.merge_audio_btn.setEnabled(True)
-        self.manual_dub_btn.setEnabled(True)
         InfoBar.success(
             self.tr("Thành công"),
             self.tr("Đã ghép audio: ") + str(output_path),
@@ -736,29 +852,168 @@ class DubbingInterface(QWidget):
 
     # ==== Shared execution ====
 
-    def _run_dubbing(self, task: DubbingTask):
+    def _run_dubbing(self, task: DubbingTask, *, resume: bool = False):
         """Thực thi dubbing task."""
-        # Save current settings to config
-        self._save_settings()
+        if self._job_busy:
+            return
 
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
         self.status_label.setVisible(True)
         self.status_label.setText(self.tr("Đang bắt đầu lồng tiếng..."))
-        self.manual_dub_btn.setEnabled(False)
-        self._pending_report_data = {}
+        self._set_job_busy(True)
+        self._job_result = None
+        self._job_error = ""
+        self._job_cancelled = False
+        if not resume:
+            self._pending_report_data = {}
+            task.dubbing_review = None
 
-        self._thread = DubbingThread(task)
+        self._thread = DubbingThread(task, resume=resume)
         self._thread.progress.connect(self._on_progress)
         self._thread.report_ready.connect(self._on_report_ready)
+        self._thread.plan_ready.connect(self._on_review_ready)
         self._thread.error.connect(self._on_error)
         self._thread.finished.connect(self._on_finished)
+        self._thread.cancelled.connect(self._on_cancelled)
+        self._thread.lifecycle_finished.connect(self._on_dubbing_stopped)
         self._thread.start()
+
+    def _set_job_busy(self, busy: bool):
+        self._job_busy = busy
+        self.enable_switch.setEnabled(not busy)
+        self.settings_widget.setEnabled(not busy and self.enable_switch.isChecked())
+        self.manual_dub_btn.setEnabled(not busy)
+        self.merge_audio_btn.setEnabled(not busy)
+        self.cancel_job_btn.setVisible(busy)
+        self.cancel_job_btn.setEnabled(busy)
+        self._refresh_review_actions()
+
+    def _refresh_review_actions(self):
+        review = self._task.dubbing_review if self._task else None
+        self.review_btn.setEnabled(bool(review) and not self._job_busy)
+        self.save_review_btn.setEnabled(bool(review) and not self._job_busy)
+        self.resume_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
+        self.open_review_btn.setEnabled(not self._job_busy)
+        self.import_review_btn.setEnabled(not self._job_busy)
+        if review:
+            plan = review.plan
+            task = self._task
+            self.review_label.setText(self.tr(
+                "{groups} nhóm | {review} cần review | {provider} / {model} / {voice}\n"
+                "Nguồn: {video} + {subtitle}. Tiếp tục dùng cấu hình đã chụp của job; "
+                "kiểm tra nguồn và giọng trước khi tạo audio.\nCache của job: {cache}\n{provenance}"
+            ).format(groups=len(plan.groups), review=sum(g.needs_review for g in plan.groups),
+                     provider=plan.provider, model=plan.model, voice=plan.voice,
+                     video=Path(task.video_path or "").name if task else "",
+                     subtitle=Path(task.subtitle_path or "").name if task else "",
+                     cache=task.cache_root if task and task.cache_root else self.tr("Mặc định của ứng dụng"),
+                     provenance=review.provenance_note))
+        else:
+            self.review_label.setText(self.tr("Chưa có kế hoạch lời đọc."))
+
+    def _on_review_ready(self, review: DubbingReview):
+        if self._task:
+            self._task.dubbing_review = review
+        self._refresh_review_actions()
+
+    def _edit_review(self):
+        if self._job_busy or not self._task or not self._task.dubbing_review:
+            return
+        dialog = DubbingReviewDialog(self._task.dubbing_review, self.window())
+        if dialog.exec_() == QDialog.Accepted:
+            self._task.dubbing_review = dialog.review
+            self._refresh_review_actions()
+
+    def _resume_review(self):
+        if self._job_busy or not self._task or not self._task.dubbing_review:
+            return
+        self._run_dubbing(self._task, resume=True)
+
+    def _save_review(self):
+        if self._job_busy or not self._task or not self._task.dubbing_review:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, self.tr("Lưu kế hoạch lời đọc"), "", "JSON (*.json)")
+        if path:
+            self._start_review_file("save", path)
+
+    def _open_review(self):
+        self._choose_review_file("open")
+
+    def _import_review(self):
+        self._choose_review_file("import")
+
+    def _choose_review_file(self, operation: Literal["open", "import"]):
+        if self._job_busy:
+            return
+        title = self.tr("Mở kế hoạch lời đọc") if operation == "open" else self.tr(
+            "Nhập checkpoint cũ — liên kết với nguồn đã chọn, không xác minh được media lịch sử"
+        )
+        path, _ = QFileDialog.getOpenFileName(self, title, "", "JSON (*.json)")
+        if path:
+            self._start_review_file(operation, path)
+
+    def _start_review_file(self, operation: Literal["open", "save", "import"], path: str):
+        if self._job_busy:
+            return
+        task = self._task
+        if task is None or (operation != "save" and not self._is_pipeline_mode):
+            self._save_settings()
+            try:
+                task = TaskFactory.create_dubbing_task(
+                    self.video_path_edit.text().strip(), self.subtitle_path_edit.text().strip(),
+                    display_subtitle_path=self.display_subtitle_path_edit.text().strip() or None,
+                    cache_root=self.cache_root_edit.text().strip() or None,
+                )
+            except ValueError as exc:
+                self._show_job_error(str(exc))
+                return
+        elif operation != "save":
+            task = replace(task, cache_root=self.cache_root_edit.text().strip() or None)
+        self._file_result = None
+        self._job_error = ""
+        self._job_cancelled = False
+        self._set_job_busy(True)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.status_label.setVisible(True)
+        worker = DubbingReviewFileThread(operation, path, task, self)
+        self._review_thread = worker
+        worker.result.connect(self._on_file_result)
+        worker.error.connect(self._on_error)
+        worker.cancelled.connect(self._on_cancelled)
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_review_file_stopped)
+        worker.start()
+
+    def _on_file_result(self, review: DubbingReview):
+        self._file_result = review
+
+    def _on_review_file_stopped(self):
+        worker = self._review_thread
+        if worker is None:
+            return
+        worker.wait()
+        self._set_job_busy(False)
+        self.progress_bar.setVisible(False)
+        if self._closing:
+            return
+        if self._job_cancelled:
+            self.status_label.setText(self.tr("Đã hủy thao tác. Kế hoạch trước đó vẫn được giữ."))
+        elif self._job_error:
+            self._show_job_error(self._job_error)
+        elif self._file_result:
+            if worker.operation != "save":
+                self._task = worker.task
+                self._on_review_ready(self._file_result)
+            self.status_label.setText(self.tr("Đã lưu kế hoạch.") if worker.operation == "save" else self.tr(
+                "Đã mở kế hoạch trong RAM. Duyệt lời đọc rồi chọn Tiếp tục; nguồn/cấu hình sẽ được xác minh."
+            ))
 
     # ==== Slots ====
 
     def _on_enable_changed(self, checked: bool):
-        self.settings_widget.setEnabled(checked)
+        self.settings_widget.setEnabled(checked and not self._job_busy)
         cfg.set(cfg.dubbing_enabled, checked)
 
     def _on_provider_changed(self, index: int):
@@ -903,10 +1158,14 @@ class DubbingInterface(QWidget):
 
     def request_stop(self) -> None:
         """Ask a running dubbing job to stop at its next progress report."""
-        thread = self._thread
         self.omnivoice_panel.stop()
-        if thread is not None and thread.isRunning():
-            thread.requestInterruption()
+        for thread in (self._thread, self._review_thread, getattr(self, "_merge_thread", None)):
+            if thread is not None and thread.isRunning():
+                thread.requestInterruption()
+        if self._job_busy:
+            self._job_cancelled = True
+            self.cancel_job_btn.setEnabled(False)
+            self.status_label.setText(self.tr("Đang hủy; chờ worker kết thúc..."))
 
     def wait_for_dubbing_job(self, timeout_ms: int = 10_000) -> bool:
         """Interrupt the dubbing job and block until its thread exits.
@@ -915,11 +1174,13 @@ class DubbingInterface(QWidget):
         QThread that is still running, so a job left behind at exit ends with
         "cannot schedule new futures" or a Qt abort instead of a clean stop.
         """
-        thread = self._thread
-        if thread is None or not thread.isRunning():
-            return True
-        thread.requestInterruption()
-        return thread.wait(timeout_ms)
+        stopped = True
+        for thread in (self._thread, self._review_thread, getattr(self, "_merge_thread", None)):
+            if thread is not None:
+                if thread.isRunning():
+                    thread.requestInterruption()
+                stopped = thread.wait(timeout_ms) and stopped
+        return stopped
 
     def _on_vieneu_state(self, state: str, message: str):
         suffix = f" • {message}" if message else ""
@@ -1128,15 +1389,41 @@ class DubbingInterface(QWidget):
     def _on_report_ready(self, report_data: dict):
         self._pending_report_data = report_data
 
-    def _show_report(self):
-        if self._pending_report_data:
+    def _show_report(self, *, editable: bool = True):
+        if editable and self._task and self._task.dubbing_review:
+            self._edit_review()
+        elif self._pending_report_data:
             DubbingReportDialog(self._pending_report_data, self.window()).exec_()
 
     def _on_error(self, error_msg: str):
+        self._job_error = error_msg
+
+    def _on_cancelled(self):
+        self._job_cancelled = True
+
+    def _on_finished(self, task: DubbingTask):
+        self._job_result = task
+
+    def _on_dubbing_stopped(self):
+        if self._thread is None:
+            return
+        self._thread.wait()
+        self._set_job_busy(False)
+        if self._closing:
+            return
+        if self._job_cancelled:
+            self.progress_bar.setVisible(False)
+            self.status_label.setText(self.tr("Lồng tiếng đã bị hủy. Kế hoạch lời đọc vẫn được giữ."))
+        elif self._job_error:
+            self._show_job_error(self._job_error)
+            self._show_report()
+        elif self._job_result:
+            self._complete_dubbing(self._job_result)
+
+    def _show_job_error(self, error_msg: str):
         self.progress_bar.setVisible(False)
         self.status_label.setVisible(True)
         self.status_label.setText(self.tr("Lồng tiếng thất bại") + ": " + error_msg)
-        self.manual_dub_btn.setEnabled(True)
         review_required = (
             "timing review" in error_msg.lower()
             or "chưa khớp thời gian" in error_msg.lower()
@@ -1148,12 +1435,10 @@ class DubbingInterface(QWidget):
             position=InfoBarPosition.BOTTOM,
             parent=self.window(),
         )
-        self._show_report()
 
-    def _on_finished(self, task: DubbingTask):
+    def _complete_dubbing(self, task: DubbingTask):
         self.progress_bar.setValue(100)
         self.status_label.setText(self.tr("Lồng tiếng hoàn tất!"))
-        self.manual_dub_btn.setEnabled(True)
 
         InfoBar.success(
             self.tr("Thành công"),
@@ -1162,7 +1447,7 @@ class DubbingInterface(QWidget):
             position=InfoBarPosition.BOTTOM,
             parent=self.window(),
         )
-        self._show_report()
+        self._show_report(editable=False)
 
         # In pipeline mode: emit dubbed video for synthesis
         if self._is_pipeline_mode:
@@ -1178,7 +1463,7 @@ class DubbingInterface(QWidget):
             subtitle_path = task.display_subtitle_path or task.subtitle_path
         else:
             video_path = self.video_path_edit.text().strip()
-            subtitle_path = self.subtitle_path_edit.text().strip()
+            subtitle_path = self.display_subtitle_path_edit.text().strip() or self.subtitle_path_edit.text().strip()
         if not video_path or not Path(video_path).is_file() or not subtitle_path or not Path(subtitle_path).is_file():
             InfoBar.warning(
                 self.tr("Chưa thể mở Video Editor"),
@@ -1240,7 +1525,11 @@ class DubbingInterface(QWidget):
         self.start_delay_spinbox.setEnabled(natural and self.unresolved_combo.currentIndex() == 2)
 
     def closeEvent(self, event):
+        self._closing = True
         self.request_stop()
         self.shutdown_vieneu_threads()
-        self.wait_for_dubbing_job()
+        if not self.wait_for_dubbing_job():
+            self._closing = False
+            event.ignore()
+            return
         super().closeEvent(event)
