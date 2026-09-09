@@ -1,5 +1,17 @@
 # Project Status
 
+## 2026-09-10 (điều chỉnh nghiệm thu: bỏ Google và Bilibili)
+
+- Snapshot code/test/tài liệu Google/DeepLX đã commit/push ở `b4bcde4`.
+  User sau đó yêu cầu bỏ qua dịch vụ Google và Bilibili trong nghiệm thu mới.
+- [Prompt phiên sau](docs/dev/online-media-next-session-prompt-2026-09.md) nay
+  ưu tiên DeepLX online → workflow media mới với Qwen/Faster-Whisper local và
+  OmniVoice đã cài. Không Google Translate, Bilibili/Bcut/Bijian ASR hoặc lấy
+  media từ Bilibili; không để default/fallback gọi các dịch vụ đã loại trừ.
+- Chỉ chỉnh phạm vi tài liệu, không gỡ provider hoặc thay đổi code/bằng chứng
+  cũ. Giữ bài giảng/model/settings/cache. Kế thừa test/build đã pass, không
+  chạy lại inference/test/build trong lượt điều chỉnh prompt và push này.
+
 ## 2026-09-10 (chốt snapshot Google/DeepLX và bàn giao nghiệm thu online/media)
 
 - User yêu cầu commit/push snapshot Google/DeepLX lên `origin/codex/asr-s3-native`

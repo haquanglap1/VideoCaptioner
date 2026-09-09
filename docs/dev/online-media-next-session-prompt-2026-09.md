@@ -12,6 +12,13 @@ vi được mở lại: có thể gọi dịch vụ và chạy ASR/dịch/TTS/re
 mẫu kiểm thử mới, ngắn, với cache/output riêng. Không cần xin lại quyền chung
 để thực hiện các bước đó. Chỉ hỏi khi thiếu input, endpoint hoặc credential.
 
+**Điều chỉnh mới nhất của user:** bỏ qua các dịch vụ **Google và Bilibili**.
+Không nghiệm thu/gọi Google Translate, Bilibili/Bcut/Bijian ASR hoặc lấy media
+từ Bilibili. Tập trung **DeepLX online** và workflow media mới với ASR local
+đã cài. Giữ nguyên code/provider và bằng chứng cũ; đây là giới hạn nghiệm thu,
+không phải yêu cầu gỡ tính năng. Không thay bằng một dịch vụ ngoài khác nếu
+DeepLX chưa sẵn sàng; tiếp tục phần độc lập và hỏi đúng cấu hình còn thiếu.
+
 Giữ nguyên bài giảng user đã chốt “tạm ổn”, video, 151 WAV, 121 nhóm sửa lời,
 runtime/model/settings/cache và mọi artifact cũ. Không dùng bài giảng để chạy
 lại inference/render. Không benchmark sâu, sweep model, OCR, tải model hoặc
@@ -22,8 +29,9 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 
 1. Chạy `git status --short --branch`, lấy HEAD bằng Git, đối chiếu SHA trong
    tin nhắn bàn giao và `origin/codex/asr-s3-native`. Giữ thay đổi có sẵn.
-   Parent trước snapshot Google/DeepLX là
-   `cd127e1039a79284b2f48f12f1ba9557958673da`; **đó không phải HEAD sau commit**.
+   Snapshot code Google/DeepLX đã commit/push ở
+   `b4bcde4997dbf432127299038f2e0bb7a832d1b9`; có commit điều chỉnh prompt theo
+   sau. **Lấy HEAD cuối bằng Git**, không coi commit code là HEAD tài liệu.
    Không reset/force-push/merge master/tag/release.
 2. Đọc `AGENTS.md`, `README.md`, phần mới nhất của `status.md` và
    [báo cáo Google/DeepLX](google-deeplx-errors-2026-09.md).
@@ -57,15 +65,15 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 - ErrorFix/R6 và pipeline R6 với dữ liệu có sẵn giữ nguyên. Chưa nghiệm thu
   Google/DeepLX online hoặc media/inference mới trên GoogleDeepLXFix.
 
-## Bước 1 — nghiệm thu Google và DeepLX online có giới hạn
+## Bước 1 — nghiệm thu DeepLX online có giới hạn
 
 - Dùng batch tổng hợp 3–5 cue, không chứa transcript riêng tư, có Unicode,
   dấu câu và xuống dòng. Cache/log/output nằm trong evidence mới của phiên;
   cô lập cả cache/log phát sinh lúc import và settings GUI/CLI như runner cũ.
   Không xóa cache thật để ép cache miss; bỏ proxy giả của lượt offline khỏi
   đúng process thử, không đổi cấu hình proxy toàn máy.
-- Gọi đúng provider hiện có bằng core/GUI, giữ timeout của app. Với DeepLX,
-  dùng endpoint đang được user chọn qua cơ chế cấu hình chuẩn. Nếu thiếu
+- Gọi DeepLX hiện có bằng core/GUI, giữ timeout của app và dùng endpoint
+  đang được user chọn qua cơ chế cấu hình chuẩn. Nếu thiếu
   endpoint/key hợp lệ, yêu cầu nhập kín rồi tiếp tục phần độc lập. Không quét
   lịch sử/log tìm key, tự chọn dịch vụ thay thế hoặc ghi key vào `os.environ`.
   CLI hiện chỉ liệt kê `llm/bing/google`; không invent `--translator deeplx`.
@@ -75,7 +83,7 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
   lưu URL chứa credential/body riêng tư vào tài liệu Git.
 - Chạy lại cùng input/config để xác nhận cache hit và không có request mới.
   Không biến cache replay thành bằng chứng online hoặc chất lượng dịch.
-- Nếu dịch vụ lỗi/429/timeout/HTML thay đổi, ghi rõ gate chưa pass, không retry
+- Nếu dịch vụ lỗi/429/timeout/schema response thay đổi, ghi rõ gate chưa pass, không retry
   vô hạn. Giữ response tổng hợp/sanitized tối thiểu để tạo regression offline;
   chỉ sửa nguyên nhân có bằng chứng, không bỏ validation để ép pass. Không
   cố gây lỗi/rate-limit trên dịch vụ thật; ca lỗi/hủy đã có test offline.
@@ -85,12 +93,14 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 ## Bước 2 — workflow media mới trên GUI/EXE
 
 - Chọn clip kiểm thử mới khoảng 15–30 giây có lời nói, dùng fixture/public
-  sample phù hợp đã có hoặc media user cung cấp. Nếu chưa có input thích hợp,
+  sample phù hợp đã có hoặc media user cung cấp, không lấy từ Bilibili. Nếu chưa có input thích hợp,
   hỏi user đường dẫn; không tự dùng lại bài giảng đã chốt. Ghi hash nguồn và
   dùng thư mục evidence/cache/output mới, không ghi đè media cũ.
 - Ưu tiên chạy luồng thật ngay trên EXE hiện tại: nhận dạng → phụ đề có timing
-  → provider dịch online vừa pass → OmniVoice Local đã cài → ghép/export.
-  Dùng model/runtime đã ready; không Prepare/download khi mở app. Không tải
+  → DeepLX online vừa pass → OmniVoice Local đã cài → ghép/export.
+  Chọn rõ Qwen Local hoặc Faster-Whisper đã cài; không để mặc định Bijian/Bcut
+  gọi Bilibili và không dùng Google làm fallback. Dùng model/runtime đã ready;
+  không Prepare/download khi mở app. Không tải
   thêm model để mở rộng scope. Nếu cần source để chẩn đoán, phân biệt rõ
   source/frozen và reuse phần đã xong; không lặp inference chỉ để tích lũy gate.
 - Phạm vi này cho phép inference mới trên mẫu mới. Mỗi stage ghi rõ fresh
@@ -107,8 +117,10 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 
 ## Bàn giao phiên nghiệm thu
 
-Lập báo cáo tách từng gate: Google online, DeepLX online, cache replay,
+Lập báo cáo tách từng gate: DeepLX online, cache replay,
 source/GUI/frozen, ASR/dịch/TTS/synthesis của mẫu mới, kiểm tra media và cleanup.
+Google/Bilibili ghi **ngoài phạm vi theo yêu cầu user**, không ghi là pass/fail
+của phiên này hoặc đề nghị chạy lại để hoàn tất nghiệm thu.
 Gate thiếu key/service/input phải ghi chưa nghiệm thu, không tính pass hoặc
 thay bằng mock. Không tuyên bố nghiệm thu mọi provider/chất lượng model/cài
 máy sạch từ một clip. Ưu tiên sửa lỗi cụ thể nếu gặp; chạy test gần sửa và gate
