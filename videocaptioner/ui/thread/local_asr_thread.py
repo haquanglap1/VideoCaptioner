@@ -7,7 +7,14 @@ from threading import Event
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.core.asr.local.installer import install
-from videocaptioner.core.asr.local.runtime import LocalRuntime, LocalRuntimeError, locate
+from videocaptioner.core.asr.local.prepare import ensure_model
+from videocaptioner.core.asr.local.profiles import MODELS
+from videocaptioner.core.asr.local.runtime import (
+    LocalRuntime,
+    LocalRuntimeError,
+    default_root,
+    locate,
+)
 
 
 class LocalASRThread(QThread):
@@ -36,7 +43,13 @@ class LocalASRThread(QThread):
         runtime = None
         try:
             self.check()
-            if self.action == "install":
+            if self.action == "prepare":
+                self.status.emit(self.tr("Preparing the selected model; checking reusable files..."))
+                ensure_model(self.model, self.root, token=self._token, check=self.check, progress=self.status.emit)
+                self.check()
+                self.status.emit(self.tr("Model files verified; ready for the next task."))
+                self.installed.emit(self.root or str(default_root(MODELS[self.model].runtime)))
+            elif self.action == "install":
                 models = (self.model, "aligner") if self.model.startswith("qwen-") else (self.model,)
                 install(Path(self.root), models, token=self._token, check=self.check, progress=self.status.emit)
                 self.check()

@@ -15,7 +15,6 @@ from videocaptioner.core.asr.local.audio import source_snapshot
 from videocaptioner.core.asr.local.pipeline import (
     QwenLocalASR,
     add_local_speakers,
-    diarization_preflight,
 )
 from videocaptioner.core.asr.native_api import NativeASR
 from videocaptioner.core.asr.whisper_api import WhisperAPI
@@ -64,17 +63,6 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
     if config.local_asr.diarize:
         if config.transcribe_model not in (TranscribeModelEnum.QWEN_LOCAL, TranscribeModelEnum.WHISPER_API):
             raise ValueError("Local diarization supports Qwen Local or Whisper API; do not merge native speaker labels implicitly.")
-        diarization_preflight(config.local_asr)
-        # Fail local health before spending on gateway recognition.
-        if config.transcribe_model is TranscribeModelEnum.WHISPER_API:
-            from videocaptioner.core.asr.local.runtime import LocalRuntime
-            def check():
-                callback(0, "Checking local diarization before recognition")
-            runtime = LocalRuntime(diarization_preflight(config.local_asr, verify=True, check=check), config.local_asr.timeout)
-            try:
-                runtime.start(check)
-            finally:
-                runtime.close()
     def snapshot_check():
         callback(0, "Preparing hybrid audio snapshot")
 
@@ -95,7 +83,13 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
             asr_data.audio_identity = identity
         asr_data.pending_diarization = config.local_asr.diarize
         if config.local_asr.diarize:
-            return add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
+            try:
+                return add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
+            except (ValueError, RuntimeError, OSError):
+                # Persistent cancellation still raises here. Optional speaker failure
+                # keeps the measured transcript and an explicit pending state.
+                callback(95, "Subtitles retained; speaker association is pending. Check the optional model in model management.")
+                return asr_data
         if (not config.need_word_time_stamp and config.transcribe_model is not TranscribeModelEnum.FASTER_WHISPER
                 and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR))):
             asr_data.optimize_timing()

@@ -32,7 +32,7 @@ class LocalASRDialog(QDialog):
         self.setWindowTitle(self.tr("Local ASR models"))
         self.resize(740, 440)
         layout = QVBoxLayout(self)
-        notice = QLabel(self.tr("Recognition, alignment and diarization have separate readiness. Choose a stage, then check or install explicitly. Models run locally; no audio is uploaded by this manager."))
+        notice = QLabel(self.tr("Starting Qwen prepares the selected recognition model; subtitle export also prepares the aligner. Speaker models remain optional. This manager can check or install each stage separately; opening it does not download models."))
         notice.setWordWrap(True)
         layout.addWidget(notice)
         self.model = QComboBox()
@@ -58,6 +58,10 @@ class LocalASRDialog(QDialog):
         layout.addLayout(row)
         self.cancel_button = QPushButton(self.tr("Cancel operation"))
         self.cancel_button.clicked.connect(self.cancel)
+        self.prepare_button = QPushButton(self.tr("Prepare / resume selected model"))
+        self.prepare_button.clicked.connect(lambda: self.start_action("prepare"))
+        self.buttons.append(self.prepare_button)
+        layout.addWidget(self.prepare_button)
         layout.addWidget(self.cancel_button)
 
     def display_stage_status(self):
@@ -88,11 +92,11 @@ class LocalASRDialog(QDialog):
             if not parent:
                 return
             root = str(Path(parent) / f"local-{model}-{uuid4().hex[:8]}")
-            if model == "community-1":
-                token, ok = QInputDialog.getText(self, self.tr("Hugging Face access"),
-                        self.tr("First accept Community-1 conditions on Hugging Face. Enter a read token here; it is used only for this download and is not saved."), QLineEdit.Password)
-                if not ok or not token:
-                    return
+        if action in ("install", "prepare") and model == "community-1":
+            token, ok = QInputDialog.getText(self, self.tr("Hugging Face access"),
+                    self.tr("First accept Community-1 conditions on Hugging Face. Enter a read token here; it is used only for this download and is not saved."), QLineEdit.Password)
+            if not ok or not token:
+                return
         worker = LocalASRThread(action, model, root, cfg.local_asr_timeout.value, token)
         self.worker = retain_worker(worker)
         connect_current(self, "worker", worker, worker.status, lambda message: self.record_status(model, message))

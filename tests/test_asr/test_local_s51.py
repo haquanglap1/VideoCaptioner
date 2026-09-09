@@ -24,9 +24,6 @@ def test_hybrid_uses_one_owned_source_after_original_changes(tmp_path, monkeypat
     original = tmp_path / "input.wav"
     original.write_bytes(b"original recording")
     paths = []
-    monkeypatch.setattr(module, "diarization_preflight", lambda *a, **k: "layout")
-    monkeypatch.setattr("videocaptioner.core.asr.local.runtime.LocalRuntime",
-                        lambda *a: SimpleNamespace(start=lambda *a: None, close=lambda: None))
     data = ASRData([ASRDataSeg("synthetic", 0, 1000)])
 
     def create(path, config):

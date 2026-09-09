@@ -16,6 +16,7 @@ def test_open_settings_never_calls_runtime_or_network(qapp, monkeypatch):
         raise AssertionError("Opening settings must not probe/install")
     monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.locate", forbidden)
     monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.install", forbidden)
+    monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.ensure_model", forbidden)
     widget = LocalASRSettingWidget()
     dialog = LocalASRDialog()
     assert dialog.worker is None
@@ -99,6 +100,49 @@ def test_late_install_result_cannot_change_saved_root(qapp, monkeypatch, tmp_pat
     supervisor().workers.discard(worker)
     worker.setParent(None)
     dialog.close()
+
+
+def test_prepare_button_cancels_and_resumes_same_selected_model(qapp, monkeypatch, tmp_path):
+    import time
+
+    calls = []
+    def prepare(model, root, *, check, progress, **kwargs):
+        calls.append((model, root))
+        progress("Preparing selected model")
+        if len(calls) == 1:
+            while True:
+                check()
+                time.sleep(0.005)
+        check()
+
+    monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.ensure_model", prepare)
+    before = cfg.local_asr_root.value
+    cfg.set(cfg.local_asr_root, str(tmp_path / "selected-runtime"))
+    dialog = LocalASRDialog()
+    dialog.model.setCurrentIndex(1)
+    try:
+        for attempt in range(2):
+            dialog.prepare_button.click()
+            worker = dialog.worker
+            assert worker is not None and not dialog.prepare_button.isEnabled()
+            loop = QEventLoop()
+            worker.finished.connect(loop.quit)
+            if attempt == 0:
+                QTimer.singleShot(50, dialog.cancel_button.click)
+            QTimer.singleShot(3000, loop.quit)
+            loop.exec_()
+            worker.stop()
+            assert worker.wait(3000)
+            qapp.processEvents()
+            assert dialog.worker is None and dialog.prepare_button.isEnabled()
+        assert calls == [("qwen-0.6b", str(tmp_path / "selected-runtime"))] * 2
+        assert cfg.local_asr_root.value == str(tmp_path / "selected-runtime")
+    finally:
+        if dialog.worker is not None:
+            dialog.worker.stop()
+            dialog.worker.wait()
+        dialog.close()
+        cfg.set(cfg.local_asr_root, before)
 
 
 @pytest.mark.parametrize("name", ["QWEN_LOCAL", "WHISPER_API", "SONIOX", "SCRIBE", "BIJIAN", "FASTER_WHISPER"])

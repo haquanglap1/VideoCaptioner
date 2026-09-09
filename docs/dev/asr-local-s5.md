@@ -1,5 +1,18 @@
 # S5 — Qwen local và hybrid diarization
 
+**Bổ sung tiếp tục d2dc518:** generation có budget theo audio và chỉ trả text
+khi EOS; hết budget giữ model cho retry cửa sổ nhỏ. Cache/runtime cũ được reuse
+sau cập nhật bridge, không tải lại weights. Manager có **Prepare / resume selected
+model**; GUI native đã hủy verify rồi tiếp tục cùng root/model. Qwen SRT 60 s,
+quality và tải mới qua mạng vẫn mở. [Báo cáo và gate](asr-stall-resume-2026-09.md).
+
+**Cập nhật 2026-09-09:** bắt đầu Qwen tự chuẩn bị model đang chọn; TXT không cần
+aligner, SRT có policy biên câu riêng. Người nói là bước tùy chọn, lỗi bước này
+giữ transcript/subtitle và trạng thái pending. Cài thủ công trong manager/lệnh
+`install` dưới đây vẫn dùng thư mục mới. Chi tiết hành vi mới và giới hạn nghiệm thu
+ở [báo cáo sentence/preparation](asr-sentence-preparation-2026-09.md); các số đo S5
+bên dưới là baseline lịch sử, không phải nghiệm thu cho mọi file.
+
 Baseline bàn giao `1bf4dd0`, code S4.1 `db23299`, nhánh `codex/asr-s3-native`.
 S5 thêm engine được chọn tường minh; mặc định Bijian, Faster-Whisper và cấu hình S1–S4.1 giữ nguyên.
 Không chọn preset mặc định mới, tự gán voice hoặc làm benchmark corpus S6.

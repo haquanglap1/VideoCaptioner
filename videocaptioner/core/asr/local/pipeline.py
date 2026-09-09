@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from videocaptioner.core.utils.cache import get_asr_cache, is_cache_enabled
 
-from ..alignment.audio import decode_audio, split_audio, verify_acoustic_support, wav_bytes
+from ..alignment.audio import decode_audio, verify_acoustic_support, wav_bytes
 from ..alignment.contract import (
     MODEL_REPOSITORY,
     MODEL_REVISION,
@@ -20,8 +20,8 @@ from ..api_transcription import TranscriptionResult
 from ..asr_data import ASRData
 from ..audio_identity import identify_audio, require_audio_match
 from ..metadata import ASRMetadata, StageProvenance
-from ..native_result import native_cues
 from ..review import NativeReviewRequired
+from .audio import split_recognition_audio
 from .diarization import (
     assemble_diarized_cues,
     associate,
@@ -29,9 +29,17 @@ from .diarization import (
     validate_model_spans,
     validate_source,
 )
+from .prepare import ensure_model
 from .profiles import MODELS, RECOGNITION_POLICY, LocalASRConfig
 from .review import LocalReview
-from .runtime import LocalRuntime, LocalRuntimeError, locate
+from .runtime import (
+    LocalRuntime,
+    LocalRuntimeError,
+    LocalRuntimeGenerationLimit,
+    LocalRuntimeTimeout,
+    locate,
+)
+from .sentence_timing import SENTENCE_POLICY, sentence_cues
 
 
 def stage_key(stage: str, audio: bytes, model_id: str, options: object) -> str:
@@ -53,7 +61,7 @@ class QwenLocalASR:
         self.audio_path, self.config = audio_path, config
         self.options = config.local_asr
         chinese_language(config.transcribe_language)
-        self.recognition_layout = locate(self.options.model, self.options.runtime_root)
+        self.recognition_layout = None
 
     def run(self, callback=None) -> ASRData:
         result = self._run(callback, align=True)
@@ -76,8 +84,26 @@ class QwenLocalASR:
 
         audio = decode_audio(self.audio_path, check)
         identity = identify_audio(audio, check)
-        self.recognition_layout = locate(options.model, options.runtime_root, verify=True, check=check)
-        chunks = split_audio(audio, check, options.chunk_ms)
+        def prepare(model_id):
+            nonlocal stage
+            try:
+                return locate(model_id, options.runtime_root, verify=True, check=check)
+            except LocalRuntimeError:
+                check()
+
+            def preparation_progress(message):
+                nonlocal stage
+                stage = message
+                check()
+
+            try:
+                return ensure_model(model_id, options.runtime_root, check=check, progress=preparation_progress)
+            except OSError:
+                raise LocalRuntimeError("Model preparation could not finish; check storage, network and uv, then retry.") from None
+
+        self.recognition_layout = prepare(options.model)
+        stage = "Local recognition"
+        chunks = split_recognition_audio(audio, check, options.chunk_ms)
         cache = get_asr_cache() if is_cache_enabled() else None
         texts, raw = [], []
         model = MODELS[options.model]
@@ -85,15 +111,36 @@ class QwenLocalASR:
         scope = uuid4().hex
         runtime = LocalRuntime(self.recognition_layout, options.timeout)
         try:
-            for index, (chunk, _) in enumerate(chunks):
+            index = 0
+            while index < len(chunks):
+                chunk, offset = chunks[index]
+                stage = f"Local recognition: chunk {index + 1}/{len(chunks)}"
                 check()
                 binary = wav_bytes(chunk)
                 key = stage_key("recognition", binary, options.model, [RECOGNITION_POLICY, "Chinese", "cuda-bfloat16-sdpa", 8192, options.chunk_ms])
                 response = cache.get(key) if cache is not None else None
                 if response is None:
+                    retry_key = stage_key("recognition-retry", binary, options.model, [options.timeout, "halve-once-v1"])
+                    retry = cache.get(retry_key) if cache is not None else False
+                    if retry and len(chunk) > 15_000:
+                        pieces = split_recognition_audio(chunk, check, 15_000)
+                        chunks[index:index + 1] = [(part, offset + at) for part, at in pieces]
+                        continue
                     if runtime.state != "ready":
                         runtime.start(check)
-                    response = runtime.request(binary, check=check)
+                    try:
+                        response = runtime.request(binary, check=check)
+                    except (LocalRuntimeTimeout, LocalRuntimeGenerationLimit):
+                        check()
+                        if len(chunk) <= 15_000:
+                            raise
+                        if cache is not None:
+                            cache.set(retry_key, True, expire=86400 * 2)
+                        pieces = split_recognition_audio(chunk, check, 15_000)
+                        chunks[index:index + 1] = [(part, offset + at) for part, at in pieces]
+                        stage = "Retrying the incomplete chunk in smaller recognition windows"
+                        check()
+                        continue
                 if not isinstance(response, dict) or not isinstance(response.get("text"), str):
                     raise LocalRuntimeError("Malformed Qwen recognition response.")
                 text = response["text"]
@@ -103,22 +150,39 @@ class QwenLocalASR:
                 if cache is not None:
                     cache.set(key, {"text": text}, expire=86400 * 2)
                 progress = (index + 1) * (45 if align else 100) // len(chunks)
+                index += 1
+        except (LocalRuntimeError, AlignmentError):
+            check()
+            if texts:
+                partial = LocalReview.capture_chunks(stage=provenance, scope=scope,
+                    durations=[(offset, len(chunk)) for chunk, offset in chunks],
+                    texts=texts + [""] * (len(chunks) - len(texts)), raw=[], word_timing=True,
+                    audio_identity=identity)
+                retain_review(replace(partial, recognition_complete=False),
+                              "Recognition is incomplete. Completed chunks were retained; retry reuses available cached chunks.")
+            raise
         finally:
             runtime.close()
         check()
         if not align:
             return TranscriptionResult(text="".join(texts))
-        stage = "Strict Chinese alignment"
+        word_timing = self.config.need_word_time_stamp
+        policy = POLICY if word_timing else SENTENCE_POLICY
+        stage = "Strict Chinese alignment" if word_timing else "Chinese sentence alignment"
         alignment_runtime = None
-        failure, rejected_chunks = "", []
+        failure, rejected_tokens = "", []
         try:
-            alignment_layout = locate("aligner", options.runtime_root, verify=True, check=check)
+            alignment_layout = prepare("aligner")
+            stage = "Strict Chinese alignment" if word_timing else "Chinese sentence alignment"
             alignment_runtime = LocalRuntime(alignment_layout, options.timeout)
             for index, ((chunk, offset), text) in enumerate(zip(chunks, texts)):
                 check()
                 binary = wav_bytes(chunk)
-                key = stage_key("alignment", binary, "aligner", [POLICY, text, "Chinese", "cuda-bfloat16-sdpa"])
+                key = stage_key("alignment", binary, "aligner", [policy, text, "Chinese", "cuda-bfloat16-sdpa"])
                 items = cache.get(key) if cache is not None else None
+                raw_key = stage_key("alignment-raw", binary, "aligner", ["raw-v1", text, "Chinese", "cuda-bfloat16-sdpa"])
+                if items is None and cache is not None:
+                    items = cache.get(raw_key)
                 if items is None:
                     if text and alignment_runtime.state != "ready":
                         alignment_runtime.start(check)
@@ -126,11 +190,20 @@ class QwenLocalASR:
                 if not isinstance(items, list) or any(not isinstance(i, dict) or not isinstance(i.get("text"), str) for i in items):
                     raise LocalRuntimeError("Malformed alignment response.")
                 raw.append(items)
-                result = validate_alignment(text, items, len(chunk), offset)
+                if cache is not None:
+                    # Raw predictions are reusable evidence, not validated subtitle output.
+                    cache.set(raw_key, items, expire=86400 * 2)
+                if word_timing:
+                    anchors = validate_alignment(text, items, len(chunk), offset).spans
+                    anchor_tokens = list(range(len(items)))
+                else:
+                    cues = sentence_cues(text, items, len(chunk))
+                    anchors = tuple(a for cue in cues for a in cue.anchors)
+                    anchor_tokens = sorted({i for cue in cues for i in (cue.first_token, cue.stop_token - 1)})
                 try:
-                    verify_acoustic_support(chunk, result.spans)
+                    verify_acoustic_support(chunk, anchors)
                 except AlignmentError:
-                    rejected_chunks.append(index)
+                    rejected_tokens.extend((index, token) for token in anchor_tokens)
                     raise
                 if cache is not None:
                     cache.set(key, items, expire=86400 * 2)
@@ -143,10 +216,10 @@ class QwenLocalASR:
                 alignment_runtime.close()
         review = LocalReview.capture_chunks(stage=provenance, scope=scope,
                     durations=[(offset, len(chunk)) for chunk, offset in chunks], texts=texts, raw=raw,
-                    word_timing=True, audio_identity=identity)
-        review = replace(review, pending_diarization=options.diarize)
-        if rejected_chunks:
-            review = replace(review, acoustic_rejected=tuple(t for i in rejected_chunks for t in review.chunks[i].token_ids))
+                    word_timing=word_timing, audio_identity=identity)
+        review = replace(review, pending_diarization=options.diarize, alignment_policy=policy)
+        if rejected_tokens:
+            review = replace(review, acoustic_rejected=tuple(review.chunks[i].token_ids[t] for i, t in rejected_tokens))
         if failure:
             retain_review(review, failure)
         try:
@@ -154,8 +227,7 @@ class QwenLocalASR:
         except ValueError as exc:
             retain_review(review, str(exc))
         check()
-        # Keep measured word boundaries until speaker association has run.
-        return data if self.config.need_word_time_stamp or options.diarize else native_cues(data)
+        return data
 
 
 def diarization_preflight(options: LocalASRConfig, *, check=lambda: None, verify=False):
@@ -194,7 +266,9 @@ def add_local_speakers(audio_path: str, data: ASRData, config, *, aligned: bool,
             runtime.start(check)
             raw = runtime.request(binary, check=check)
         spans = validate_model_spans(raw, len(audio), samples=int(audio.frame_count()))
-        assemble = associate if config.need_word_time_stamp else assemble_diarized_cues
+        sentence_aligned = any(s.metadata and s.metadata.alignment and
+                               s.metadata.alignment.policy == SENTENCE_POLICY for s in data)
+        assemble = associate if config.need_word_time_stamp or sentence_aligned else assemble_diarized_cues
         result = assemble(data, spans, len(audio), scope, recognition)
         result.pending_diarization = False
         check()

@@ -162,7 +162,8 @@ Xem [hướng dẫn S4.1, cấu hình timeout và review/resume](docs/dev/asr-s4
 
 Chọn `Qwen3-ASR [Local]` trong GUI hoặc `--asr qwen-local --language zh` trong CLI.
 1.7B/0.6B và ForcedAligner chạy tuần tự trong runtime riêng; không đổi engine mặc định.
-**Quản lý mô hình** chỉ tải/nạp thử khi user bấm. `--local-diarize` thêm Community-1 cho
+Khi bắt đầu, Qwen tự chuẩn bị model đang chọn nếu thiếu; xuất phụ đề mới chuẩn bị thêm
+ForcedAligner. Mở **Quản lý mô hình** không tự tải/nạp. `--local-diarize` thêm Community-1 cho
 Qwen hoặc Whisper API; model gated cần user chấp nhận điều kiện Hugging Face và nhập token ẩn.
 `local-diarize` dùng JSON/SRT đã có với âm thanh gốc, không nhận dạng/upload lại.
 Xem [cài đặt, cache/review, GPU và giới hạn nghiệm thu S5](docs/dev/asr-local-s5.md).
@@ -183,6 +184,27 @@ TXT (thêm hậu tố số nếu file đã có). GUI nhận dạng riêng báo k
 review để mở sau; pipeline cần phụ đề vẫn dừng. CLI yêu cầu timed subtitle giữ
 exit code lỗi nếu chưa tạo được định dạng đã yêu cầu. TXT không chứa nhãn người nói.
 Xem [so sánh model và kế hoạch hoàn thiện ASR](docs/plans/asr-completion-2026-09.md).
+
+Xuất câu/đoạn kiểm tra biên cue riêng với timing từng từ: giữ nguyên text, lấy mốc
+đầu/cuối từ aligner và kiểm tra âm thanh tại hai biên. Mốc nội bộ nằm ngoài cue hoặc
+biên không hợp lệ vẫn dừng để review; không gộp min/max hay chia đều thời gian.
+`--word-timestamps` vẫn yêu cầu timing từng từ hợp lệ. **Mẫu 60 giây đã đo vẫn chưa
+qua SRT**; TXT recovery chưa thay thế phụ đề.
+
+Nhận dạng chia request tối đa 30 giây, giữ đủ sample khi không tìm được khoảng lặng.
+Chunk timeout được thử lại một lần với cửa sổ tối đa 15 giây; cache giữ chunk đã xong,
+không công bố phần thiếu là kết quả hoàn chỉnh. Lỗi model người nói không làm mất
+phụ đề có timing; JSON giữ trạng thái chờ gán người nói. Tự tải Qwen dùng runtime riêng,
+revision/hash cố định, khóa cài đồng thời và giữ tải dở để tiếp tục; cần Windows, `uv`,
+Python 3.12 và CUDA phù hợp. Runtime cũ được giữ nguyên.
+Xem [thay đổi và kết quả kiểm tra tháng 9](docs/dev/asr-sentence-preparation-2026-09.md).
+
+Qwen còn giới hạn lượng token sinh theo độ dài audio; nếu chưa EOS thì thử lại
+đúng chunk chưa xong, không trả text bị cắt. Model được giữ trong job cho retry,
+runtime đã cài vẫn dùng lại sau cập nhật bridge. Manager có nút **Prepare / resume
+selected model** để tiếp tục chuẩn bị cùng model. Thời gian chờ stall đã giảm,
+nhưng chất lượng và timestamp Qwen vẫn chưa nghiệm thu đầy đủ.
+Xem [kết quả stall, GUI hủy/tiếp tục và giới hạn](docs/dev/asr-stall-resume-2026-09.md).
 
 S5.2 thêm kiểm tra recording khi mở JSON/review hoặc chạy `local-diarize`: fingerprint PCM toàn
 nguồn, chặn audio khác dù cùng duration; dữ liệu cũ vẫn mở và báo chưa xác minh. Gateway Whisper

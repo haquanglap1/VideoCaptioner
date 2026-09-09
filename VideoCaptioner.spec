@@ -33,8 +33,10 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
-# S5 recipes under videocaptioner/resources are data, never GPU imports in the Qt process.
+# S5 recipes/current bridge are data, including reuse of compatible old runtimes.
+# GPU imports stay in the separate worker interpreter.
 hiddenimports += ["videocaptioner.core.asr.local.pipeline", "videocaptioner.core.asr.local.review",
+                  "videocaptioner.core.asr.local.prepare", "videocaptioner.core.asr.local.sentence_timing",
                   "videocaptioner.core.asr.audio_identity",
                   "videocaptioner.ui.thread.audio_identity_thread",
                   "videocaptioner.cli.commands.local_asr", "videocaptioner.ui.thread.local_asr_thread"]

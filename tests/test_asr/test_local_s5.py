@@ -390,22 +390,23 @@ def test_generation_completion_uses_qwen_result_sequences():
         bridge["require_completed_generation"](SimpleNamespace(sequences=[[4, 8]]), 9)
 
 
-def test_hybrid_preflight_fails_before_paid_recognition(monkeypatch):
+def test_optional_speaker_failure_retains_measured_transcript(monkeypatch, tmp_path):
     from importlib import import_module
     module = import_module("videocaptioner.core.asr.transcribe")
-    monkeypatch.setattr(module, "diarization_preflight", lambda *a, **k: "layout")
-    class Runtime:
-        def __init__(self, *a):
-            pass
-        def start(self, *a):
-            raise LocalRuntimeError("missing model")
-        def close(self):
-            pass
-    monkeypatch.setattr("videocaptioner.core.asr.local.runtime.LocalRuntime", Runtime)
-    monkeypatch.setattr(module, "_create_asr_instance", lambda *a: pytest.fail("Recognition must not start"))
-    with pytest.raises(LocalRuntimeError):
-        module.transcribe("unused", TranscribeConfig(transcribe_model=TranscribeModelEnum.WHISPER_API,
-                                                     local_asr=LocalASRConfig(diarize=True)))
+    data = ASRData([ASRDataSeg("你好", 0, 1000)])
+    class Recognizer:
+        def run(self, callback):
+            return data
+    def speakers(*args, **kwargs):
+        raise LocalRuntimeError("missing model")
+    monkeypatch.setattr(module, "add_local_speakers", speakers)
+    monkeypatch.setattr(module, "_create_asr_instance", lambda *a: Recognizer())
+    source = tmp_path / "audio.wav"
+    source.write_bytes(b"snapshot fixture")
+    result = module.transcribe(str(source), TranscribeConfig(transcribe_model=TranscribeModelEnum.WHISPER_API,
+                                                           local_asr=LocalASRConfig(diarize=True)))
+    assert result is data and result.pending_diarization
+    assert result.segments[0].text == "你好" and result.segments[0].speaker is None
 
 
 def test_manifest_inventory_checks_missing_files_revision_and_hash(tmp_path):

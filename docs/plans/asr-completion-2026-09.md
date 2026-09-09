@@ -1,5 +1,57 @@
 # Hoàn thiện ASR theo mục tiêu speech-to-text
 
+## Cập nhật mới nhất: direct alignment và generation trace
+
+[Báo cáo](../dev/asr-direct-alignment-stall-2026-09.md): đã căn trực tiếp text
+Qwen cached bằng Whisper.align trên chunk cuối, không mượn timing transcript
+khác. SRT thử nghiệm 9 cue đủ nguyên chữ, geometry/energy/roundtrip pass nhưng
+onset còn chứa khoảng nghỉ; **chưa acoustic acceptance, chưa tích hợp vào app**.
+Không lặp sparse slots/crop, không sửa raw hoặc nới guard. Wheel CT2 được giữ
+riêng trong evidence; không tải model hoặc thay dependency project/runtime.
+
+Mask recognition chỉ trên bốn request stall giúp một request có EOS (5,687 s),
+ba request còn lặp cặp token hàng trăm lần. Một candidate ghép parent mới với
+cache cũ giảm CER clip riêng 61,44% xuống 60,21%, chưa là quality/model-wide pass.
+Giữ cả raw IDs và output parent đã complete; không replay chúng. Candidate chưa
+vào bridge sản phẩm. Kế thừa 142 test/ResumeGuard; không test/build mới. Gate tải
+model thật qua mạng và GUI HTTP cancel/resume vẫn mở. Timing Qwen tiếp tục ưu tiên;
+OmniVoice Studio sau ASR, OCR dừng.
+
+## Bổ sung mới nhất: generation budget và GUI resume
+
+[Báo cáo tiếp tục d2dc518](../dev/asr-stall-resume-2026-09.md): hai thử nghiệm
+timing mới vẫn fail, không tích hợp. Worker giới hạn token theo audio, bắt buộc
+EOS; bốn request stall giảm từ ~181 s xuống 51,672–83,671 s, giữ process cho retry.
+Cache cũ cho cùng TXT trên hai clip khó/stress, chưa cải thiện CER. GUI native
+đã hủy verify model thật rồi tiếp tục/reuse cùng root; tải mới qua mạng chưa đo.
+142 test liên quan pass, Ruff/pyright/sync pass. Không đổi ưu tiên timestamp câu
+Qwen, không bắt đầu OmniVoice Studio/OCR, không commit/push.
+
+## Cập nhật triển khai 2026-09-09 từ bàn giao d2dc518
+
+- Đã thêm policy cue `qwen-sentence-anchors-v1` và giữ strict word khi được yêu cầu.
+  Replay raw cũ giải phóng 11/32 chunk được chọn, nhưng chưa clip hoàn chỉnh nào qua
+  SRT. Đo mẫu user với cửa sổ nhận dạng mới vẫn cần review; không tính TXT là pass.
+- Core GUI/CLI tự chuẩn bị Qwen/aligner theo nhu cầu, xác minh file và dùng lại model
+  đã cài. Có staging riêng, OS lock, hủy/resume và progress MiB. Không thay runtime
+  cũ; dependency Qt/lock/model revision/default engine giữ nguyên. Cài mới thật qua
+  mạng chưa được đo vì model phù hợp đã có; fixture tải nhỏ/activation đã kiểm tra.
+- Nhận dạng giới hạn request 30 s; không có silence thì cắt ở năng lượng thấp gần
+  cuối, giữ tất cả sample. Timeout retry một lần ở <=15 s, chunk thành công giữ cache.
+  Cả bốn clip lỗi cũ và stress nay hoàn tất TXT. CER trên bốn clip khó 33,91–61,44%;
+  stress 44,27%, còn xa mục tiêu quality. Stress 432,42 s tổng, 391,67 s request gồm
+  một timeout, 22,34 s load. RTF request 0,249; bỏ load nhưng giữ điều phối là 0,261;
+  tổng wall RTF 0,275. Chưa đạt mục tiêu <=0,25 cho toàn bước sau load.
+  Không thay bảng common-28 phía dưới.
+- Lỗi optional diarization không chặn hoặc làm mất recognition/timed subtitle.
+  JSON giữ pending; không gán speaker cho từng chữ khi chỉ có cue timing.
+- Có EXE onedir mới; chi tiết build/smoke/workflow và các gate chưa đạt nằm trong
+  [báo cáo](../dev/asr-sentence-preparation-2026-09.md).
+
+**ASR sản phẩm chưa nghiệm thu; OCR vẫn dừng. Không commit/push thay đổi mới.**
+Các mục “chưa sửa” bên dưới mô tả snapshot bàn giao trước thay đổi này; dùng báo cáo
+mới làm trạng thái triển khai hiện tại.
+
 Ngày 2026-09-09, checkout ASR-S3, nền `669c0da`. User chốt ưu tiên: **nhận dạng
 âm thanh đúng, nhanh và ổn định; phân biệt người nói là bổ sung**. Dịch tiếp tục
 dùng gateway/gpt-5.6-terra đã chọn. Timestamp từng chữ không còn là điều kiện để
@@ -175,6 +227,25 @@ câu/đoạn để mọi input xuất SRT thành công**.
   qua gate mới công nhận speech-to-text. SRT/render vẫn cần timing hợp lệ.
 - Giữ dịch LLM hiện tại; không làm thêm benchmark dịch, tìm key cũ hoặc đổi route.
   Chỉ kiểm tra chuyển tiếp output đúng khi cần cho app. OCR chưa triển khai trong plan này.
+
+## Hạng mục tương lai: OmniVoice Studio bên cạnh VieNeu
+
+User bổ sung ngày 2026-09-09: muốn tích hợp thêm lồng tiếng bằng **OmniVoice Studio**
+bên cạnh **VieNeu Local**. Đây là hạng mục sau ASR, chưa triển khai trong lượt bàn giao
+prompt; giữ ưu tiên sửa timestamp câu/đoạn Qwen và chất lượng nhận dạng.
+
+- Giữ VieNeu hoạt động và cho phép chọn thêm provider; không tự thay provider mặc định.
+- Chưa xác minh dự án/repository, phiên bản, license, cách gọi API/SDK/CLI, hỗ trợ
+  Windows/GPU hoặc tiếng Việt của OmniVoice Studio. Khi bắt đầu hạng mục, xác định
+  đúng sản phẩm từ nguồn chính thức hoặc link user cung cấp; không đoán endpoint,
+  không mặc định tương thích OpenAI và không đồng nhất tên model với tên Studio.
+- Sau khi có contract thực, thiết kế adapter phù hợp với pipeline dubbing hiện có,
+  dùng chung chọn giọng, đo duration, cache, timeline và hủy job ở nơi có thể.
+  Nếu cần runtime GPU thì tách khỏi Qt process, pin dependency/model và giữ runtime
+  VieNeu; cấu hình credential và lifecycle theo quy tắc repository.
+- Nghiệm thu provider riêng: tổng hợp đoạn tiếng Việt, chất lượng lời đọc, duration,
+  ghép timeline, lỗi/hủy, rồi kiểm tra cả source và EXE. Không lấy gate VieNeu hoặc
+  ASR đã pass làm bằng chứng OmniVoice Studio đã hoạt động.
 
 ## Giới hạn kiểm tra và file thay đổi
 

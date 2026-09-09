@@ -43,6 +43,7 @@ def recognition(monkeypatch):
             self.state = "stopped"
 
     monkeypatch.setattr(pipeline, "locate", locate)
+    monkeypatch.setattr(pipeline, "ensure_model", locate)
     monkeypatch.setattr(pipeline, "LocalRuntime", Runtime)
     return calls
 

@@ -25,10 +25,20 @@ def raw_timestamp(value):
     return value.tolist()
 
 
+class IncompleteGeneration(RuntimeError):
+    """A generation budget is exhausted; partial text must not leave the worker."""
+
+
+def recognition_token_limit(frames):
+    # A generous speech budget bounds degenerate decoding, not accepted text length.
+    # Exhaustion requests a smaller audio window; only EOS-complete text is returned.
+    return min(8192, 256 + (frames * 32 + 15999) // 16000)
+
+
 def require_completed_generation(result, eos):
     eos = [eos] if isinstance(eos, int) else eos
     if not eos or any(int(row[-1]) not in eos for row in result.sequences):
-        raise RuntimeError("Recognition generation did not finish; review required")
+        raise IncompleteGeneration("Recognition generation did not finish; review required")
 
 
 def main():
@@ -67,9 +77,11 @@ def main():
                     device_map="cuda:0", attn_implementation="sdpa", local_files_only=True,
                     max_inference_batch_size=1, max_new_tokens=8192)
             generate = model.model.generate
+            generation_metrics = {}
 
             def checked_generate(*args, **kwargs):
                 result = generate(*args, **kwargs)
+                generation_metrics["generated_tokens"] = int(result.sequences.shape[1] - kwargs["input_ids"].shape[1])
                 eos = model.model.generation_config.eos_token_id
                 require_completed_generation(result, eos)
                 return result
@@ -100,12 +112,23 @@ def main():
                 result = [{"text": item.text, "start_ms": round(item.start_time * 1000),
                            "end_ms": round(item.end_time * 1000)} for item in output]
             else:
-                output = model.transcribe(audio=(waveform, 16000), language="Chinese", return_time_stamps=False)
+                model.max_new_tokens = recognition_token_limit(frames)
+                generation_metrics.clear()
+                generation_metrics["token_limit"] = model.max_new_tokens
+                try:
+                    output = model.transcribe(audio=(waveform, 16000), language="Chinese", return_time_stamps=False)
+                except IncompleteGeneration:
+                    # Keep the loaded model for a smaller retry; no partial result file.
+                    with contextlib.redirect_stdout(sys.__stdout__):
+                        emit({**identity, "status": "incomplete", "reason": "generation-limit",
+                              **generation_metrics, "inference_seconds": time.monotonic() - started})
+                    continue
                 if len(output) != 1:
                     raise ValueError("Recognition batch mismatch")
                 result = {"text": output[0].text, "language": output[0].language}
         (request_root / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
-        emit({**identity, "inference_seconds": time.monotonic() - started,
+        emit({**identity, **(generation_metrics if model_id.startswith("qwen-") else {}),
+              "inference_seconds": time.monotonic() - started,
               "peak_vram_bytes": torch.cuda.max_memory_allocated()})
 
 

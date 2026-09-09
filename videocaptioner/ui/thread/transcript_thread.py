@@ -191,7 +191,10 @@ class TranscriptThread(QThread):
                 asr_data.save(save_path)
                 logger.info("%s 字幕文件已保存到: %s", fmt.upper(), save_path)
 
-            self.progress.emit(100, self.tr("转录完成"))
+            if asr_data.pending_diarization:
+                self.progress.emit(100, self.tr("Đã lưu phụ đề; gán người nói chưa hoàn tất."))
+            else:
+                self.progress.emit(100, self.tr("转录完成"))
             self.finished.emit(self.task)
         finally:
             Path(temp_audio_path).unlink(missing_ok=True)

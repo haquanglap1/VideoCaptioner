@@ -9,6 +9,7 @@ from ..audio_identity import AudioIdentity
 from ..metadata import ASRMetadata, StageProvenance
 from ..native_result import native_cues
 from ..review import NativeReview, ReviewToken, TimingIssue, TimingOverride, _raw_time
+from .sentence_timing import SENTENCE_POLICY, sentence_cues
 
 SCHEMA = "local-asr-review-v1"
 
@@ -28,11 +29,14 @@ class LocalReview(NativeReview):
     acoustic_rejected: tuple[str, ...] = ()
     pending_diarization: bool = False
     recognition_complete: bool = True
+    alignment_policy: str = POLICY
 
     def _payload(self) -> dict:
         raw = super()._payload()
         if self.recognition_complete:
             raw.pop("recognition_complete")
+        if self.alignment_policy == POLICY:
+            raw.pop("alignment_policy")
         return raw
 
     @classmethod
@@ -72,28 +76,58 @@ class LocalReview(NativeReview):
             issues.append(TimingIssue("", 0, "Recognition is incomplete; timing edits cannot recover missing speech text"))
         previous = 0
         edited = {o.token_id for o in self.overrides}
+        if self.alignment_policy == SENTENCE_POLICY:
+            for chunk in self.chunks:
+                try:
+                    sentence_cues(chunk.text, self._sentence_items(chunk), chunk.duration_ms)
+                except ValueError as exc:
+                    issues.append(TimingIssue(chunk.token_ids[0] if chunk.token_ids else "", 0, str(exc)))
         for index, token in enumerate(self.tokens):
             timing = self.timing_ms(token)
-            if timing is None:
-                issues.append(TimingIssue(token.id, index, "Invalid or missing alignment timing"))
-            elif timing[0] < previous:
-                issues.append(TimingIssue(token.id, index, "Overlapping alignment timing"))
+            if self.alignment_policy != SENTENCE_POLICY:
+                if timing is None:
+                    issues.append(TimingIssue(token.id, index, "Invalid or missing alignment timing"))
+                elif timing[0] < previous:
+                    issues.append(TimingIssue(token.id, index, "Overlapping alignment timing"))
             if timing:
                 previous = timing[1]
             if token.id in self.acoustic_rejected and token.id not in edited:
                 issues.append(TimingIssue(token.id, index, "Acoustic support requires user review and measured timing override"))
         return tuple(issues)
 
+    def _sentence_items(self, chunk: ReviewChunk) -> list[dict]:
+        by_id = {t.id: t for t in self.tokens}
+        edits = {o.token_id: o for o in self.overrides}
+        items = []
+        for token_id in chunk.token_ids:
+            token = by_id[token_id]
+            edit = edits.get(token_id)
+            start, end = (edit.start_ms, edit.end_ms) if edit else (token.start, token.end)
+            items.append({"text": token.text,
+                          "start_ms": start - chunk.offset_ms if type(start) is int else start,
+                          "end_ms": end - chunk.offset_ms if type(end) is int else end})
+        return items
+
     def resume(self) -> ASRData:
         if self.issues():
             raise ValueError("Local alignment still requires review; no subtitles were exported.")
         by_id = {t.id: t for t in self.tokens}
         edited = {o.token_id for o in self.overrides}
-        alignment = StageProvenance("qwen-aligner", MODEL_REPOSITORY, MODEL_REVISION, POLICY)
+        alignment = StageProvenance("qwen-aligner", MODEL_REPOSITORY, MODEL_REVISION, self.alignment_policy)
         cues, boundary = [], 0
         for chunk in self.chunks:
             if chunk.offset_ms != boundary:
                 raise ValueError("Incomplete local review audio coverage.")
+            if self.alignment_policy == SENTENCE_POLICY:
+                for cue in sentence_cues(chunk.text, self._sentence_items(chunk), chunk.duration_ms):
+                    ids = chunk.token_ids[cue.first_token:cue.stop_token]
+                    metadata = ASRMetadata(self.provider, self.scope, timing="edited" if edited.intersection(ids) else "aligned",
+                                           token_ids=ids, recognition=self.recognition, alignment=alignment)
+                    cues.append(ASRDataSeg(cue.span.text, cue.span.start_ms + chunk.offset_ms,
+                                          cue.span.end_ms + chunk.offset_ms, metadata=metadata,
+                                          cue_id=f"{self.provider}:{self.scope}:{ids[0]}"))
+                boundary += chunk.duration_ms
+                continue
             items = []
             for token_id in chunk.token_ids:
                 token = by_id[token_id]
@@ -112,7 +146,7 @@ class LocalReview(NativeReview):
         if boundary != self.duration_ms:
             raise ValueError("Incomplete local review audio coverage.")
         data = ASRData(cues, audio_identity=self.audio_identity, pending_diarization=self.pending_diarization)
-        return data if self.word_timing else native_cues(data)
+        return data if self.word_timing or self.alignment_policy == SENTENCE_POLICY else native_cues(data)
 
     def to_dict(self) -> dict:
         return {"schema": SCHEMA, "recognition_sha256": self.recognition_fingerprint(), **self._payload()}
@@ -136,6 +170,8 @@ class LocalReview(NativeReview):
                     type(result.word_timing) is not bool or result.diarize is not False or result.language != "zh" or
                     type(result.pending_diarization) is not bool or
                     type(result.recognition_complete) is not bool or
+                    result.alignment_policy not in (POLICY, SENTENCE_POLICY) or
+                    (result.alignment_policy == SENTENCE_POLICY and result.word_timing) or
                     type(result.duration_ms) is not int or result.duration_ms <= 0):
                 raise ValueError
             ids = [t.id for t in result.tokens]

@@ -1,5 +1,93 @@
 # Project Status
 
+## 2026-09-09 (chốt snapshot ResumeGuard và prompt tiếp tục theo yêu cầu user)
+
+- User yêu cầu **submit/push và prompt next session**. Snapshot gom **30 file**
+  code/test/tài liệu trên nền d2dc518, gồm sentence policy, tự chuẩn bị model,
+  retry/cache, generation budget, GUI prepare/resume và ba báo cáo nghiệm thu.
+  Commit subject: `feat(asr): add resumable model preparation and bounded recognition`.
+- [Prompt bàn giao](docs/dev/asr-completion-next-session-prompt.md) dùng snapshot
+  chứa chính nó làm mốc, không nhầm d2dc518 là HEAD sau commit. Giữ ưu tiên biên
+  câu/đoạn có căn cứ audio; SRT candidate 9 cue chưa acoustic acceptance; ba
+  request generation còn loop và một parent mask đã EOS không chạy lại.
+- Lượt chốt chỉ rà diff/manifest, phạm vi dữ liệu và liên kết tài liệu; kế thừa
+  142 test, Ruff/pyright/sync và EXE ResumeGuard. Không inference, test hoặc build
+  mới. Build/dist, raw/candidate, cache, media, runtime và dữ liệu user giữ local.
+- Quyền commit/push chỉ cho snapshot được yêu cầu, không tự áp dụng phiên sau.
+  **ASR sản phẩm, tải model mới qua mạng và GUI HTTP cancel/resume vẫn chưa nghiệm
+  thu**; OmniVoice Studio sau ASR và cần xác minh interface, OCR tiếp tục dừng.
+
+## 2026-09-09 (direct Qwen-text alignment và generation trace; chưa nghiệm thu SRT)
+
+- Tiếp tục d2dc518, giữ nguyên 29 file đầu phiên; không reset/commit/push.
+  [Báo cáo và artifact review](docs/dev/asr-direct-alignment-stall-2026-09.md).
+  **SRT thử nghiệm 9 cue đủ chữ đã có, nhưng chưa đạt acoustic acceptance**:
+  direct Whisper DTW trên chính text Qwen đưa khoảng nghỉ vào hai đầu cue.
+  Không tích hợp candidate, sửa raw/nới guard hoặc lặp sparse slots/crop cũ.
+- Một forward speech + một silence control; dùng weights large-v3 đã có, tải
+  riêng wheel CT2 19.470.040 byte vào evidence, không cài vào project/runtime.
+  Geometry/energy và SRT roundtrip pass, **không phải gate CLI/GUI/LLM**.
+- Mask recognition trên đúng bốn request stall: một request EOS **5,687 s**;
+  ba request vẫn incomplete, trace lặp terminal pair 582/546/570 lần. Giữ output
+  mới riêng và cache cũ; không cắt repetition để trả partial. Candidate ghép một
+  parent vào TXT cached giảm CER một clip **61,44% → 60,21%**, cùng 975 ký tự
+  reference; không chấm lại common-28 hoặc gọi quality/stall đã sửa.
+- Process/lease đóng, preservation pass. Không đổi app source, runtime, cache,
+  cấu hình dịch hoặc EXE. Kế thừa 142 test và ResumeGuard, không test/build lại.
+  Tải model mới qua mạng, GUI HTTP cancel/resume và workflow đầy đủ vẫn mở;
+  wheel thử nghiệm không là tải model. OmniVoice sau ASR; OCR dừng.
+
+## 2026-09-09 (tiếp tục d2dc518: generation budget, GUI resume; timing vẫn mở)
+
+- Kế thừa 25 file chưa commit, không reset/commit/push; [báo cáo mới](docs/dev/asr-stall-resume-2026-09.md).
+  **Qwen SRT 60 s vẫn chưa đạt, OCR dừng.** Hai probe audio có contract riêng
+  vẫn fail; giữ raw và không tích hợp/nới guard.
+- Worker giới hạn token theo audio, bắt buộc EOS; exhaustion trả incomplete,
+  giữ model cho retry <=15 s. Bốn request timeout ~181 s nay dừng ở
+  **51,672–83,671 s**, cùng PID; 20 file bảo vệ nguyên hash/mtime. Chưa sửa
+  quality/nguyên nhân generation; không suy RTF toàn file mới.
+- Cache cũ cho cùng TXT trên hai clip khó/stress, 0 inference/download. Bridge
+  bundle mới dùng interpreter/weights đã verify; giữ runtime/managed cũ.
+- GUI thêm **Prepare / resume selected model**. Native Qt/QTest với model thật:
+  hủy verify **31 ms**, tiếp tục **4,750 s**, reuse **5,250 s**; root giữ nguyên,
+  không download. HTTP cancel/tải runtime mới vẫn chưa nghiệm thu.
+- **142 test pass / 13,16 s**, Ruff pass, pyright 0/0, translations in sync;
+  không full/corpus/API. EXE ResumeGuard build exit 0 / 214,516 s, 6 warning/
+  0 ERROR; GUI sống 25 s, đóng đúng PID exit 0. Frozen Qwen TXT thực chạy 10 s
+  audio, exit 0 / 27,812 s, 23 ký tự giữ nguyên, không child còn sống.
+  Artifact/hash/gate chưa chạy ghi trong báo cáo; chưa Qwen SRT hoặc tải mạng mới.
+  OmniVoice Studio vẫn sau ASR, phải xác minh dự án/interface chính thức.
+
+## 2026-09-09 (sentence policy, chuẩn bị model và hoàn tất TXT file dài)
+
+- Tiếp tục ASR-S3 / `codex/asr-s3-native` từ đúng **d2dc518**, đầu phiên sạch;
+  không commit/push. [Báo cáo source/evidence/EXE](docs/dev/asr-sentence-preparation-2026-09.md).
+  **Qwen SRT trên mẫu user vẫn chưa đạt; ASR sản phẩm chưa nghiệm thu. OCR dừng.**
+- Thêm policy cue riêng với word strict: group theo text, giữ start/end token biên,
+  kiểm tra audio biên và containment của mọi mốc raw; không min/max, sửa raw hoặc
+  bỏ chữ. Review giữ policy/ID; cache raw tách khỏi output đã validate. Replay cũ
+  **11/32 chunk** qua guard nhưng **0/8 cặp model/clip** có timing hoàn chỉnh.
+- GUI/CLI Qwen tự chuẩn bị đúng model khi bắt đầu, TXT không cần aligner; có verify
+  hash, staging riêng, OS lock, progress, hủy/resume, dùng lại model cũ. Cài qua mạng
+  chưa đo vì runtime phù hợp đã có. Optional speaker lỗi giữ timed subtitle và
+  pending, không chặn recognition hoặc gán giả từng chữ.
+- Request nhận dạng tối đa 30 s, fallback cắt audio theo năng lượng giữ đủ sample;
+  timeout retry một lần <=15 s, cache giữ chunk xong, partial không thành complete.
+  **4/4 clip lỗi cũ nay xuất TXT**, CER thô **33,91–61,44%**. Stress **26,23 phút**
+  hoàn tất TXT trong **432,422 s**, gồm 1 timeout; CER **44,27%**, RTF sau load có
+  điều phối **0,261**, chưa đạt mục tiêu 0,25. Mẫu user mới vẫn TXT/review; không
+  chấm lại common-28 hoặc đổi engine/LLM/model/lock. Không API/model download mới.
+- Gate cuối liên quan **110 pass / 14,52 s**; lượt rộng 648 pass/5 fail đã có rerun
+  45 pass sau sửa fixture cũ, gồm 1 Scribe timeout race không sửa app. Ruff pass,
+  pyright 0/0, translations in sync. Chi tiết fail/deselected/giới hạn trong report.
+- EXE **SentencePrep-20260909**: PyInstaller exit 0, 6 warning đáng chú ý/0 ERROR,
+  EXE **31.184.350 byte**, SHA-256
+  `22495164beef9977300c5bf5b83b6c31086f836fe4eb7a2d79eab58604a89f80`.
+  GUI native sống 25 s, đóng đúng PID exit 0. Frozen TXT được xác nhận qua cache
+  (helper lần đầu race sau khi đã tạo text); FWW sentence 10 s thực chạy, SRT hợp lệ,
+  không còn child. Chưa GUI button workflow/cài mới qua mạng/Qwen SRT/media online.
+  Giữ artifact TimingGuard, runtime/model, AppData và toàn bộ evidence cũ.
+
 ## 2026-09-09 (chốt snapshot speech-to-text và prompt tiếp tục)
 
 - User yêu cầu **prompt next session, submit và push**. Snapshot từ nền

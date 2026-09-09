@@ -192,6 +192,8 @@ def run(args: Namespace, config: dict) -> int:
 
         # Save output
         asr_data.save(save_path=output_path)
+        if asr_data.pending_diarization:
+            output.warn("Subtitles saved; optional speaker association is still pending. Use local-diarize after preparing its model.")
 
         if progress:
             n = len(asr_data.segments)
