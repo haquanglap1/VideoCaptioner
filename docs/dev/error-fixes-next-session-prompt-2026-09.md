@@ -1,5 +1,13 @@
 # Prompt phiên tiếp theo — sau sửa Qt shutdown và Bing
 
+**Đã chuyển sang [prompt nghiệm thu online/media](online-media-next-session-prompt-2026-09.md)
+theo yêu cầu user ngày 2026-09-10.** Google/DeepLX đã sửa, có 71 regression mới
+trong gate 309 pass/15 deselected và EXE `VideoCaptioner-GoogleDeepLXFix-20260909`.
+User yêu cầu chốt Git snapshot này; lấy HEAD/tracking bằng Git. Đọc phần mới
+nhất của `status.md` cùng [báo cáo Google/DeepLX](google-deeplx-errors-2026-09.md).
+Mục ứng viên bên dưới là lịch sử, không lặp sửa/test/build đã hoàn tất. Phạm vi
+online/media mới theo prompt mới, vẫn giữ bài giảng/model/OCR đã chốt.
+
 Tiếp tục project VideoCaptioner tại worktree **VideoCaptioner-ASR-S3**, nhánh
 **`codex/asr-s3-native`**. Không làm ở checkout `VideoCaptioner` đang là master.
 

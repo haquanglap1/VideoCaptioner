@@ -1,5 +1,40 @@
 # Project Status
 
+## 2026-09-10 (chốt snapshot Google/DeepLX và bàn giao nghiệm thu online/media)
+
+- User yêu cầu commit/push snapshot Google/DeepLX lên `origin/codex/asr-s3-native`
+  và chuẩn bị [prompt phiên sau](docs/dev/online-media-next-session-prompt-2026-09.md).
+  Parent là `cd127e1`; lấy HEAD cuối/tracking bằng Git sau commit tài liệu.
+- Phiên sau mở nghiệm thu Google/DeepLX online và workflow media mới ngắn:
+  cho phép request/inference/render cần thiết trên mẫu mới, cache/output riêng.
+  Giữ bài giảng đã chốt, runtime/model/settings/cache; không benchmark sâu/OCR,
+  tải model hoặc cài dependency. Thiếu input/endpoint/key thì hỏi đúng phần thiếu.
+- Lượt chốt Git kế thừa 309 pass/15 deselected, static/sync và EXE
+  GoogleDeepLXFix đã đo; không chạy lại test/build/model/API chỉ để commit.
+  Gate online và media mới chưa chạy trong lượt bàn giao này. Quyền commit/push
+  hiện tại không tự áp dụng cho thay đổi của phiên sau; không merge/tag/release.
+
+## 2026-09-09 (Google/DeepLX không nuốt lỗi hoặc cache bản dịch thiếu)
+
+- Tiếp tục đúng HEAD `cd127e1`/`codex/asr-s3-native`, Git sạch lúc bắt đầu.
+  65 regression đầu tái hiện **63 fail / 2 pass**. Hai provider nay validate
+  nguyên batch trước mutation/cache, báo lỗi document khi một chunk thiếu,
+  bỏ kết quả đến sau hủy và đóng response/session đúng vòng đời.
+- Google báo cần chia câu vượt 5000 ký tự và từ chối HTML thiếu/không rõ.
+  DeepLX validate kiểu/nội dung `data` và mã lỗi. Namespace `validated-v2`
+  bỏ qua cache cũ nhưng giữ dữ liệu cũ; DeepLX thêm hash endpoint hiệu lực.
+- Gate mới **309 pass / 15 deselected**, gồm **71 regression mới**;
+  Ruff/Pyright/sync pass. Test offline với cache/log/settings riêng; không
+  cộng lại 409 pass và nghiệm thu ErrorFix đã kế thừa.
+- EXE mới `dist/VideoCaptioner-GoogleDeepLXFix-20260909/`: build exit 0 /
+  238,812 s, 6 WARNING/0 ERROR; 31.263.856 byte, SHA-256
+  `064907630f4f15bf35e134b4a2f2d331a4e008b2bb96402b9299fa81d2c7291e`.
+  Bốn module PYZ khớp source; GUI sống 26,047 s/exit 0/không child. CLI Google
+  qua proxy loopback lỗi đúng exit 5, giữ input/output, cache 0 entry.
+- [Chi tiết, lỗi lệnh thử đã sửa và giới hạn](docs/dev/google-deeplx-errors-2026-09.md).
+  Không online/inference/media mới, không tải model/cài dependency/benchmark/OCR.
+  Giữ bài giảng/cache/model/settings và ErrorFix/R6. Chưa commit/push thay đổi mới.
+
 ## 2026-09-09 (chốt Git Qt/Bing ErrorFix và prompt phiên sau)
 
 - User yêu cầu commit/push snapshot hiện tại lên `origin/codex/asr-s3-native`.
