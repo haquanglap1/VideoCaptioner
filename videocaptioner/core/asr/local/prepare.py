@@ -23,6 +23,21 @@ from .runtime import (
 )
 
 
+def _partial_download_bytes(directory: Path) -> int:
+    """Hub partial filenames can exceed MAX_PATH even in a usable runtime folder."""
+    path = str(directory.resolve())
+    if os.name == "nt" and not path.startswith("\\\\?\\"):
+        path = "\\\\?\\UNC\\" + path[2:] if path.startswith("\\\\") else "\\\\?\\" + path
+    total = 0
+    for partial in Path(path).rglob("*.incomplete"):
+        try:
+            total += partial.stat().st_size
+        except OSError:
+            # The downloader may have finalized this file since enumeration.
+            continue
+    return total
+
+
 @contextmanager
 def installation_lock(path: Path, check: Check, progress: Callable[[str], None]):
     """OS ownership survives cancellation and is released by the OS after a crash."""
@@ -132,7 +147,7 @@ def ensure_model(model_id: str, root: str | Path = "", *, token: str = "", check
                 done, total = report["verified_bytes"], report["total_bytes"]
                 if type(done) is not int or type(total) is not int or not 0 <= done <= total:
                     return
-                partial = sum(p.stat().st_size for p in (model_path / ".cache/huggingface/download").rglob("*.incomplete"))
+                partial = _partial_download_bytes(model_path / ".cache/huggingface/download")
                 progress(f"Preparing {model_id}: {min(done + partial, total) / 1048576:.0f}/{total / 1048576:.0f} MiB; verifying downloads")
             except (OSError, ValueError, KeyError):
                 pass

@@ -185,11 +185,17 @@ review để mở sau; pipeline cần phụ đề vẫn dừng. CLI yêu cầu t
 exit code lỗi nếu chưa tạo được định dạng đã yêu cầu. TXT không chứa nhãn người nói.
 Xem [so sánh model và kế hoạch hoàn thiện ASR](docs/plans/asr-completion-2026-09.md).
 
-Xuất câu/đoạn kiểm tra biên cue riêng với timing từng từ: giữ nguyên text, lấy mốc
-đầu/cuối từ aligner và kiểm tra âm thanh tại hai biên. Mốc nội bộ nằm ngoài cue hoặc
-biên không hợp lệ vẫn dừng để review; không gộp min/max hay chia đều thời gian.
-`--word-timestamps` vẫn yêu cầu timing từng từ hợp lệ. **Mẫu 60 giây đã đo vẫn chưa
-qua SRT**; TXT recovery chưa thay thế phụ đề.
+Xuất câu/đoạn dùng mốc bắt đầu/kết thúc của câu từ aligner và kiểm tra âm thanh
+trong câu; lỗi thời lượng của từng token không tự chặn câu có timing dùng được.
+Vùng vẫn lỗi dùng Faster-Whisper dự phòng, lấy cả chữ và thời gian của Whisper.
+Đuôi quá ngắn được xử lý cùng đoạn trước để có ngữ cảnh. App báo số câu dự phòng;
+JSON giữ nguồn từng câu, bản review giữ nguyên chữ và raw Qwen ban đầu.
+
+Whisper dự phòng dùng executable/model **đã cài** trong cài đặt Faster-Whisper;
+CLI dùng `--fw-program`, `--fw-model-dir`, `--fw-model`, `--fw-device` ngay cả
+khi chọn `--asr qwen-local`. Thiếu công cụ hoặc dự phòng lỗi vẫn giữ TXT/review.
+`--word-timestamps` và các review policy cũ giữ kiểm tra timing nghiêm ngặt.
+Chế độ câu hướng đến phụ đề tương đối khớp, không bảo đảm độ chính xác từng chữ.
 
 Nhận dạng chia request tối đa 30 giây, giữ đủ sample khi không tìm được khoảng lặng.
 Chunk timeout được thử lại một lần với cửa sổ tối đa 15 giây; cache giữ chunk đã xong,
@@ -220,6 +226,14 @@ tổng hợp ở tốc độ provider đã chọn, đo WAV thật rồi chỉ re
 không vừa, `Review` dừng trước bước mix và mở report; `Allow overlap` giữ nguyên lời nói đầy đủ và ghi cảnh
 báo. Natural không dùng đường truncate của Legacy.
 
+Để giữ nhịp đọc đều, chọn **Tự nhiên → Nhịp đọc đều, không chồng lời**. Gợi ý tốc
+độ **1,00–1,05×**, độ trễ bắt đầu tối đa **2500 ms**; câu sau chờ
+câu trước đọc xong. Bật **LLM rút gọn riêng lời đọc vượt khung** để chỉ viết lại
+phần lời nói đã đo là quá dài, giữ phụ đề gốc. CLI dùng `--unresolved sequential`,
+`--natural-max-speed 1.0`, `--max-start-delay-ms 2500`. Nếu cần tăng nhẹ, một hệ số
+chung được dùng cho toàn job để giữ nhịp nhất quán. Nếu vẫn không đủ thời gian,
+app yêu cầu rút gọn/xem lại. [Chi tiết](docs/dev/natural-dubbing.md).
+
 Cache dùng `AppData/cache/dubbing_tts/v1/` với key SHA-256 không chứa API key hay transcript trong tên
 file. GUI/full pipeline không ghi report JSON; dùng `--report PATH` ở CLI khi thực sự cần lưu report.
 
@@ -230,6 +244,33 @@ Model active được giữ offline sau lần download thành công; check/updat
 activate sau health + voices + WAV 48 kHz smoke và không đổi revision giữa một dubbing job. `Local AI`
 vẫn giữ nguyên cho server bên ngoài. Chi tiết runtime, updater, build và acceptance nằm tại
 [`docs/dev/vieneu-one-app.md`](docs/dev/vieneu-one-app.md).
+
+### OmniVoice Local
+
+Tab **Lồng tiếng → OmniVoice Local** thêm engine từ
+[k2-fsa/OmniVoice](https://github.com/k2-fsa/OmniVoice), bên cạnh VieNeu Local.
+Bấm **Chuẩn bị / tiếp tục OmniVoice** để cài runtime Python 3.12/CUDA riêng và
+tải model đã ghim revision (model + audio tokenizer khoảng 3,3 GB). Cần `uv`,
+Windows và GPU NVIDIA phù hợp; môi trường/dependency của app không bị thay đổi.
+Có thể hủy và tiếp tục tải; mở tab không tự tải model.
+
+Chọn giọng `auto`, `male` hoặc `female`; hoặc chọn audio giọng mẫu 3–10 giây và
+nhập đúng lời nói trong mẫu. Không cần API key. Mẫu giọng được giữ local, không
+tải thêm Whisper để nhận dạng. Ngôn ngữ mặc định `vi`; có thể nhập mã khác mà
+OmniVoice hỗ trợ. Giọng tự sinh có thể thay đổi giữa các câu; dùng mẫu giọng để
+giữ người đọc nhất quán. Audio đầu ra là WAV 24 kHz, dùng chung cache và pipeline
+Natural/Legacy đo thời lượng, ghép timeline và xử lý câu vượt khung.
+
+Chuẩn bị từ source hoặc dùng CLI sau khi chuẩn bị trong GUI:
+
+```powershell
+uv run --frozen python scripts/prepare_omnivoice.py
+uv run --frozen videocaptioner dub video.mp4 --subtitle translated.vi.srt --tts-provider omnivoice-local --voice auto --omnivoice-language vi
+```
+
+`--omnivoice-runtime` chọn runtime khác; `--omnivoice-reference-audio` đi cùng
+`--omnivoice-reference-text-file` để dùng giọng mẫu. Xem
+[pins, giấy phép thành phần và nghiệm thu](docs/dev/omnivoice-local.md).
 
 ## Video Editor
 

@@ -39,7 +39,8 @@ from .runtime import (
     LocalRuntimeTimeout,
     locate,
 )
-from .sentence_timing import SENTENCE_POLICY, sentence_cues
+from .sentence_fallback import sentence_subtitles
+from .sentence_timing import PRACTICAL_SENTENCE_POLICY, SENTENCE_POLICIES, sentence_cues
 
 
 def stage_key(stage: str, audio: bytes, model_id: str, options: object) -> str:
@@ -167,7 +168,7 @@ class QwenLocalASR:
         if not align:
             return TranscriptionResult(text="".join(texts))
         word_timing = self.config.need_word_time_stamp
-        policy = POLICY if word_timing else SENTENCE_POLICY
+        policy = POLICY if word_timing else PRACTICAL_SENTENCE_POLICY
         stage = "Strict Chinese alignment" if word_timing else "Chinese sentence alignment"
         alignment_runtime = None
         failure, rejected_tokens = "", []
@@ -193,18 +194,21 @@ class QwenLocalASR:
                 if cache is not None:
                     # Raw predictions are reusable evidence, not validated subtitle output.
                     cache.set(raw_key, items, expire=86400 * 2)
-                if word_timing:
-                    anchors = validate_alignment(text, items, len(chunk), offset).spans
-                    anchor_tokens = list(range(len(items)))
-                else:
-                    cues = sentence_cues(text, items, len(chunk))
-                    anchors = tuple(a for cue in cues for a in cue.anchors)
-                    anchor_tokens = sorted({i for cue in cues for i in (cue.first_token, cue.stop_token - 1)})
+                anchors = ()
                 try:
+                    if word_timing:
+                        anchors = validate_alignment(text, items, len(chunk), offset).spans
+                    else:
+                        cues = sentence_cues(text, items, len(chunk), policy=policy)
+                        anchors = tuple(cue.span for cue in cues)
                     verify_acoustic_support(chunk, anchors)
                 except AlignmentError:
-                    rejected_tokens.extend((index, token) for token in anchor_tokens)
-                    raise
+                    check()
+                    if anchors:
+                        rejected_tokens.extend((index, token) for token in range(len(items)))
+                    if word_timing:
+                        raise
+                    continue
                 if cache is not None:
                     cache.set(key, items, expire=86400 * 2)
                 progress = 45 + (index + 1) * 45 // len(chunks)
@@ -220,6 +224,12 @@ class QwenLocalASR:
         review = replace(review, pending_diarization=options.diarize, alignment_policy=policy)
         if rejected_tokens:
             review = replace(review, acoustic_rejected=tuple(review.chunks[i].token_ids[t] for i, t in rejected_tokens))
+        if not word_timing:
+            try:
+                return sentence_subtitles(audio, review, self.config, callback)
+            except (ValueError, RuntimeError, OSError) as exc:
+                check()
+                retain_review(review, str(exc))
         if failure:
             retain_review(review, failure)
         try:
@@ -267,7 +277,7 @@ def add_local_speakers(audio_path: str, data: ASRData, config, *, aligned: bool,
             raw = runtime.request(binary, check=check)
         spans = validate_model_spans(raw, len(audio), samples=int(audio.frame_count()))
         sentence_aligned = any(s.metadata and s.metadata.alignment and
-                               s.metadata.alignment.policy == SENTENCE_POLICY for s in data)
+                               s.metadata.alignment.policy in SENTENCE_POLICIES for s in data)
         assemble = associate if config.need_word_time_stamp or sentence_aligned else assemble_diarized_cues
         result = assemble(data, spans, len(audio), scope, recognition)
         result.pending_diarization = False

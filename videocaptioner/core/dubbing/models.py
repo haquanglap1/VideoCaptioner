@@ -28,6 +28,7 @@ class DubbingTimingMode(_StringEnum):
 class UnresolvedFitPolicy(_StringEnum):
     REVIEW = "review"
     ALLOW_OVERLAP = "allow-overlap"
+    SEQUENTIAL = "sequential"
 
 
 class DubbingFitStatus(_StringEnum):
@@ -100,6 +101,10 @@ class DubbingGroup:
     cache_key: str = ""
     audio_path: str = ""
     warnings: list[str] = field(default_factory=list)
+    playback_start_time: float | None = None
+    playback_end_time: float | None = None
+    start_delay: float = 0.0
+    applied_speed: float = 1.0
 
 
 @dataclass
@@ -194,4 +199,6 @@ def calculate_report_summary(groups: Iterable[DubbingGroup], output_created: boo
         "p95_fit_ratio": round(ratios[p95_index], 4) if ratios else 0.0,
         "total_tts_attempts": sum(group.attempt_count for group in items),
         "output_created": output_created,
+        "shifted_groups": sum(group.start_delay > 0.001 for group in items),
+        "max_start_delay_ms": round(max((group.start_delay for group in items), default=0.0) * 1000),
     }

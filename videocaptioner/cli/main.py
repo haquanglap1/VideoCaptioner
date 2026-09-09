@@ -85,8 +85,12 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
 def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Dubbing options")
     group.add_argument(
-        "--tts-provider", choices=["openai", "minimax", "local-ai", "vieneu-local"]
+        "--tts-provider", choices=["openai", "minimax", "local-ai", "vieneu-local", "omnivoice-local"]
     )
+    group.add_argument("--omnivoice-runtime", metavar="DIRECTORY")
+    group.add_argument("--omnivoice-reference-audio", metavar="FILE")
+    group.add_argument("--omnivoice-reference-text-file", metavar="FILE")
+    group.add_argument("--omnivoice-language", metavar="CODE")
     group.add_argument("--tts-api-key", metavar="KEY")
     group.add_argument("--tts-api-base", metavar="URL")
     group.add_argument("--tts-model", metavar="NAME")
@@ -102,7 +106,8 @@ def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--max-rewrite-attempts", type=int, metavar="N")
     group.add_argument("--no-timing-rewrite", action="store_true")
     group.add_argument("--no-tts-cache", action="store_true")
-    group.add_argument("--unresolved", choices=["review", "allow-overlap"])
+    group.add_argument("--unresolved", choices=["review", "allow-overlap", "sequential"])
+    group.add_argument("--max-start-delay-ms", type=int, metavar="MS")
     group.add_argument("--mix-mode", choices=["keep", "reduce", "mute"])
     group.add_argument("--original-volume", type=float, metavar="LEVEL")
     group.add_argument("--voice-volume", type=float, metavar="LEVEL")
@@ -564,6 +569,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("dubbing.tts_speed", getattr(args, "tts_speed", None))
     _set("dubbing.tts_concurrency", getattr(args, "tts_concurrency", None))
     _set("dubbing.text_source", getattr(args, "text_source", None))
+    for option in ("runtime", "reference_audio", "reference_text_file", "language"):
+        _set("omnivoice." + option, getattr(args, "omnivoice_" + option, None))
     _set("dubbing.timing_mode", getattr(args, "timing_mode", None))
     _set("dubbing.natural_max_speed", getattr(args, "natural_max_speed", None))
     _set("dubbing.legacy_max_speed", getattr(args, "legacy_max_speed", None))
@@ -575,6 +582,7 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     if getattr(args, "no_tts_cache", False):
         _set("dubbing.tts_cache", False)
     _set("dubbing.unresolved_policy", getattr(args, "unresolved", None))
+    _set("dubbing.max_start_delay_ms", getattr(args, "max_start_delay_ms", None))
     _set("dubbing.mix_mode", getattr(args, "mix_mode", None))
     _set("dubbing.original_volume", getattr(args, "original_volume", None))
     _set("dubbing.voice_volume", getattr(args, "voice_volume", None))

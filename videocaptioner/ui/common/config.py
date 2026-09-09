@@ -331,8 +331,12 @@ class Config(QConfig):
     dubbing_enabled = ConfigItem("Dubbing", "Enabled", False, BoolValidator())
     dubbing_tts_provider = OptionsConfigItem(
         "Dubbing", "TTSProvider", "openai",
-        OptionsValidator(["openai", "minimax", "local_ai", "vieneu-local"]),
+        OptionsValidator(["openai", "minimax", "local_ai", "vieneu-local", "omnivoice-local"]),
     )
+    omnivoice_runtime = ConfigItem("OmniVoice", "Runtime", "")
+    omnivoice_reference_audio = ConfigItem("OmniVoice", "ReferenceAudio", "")
+    omnivoice_reference_text = ConfigItem("OmniVoice", "ReferenceText", "")
+    omnivoice_language = ConfigItem("OmniVoice", "Language", "vi")
     dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
     dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
     dubbing_tts_api_base = ConfigItem(
@@ -371,8 +375,9 @@ class Config(QConfig):
     )
     dubbing_unresolved_policy = OptionsConfigItem(
         "Dubbing", "UnresolvedPolicy", "review",
-        OptionsValidator(["review", "allow-overlap"]),
+        OptionsValidator(["review", "allow-overlap", "sequential"]),
     )
+    dubbing_max_start_delay_ms = RangeConfigItem("Dubbing", "MaxStartDelayMs", 2000, RangeValidator(0, 10000))
     dubbing_tts_sample_rate = OptionsConfigItem(
         "Dubbing", "TTSSampleRate", 32000,
         OptionsValidator([16000, 24000, 32000, 44100, 48000]),

@@ -14,6 +14,17 @@ from videocaptioner.core.asr.local.runtime import LocalRuntimeError
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows runtime recipe")
 
 
+def test_progress_counts_hub_partial_files_beyond_windows_max_path(tmp_path):
+    directory = tmp_path / ("runtime-" + "a" * 65) / ("model-" + "b" * 65)
+    partial = directory / ("c" * 90 + ".incomplete")
+    assert len(str(partial)) > 260
+    extended = Path("\\\\?\\" + str(partial.resolve()))
+    extended.parent.mkdir(parents=True)
+    extended.write_bytes(b"retained download")
+    (extended.parent / "completed.bin").write_bytes(b"not a partial")
+    assert prepare._partial_download_bytes(directory) == len(b"retained download")
+
+
 @pytest.fixture
 def installation(tmp_path, monkeypatch):
     recipe = tmp_path / "recipe"

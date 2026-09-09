@@ -84,7 +84,7 @@ def test_sentence_pipeline_and_review_keep_raw_and_require_acoustic_anchors(monk
     from pydub.generators import Sine
 
     from videocaptioner.core.asr.local import pipeline
-    from videocaptioner.core.asr.local.sentence_timing import SENTENCE_POLICY
+    from videocaptioner.core.asr.local.sentence_timing import PRACTICAL_SENTENCE_POLICY
     from videocaptioner.core.asr.review import NativeReview, NativeReviewRequired
     from videocaptioner.core.entities import TranscribeConfig
 
@@ -103,13 +103,16 @@ def test_sentence_pipeline_and_review_keep_raw_and_require_acoustic_anchors(monk
             self.state = "stopped"
 
     monkeypatch.setattr(pipeline, "LocalRuntime", Runtime)
+    def unavailable(*args):
+        raise AlignmentError("Whisper unavailable in offline fixture")
+    monkeypatch.setattr("videocaptioner.core.asr.local.sentence_fallback.WhisperSentenceFallback.__call__", unavailable)
     config = TranscribeConfig(transcribe_language="zh", need_word_time_stamp=False)
     engine = pipeline.QwenLocalASR("fixture.wav", config)
     if silent_anchors:
         with pytest.raises(NativeReviewRequired) as error:
             engine.run()
         review = NativeReview.from_dict(error.value.review.to_dict())
-        assert review.alignment_policy == SENTENCE_POLICY and not review.word_timing
+        assert review.alignment_policy == PRACTICAL_SENTENCE_POLICY and not review.word_timing
         assert review.tokens[2].start == 350 and review.tokens[2].end == 300
         with pytest.raises(ValueError):
             review.resume()
@@ -118,7 +121,7 @@ def test_sentence_pipeline_and_review_keep_raw_and_require_acoustic_anchors(monk
         assert len(data) == 1
         cue = data.segments[0]
         assert cue.text == "你好，世界！" and cue.start_time == 100 and cue.end_time == 550
-        assert cue.metadata.alignment.policy == SENTENCE_POLICY and len(cue.metadata.token_ids) == 4
+        assert cue.metadata.alignment.policy == PRACTICAL_SENTENCE_POLICY and len(cue.metadata.token_ids) == 4
         data.save(str(tmp_path / "sentence.srt"))
         data.save(str(tmp_path / "sentence.json"))
         from videocaptioner.core.asr.asr_data import ASRData

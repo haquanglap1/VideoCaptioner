@@ -160,6 +160,20 @@ def test_measured_outlier_rewrites_only_outlier(silent_video, tmp_path):
     assert report["groups"][0]["measured_duration"] == pytest.approx(2.5, abs=0.02)
 
 
+def test_predictions_do_not_rewrite_speech_that_measures_within_capacity(silent_video, tmp_path):
+    subtitle = tmp_path / "measured.srt"
+    long_text = "This sentence has many words but the actual synthesized audio fits the available time."
+    write_bilingual(subtitle, "Original", long_text)
+    class NoRewrite:
+        configured = True
+        def rewrite(self, *args, **kwargs):
+            pytest.fail("Prediction alone must not trigger a rewrite")
+    engine = DubbingEngine(tts_provider_factory=lambda cfg: FakeTTS({long_text: 1.0}, []),
+                          rewrite_service_factory=lambda cfg: NoRewrite(), cache_root=tmp_path / "cache")
+    engine.dub(str(silent_video), str(subtitle), str(tmp_path / "measured.mp4"), config(rewrite_enabled=True))
+    assert engine.last_report["groups"][0]["tts_text"] == long_text
+
+
 def test_natural_review_never_truncates(silent_video, tmp_path, monkeypatch):
     subtitle = tmp_path / "review.srt"
     write_bilingual(subtitle, "Original", "Quá dài")

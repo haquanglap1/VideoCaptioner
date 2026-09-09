@@ -1,5 +1,138 @@
 # Hoàn thiện ASR theo mục tiêu speech-to-text
 
+## Tiếp tục được user chọn: GUI và tải model
+
+Đã nghiệm thu phạm vi tải model ASR trên máy này, xem
+[báo cáo](../dev/asr-gui-download-2026-09.md): source GUI tải mới Qwen 0.6B,
+ForcedAligner HTTP cancel/resume nhận Range/206; EXE GUIResume tiếp tục cùng
+file, hủy HTTP thật, resume/verify/health/reuse và đóng sạch. Sửa trạng thái hủy
+và tiến độ partial vượt MAX_PATH; 150 test/Ruff/pyright/sync pass.
+
+Các gate này thay trạng thái “tải mới/GUI HTTP cancel-resume chưa đo” bên dưới
+cho **Qwen 0.6B và ForcedAligner trên máy này**. Không bao gồm cài máy khác,
+OmniVoice GUI downloader, model gated hoặc toàn workflow video qua GUI/EXE.
+User chưa yêu cầu chỉnh lại bản lồng tiếng đã chốt; OCR vẫn dừng.
+
+## Chốt phạm vi hiện tại — user phản hồi “tạm ổn”
+
+**Luồng thực tế trên bài giảng đã hoàn tất; chưa đóng toàn bộ nghiệm thu sản phẩm.**
+User chấp nhận bản hiện tại ở mức “tạm ổn” và yêu cầu dừng chỉnh thêm.
+
+- [x] ASR thực dụng Qwen + Whisper dự phòng, xuất đủ 180 cue có timing câu.
+- [x] Dịch LLM đủ 180 cue sang tiếng Việt, giữ timestamp/provenance.
+- [x] Tích hợp OmniVoice Local cạnh VieNeu; runtime/model và source/EXE đã có
+  các gate được ghi riêng trong báo cáo, không đồng nhất cached check với inference.
+- [x] Xuất toàn bài 12 phút 51 giây: 151 nhóm, tốc độ 1,00×, không chồng lời,
+  độ trễ lớn nhất 2284 ms. User chấp nhận tạm bản đã giao.
+
+Trạng thái/artifact cuối: [báo cáo toàn bài](../dev/full-lecture-dubbing-2026-09.md).
+Bản cuối dùng helper nạp checkpoint và hai câu được Codex rút riêng; chưa là bằng
+chứng rằng toàn bộ trường hợp dài đều tự hoàn tất qua một lượt bấm GUI.
+
+Các mục còn chưa nghiệm thu của plan sản phẩm rộng hơn: cài mới model thật qua
+mạng và GUI HTTP cancel/resume; toàn workflow GUI/EXE từ đầu đến cuối; người nói
+là phần bổ sung riêng. Mục tiêu chất lượng/RTF trên corpus khó chưa được chứng
+minh đạt; theo ưu tiên thực dụng của user, không tự mở lại vòng benchmark để đóng
+các mục đó. OCR vẫn dừng. Không commit/push/release khi chưa có yêu cầu mới.
+
+Các mục bên dưới ghi lịch sử triển khai và tiêu chí cũ; không dùng ghi chú “chưa
+lồng tiếng/OmniVoice chưa triển khai” ở lịch sử để khởi động lại phần đã xong.
+
+## Lịch sử: ưu tiên nhịp lồng tiếng đều
+
+User không thích preview đổi tốc độ từng nhóm. Đã đổi sang một nhịp chung,
+ưu tiên 1,00× và LLM rút riêng lời đã đo quá dài. Preview mới giữ 1,00×, không
+overlap, trễ lớn nhất 2,12 s trong giới hạn 2,5 s; một group dùng rewrite thật,
+các group khác giữ lời/audio gốc. [Báo cáo](../dev/sequential-dubbing-2026-09.md).
+Không coi preview tăng tốc cục bộ là được user chấp nhận. Chưa nghiệm thu nghe
+hoặc lồng tiếng toàn bài giảng; không chạy lại ASR/dịch/những TTS đã complete.
+
+## OmniVoice đã được triển khai theo link user xác định
+
+User xác nhận `https://github.com/k2-fsa/OmniVoice`; đã thêm **OmniVoice Local**
+bên cạnh VieNeu Local. Runtime/model riêng đã chuẩn bị thật, có mẫu giọng Việt
+và preview lồng tiếng 30 s. [Báo cáo triển khai](../dev/omnivoice-local.md) ghi
+pins, giấy phép thành phần, UI/CLI, cache/hủy, build và các giới hạn còn lại.
+Các mục “OmniVoice là hạng mục tương lai/chưa xác minh” bên dưới là lịch sử.
+Chưa chấm chất lượng giọng hoặc lồng tiếng toàn bài giảng; ưu tiên phản hồi của
+user trên mẫu giọng/preview, không quay lại benchmark ASR/dịch.
+
+## Đã triển khai hướng được user duyệt: Qwen + Whisper dự phòng
+
+[Báo cáo](../dev/asr-practical-sentences-2026-09.md): policy câu thực dụng dùng
+biên câu mà không ép duration của từng token. Vùng lỗi dùng cả chữ và timing của
+Whisper đã cài; original Qwen/raw vẫn giữ trong review. Legacy review/word strict
+không đổi. CLI/GUI báo cue dự phòng, cache riêng, deadline/hủy và đóng GPU tuần tự.
+
+Bài giảng đã xuất SRT **180 cue (164 Qwen, 16 Whisper)**. Kế thừa Qwen/aligner;
+chỉ Whisper vùng 57,929 s cuối, một inference thành công 26,234 s. Source CLI và
+frozen CLI cached đều exit 0; SRT giống nhau, editor adapter nhập đủ. Gate kỹ thuật
+254 pass/2 skip, Ruff/pyright/sync pass. Không yêu cầu benchmark thêm để tăng %.
+Các mục “SRT bài giảng còn bị chặn” phía dưới là lịch sử trước thay đổi này.
+
+## Ưu tiên mới của user: mức dùng thực tế như Whisper (2026-09-09)
+
+User chấp nhận nhận dạng tương đối khoảng **80–90%**, không yêu cầu 100%; ưu tiên
+hoàn thiện luồng sử dụng thay vì tiếp tục kiểm thử Qwen quá sâu. Đây là mức kỳ vọng,
+không phải kết quả đo đã đạt trên mọi video hoặc phép quy đổi trực tiếp từ CER.
+Mục này thay thế các tiêu chí nghiệm thu cũ bên dưới khi có mâu thuẫn; giữ nguyên
+kết quả và trạng thái của các phép đo lịch sử.
+
+- Chốt theo phụ đề câu/đoạn dùng được: text có thể cần sửa, timing tương đối bám
+  lời nói; không bắt từng token hay từng onset vượt đối chứng acoustic mới cho
+  phép hoàn thiện sản phẩm. Sai số timing nhỏ là vấn đề chất lượng để review.
+- Vẫn xử lý lỗi chức năng: treo/lặp vô hạn, mất chunk, báo complete khi thiếu,
+  output không mở được hoặc timeline hỏng. Giữ transcript/raw và dữ liệu user.
+- Dừng sweep model/dtype/window, ablation, CER toàn corpus và thử lặp cùng input.
+  Dùng raw/cache bài giảng đã có để triển khai timing câu thực dụng; chỉ kiểm tra
+  phần sửa và một luồng xuất SRT/mở phụ đề thật, sửa tiếp khi có lỗi cụ thể.
+- Không lấy việc chấp nhận sai số để đổi các receipt cũ thành pass. Source hiện
+  vẫn chặn năm chunk của bài giảng; cần sửa hành vi trước khi báo Qwen SRT dùng được.
+- OmniVoice Studio tiếp tục sau ASR, bên cạnh VieNeu Local; OCR vẫn dừng.
+
+## Cập nhật: đã hoàn tất raw alignment bài giảng
+
+[Báo cáo mới](../dev/asr-lecture-complete-alignment-2026-09.md): chỉ căn nốt 20
+chunk chưa gọi aligner; đủ raw **29/29**, 0 recognition, giữ nguyên TXT 4.783
+ký tự. Policy sản phẩm qua geometry/energy ở **24/29**, còn lỗi index 8, 12,
+26, 27, 28. Chưa acoustic acceptance hoặc SRT/LLM đầy đủ.
+
+Quy tắc thử ưu tiên dấu phẩy trước cap 40 cũng chỉ qua 24/29, có hai regression;
+đã loại và khôi phục source. Không chọn policy theo chunk lỗi hoặc thử tiếp
+giới hạn/dấu câu để tích pass. Dùng `cue-clauses-20260909/all-raw.json` cùng
+receipt/hash, không nhận dạng/căn lại các chunk đã xong. App/cache/runtime/EXE
+không đổi; 142 test/ResumeGuard được kế thừa. Thứ tự timing → quality/stall →
+download/GUI HTTP resume giữ nguyên; OmniVoice sau ASR, VieNeu giữ lại, OCR dừng.
+
+## Cập nhật bài giảng user cung cấp trong phiên tiếp tục
+
+[Báo cáo](../dev/asr-lecture-onset-2026-09.md): toàn video 12 phút 51 giây đã
+hoàn tất TXT 4.783 ký tự; 29 chunk, hai cache reuse và 27 request mới đều EOS.
+CLI SRT vẫn exit 5: biên token `token-001149` tại 228.050 ms có zero duration;
+20 chunk sau chưa alignment. Kế thừa recognition/cache, không chạy lại từ đầu.
+Chưa reference/CER hoặc timing/LLM acceptance. Đoạn 60 s riêng cũng fail vì
+end vượt điểm cắt 30 ms. Không clamp, nới guard hoặc tự gộp cue theo lỗi.
+
+Phép đo acoustic mới dùng lexical probability khi tắt dần audio cũng bị loại;
+giữ raw trong `acoustic-token-onset-20260909/`, không thử lại bằng cách đổi
+threshold. App/runtime/EXE không đổi; 142 test và ResumeGuard được kế thừa.
+Thứ tự timing → quality/stall → model download/GUI HTTP resume giữ nguyên.
+OmniVoice Studio sau ASR, VieNeu Local giữ lại, OCR dừng.
+
+## Cập nhật từ b102ae9: native timestamp chưa qua đối chứng audio
+
+[Báo cáo mới](../dev/asr-native-timestamp-control-2026-09.md): timestamp-token
+head với prefix text Qwen giữ đủ chữ và đưa hai onset tới 44.150 / 49.150 ms.
+Tuy nhiên, đối chứng chèn +1 s trong khoảng nghỉ có **6/8 biên lệch 500 ms**
+so với kỳ vọng; tolerance 250 ms đã ghi trước inference. Không nới tolerance,
+ghép mốc với DTW cũ hoặc tích hợp candidate. Giữ đầy đủ raw logits, hai receipt
+lỗi helper và lần resume; không lặp native-prefix/gap control cùng cấu hình.
+
+Timing/SRT/LLM vẫn mở. Không đổi code app/cache/runtime/EXE hoặc dịch; kế thừa
+142 test/ResumeGuard. Sau timing mới xử lý quality/stall rồi tải model thật qua
+mạng và GUI hủy/tiếp tục. Parent 88.950 ms đã EOS và ba trace loop giữ nguyên;
+OmniVoice Studio sau ASR, OCR dừng.
+
 ## Cập nhật mới nhất: direct alignment và generation trace
 
 [Báo cáo](../dev/asr-direct-alignment-stall-2026-09.md): đã căn trực tiếp text

@@ -192,6 +192,10 @@ def run(args: Namespace, config: dict) -> int:
 
         # Save output
         asr_data.save(save_path=output_path)
+        from videocaptioner.core.asr.local.sentence_fallback import fallback_cue_count
+        fallback_count = fallback_cue_count(asr_data)
+        if fallback_count:
+            output.warn(f"{fallback_count} subtitle cues use Whisper fallback text and timing; original Qwen text is retained in ASR review.")
         if asr_data.pending_diarization:
             output.warn("Subtitles saved; optional speaker association is still pending. Use local-diarize after preparing its model.")
 

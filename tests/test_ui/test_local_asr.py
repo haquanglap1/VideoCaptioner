@@ -135,6 +135,12 @@ def test_prepare_button_cancels_and_resumes_same_selected_model(qapp, monkeypatc
             assert worker.wait(3000)
             qapp.processEvents()
             assert dialog.worker is None and dialog.prepare_button.isEnabled()
+            if attempt == 0:
+                assert "cancelled" in dialog.status.text().lower()
+                assert "waiting" not in dialog.status.text().lower()
+                assert dialog.progress.value() == 0
+                dialog.display_stage_status()
+                assert "cancelled" in dialog.status.text().lower()
         assert calls == [("qwen-0.6b", str(tmp_path / "selected-runtime"))] * 2
         assert cfg.local_asr_root.value == str(tmp_path / "selected-runtime")
     finally:

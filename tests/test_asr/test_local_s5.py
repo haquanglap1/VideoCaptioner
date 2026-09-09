@@ -296,6 +296,8 @@ def test_alignment_failure_retains_all_recognized_chunks(monkeypatch):
     assert error.value.path.is_file()
     value = NativeReview.load(error.value.path)
     assert value.text == "你" and value.tokens[0].end == 100
+    assert not value.acoustic_rejected
+    assert value.edit_timing(value.tokens[0].id, 0, 200).resume().segments[0].text == "你"
     with pytest.raises(ValueError):
         value.resume()
 

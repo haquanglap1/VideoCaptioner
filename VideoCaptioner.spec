@@ -33,10 +33,14 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
+hiddenimports += ["videocaptioner.core.dubbing.scheduling"]
+hiddenimports += ["videocaptioner.core.tts.omnivoice.provider", "videocaptioner.core.tts.omnivoice.runtime",
+                  "videocaptioner.ui.components.omnivoice_panel"]
 # S5 recipes/current bridge are data, including reuse of compatible old runtimes.
 # GPU imports stay in the separate worker interpreter.
 hiddenimports += ["videocaptioner.core.asr.local.pipeline", "videocaptioner.core.asr.local.review",
                   "videocaptioner.core.asr.local.prepare", "videocaptioner.core.asr.local.sentence_timing",
+                  "videocaptioner.core.asr.local.sentence_fallback",
                   "videocaptioner.core.asr.audio_identity",
                   "videocaptioner.ui.thread.audio_identity_thread",
                   "videocaptioner.cli.commands.local_asr", "videocaptioner.ui.thread.local_asr_thread"]

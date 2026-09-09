@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
+from videocaptioner.core.tts.omnivoice.config import OmniVoiceOptions
 from videocaptioner.core.tts.tts_data import TTSConfig
 
 from .models import DubbingTextSource, DubbingTimingMode, UnresolvedFitPolicy
@@ -24,11 +25,12 @@ class TTSProviderEnum(Enum):
     MINIMAX = "MiniMax"
     LOCAL_AI = "Local AI"
     VIENEU_LOCAL = "VieNeu Local"
+    OMNIVOICE_LOCAL = "OmniVoice Local"
 
 
 def tts_provider_key(provider: TTSProviderEnum) -> str:
-    if provider == TTSProviderEnum.VIENEU_LOCAL:
-        return "vieneu-local"
+    if provider in (TTSProviderEnum.VIENEU_LOCAL, TTSProviderEnum.OMNIVOICE_LOCAL):
+        return provider.name.lower().replace("_", "-")
     # Preserve existing cache/report identity for established providers.
     return provider.name.lower()
 
@@ -41,6 +43,7 @@ class DubbingConfig:
     tts_provider: TTSProviderEnum = TTSProviderEnum.OPENAI
     tts_config: Optional[TTSConfig] = None
     managed_tts_identity: dict[str, Any] = field(default_factory=dict)
+    omnivoice: OmniVoiceOptions = field(default_factory=OmniVoiceOptions)
 
     # Audio mixing
     mix_mode: AudioMixMode = AudioMixMode.REDUCE_ORIGINAL
@@ -59,6 +62,7 @@ class DubbingConfig:
     text_source: DubbingTextSource = DubbingTextSource.AUTO
     timing_mode: DubbingTimingMode = DubbingTimingMode.NATURAL
     natural_max_speed: float = 1.08
+    max_start_delay_ms: int = 2000
     fit_ratio_limit: float = 1.05
     borrow_gap_ms: int = 350
     silence_guard_ms: int = 80
@@ -69,6 +73,7 @@ class DubbingConfig:
     unresolved_policy: UnresolvedFitPolicy = UnresolvedFitPolicy.REVIEW
     target_language: str = ""
     rewrite_model: str = ""
+    rewrite_timeout: int = 120
     rewrite_api_key: str = ""
     rewrite_api_base: str = ""
     rewrite_style_prompt: str = ""

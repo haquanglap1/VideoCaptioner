@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from ..alignment.contract import MAX_AUDIO_MS, AlignmentError, AlignmentSpan, lexical
 
 SENTENCE_POLICY = "qwen-sentence-anchors-v1"
+PRACTICAL_SENTENCE_POLICY = "qwen-sentence-practical-v1"
+SENTENCE_POLICIES = (SENTENCE_POLICY, PRACTICAL_SENTENCE_POLICY)
 MAX_CUE_CHARS = 40
 MAX_CUE_MS = 15_000
 SENTENCE_ENDS = frozenset("。！？.!?；;\n")
@@ -19,14 +21,14 @@ class SentenceCue:
     anchors: tuple[AlignmentSpan, AlignmentSpan]
 
 
-def sentence_cues(text: str, items: object, duration_ms: int) -> tuple[SentenceCue, ...]:
-    """Never repair words or choose min/max timestamps to conceal an outlier.
+def sentence_cues(text: str, items: object, duration_ms: int, *, policy: str = SENTENCE_POLICY) -> tuple[SentenceCue, ...]:
+    """Partition text before inspecting times; never modify the raw predictions.
 
-    Partition text before inspecting times. Only first/last token intervals anchor
-    the exported cue; every interior prediction must remain inside those bounds.
-    Interior zero, overlapping or reversed word intervals are not exported.
-    Audio support for both anchors must also be checked by the caller.
+    Legacy reviews retain strict boundary-token guards. Practical sentence mode
+    uses only the first start and last end; the caller checks whole-cue audio.
     """
+    if policy not in SENTENCE_POLICIES:
+        raise AlignmentError("unknown sentence timing policy")
     if type(duration_ms) is not int or not 0 < duration_ms <= MAX_AUDIO_MS:
         raise AlignmentError("invalid sentence audio duration")
     if not isinstance(items, list):
@@ -73,13 +75,15 @@ def sentence_cues(text: str, items: object, duration_ms: int) -> tuple[SentenceC
             raise AlignmentError("sentence timestamp is not canonical milliseconds")
         start, first_end = prediction[0]
         last_start, end = prediction[-1]
-        if not (0 <= start < first_end <= end <= duration_ms and start <= last_start < end):
+        if not 0 <= start < end <= duration_ms:
+            raise AlignmentError("invalid sentence boundary anchor")
+        if policy == SENTENCE_POLICY and not (start < first_end <= end and start <= last_start < end):
             raise AlignmentError("invalid sentence boundary anchor")
         if start < previous_end:
             raise AlignmentError("overlapping sentence boundaries")
         if end - start > MAX_CUE_MS:
             raise AlignmentError("sentence boundary interval exceeds cue limit")
-        if any(not start <= value <= end for pair in prediction for value in pair):
+        if policy == SENTENCE_POLICY and any(not start <= value <= end for pair in prediction for value in pair):
             raise AlignmentError("interior timestamp outside sentence anchors")
         content = "".join(parts[first:stop])
         cues.append(SentenceCue(AlignmentSpan(content, start, end), first, stop,

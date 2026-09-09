@@ -114,7 +114,11 @@ class LocalASRDialog(QDialog):
             return
         self.worker = None
         self.progress.setRange(0, 1)
-        self.progress.setValue(1)
+        cancelled = getattr(worker, "_vc_cancel_requested", False)
+        if cancelled:
+            # Result signals are intentionally suppressed after cancellation.
+            self.record_status(worker.model, self.tr("Local operation cancelled."))
+        self.progress.setValue(0 if cancelled else 1)
         for button in self.buttons:
             button.setEnabled(True)
         self.model.setEnabled(True)

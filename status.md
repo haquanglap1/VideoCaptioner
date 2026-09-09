@@ -1,5 +1,180 @@
 # Project Status
 
+## 2026-09-09 (chốt snapshot source để commit/push theo yêu cầu user)
+
+- Phạm vi snapshot: ASR thực dụng/Whisper dự phòng, OmniVoice Local cạnh VieNeu,
+  nhịp đọc đều và GUI chuẩn bị model/hủy/tiếp tục; gồm các thay đổi kế thừa chưa
+  commit từ `b102ae9`. Subject: `feat(asr): ship practical subtitles and OmniVoice dubbing`.
+- [Prompt bàn giao](docs/dev/asr-completion-next-session-prompt.md) đã phân biệt
+  parent với HEAD snapshot, gate đã đo và các mục còn mở. Quyền commit/push
+  chỉ dành cho snapshot hiện tại; không tag/release hoặc merge master.
+- Không chạy lại model/API/render/build trong lượt chốt Git; kế thừa validation
+  đã ghi theo từng domain. Build/dist/media/model/cache không đưa vào Git.
+
+## 2026-09-09 (tiếp tục theo lựa chọn user: GUI và tải model)
+
+- User mở lại đúng gate GUI/tải model; giữ bản lồng tiếng đã chốt, OCR dừng.
+- Source GUI tải mới Qwen 0.6B và xác minh model. ForcedAligner hủy/tiếp tục
+  HTTP thật: giữ 280 MiB, nhận Range/206 đúng offset; hủy tiếp giữ 630 MiB,
+  không child sót. [Báo cáo](docs/dev/asr-gui-download-2026-09.md).
+- Sửa trạng thái còn “đang chờ hủy”/100% sau worker.finished và đọc tiến độ
+  `.incomplete` dài quá MAX_PATH. 150 test pass; Ruff/pyright/sync pass.
+- EXE GUIResume build exit 0, 6 warning/0 error; GUI sống 412,938 s/đóng exit 0.
+  Frozen HTTP hủy giữ 1340 MiB → tiếp tục → hash ready; ForcedAligner health
+  pass, reuse không download/child mới, đóng sạch. Không ASR/dịch/TTS lại;
+  runtime cũ, settings, video/cache giữ nguyên; không commit/push.
+
+## 2026-09-09 (user chấp nhận tạm bản toàn bài, dừng chỉnh thêm)
+
+- User phản hồi “thôi, tạm ổn rồi”. Đóng phạm vi luồng thực tế ASR → dịch →
+  OmniVoice → toàn bài; không gọi đây là nghiệm thu đầy đủ mọi chức năng sản phẩm.
+- [Plan](docs/plans/asr-completion-2026-09.md) và
+  [bàn giao](docs/dev/asr-completion-next-session-prompt.md) đã phân biệt phần
+  hoàn tất với gate cài mới/GUI HTTP resume/full GUI-EXE còn chưa nghiệm thu.
+- Không chạy thêm test, inference, API, render hoặc build trong lượt chốt tài liệu.
+  Giữ artifact/cache và mọi thay đổi chưa commit; không commit/push, OCR dừng.
+
+## 2026-09-09 (đã xuất lồng tiếng toàn bài giảng theo yêu cầu user)
+
+- `build/full-lecture-dubbing-20260909/lecture-vi-omnivoice.mp4`: **12 phút 51 giây**,
+  đủ **151 nhóm / 180 cue**, cùng giọng OmniVoice **1,00×**, không overlap,
+  không cắt lời, độ trễ lớn nhất **2284 ms**, 0 group cần review.
+- LLM xử lý 131 outlier qua 180 response thành công. Hai câu gây dồn lời được
+  Codex rút riêng ở bước cuối: 149 WAV dùng cache, 2 WAV mới, không gọi API thêm.
+  Wording thay đổi ở tổng 121 nhóm; source video/SRT giữ nguyên. Không ASR/dịch lại.
+- Render exit 0; FFprobe đúng stream/duration, decode toàn audio FFmpeg exit 0;
+  worker/GPU lease đóng. User sau đó chấp nhận bản hiện tại ở mức “tạm ổn”.
+- Trạng thái cuối `render-r2-state.json`, report `report-final-r2.json`; không
+  chạy lại helper cũ. [Artifact, hash và cách tiếp tục](docs/dev/full-lecture-dubbing-2026-09.md).
+  Không sửa code app/test/build/commit/push trong lượt xử lý media này.
+
+## 2026-09-09 (giữ nhịp đọc đều theo phản hồi user, rút lời dài bằng LLM)
+
+- User phản hồi bản tăng tốc riêng từng nhóm nghe không tự nhiên. Policy
+  `sequential` nay giữ một hệ số tốc độ chung, ưu tiên 1,00×; gợi ý chỉ tăng nhẹ
+  1,05× khi cần. LLM chỉ rewrite group vượt khung sau đo WAV, không pre-rewrite
+  theo prediction; source/subtitle display giữ nguyên, context lân cận bất biến.
+- Lượt thật scope g-0002/g-0003: 3 request terra, một rewrite hợp lệ (g-0003,
+  WAV mới 6,6 s); g-0002 có hai response JSON không hợp lệ, giữ lời gốc. Key
+  nhập kín chỉ trong RAM. Không gọi lại LLM/TTS đã xong.
+- Preview `build/steady-dubbing-20260909/lecture-steady-preview.mp4`: **1,00×
+  toàn đoạn, 0 speed adjustments, không overlap**, trễ lớn nhất **2120 ms**,
+  giới hạn được chọn 2500 ms. Các đoạn khác giữ audio gốc; subtitle/hash giữ nguyên.
+- 205 test liên quan pass; 24 test tập trung cuối pass, Ruff/pyright/sync pass.
+  EXE Natural-Steady build exit 0, 6 warning/0 error; GUI 25 s/đóng exit 0.
+  Frozen cached workflow exit 0, 1,00×/không overlap, không child sót; không
+  inference lại khi tiếp tục sau lần ngắt.
+  [Chi tiết và gate EXE](docs/dev/sequential-dubbing-2026-09.md). User chưa xác nhận
+  chất lượng nghe bản nhịp đều; chưa chạy toàn bộ 180 cue. Không commit/push.
+
+## 2026-09-09 (OmniVoice Local tích hợp cạnh VieNeu, có mẫu giọng và preview video)
+
+- User cung cấp `k2-fsa/OmniVoice`. Provider GUI/CLI mới dùng API Python qua
+  worker riêng; code pin `08be0b4c`, model pin `c5fdb5cc`. Có Prepare / resume,
+  ngôn ngữ, auto/design voice hoặc reference audio + transcript; không cần key,
+  không import GPU vào Qt, không tự tải Whisper. VieNeu giữ nguyên.
+- Runtime Python 3.12/CUDA riêng đã cài và model tải/verify thật. Một câu tiếng
+  Việt tạo WAV 4,75 s, synthesis 1,953 s sau load/verify 43,484 s. Preview video
+  30 s từ bản dịch: 5 nhóm TTS thành công, dùng giọng tham chiếu tự sinh;
+  Natural/allow-overlap, có hai nhóm vượt khung cần user nghe kiểm tra.
+- 204 test liên quan pass; OmniVoice cuối 10 pass, Ruff/pyright/sync pass.
+  EXE `VideoCaptioner-OmniVoice-20260909-R2` build exit 0, 6 warning/0 error;
+  frozen cached workflow exit 0, 5 cache hits/0 generation mới, không child sót.
+- [Cách dùng, giấy phép thành phần, hash và gate](docs/dev/omnivoice-local.md).
+  Chưa lồng tiếng toàn bài giảng hoặc nghiệm thu giọng/timeline bằng người nghe.
+  Giữ mọi thay đổi ASR/dịch và artifact cũ; không commit/push, OCR vẫn dừng.
+
+## 2026-09-09 (dịch 180 câu bài giảng sang tiếng Việt theo yêu cầu user)
+
+- Core LLMTranslator dùng gateway đã chốt + `gpt-5.6-terra`, timeout 300 s:
+  **180/180 cue**, **7 request thành công / 155,844 s**. Chỉ gửi text, không
+  nhận dạng/căn thời gian lại hoặc upload audio. Key nhập kín và chỉ giữ RAM.
+- Có SRT tiếng Việt, SRT song ngữ Việt–Trung, TXT và JSON giữ metadata dưới
+  evidence `practical-sentences-20260909/translation-vi/`. Validation đủ cue,
+  timestamp giống nguyên bản, text gốc/ID/provenance/hash giữ nguyên; worker
+  joined, process exit 0. [Chi tiết](docs/dev/asr-practical-sentences-2026-09.md).
+- User kiểm tra bản dịch; chưa nghe đối chiếu tên riêng hoặc chấm chất lượng.
+  Chưa dịch bằng nút GUI/EXE, synthesis/TTS. Không test/build/commit/push thêm.
+
+## 2026-09-09 (phụ đề Qwen thực dụng + Whisper dự phòng đã xuất được bài giảng)
+
+- User đồng ý triển khai hướng thực dụng. Policy câu mới bỏ yêu cầu duration
+  từng token biên; legacy review/word strict giữ nguyên. Vùng lỗi được thay cả
+  chữ/time bằng Whisper đã cài; có deadline/hủy/cache, metadata và thông báo.
+- Bài giảng xuất **180 cue: 164 Qwen + 16 Whisper**; giữ Qwen 26 chunk đầu,
+  Whisper vùng 713.100–771.029 ms gồm chunk 26–28 (thêm 27 làm ngữ cảnh cho đuôi).
+  0 Qwen/aligner inference mới; một Whisper inference thành công 26,234 s.
+- Source CLI exit 0; SRT/JSON roundtrip và editor adapter nhập đủ 180 cue.
+  EXE Practical R2 build exit 0, 6 warning/0 error; frozen CLI dùng cache exit 0,
+  SRT giống source, giữ GPU lease cấm inference, không child sót.
+- 254 test khác nhau pass / 2 skip; Ruff pass, pyright 0/0, translations in sync.
+  Chưa có % chính xác hoặc nghe thủ công bài giảng; không benchmark lại corpus,
+  dịch, TTS hoặc tải model. [Báo cáo và các gate](docs/dev/asr-practical-sentences-2026-09.md).
+- Giữ mọi tài liệu cũ, runtime/model/cache/media; không commit/push. OmniVoice
+  Studio sau ASR, VieNeu giữ lại, OCR dừng.
+
+## 2026-09-09 (user chốt tiêu chí thực dụng, dừng kiểm thử Qwen quá sâu)
+
+- User chấp nhận nhận dạng tương đối **80–90%**, không yêu cầu 100%; ưu tiên luồng
+  dùng được như Whisper. Cập nhật [kế hoạch](docs/plans/asr-completion-2026-09.md)
+  và [bàn giao](docs/dev/asr-completion-next-session-prompt.md) để chỉ đạo mới thay
+  thế các điều kiện acoustic quá nghiêm trước đây, không mở tiếp vòng benchmark.
+- Tiêu chí tiếp tục: phụ đề câu/đoạn tương đối bám lời nói, có thể review; xử lý
+  treo, mất chunk, timeline/output hỏng. Dùng raw/cache đã có, chỉ kiểm tra phần
+  sửa và luồng thật. 80–90% là kỳ vọng, không phải kết quả đo đã được xác nhận.
+- Lượt này chỉ đổi tài liệu/tiêu chí validation; code và EXE chưa đổi, Qwen SRT
+  bài giảng vẫn chưa được tạo. Không inference/test/build lại, không commit/push.
+  OmniVoice Studio sau ASR, bên cạnh VieNeu Local; OCR vẫn dừng.
+
+## 2026-09-09 (bài giảng: đủ raw 29 chunk, năm chunk timing còn bị chặn)
+
+- Tiếp tục **b102ae9**, giữ năm tài liệu đầu phiên; [báo cáo mới](docs/dev/asr-lecture-complete-alignment-2026-09.md).
+- Căn nốt **20 chunk chưa từng alignment**, dùng lại chín raw đầu; **0 recognition**.
+  Full TXT 4.783 ký tự giữ nguyên. Host exit 0 / 14,844 s, load 8,609 s,
+  request alignment 3,002 s; không coi đây là benchmark ASR toàn video.
+- Policy sản phẩm có **24/29 chunk** qua geometry/energy, còn lỗi tại index
+  **8, 12, 26, 27, 28** (zero-duration/overlap). Chưa acoustic acceptance/SRT/LLM.
+- Thử quy tắc text ưu tiên dấu phẩy trước cap 40: giải phóng hai chunk nhưng
+  làm hai chunk khác fail, tổng vẫn 24/29. **Loại phương án**, khôi phục source
+  đúng snapshot; không nới guard, chọn policy theo lỗi hoặc xuất SRT candidate.
+- Evidence `cue-clauses-20260909/` giữ toàn raw/receipt/failure. Không nhận dạng
+  hoặc alignment lại các chunk đã có. 72 file preservation pass, worker/lease đóng.
+  App/cache/runtime/EXE không đổi, kế thừa 142 test/ResumeGuard; không test/build lại.
+  OmniVoice sau ASR, VieNeu giữ nguyên; OCR dừng. Không commit/push.
+
+## 2026-09-09 (video bài giảng mới: full TXT, SRT vẫn bị chặn)
+
+- Tiếp tục **b102ae9**, giữ bốn tài liệu thay đổi từ lượt trước. User cung cấp
+  video bài giảng tiếng Trung dài 12 phút 51 giây; [báo cáo mới](docs/dev/asr-lecture-onset-2026-09.md).
+- CLI source Qwen 1.7B: đoạn 60 s exit 5 / 35,031 s, giữ TXT; end cuối vượt
+  đoạn cắt 30 ms. Toàn video exit 5 / **118,016 s**, TXT **4.783 ký tự** nguyên
+  review; 29 chunk, hai cache reuse + 27 request mới đều EOS, không stall.
+  Recognition request 90,750 s, load hai model 18,251 s; không coi thời gian
+  có cache reuse là benchmark mới. Chưa reference/CER cho video này.
+- Timing toàn video dừng ở chunk **220.850–248.900 ms**, token biên
+  `token-001149` có start=end **228.050 ms**; 20 chunk sau chưa gọi aligner.
+  Không clamp/nới guard; chưa SRT/LLM. Cache/raw/text đã có để tiếp tục.
+- Phép đo lexical audio ablation trên mẫu cũ không đủ điều kiện tích hợp;
+  25 encoder/decoder requests, không lặp native/DTW hoặc Qwen recognition.
+  Process đóng, preservation pass. App/runtime/EXE/dịch không đổi, kế thừa
+  142 test/ResumeGuard, không test/build lại. OmniVoice sau ASR; OCR dừng.
+
+## 2026-09-09 (native timestamp head: onset tiến triển, audio-shift control fail)
+
+- Tiếp tục đúng **b102ae9**, working tree đầu phiên sạch; không reset/commit/push.
+  [Báo cáo mới](docs/dev/asr-native-timestamp-control-2026-09.md): timestamp-token
+  head của Whisper được condition bằng chính text Qwen cached; không direct DTW
+  hoặc nhận dạng lại. Hai onset chuyển tới 44.150 / 49.150 ms, nhưng **6/8 biên
+  fail** đối chứng chèn gap +1 s, lệch 500 ms so với mức dịch chuyển dự kiến.
+- Giữ logits/prefix/receipt và hai lỗi serialization helper; không sửa raw,
+  tăng tolerance, xuất thêm SRT hoặc tích hợp. Validation `accepted=false`;
+  mỗi lượt 41 file bảo vệ nguyên hash/mtime, process/lease đóng. **Qwen SRT và
+  chuyển timing cho LLM vẫn chưa nghiệm thu.**
+- 0 Qwen recognition/DTW/API/download; parent 88.950 ms và ba trace loop giữ
+  nguyên. App/cache/runtime/translation config/EXE không đổi, kế thừa 142 test
+  và ResumeGuard, không test/build lại. Quality/stall, tải mạng mới và GUI HTTP
+  cancel/resume tiếp tục sau timing; OmniVoice sau ASR, OCR dừng.
+
 ## 2026-09-09 (chốt snapshot ResumeGuard và prompt tiếp tục theo yêu cầu user)
 
 - User yêu cầu **submit/push và prompt next session**. Snapshot gom **30 file**

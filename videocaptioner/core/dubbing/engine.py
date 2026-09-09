@@ -120,7 +120,7 @@ class DubbingEngine:
 
         from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
 
-        with self._managed_runtime_context(config):
+        with self._managed_runtime_context(config, callback):
             return DubbingOrchestrator(self).run(
                 video_path, subtitle_path, output_path, config, callback
             )
@@ -143,10 +143,10 @@ class DubbingEngine:
         returns measured groups without mixing or touching unrelated audio.
         """
         if (
-            config.tts_provider == TTSProviderEnum.VIENEU_LOCAL
+            config.tts_provider in (TTSProviderEnum.VIENEU_LOCAL, TTSProviderEnum.OMNIVOICE_LOCAL)
             and not config.managed_tts_identity
         ):
-            with self._managed_runtime_context(config):
+            with self._managed_runtime_context(config, callback):
                 return self.regenerate_groups(
                     cues,
                     selected_cue_ids,
@@ -228,7 +228,11 @@ class DubbingEngine:
         return targets
 
     @staticmethod
-    def _managed_runtime_context(config: DubbingConfig):
+    def _managed_runtime_context(config: DubbingConfig, callback=None):
+        if config.tts_provider == TTSProviderEnum.OMNIVOICE_LOCAL:
+            from videocaptioner.core.tts.omnivoice.runtime import get_omnivoice_service
+
+            return get_omnivoice_service().acquire(config, callback)
         if config.tts_provider != TTSProviderEnum.VIENEU_LOCAL:
             return nullcontext()
         from videocaptioner.core.tts.vieneu.service import get_vieneu_service
@@ -463,6 +467,12 @@ class DubbingEngine:
 
         if config.tts_provider == TTSProviderEnum.MINIMAX:
             return MiniMaxTTS(tts_config)
+        elif config.tts_provider == TTSProviderEnum.OMNIVOICE_LOCAL:
+            from videocaptioner.core.tts.omnivoice.provider import OmniVoiceTTS
+
+            if not config.managed_tts_identity:
+                raise RuntimeError("OmniVoice runtime identity was not resolved for this job")
+            return OmniVoiceTTS(tts_config)
         elif config.tts_provider == TTSProviderEnum.LOCAL_AI:
             # Local AI uses the standard OpenAI-compatible adapter
             return OpenAITTS(tts_config)
@@ -474,12 +484,16 @@ class DubbingEngine:
             # Default: OpenAI
             return OpenAITTS(tts_config)
 
-    def _create_rewrite_service(self, config: DubbingConfig):
+    def _create_rewrite_service(self, config: DubbingConfig, callback=None):
         if self._rewrite_service_factory is not None:
             return self._rewrite_service_factory(config)
         from videocaptioner.core.dubbing.rewrite_service import TimingRewriteService
+        from videocaptioner.core.llm.client import LLMCredentials
 
-        return TimingRewriteService(config.rewrite_model)
+        return TimingRewriteService(config.rewrite_model,
+            credentials=LLMCredentials(config.rewrite_api_key, config.rewrite_api_base),
+            request_timeout=config.rewrite_timeout,
+            check=lambda: callback(55, "Đang rút gọn riêng lời đọc vượt khung...") if callback else None)
 
     @staticmethod
     def _truncate_audio(input_path: str, output_path: str, max_duration: float) -> bool:

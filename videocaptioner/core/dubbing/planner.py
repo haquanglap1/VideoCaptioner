@@ -21,6 +21,11 @@ def normalize_tts_text(text: str) -> str:
     return _WS_RE.sub(" ", text.replace("\n", " ")).strip()
 
 
+def spoken_unit_count(text: str) -> int:
+    """Count word-like units or individual CJK characters for a rewrite budget."""
+    return len(_TOKEN_RE.findall(text)) or len(text.split())
+
+
 def _join_text(parts: list[str]) -> str:
     return normalize_tts_text(" ".join(part for part in parts if part.strip()))
 

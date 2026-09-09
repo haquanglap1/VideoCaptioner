@@ -14,13 +14,13 @@ from typing import Dict, Tuple
 from videocaptioner.core.dubbing.config import AudioMixMode, TTSProviderEnum
 
 # Combo-box order in the dubbing tab and the persisted `Dubbing.TTSProvider` key.
-TTS_PROVIDER_KEYS: Tuple[str, ...] = ("openai", "minimax", "local_ai", "vieneu-local")
+TTS_PROVIDER_KEYS: Tuple[str, ...] = ("openai", "minimax", "local_ai", "vieneu-local", "omnivoice-local")
 MANAGED_PROVIDER_KEY = "vieneu-local"
 
 MIX_MODE_KEYS: Tuple[str, ...] = ("keep", "reduce", "mute")
 TEXT_SOURCE_KEYS: Tuple[str, ...] = ("auto", "translated", "original")
 TIMING_MODE_KEYS: Tuple[str, ...] = ("natural", "legacy")
-UNRESOLVED_POLICY_KEYS: Tuple[str, ...] = ("review", "allow-overlap")
+UNRESOLVED_POLICY_KEYS: Tuple[str, ...] = ("review", "allow-overlap", "sequential")
 SAMPLE_RATES: Tuple[int, ...] = (16000, 24000, 32000, 44100, 48000)
 
 
@@ -58,6 +58,7 @@ TTS_PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
         voices=(), voice="", api_base="http://localhost:8000/v1", model=""
     ),
     "vieneu-local": ProviderPreset(voices=(), voice="", api_base="", model=""),
+    "omnivoice-local": ProviderPreset(voices=("auto", "male", "female"), voice="auto", api_base="", model="OmniVoice"),
 }
 
 _PROVIDERS = {
@@ -65,6 +66,7 @@ _PROVIDERS = {
     "minimax": TTSProviderEnum.MINIMAX,
     "local-ai": TTSProviderEnum.LOCAL_AI,
     "vieneu-local": TTSProviderEnum.VIENEU_LOCAL,
+    "omnivoice-local": TTSProviderEnum.OMNIVOICE_LOCAL,
 }
 _MIX_MODES = {
     "keep": AudioMixMode.KEEP_ORIGINAL,
@@ -84,7 +86,7 @@ def provider_from_key(key: str) -> TTSProviderEnum:
 
 
 def is_managed_provider(key: str) -> bool:
-    return normalize_provider_key(key) == MANAGED_PROVIDER_KEY
+    return normalize_provider_key(key) in (MANAGED_PROVIDER_KEY, "omnivoice-local")
 
 
 def mix_mode_from_key(key: str) -> AudioMixMode:

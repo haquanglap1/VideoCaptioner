@@ -191,7 +191,11 @@ class TranscriptThread(QThread):
                 asr_data.save(save_path)
                 logger.info("%s 字幕文件已保存到: %s", fmt.upper(), save_path)
 
-            if asr_data.pending_diarization:
+            from videocaptioner.core.asr.local.sentence_fallback import fallback_cue_count
+            fallback_count = fallback_cue_count(asr_data)
+            if fallback_count:
+                self.progress.emit(100, self.tr("Đã lưu phụ đề; %s câu dùng chữ và thời gian từ Whisper dự phòng.") % fallback_count)
+            elif asr_data.pending_diarization:
                 self.progress.emit(100, self.tr("Đã lưu phụ đề; gán người nói chưa hoàn tất."))
             else:
                 self.progress.emit(100, self.tr("转录完成"))

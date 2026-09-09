@@ -330,6 +330,7 @@ class TaskFactory:
             "minimax": TTSProviderEnum.MINIMAX,
             "local_ai": TTSProviderEnum.LOCAL_AI,
             "vieneu-local": TTSProviderEnum.VIENEU_LOCAL,
+            "omnivoice-local": TTSProviderEnum.OMNIVOICE_LOCAL,
         }
         tts_provider = provider_map.get(
             cfg.dubbing_tts_provider.value, TTSProviderEnum.OPENAI
@@ -393,9 +394,14 @@ class TaskFactory:
         # đích chính là CJK — nếu không mọi câu sẽ bị xóa trắng.
         strip_cjk = cfg.target_language.value not in _CJK_TARGET_LANGUAGES
 
+        from videocaptioner.core.tts.omnivoice.config import OmniVoiceOptions
+
         return DubbingConfig(
             tts_provider=tts_provider,
             tts_config=tts_config,
+            omnivoice=OmniVoiceOptions(runtime=cfg.omnivoice_runtime.value,
+                reference_audio=cfg.omnivoice_reference_audio.value, reference_text=cfg.omnivoice_reference_text.value,
+                language=cfg.omnivoice_language.value) if tts_provider == TTSProviderEnum.OMNIVOICE_LOCAL else OmniVoiceOptions(),
             mix_mode=mix_mode,
             original_volume=cfg.dubbing_original_volume.value / 100.0,
             voice_volume=cfg.dubbing_voice_volume.value / 100.0,
@@ -404,11 +410,13 @@ class TaskFactory:
             text_source=DubbingTextSource(cfg.dubbing_text_source.value),
             timing_mode=DubbingTimingMode(cfg.dubbing_timing_mode.value),
             natural_max_speed=cfg.dubbing_natural_max_speed.value / 100.0,
+            max_start_delay_ms=cfg.dubbing_max_start_delay_ms.value,
             rewrite_enabled=cfg.dubbing_timing_rewrite.value,
             cache_enabled=cfg.dubbing_tts_cache.value,
             unresolved_policy=UnresolvedFitPolicy(cfg.dubbing_unresolved_policy.value),
             target_language=str(cfg.target_language.value.value),
             rewrite_model=rewrite_model,
+            rewrite_timeout=cfg.llm_request_timeout.value,
             rewrite_api_key=rewrite_key,
             rewrite_api_base=rewrite_base,
             strip_cjk=strip_cjk,

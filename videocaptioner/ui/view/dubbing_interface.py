@@ -38,6 +38,7 @@ from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
+from videocaptioner.ui.components.omnivoice_panel import OmniVoicePanel
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.audio_merge_thread import AudioMergeThread
 from videocaptioner.ui.thread.dubbing_thread import DubbingThread
@@ -147,8 +148,8 @@ class DubbingInterface(QWidget):
         row1 = QHBoxLayout()
         row1.addWidget(BodyLabel(self.tr("TTS Provider:")))
         self.provider_combo = ComboBox()
-        self.provider_combo.addItems(["OpenAI", "MiniMax", "Local AI", "VieNeu Local"])
-        _provider_map = {"openai": 0, "minimax": 1, "local_ai": 2, "vieneu-local": 3}
+        self.provider_combo.addItems(["OpenAI", "MiniMax", "Local AI", "VieNeu Local", "OmniVoice Local"])
+        _provider_map = {key: i for i, key in enumerate(presets.TTS_PROVIDER_KEYS)}
         self.provider_combo.setCurrentIndex(
             _provider_map.get(cfg.dubbing_tts_provider.value, 0)
         )
@@ -189,6 +190,8 @@ class DubbingInterface(QWidget):
         vieneu_layout.addWidget(self.vieneu_auto_update_switch)
         vieneu_layout.addStretch()
         settings_layout.addWidget(self.vieneu_widget)
+        self.omnivoice_panel = OmniVoicePanel(self.settings_widget)
+        settings_layout.addWidget(self.omnivoice_panel)
 
         # Voice
         row2 = QHBoxLayout()
@@ -290,7 +293,7 @@ class DubbingInterface(QWidget):
         settings_layout.addLayout(row5c)
 
         row5d = QHBoxLayout()
-        row5d.addWidget(BodyLabel(self.tr("Viết lại để khớp timing:")))
+        row5d.addWidget(BodyLabel(self.tr("LLM rút gọn riêng lời đọc vượt khung:")))
         self.rewrite_switch = SwitchButton()
         self.rewrite_switch.setChecked(cfg.dubbing_timing_rewrite.value)
         row5d.addWidget(self.rewrite_switch)
@@ -305,14 +308,25 @@ class DubbingInterface(QWidget):
         row5e.addWidget(BodyLabel(self.tr("Khi vẫn vượt timing:")))
         self.unresolved_combo = ComboBox()
         self.unresolved_combo.addItems(
-            [self.tr("Yêu cầu xem lại"), self.tr("Cho phép chồng lấn")]
+            [self.tr("Yêu cầu xem lại"), self.tr("Cho phép chồng lấn"), self.tr("Nhịp đọc đều, không chồng lời")]
         )
         self.unresolved_combo.setCurrentIndex(
-            0 if cfg.dubbing_unresolved_policy.value == "review" else 1
+            presets.UNRESOLVED_POLICY_KEYS.index(cfg.dubbing_unresolved_policy.value)
         )
+        self.unresolved_combo.currentIndexChanged.connect(self._update_timing_controls)
         row5e.addWidget(self.unresolved_combo)
         row5e.addStretch()
         settings_layout.addLayout(row5e)
+        row5f = QHBoxLayout()
+        row5f.addWidget(BodyLabel(self.tr("Độ trễ bắt đầu tối đa (ms):")))
+        self.start_delay_spinbox = SpinBox()
+        self.start_delay_spinbox.setRange(0, 10000)
+        self.start_delay_spinbox.setSingleStep(100)
+        self.start_delay_spinbox.setValue(cfg.dubbing_max_start_delay_ms.value)
+        row5f.addWidget(self.start_delay_spinbox)
+        row5f.addWidget(BodyLabel(self.tr("Gợi ý: 2500 ms, tốc độ 1.00–1.05×; ưu tiên LLM rút lời dài")))
+        row5f.addStretch()
+        settings_layout.addLayout(row5f)
 
         # Mix Mode
         row6 = QHBoxLayout()
@@ -611,7 +625,12 @@ class DubbingInterface(QWidget):
 
         # Create task
         self._is_pipeline_mode = False
-        task = TaskFactory.create_dubbing_task(video_path, subtitle_path)
+        try:
+            task = TaskFactory.create_dubbing_task(video_path, subtitle_path)
+        except ValueError as exc:
+            InfoBar.warning(self.tr("Kiểm tra cấu hình lồng tiếng"), str(exc), duration=5000,
+                            position=InfoBarPosition.BOTTOM, parent=self.window())
+            return
         self._task = task
         self._run_dubbing(task)
 
@@ -757,6 +776,8 @@ class DubbingInterface(QWidget):
             self.api_base_edit.text(),
             self.model_edit.text(),
         )
+        if provider == "omnivoice-local":
+            voice = "auto"
         self.voice_combo.clear()
         if preset.voices:
             self.voice_combo.addItems(list(preset.voices))
@@ -770,15 +791,15 @@ class DubbingInterface(QWidget):
 
     def _update_provider_visibility(self):
         index = self.provider_combo.currentIndex()
-        managed = 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.is_managed_provider(
-            presets.TTS_PROVIDER_KEYS[index]
-        )
+        managed = 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.TTS_PROVIDER_KEYS[index] == "vieneu-local"
         self.vieneu_widget.setVisible(managed)
+        omni = 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.TTS_PROVIDER_KEYS[index] == "omnivoice-local"
+        self.omnivoice_panel.setVisible(omni)
         for editor in (self.api_key_edit, self.api_base_edit, self.model_edit):
-            editor.setEnabled(not managed)
-        self.sample_rate_combo.setEnabled(not managed)
+            editor.setEnabled(not (managed or omni))
+        self.sample_rate_combo.setEnabled(not (managed or omni))
         if not managed:
-            self.fetch_voice_btn.setEnabled(True)
+            self.fetch_voice_btn.setEnabled(not omni)
         if managed:
             from videocaptioner.core.tts.vieneu.service import get_vieneu_service
 
@@ -883,6 +904,7 @@ class DubbingInterface(QWidget):
     def request_stop(self) -> None:
         """Ask a running dubbing job to stop at its next progress report."""
         thread = self._thread
+        self.omnivoice_panel.stop()
         if thread is not None and thread.isRunning():
             thread.requestInterruption()
 
@@ -995,9 +1017,7 @@ class DubbingInterface(QWidget):
 
     def _managed_provider_selected(self) -> bool:
         index = self.provider_combo.currentIndex()
-        return 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.is_managed_provider(
-            presets.TTS_PROVIDER_KEYS[index]
-        )
+        return 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.TTS_PROVIDER_KEYS[index] == "vieneu-local"
 
     def _on_vieneu_error(self, action: str, error: str):
         logger.warning("VieNeu %s failed: %s", action, error)
@@ -1031,6 +1051,8 @@ class DubbingInterface(QWidget):
         )
 
     def _fetch_voices(self):
+        if self.provider_combo.currentIndex() == presets.TTS_PROVIDER_KEYS.index("omnivoice-local"):
+            return
         """Tải danh sách giọng nói từ API."""
         api_base = self.api_base_edit.text().strip()
         api_key = self.api_key_edit.text().strip()
@@ -1171,6 +1193,7 @@ class DubbingInterface(QWidget):
 
     def _save_settings(self):
         """Lưu settings hiện tại vào persistent config."""
+        self.omnivoice_panel.save()
         cfg.set(cfg.dubbing_tts_voice, self.voice_combo.text())
         cfg.set(cfg.dubbing_tts_api_key, self.api_key_edit.text())
         cfg.set(cfg.dubbing_tts_api_base, self.api_base_edit.text())
@@ -1195,8 +1218,9 @@ class DubbingInterface(QWidget):
         cfg.set(cfg.dubbing_tts_cache, self.tts_cache_switch.isChecked())
         cfg.set(
             cfg.dubbing_unresolved_policy,
-            presets.UNRESOLVED_POLICY_KEYS[0 if self.unresolved_combo.currentIndex() == 0 else 1],
+            presets.UNRESOLVED_POLICY_KEYS[self.unresolved_combo.currentIndex()],
         )
+        cfg.set(cfg.dubbing_max_start_delay_ms, self.start_delay_spinbox.value())
 
         sr_idx = self.sample_rate_combo.currentIndex()
         if 0 <= sr_idx < len(self._sample_rates):
@@ -1213,6 +1237,7 @@ class DubbingInterface(QWidget):
         self.max_speed_label.setEnabled(not natural)
         self.rewrite_switch.setEnabled(natural)
         self.unresolved_combo.setEnabled(natural)
+        self.start_delay_spinbox.setEnabled(natural and self.unresolved_combo.currentIndex() == 2)
 
     def closeEvent(self, event):
         self.request_stop()
