@@ -21,6 +21,7 @@ from videocaptioner.core.constant import (
     INFOBAR_DURATION_SUCCESS,
 )
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.thread.worker_lifecycle import retain_worker
 
 LOGO_PATH = ASSETS_PATH / "logo.png"
 
@@ -75,6 +76,7 @@ class LazyInterface(QWidget):
 class MainWindow(FluentWindow):
     def __init__(self):
         super().__init__()
+        self._closing = False
         self.versionChecker = None
         self.versionThread = None
         self._dubbing_interface = None
@@ -84,7 +86,7 @@ class MainWindow(FluentWindow):
         self.splashScreen.finish()
         QTimer.singleShot(500, self._start_background_services)
 
-        # 注册退出处理， 清理进程
+        # Keep process cleanup as a fallback for interpreter exit.
         atexit.register(self.stop)
 
     def _create_lazy_interfaces(self) -> None:
@@ -160,15 +162,23 @@ class MainWindow(FluentWindow):
         return SettingInterface(self.settingInterface)
 
     def _start_background_services(self) -> None:
+        if self._closing:
+            return
         if self.versionThread is None:
             from videocaptioner.ui.thread.version_checker_thread import VersionChecker
 
             self.versionChecker = VersionChecker()
             self.versionChecker.newVersionAvailable.connect(self.onNewVersion)
             self.versionChecker.announcementAvailable.connect(self.onAnnouncement)
-            self.versionThread = QThread(self)
+            # The application owns the thread until its network request returns;
+            # closing the window must never destroy a running QThread.
+            self.versionThread = retain_worker(QThread())
             self.versionChecker.moveToThread(self.versionThread)
             self.versionThread.started.connect(self.versionChecker.perform_check)
+            self.versionChecker.checkCompleted.connect(
+                self.versionThread.quit, Qt.ConnectionType.DirectConnection
+            )
+            self.versionThread.finished.connect(self.versionChecker.deleteLater)
             self.versionThread.start()
         self._check_ffmpeg()
 
@@ -249,7 +259,9 @@ class MainWindow(FluentWindow):
             donate_dialog.exec_()
 
     def onNewVersion(self, version, update_required, update_info, download_url):
-        """新版本提示 — 显示 UpdateDialog cho phép tải và cài tự động."""
+        """Offer an update while the window is still accepting interaction."""
+        if self._closing:
+            return
         from videocaptioner.ui.components.UpdateDialog import UpdateDialog
 
         dialog = UpdateDialog(
@@ -279,7 +291,9 @@ class MainWindow(FluentWindow):
             )
 
     def onAnnouncement(self, content):
-        """显示公告"""
+        """Show an announcement unless shutdown has started."""
+        if self._closing:
+            return
         w = MessageBox(self.tr("公告"), content, self)
         w.yesButton.setText(self.tr("我知道了"))
         w.cancelButton.hide()
@@ -291,14 +305,12 @@ class MainWindow(FluentWindow):
             self.splashScreen.resize(self.size())
 
     def closeEvent(self, event):
-        # Stop background QThread (version checker) cleanly so it doesn't keep
-        # the network call alive after the window is gone.
-        try:
-            if self.versionThread is not None and self.versionThread.isRunning():
-                self.versionThread.quit()
-                self.versionThread.wait(2000)
-        except Exception:
-            pass
+        self._closing = True
+        # quit() does not interrupt requests.get(). The supervisor joins after
+        # its bounded request finishes, keeping Qt responsive in the meantime.
+        if self.versionThread is not None and self.versionThread.isRunning():
+            self.versionThread.requestInterruption()
+            self.versionThread.quit()
 
         try:
             from videocaptioner.core.tts.vieneu.service import get_vieneu_service
