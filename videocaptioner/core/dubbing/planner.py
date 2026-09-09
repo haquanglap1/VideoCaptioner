@@ -152,6 +152,7 @@ def plan_dubbing_groups(
                 source_text=source_text,
                 subtitle_text=subtitle_text,
                 tts_text=tts_text,
+                original_tts_text=tts_text,
                 predicted_duration=predicted,
                 fit_ratio=predicted / available_duration if available_duration > 0 else float("inf"),
                 warnings=[

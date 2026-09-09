@@ -19,7 +19,6 @@ from videocaptioner.core.dubbing.audio_mixer import (
 )
 from videocaptioner.core.dubbing.cache import (
     PersistentTTSCache,
-    build_tts_cache_key,
     measure_audio_duration,
 )
 from videocaptioner.core.dubbing.models import (
@@ -32,6 +31,7 @@ from videocaptioner.core.dubbing.models import (
     calculate_report_summary,
 )
 from videocaptioner.core.dubbing.planner import plan_dubbing_groups
+from videocaptioner.core.dubbing.review import DubbingReview, bind_sources, synthesis_cache_key
 from videocaptioner.core.dubbing.rewrite_service import (
     TimingRewriteService,
     request_for_group,
@@ -65,24 +65,34 @@ class DubbingOrchestrator:
         output_path: str,
         config: "DubbingConfig",
         callback: Callable[[int, str], None],
+        *,
+        review: DubbingReview | None = None,
+        display_subtitle_path: str | None = None,
+        allow_config_change: bool = False,
     ) -> str:
         self._validate(video_path, subtitle_path, config)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         report_path = self._report_path(config)
-        self.engine.last_report_path = report_path
-        self.engine.last_report = {}
+        self.engine.last_report_path = ""
+        if review is None:
+            self.engine.last_report = {}
+            self.engine.last_review = None
         work_dir = Path(tempfile.mkdtemp(prefix="vc_dub_"))
+        plan = None
         try:
             callback(5, "Đang đọc phụ đề...")
-            asr_data = self._load_dubbing_source(subtitle_path)
-            total_duration = self._video_duration(video_path, asr_data)
-            plan = self._build_dubbing_plan(
-                asr_data, subtitle_path, total_duration, config
+            prepared = self._prepare_plan(
+                video_path, subtitle_path, display_subtitle_path, config, callback
             )
+            if review is not None:
+                review.restore_into(prepared, config, allow_config_change=allow_config_change)
+            # Do not replace the retained review until every binding has passed.
+            plan = prepared
+            assert plan.resume_metadata is not None
+            total_duration = plan.resume_metadata.video_duration
             if not plan.groups:
                 raise ValueError("Phụ đề trống, không có gì để lồng tiếng")
-
-            rewrite_service = self.engine._create_rewrite_service(config, callback)
+            self._write_report(plan, "", output_created=False)
 
             callback(12, "Đang kiểm tra TTS cache...")
             cache = PersistentTTSCache(
@@ -105,7 +115,8 @@ class DubbingOrchestrator:
                     reason=self._provider_failure_reason(plan.groups),
                 )
 
-            if config.timing_mode == DubbingTimingMode.NATURAL:
+            if config.timing_mode == DubbingTimingMode.NATURAL and review is None:
+                rewrite_service = self.engine._create_rewrite_service(config, callback)
                 callback(55, "Đang xử lý các câu vượt khung...")
                 self._rewrite_outliers(
                     plan.groups,
@@ -161,8 +172,34 @@ class DubbingOrchestrator:
             self._write_report(plan, report_path, output_created=True)
             callback(100, "Lồng tiếng hoàn tất!")
             return output_path
+        except Exception:
+            if plan is not None:
+                for group in plan.groups:
+                    if group.fit_status in {DubbingFitStatus.PENDING, DubbingFitStatus.FAILED}:
+                        group.needs_review = True
+                # Callback cancellation and provider exceptions must keep wording,
+                # including when an explicit JSON report cannot be written.
+                self._write_report(plan, "", output_created=False)
+                if report_path:
+                    try:
+                        self._write_report(plan, report_path, output_created=False)
+                    except OSError:
+                        logger.warning("Could not save dubbing review; retained in memory")
+            raise
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _prepare_plan(
+        self, video_path: str, subtitle_path: str, display_subtitle_path: str | None,
+        config: "DubbingConfig", callback: Callable[[int, str], None],
+    ) -> DubbingPlan:
+        asr_data = self._load_dubbing_source(subtitle_path)
+        duration = self._video_duration(video_path, asr_data)
+        plan = self._build_dubbing_plan(asr_data, subtitle_path, duration, config)
+        plan.resume_metadata = bind_sources(
+            video_path, subtitle_path, display_subtitle_path, duration, config, callback
+        )
+        return plan
 
     @staticmethod
     def _validate(video_path: str, subtitle_path: str, config: "DubbingConfig") -> None:
@@ -231,17 +268,7 @@ class DubbingOrchestrator:
 
     @staticmethod
     def _cache_key(group: "DubbingGroup", config: "DubbingConfig") -> str:
-        assert config.tts_config is not None
-        return build_tts_cache_key(
-            text=group.tts_text,
-            provider=tts_provider_key(config.tts_provider),
-            api_base=config.tts_config.base_url,
-            model=config.tts_config.model,
-            voice=config.tts_config.voice or "",
-            speed=config.tts_config.speed,
-            sample_rate=config.tts_config.sample_rate,
-            runtime_identity=config.managed_tts_identity,
-        )
+        return synthesis_cache_key(group.tts_text, config)
 
     def _resolve_cache_hits(
         self,
@@ -290,12 +317,28 @@ class DubbingOrchestrator:
             ]
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        provider.synthesize(
-            tts_data,
-            str(output_dir),
-            lambda progress, message: callback(18 + int(progress * 0.32), message),
-            max_workers=config.tts_concurrency,
-        )
+        assert config.tts_config is not None
+        previous_use_cache = config.tts_config.use_cache
+        # The provider's older binary cache omits endpoint/runtime/format fields.
+        # Missing authoritative WAV entries must reach synthesis with this config.
+        config.tts_config.use_cache = False
+        try:
+            provider.synthesize(
+                tts_data,
+                str(output_dir),
+                lambda progress, message: callback(18 + int(progress * 0.32), message),
+                max_workers=config.tts_concurrency,
+            )
+        finally:
+            config.tts_config.use_cache = previous_use_cache
+            # Providers can finish some segments before a callback cancels the
+            # batch. Persist those WAVs before the temporary directory is removed.
+            self._collect_synthesis_results(unique, duplicates, tts_data, config, cache, output_dir)
+
+    def _collect_synthesis_results(
+        self, unique: list["DubbingGroup"], duplicates: dict[str, list["DubbingGroup"]],
+        tts_data: TTSData, config: "DubbingConfig", cache: PersistentTTSCache, output_dir: Path,
+    ) -> None:
         assert config.tts_config is not None
         for group, segment in zip(unique, tts_data.segments):
             group.attempt_count += 1
@@ -408,6 +451,7 @@ class DubbingOrchestrator:
                 try:
                     candidate = service.rewrite(request, rescue=True)
                 except Exception as exc:
+                    callback(55, "Đang kiểm tra trạng thái lồng tiếng...")
                     group.warnings.append(f"Rewrite attempt {attempt} rejected: {exc}")
                     continue
                 if not candidate:
@@ -608,6 +652,7 @@ class DubbingOrchestrator:
         report = DubbingReport(plan=plan, report_path=report_path)
         report_data = report.to_dict()
         self.engine.last_report = report_data
+        self.engine.last_review = DubbingReview.from_report(report_data) if plan.groups else None
         self.engine.last_report_path = ""
         if not report_path:
             return

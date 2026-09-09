@@ -21,6 +21,7 @@ from .models import (
     DubbingTimingMode,
     UnresolvedFitPolicy,
 )
+from .review import DubbingResumeError, DubbingReview
 
 __all__ = [
     "DubbingEngine",
@@ -30,6 +31,8 @@ __all__ = [
     "DubbingGroup",
     "DubbingPlan",
     "DubbingReport",
+    "DubbingReview",
+    "DubbingResumeError",
     "DubbingTextSource",
     "DubbingTimingMode",
     "DubbingFitStatus",

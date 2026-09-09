@@ -11,6 +11,7 @@ from videocaptioner.core.asr.native_profiles import NativeASRConfig
 if TYPE_CHECKING:
     from videocaptioner.core.asr.asr_data import ASRData
     from videocaptioner.core.dubbing.config import DubbingConfig
+    from videocaptioner.core.dubbing.review import DubbingReview
     from videocaptioner.core.translate.types import TargetLanguage
 
 
@@ -819,6 +820,9 @@ class SynthesisTask:
 
     synthesis_config: Optional[SynthesisConfig] = None
 
+    # Producer-supplied layout of a display SRT; None means a raw input.
+    input_subtitle_layout: Optional[SubtitleLayoutEnum] = None
+
 
 @dataclass
 class DubbingTask:
@@ -844,6 +848,10 @@ class DubbingTask:
     need_next_task: bool = False
 
     dubbing_config: Optional["DubbingConfig"] = None
+
+    dubbing_review: Optional["DubbingReview"] = None
+    # Explicit GUI selection; never restored from a review document.
+    cache_root: Optional[str] = None
 
 
 @dataclass

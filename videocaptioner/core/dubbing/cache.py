@@ -88,9 +88,21 @@ class PersistentTTSCache:
             return None
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):
             return None
-        duration = measure_audio_duration(wav_path)
+        if not isinstance(metadata, dict) or metadata.get("schema_version") != CACHE_SCHEMA_VERSION:
+            return None
+        try:
+            with wave.open(str(wav_path), "rb") as wav:
+                frames, rate = wav.getnframes(), wav.getframerate()
+                if frames <= 0 or rate <= 0:
+                    return None
+                wav.setpos(frames - 1)
+                if len(wav.readframes(1)) != wav.getnchannels() * wav.getsampwidth():
+                    return None
+                duration = frames / rate
+        except (wave.Error, OSError, EOFError):
+            return None
         if metadata.get("key") != key or duration <= 0:
             return None
         return TTSCacheEntry(key, str(wav_path), duration, str(metadata_path))

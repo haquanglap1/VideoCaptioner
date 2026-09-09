@@ -32,6 +32,7 @@ from videocaptioner.core.dubbing.models import (
     DubbingTextSource,
     resolve_dubbing_text,
 )
+from videocaptioner.core.dubbing.review import DubbingResumeError, DubbingReview
 from videocaptioner.core.tts import (
     BaseTTS,
     MiniMaxTTS,
@@ -90,6 +91,7 @@ class DubbingEngine:
         self.cache_root = cache_root
         self.last_report_path = ""
         self.last_report: dict = {}
+        self.last_review: DubbingReview | None = None
 
     def dub(
         self,
@@ -98,6 +100,10 @@ class DubbingEngine:
         output_path: str,
         config: DubbingConfig,
         callback: Optional[Callable[[int, str], None]] = None,
+        *,
+        review: DubbingReview | None = None,
+        display_subtitle_path: str | None = None,
+        allow_config_change: bool = False,
     ) -> str:
         """Thực hiện toàn bộ pipeline dubbing.
 
@@ -120,10 +126,51 @@ class DubbingEngine:
 
         from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
 
+        if review is not None:
+            review = DubbingReview.from_report(review.to_dict())
+            self.last_review, self.last_report = review, review.to_dict()
+            self.last_report_path = ""
+            if not review.can_resume:
+                raise DubbingResumeError(review.provenance_note)
         with self._managed_runtime_context(config, callback):
             return DubbingOrchestrator(self).run(
-                video_path, subtitle_path, output_path, config, callback
+                video_path, subtitle_path, output_path, config, callback,
+                review=review, display_subtitle_path=display_subtitle_path,
+                allow_config_change=allow_config_change,
             )
+
+    def import_review(
+        self,
+        review: DubbingReview,
+        *,
+        video_path: str,
+        subtitle_path: str,
+        config: DubbingConfig,
+        display_subtitle_path: str | None = None,
+        callback: Optional[Callable[[int, str], None]] = None,
+    ) -> DubbingReview:
+        """Explicitly bind a legacy checkpoint to selected inputs; never synthesize.
+
+        Managed providers resolve their current pinned identity through the usual
+        runtime context. No identity or execution settings are loaded from JSON.
+        This verifies recorded evidence, not the historical media's authenticity.
+        """
+        from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+
+        callback = callback or _noop_progress
+        review = DubbingReview.from_report(review.to_dict())
+        self.last_review, self.last_report = review, review.to_dict()
+        self.last_report_path = ""
+        with self._managed_runtime_context(config, callback):
+            orchestrator = DubbingOrchestrator(self)
+            orchestrator._validate(video_path, subtitle_path, config)
+            plan = orchestrator._prepare_plan(
+                video_path, subtitle_path, display_subtitle_path, config, callback
+            )
+            review.restore_into(plan, config, legacy_import=not review.can_resume)
+            orchestrator._write_report(plan, "", output_created=False)
+        assert self.last_review is not None
+        return self.last_review
 
     def regenerate_groups(
         self,
