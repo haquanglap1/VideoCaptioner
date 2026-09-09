@@ -89,6 +89,13 @@ evidence, không để settings/cache giả trong thư mục phân phối. Khôn
 ghi đè ErrorFix/R6. Receipt `artifact-final.json` giữ size/hash cuối và kết quả
 kiểm tra process. Không chạy lại helper có cơ chế tạo file độc quyền.
 
+Ngày 2026-09-10, theo yêu cầu dọn dữ liệu tạm của user, evidence được gom vào
+`build/google-deeplx-errors-20260909/evidence.zip` (49.722 byte). Cả 36 file
+trong archive được đối chiếu SHA-256 với bản gốc trước khi dọn. Các log/receipt/
+helper nhắc trong báo cáo nằm trong ZIP; bản sao build-source, PyInstaller
+trung gian và test scratch đã chuyển vào Thùng rác, không còn là dữ liệu cần
+giữ để dùng app. Ba EXE GoogleDeepLXFix/ErrorFix/R6 được kiểm tra hash giữ nguyên.
+
 ## File thay đổi
 
 - `videocaptioner/core/translate/google_translator.py`

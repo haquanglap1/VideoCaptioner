@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-09-10 (dọn scratch/build trung gian theo yêu cầu user)
+
+- Đã chuyển **99 thư mục và 24 file rời**, khoảng **663 MB**, vào Thùng rác
+  để có thể khôi phục: source copy/PyInstaller trung gian của GoogleDeepLXFix
+  và hai build ASR cũ, pytest temp đã xong, bytecode/tool cache, temp settings/
+  worker log của test. Đây không phải dung lượng đã xóa vĩnh viễn khỏi ổ đĩa.
+- Gom evidence Google/DeepLX thành một `evidence.zip` **49.722 byte**, kiểm
+  tra đủ 36 file bằng SHA-256; cập nhật đường dẫn trong báo cáo/prompt hiện có.
+  Không tạo thêm báo cáo/helper dọn dẹp riêng. Lệnh xóa vĩnh viễn hàng loạt
+  bị kiểm duyệt tự động chặn; phương án đưa vào Thùng rác đã thành công.
+- Hash ba EXE GoogleDeepLXFix/ErrorFix/R6 giữ nguyên. Runtime/model nằm trong
+  `build/` vẫn có bản đang dùng nên giữ nguyên, cùng bài giảng/media/cache và
+  settings thật. Không chạy test/build/inference để tái tạo file tạm đã dọn.
+- Prompt phiên sau yêu cầu gom scratch vào một chỗ và dọn sau khi bàn giao;
+  giữ giới hạn loại Google/Bijian/Jianying/ElevenLabs theo yêu cầu mới nhất.
+
+## 2026-09-10 (user chỉ rõ API Bijian/API Jianying và ElevenLabs cũng bỏ qua)
+
+- User gửi ảnh hai mục **API Bijian**, **API Jianying** và yêu cầu bỏ thêm
+  **ElevenLabs/Scribe**. Kế thừa yêu cầu bỏ Google/Bilibili, cập nhật
+  [prompt phiên sau](docs/dev/online-media-next-session-prompt-2026-09.md).
+- Không gọi/chọn các dịch vụ này làm default/fallback trong nghiệm thu;
+  giữ DeepLX online, Qwen/Faster-Whisper local và OmniVoice đã cài. Không gỡ
+  provider/code, không đổi dữ liệu đã chốt. Chỉ sửa tài liệu, kế thừa mọi gate.
+
 ## 2026-09-10 (điều chỉnh nghiệm thu: bỏ Google và Bilibili)
 
 - Snapshot code/test/tài liệu Google/DeepLX đã commit/push ở `b4bcde4`.

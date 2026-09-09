@@ -12,18 +12,28 @@ vi được mở lại: có thể gọi dịch vụ và chạy ASR/dịch/TTS/re
 mẫu kiểm thử mới, ngắn, với cache/output riêng. Không cần xin lại quyền chung
 để thực hiện các bước đó. Chỉ hỏi khi thiếu input, endpoint hoặc credential.
 
-**Điều chỉnh mới nhất của user:** bỏ qua các dịch vụ **Google và Bilibili**.
-Không nghiệm thu/gọi Google Translate, Bilibili/Bcut/Bijian ASR hoặc lấy media
-từ Bilibili. Tập trung **DeepLX online** và workflow media mới với ASR local
-đã cài. Giữ nguyên code/provider và bằng chứng cũ; đây là giới hạn nghiệm thu,
-không phải yêu cầu gỡ tính năng. Không thay bằng một dịch vụ ngoài khác nếu
-DeepLX chưa sẵn sàng; tiếp tục phần độc lập và hỏi đúng cấu hình còn thiếu.
+**Điều chỉnh mới nhất của user:** bỏ qua **Google**, **API Bijian**,
+**API Jianying** và **ElevenLabs/Scribe**. User chỉ rõ hai mục API Bijian/API
+Jianying bằng ảnh; yêu cầu bỏ Bilibili trước đó vẫn giữ nguyên (Bijian dùng
+Bcut/Bilibili). Không nghiệm thu/gọi Google Translate, Bijian/Bcut/Bilibili
+(`bijian`), Jianying (`jianying`), ElevenLabs/Scribe (`scribe`) hoặc lấy media
+từ Bilibili. Không dùng các dịch vụ này làm default/fallback. Tập trung
+**DeepLX online** và workflow media mới với ASR local đã cài cùng OmniVoice.
+Giữ nguyên code/provider và bằng chứng cũ; đây là giới hạn nghiệm thu, không
+phải yêu cầu gỡ tính năng. Không thay bằng một dịch vụ ngoài khác nếu DeepLX
+chưa sẵn sàng; tiếp tục phần độc lập và hỏi đúng cấu hình còn thiếu.
 
 Giữ nguyên bài giảng user đã chốt “tạm ổn”, video, 151 WAV, 121 nhóm sửa lời,
 runtime/model/settings/cache và mọi artifact cũ. Không dùng bài giảng để chạy
 lại inference/render. Không benchmark sâu, sweep model, OCR, tải model hoặc
 cài/sync dependency. Không tự commit/push thay đổi của phiên mới; quyền chốt
 Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
+
+User yêu cầu không để lại nhiều file/thư mục tạm. Dùng một thư mục scratch
+cho phiên, dọn bản sao source/build trung gian và pytest temp sau khi hoàn
+tất; giữ output bàn giao và biên bản cần thiết, gom log nhỏ vào một archive.
+Không dọn runtime/model hoặc media/cache thật vì chúng nằm dưới `build/`;
+nhiều runtime đang dùng thực tế ở đó. Không tạo lại scratch cũ chỉ để đọc log.
 
 ## Git, môi trường và tài liệu
 
@@ -59,9 +69,11 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 - Google/DeepLX/base/Bing trong PYZ khớp source. GUI sống 26,047 s, đóng exit 0,
   không child. Google CLI với proxy loopback trả lỗi đúng exit 5, không ghi
   đè input/output và cache 0 entry. **Đây chưa phải dịch Google online thành công.**
-- Evidence `build/google-deeplx-errors-20260909/`. Test AppData/work-dir đã
-  chuyển nguyên khỏi artifact vào evidence. Không chạy lại helper tạo file
-  độc quyền. `--config FILE` của CLI thuộc subcommand, ví dụ đặt sau `subtitle`.
+- Evidence đã gom vào `build/google-deeplx-errors-20260909/evidence.zip`:
+  36 file log/receipt/helper/dữ liệu thử, kiểm tra SHA-256 trước khi gom.
+  Bản sao source, build trung gian và thư mục test tạm đã dọn theo yêu cầu
+  user ngày 2026-09-10; không chạy lại helper cũ hoặc tạo lại scratch để lặp
+  gate. `--config FILE` thuộc subcommand, ví dụ đặt sau `subtitle`.
 - ErrorFix/R6 và pipeline R6 với dữ liệu có sẵn giữ nguyên. Chưa nghiệm thu
   Google/DeepLX online hoặc media/inference mới trên GoogleDeepLXFix.
 
@@ -99,7 +111,8 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 - Ưu tiên chạy luồng thật ngay trên EXE hiện tại: nhận dạng → phụ đề có timing
   → DeepLX online vừa pass → OmniVoice Local đã cài → ghép/export.
   Chọn rõ Qwen Local hoặc Faster-Whisper đã cài; không để mặc định Bijian/Bcut
-  gọi Bilibili và không dùng Google làm fallback. Dùng model/runtime đã ready;
+  gọi Bilibili, không chọn Jianying/ElevenLabs và không dùng Google làm fallback.
+  Dùng model/runtime đã ready;
   không Prepare/download khi mở app. Không tải
   thêm model để mở rộng scope. Nếu cần source để chẩn đoán, phân biệt rõ
   source/frozen và reuse phần đã xong; không lặp inference chỉ để tích lũy gate.
@@ -119,8 +132,9 @@ Git ngày 2026-09-10 chỉ áp dụng snapshot bàn giao hiện tại.
 
 Lập báo cáo tách từng gate: DeepLX online, cache replay,
 source/GUI/frozen, ASR/dịch/TTS/synthesis của mẫu mới, kiểm tra media và cleanup.
-Google/Bilibili ghi **ngoài phạm vi theo yêu cầu user**, không ghi là pass/fail
-của phiên này hoặc đề nghị chạy lại để hoàn tất nghiệm thu.
+Google/Bijian/Bilibili/Jianying/ElevenLabs ghi **ngoài phạm vi theo yêu cầu
+user**, không ghi là pass/fail của phiên này hoặc đề nghị chạy lại để hoàn
+tất nghiệm thu.
 Gate thiếu key/service/input phải ghi chưa nghiệm thu, không tính pass hoặc
 thay bằng mock. Không tuyên bố nghiệm thu mọi provider/chất lượng model/cài
 máy sạch từ một clip. Ưu tiên sửa lỗi cụ thể nếu gặp; chạy test gần sửa và gate
