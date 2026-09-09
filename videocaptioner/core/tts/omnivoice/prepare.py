@@ -1,10 +1,15 @@
 """Resumable installation into an owned environment, separate from the Qt app."""
 
+import errno
 import hashlib
+import http.client
 import json
 import os
+import re
 import shutil
 import subprocess
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -26,30 +31,100 @@ def digest(path: Path, check=lambda: None, *, git_blob=False) -> str:
     return value.hexdigest()
 
 
-def download(url, path: Path, expected: str, *, git_blob=False, check=lambda: None, progress=lambda message: None):
+def download(url, path: Path, expected: str, *, git_blob=False, expected_size=None,
+             check=lambda: None, progress=lambda message: None):
+    check()
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file() and digest(path, check, git_blob=git_blob) == expected:
         return
     part = path.with_name(path.name + ".part")
     offset = part.stat().st_size if part.exists() else 0
+    # Cancellation can arrive after the last byte but before publication. Avoid
+    # requesting bytes beyond EOF (416), or downloading the completed file again.
+    if offset and (expected_size is None or offset >= expected_size):
+        if digest(part, check, git_blob=git_blob) == expected:
+            check()
+            part.replace(path)
+            return
+        if expected_size is not None:
+            part.replace(path.with_name(path.name + ".rejected"))
+            offset = 0
     request = urllib.request.Request(url, headers={"Range": f"bytes={offset}-"} if offset else {})
     check()
-    with urllib.request.urlopen(request, timeout=30) as response:
-        append = offset > 0 and response.status == 206
-        if append and not response.headers.get("Content-Range", "").startswith(f"bytes {offset}-"):
-            raise RuntimeError("Download resume range mismatch")
+    try:
+        response = urllib.request.urlopen(request, timeout=30)
+    except urllib.error.HTTPError as exc:
+        with exc:
+            size = re.fullmatch(r"bytes \*/(\d+)", exc.headers.get("Content-Range", ""))
+            if exc.code == 416 and offset and size and 0 < int(size[1]) <= offset:
+                # Unknown-size archives can also have a complete but damaged part.
+                # Its hash already failed; keep it for diagnosis and retry from zero.
+                check()
+                part.replace(path.with_name(path.name + ".rejected"))
+                return download(url, path, expected, git_blob=git_blob, expected_size=expected_size,
+                                check=check, progress=progress)
+        raise
+    with response:
+        check()
+        append = response.status == 206
+        length = response.headers.get("Content-Length")
+        body_size = int(length) if length is not None else None
+        total_size = expected_size
+        if append:
+            match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+)", response.headers.get("Content-Range", ""))
+            if not match:
+                raise RuntimeError("Download resume range mismatch")
+            start, end, total = map(int, match.groups())
+            if (start != offset or not start <= end < total
+                    or (body_size is not None and body_size != end - start + 1)
+                    or (expected_size is not None and total != expected_size)):
+                raise RuntimeError("Download resume range mismatch")
+            body_size, total_size = end - start + 1, total
+        elif response.status != 200:
+            raise RuntimeError("Unexpected OmniVoice download response")
+        elif total_size is None:
+            total_size = body_size
         received = offset if append else 0
+        required = max(0, (total_size or 0) - received)
+        if required and shutil.disk_usage(path.parent).free < required:
+            raise OSError(errno.ENOSPC, "Not enough disk space for OmniVoice; free space and resume.")
+        progress(f"{path.name}: {received / (1024 * 1024):.1f} MiB")
+        # read1 returns available bytes instead of blocking until a whole MiB has
+        # arrived, so progress and cooperative cancellation work on slow links.
+        read = getattr(response, "read1", response.read)
+        last_reported = received
+        last_report_time = time.monotonic()
         with part.open("ab" if append else "wb") as file:
-            while block := response.read(1024 * 1024):
+            while True:
+                check()
+                try:
+                    block = read(1024 * 1024)
+                except http.client.IncompleteRead as exc:
+                    check()
+                    file.write(exc.partial)
+                    raise RuntimeError("OmniVoice download interrupted; partial kept. Resume preparation.") from exc
+                except (OSError, http.client.HTTPException) as exc:
+                    raise RuntimeError("OmniVoice download interrupted; partial kept. Resume preparation.") from exc
+                if not block:
+                    break
                 check()
                 file.write(block)
                 received += len(block)
-                progress(f"{path.name}: {received // (1024 * 1024)} MiB")
+                if received - last_reported >= 1024 * 1024 or time.monotonic() - last_report_time >= 0.25:
+                    progress(f"{path.name}: {received / (1024 * 1024):.1f} MiB")
+                    last_reported = received
+                    last_report_time = time.monotonic()
+        check()
+        if ((body_size is not None and received - (offset if append else 0) != body_size)
+                or (total_size is not None and received != total_size)):
+            raise RuntimeError("OmniVoice download interrupted; partial kept. Resume preparation.")
+        progress(f"{path.name}: {received / (1024 * 1024):.1f} MiB; verifying")
     check()
     if digest(part, check, git_blob=git_blob) != expected:
         # Keep the bad transfer for diagnosis; a later attempt starts a new part.
         part.replace(path.with_name(path.name + ".rejected"))
         raise RuntimeError("OmniVoice download checksum mismatch; retry preparation.")
+    check()
     part.replace(path)
 
 
@@ -104,6 +179,9 @@ def prepare_runtime(explicit="", *, check=lambda: None, progress=lambda message:
                     return root
                 except RuntimeError:
                     check()
+                    # An invalid installation must not keep advertising readiness
+                    # if repair later stops on a disk/network error or cancellation.
+                    (root / "ready.json").unlink()
             spec = recipe()
             archive = root / "source.zip"
             download(f"https://codeload.github.com/k2-fsa/OmniVoice/zip/{CODE_REVISION}", archive,
@@ -152,7 +230,7 @@ def prepare_runtime(explicit="", *, check=lambda: None, progress=lambda message:
             for item in spec["files"]:
                 download(f"https://huggingface.co/k2-fsa/OmniVoice/resolve/{MODEL_REVISION}/{item['path']}",
                          root / "model" / item["path"], item["sha256"] or item["blob_id"],
-                         git_blob=not item["sha256"], check=check, progress=progress)
+                         git_blob=not item["sha256"], expected_size=item["size"], check=check, progress=progress)
             check()
             temp = root / "ready.tmp"
             temp.write_text(json.dumps(owner), encoding="utf-8")

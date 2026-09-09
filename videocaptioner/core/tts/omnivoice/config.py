@@ -49,4 +49,5 @@ class OmniVoiceOptions:
 
 def status(explicit: str = "") -> str:
     root = runtime_root(explicit)
-    return "Ready" if (root / "ready.json").is_file() else "Not prepared"
+    # Opening the panel stays cheap; only the prepare worker verifies hashes.
+    return "Installed; use Prepare / resume to verify" if (root / "ready.json").is_file() else "Not prepared"

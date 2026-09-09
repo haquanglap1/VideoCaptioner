@@ -44,12 +44,12 @@ class OmniVoicePanel(QWidget):
         self.runtime_edit = LineEdit()
         self.runtime_edit.setPlaceholderText(str(runtime_root()))
         self.runtime_edit.setText(cfg.omnivoice_runtime.value)
-        browse = PushButton(self.tr("Chọn runtime"))
-        browse.clicked.connect(self.browse_runtime)
+        self.browse_runtime_button = PushButton(self.tr("Chọn runtime"))
+        self.browse_runtime_button.clicked.connect(self.browse_runtime)
         self.prepare_button = PushButton(self.tr("Chuẩn bị / tiếp tục OmniVoice"))
         self.prepare_button.clicked.connect(self.prepare)
         row.addWidget(self.runtime_edit)
-        row.addWidget(browse)
+        row.addWidget(self.browse_runtime_button)
         row.addWidget(self.prepare_button)
         layout.addLayout(row)
         row = QHBoxLayout()
@@ -77,6 +77,8 @@ class OmniVoicePanel(QWidget):
         self.refresh()
 
     def refresh(self):
+        if self.worker is not None:
+            return
         self.status_label.setText("OmniVoice: " + status(self.runtime_edit.text().strip()))
 
     def browse_runtime(self):
@@ -91,37 +93,46 @@ class OmniVoicePanel(QWidget):
             self.reference_audio.setText(path)
 
     def save(self):
-        cfg.set(cfg.omnivoice_runtime, self.runtime_edit.text().strip())
+        if self.worker is None:
+            cfg.set(cfg.omnivoice_runtime, self.runtime_edit.text().strip())
         cfg.set(cfg.omnivoice_reference_audio, self.reference_audio.text().strip())
         cfg.set(cfg.omnivoice_reference_text, self.reference_text.text().strip())
         cfg.set(cfg.omnivoice_language, self.language.text().strip() or "vi")
 
     def prepare(self):
-        if self.worker and self.worker.isRunning():
-            retire_worker(self.worker)
-            self.prepare_button.setEnabled(False)
-            self.status_label.setText(self.tr("Đang dừng; có thể tiếp tục tải sau…"))
+        if self.worker is not None:
+            if self.worker.isRunning():
+                retire_worker(self.worker)
+                self.prepare_button.setEnabled(False)
+                self.status_label.setText(self.tr("Đang dừng; có thể tiếp tục tải sau…"))
             return
-        self.save()
         worker = OmniVoicePrepareThread(self.runtime_edit.text().strip())
         self.worker = retain_worker(worker)
         connect_current(self, "worker", worker, worker.progress, self.status_label.setText)
         connect_current(self, "worker", worker, worker.prepared, self.ready)
         connect_current(self, "worker", worker, worker.failed, self.status_label.setText)
         worker.finished.connect(self.finished)
+        self.runtime_edit.setEnabled(False)
+        self.browse_runtime_button.setEnabled(False)
         self.prepare_button.setText(self.tr("Hủy chuẩn bị"))
+        self.status_label.setText(self.tr("Đang chuẩn bị OmniVoice…"))
         worker.start()
 
     def ready(self, root):
         self.runtime_edit.setText(root)
         cfg.set(cfg.omnivoice_runtime, root)
-        self.refresh()
+        self.status_label.setText("OmniVoice: Ready")
 
     def finished(self):
         worker = self.sender()
         if not isinstance(worker, QThread) or worker is not self.worker:
             return
         worker.wait()
+        if getattr(worker, "_vc_cancel_requested", False):
+            self.status_label.setText(self.tr("Đã hủy chuẩn bị OmniVoice; có thể tiếp tục tải."))
+        self.worker = None
+        self.runtime_edit.setEnabled(True)
+        self.browse_runtime_button.setEnabled(True)
         self.prepare_button.setEnabled(True)
         self.prepare_button.setText(self.tr("Chuẩn bị / tiếp tục OmniVoice"))
 
