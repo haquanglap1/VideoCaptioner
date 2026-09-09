@@ -1,5 +1,44 @@
 # Project Status
 
+## 2026-09-09 (chốt Git Qt/Bing ErrorFix và prompt phiên sau)
+
+- User yêu cầu commit/push snapshot hiện tại lên `origin/codex/asr-s3-native`.
+  Qt shutdown: `d1ab4ca`; Bing: `a5ba2be`; commit tài liệu theo sau chứa
+  [prompt phiên tiếp theo](docs/dev/error-fixes-next-session-prompt-2026-09.md).
+  Dùng HEAD/tracking Git làm trạng thái cuối; quyền này không tự áp dụng cho
+  thay đổi mới ở phiên sau. Không merge master/tag/release.
+- Kế thừa 409 pass/24 deselected, static/sync và artifact ErrorFix cùng hai ca
+  shutdown EXE đã pass; không chạy lại test/build/inference chỉ để chốt Git.
+- Rà source xác định ứng viên lỗi tiếp theo: Google/DeepLX còn catch lỗi rồi
+  trả chunk, base có thể cache bản dịch thiếu. Chưa test/sửa hai provider này;
+  phiên sau ưu tiên regression offline và sửa đúng nguyên nhân, giữ cache thật.
+- Bing upstream 404, SIP ngắt quãng, model Qwen và nghiệm thu mở rộng vẫn giữ
+  phạm vi trong prompt mới. Bài giảng/OCR/benchmark sâu không tự mở lại.
+
+## 2026-09-09 (sửa shutdown version worker và lỗi Bing bị cache thành công)
+
+- Từ `8278d15`, sửa hai lỗi tái hiện được theo yêu cầu ưu tiên lỗi của user.
+  VersionChecker luôn complete/thoát thread; supervisor giữ worker đang request
+  tới khi join. Close không block hai giây, không mở dialog/startup đến muộn.
+- Bing không nuốt HTTP/response lỗi hoặc cache bản dịch thiếu; validate nguyên
+  batch, retry auth một lần với refresh đồng bộ, đóng session/pool đúng vòng đời.
+  Cache namespace mới bỏ qua dữ liệu cũ có thể bị lỗi nhưng giữ file cache cũ.
+  Câu vượt 5000 ký tự báo cần chia thay vì âm thầm cắt text.
+- GET auth Bing hiện có vẫn trả HTTP 404/0 byte; không đổi endpoint hoặc gọi
+  đây là phục hồi dịch Bing online. Không gửi subtitle/key trong lượt probe.
+- Gate source: **409 pass / 24 deselected**, gồm 30 regression mới; Ruff/Pyright/
+  sync pass. [Chi tiết, nguyên nhân và giới hạn](docs/dev/gui-shutdown-bing-errors-2026-09.md).
+- EXE riêng `dist/VideoCaptioner-ErrorFix-20260909/`: build exit 0 / 216,078 s,
+  6 WARNING/0 ERROR; 31.262.504 byte, SHA-256
+  `6d0e54ef6c59522f34f6625e3b1f5124425f9919e94a46b490ff0fdfa16070fa`.
+  GUI startup 25,688 s/exit 0; đóng giữa request cập nhật đang chờ cũng exit 0,
+  không child ở cả hai ca. Bốn module PYZ khớp source; CLI Unicode 0/0/2 đúng.
+  Proxy loopback cô lập request; chưa media/online inference mới trên EXE này.
+  Test AppData/work-dir chuyển nguyên vào evidence; hash R6 được kiểm tra giữ nguyên.
+- Giữ nghiệm thu/media/cache/model R6; không inference/render bài giảng, benchmark
+  hoặc cài dependency. Chưa commit/push thay đổi mới; SIP ngắt quãng và quality
+  model vẫn giữ giới hạn đã chốt.
+
 ## 2026-09-09 (hoàn tất các session; R6 nghiệm thu GUI và layout synthesis)
 
 - Review/resume đã có kế hoạch typed, sửa lời theo group, lưu/mở/nhập checkpoint,

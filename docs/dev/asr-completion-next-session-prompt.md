@@ -1,5 +1,15 @@
 # Tiếp tục ASR và ghi nhớ hạng mục OmniVoice Studio
 
+## Prompt mới nhất: sau Qt shutdown/Bing ErrorFix
+
+Dùng [prompt phiên tiếp theo](error-fixes-next-session-prompt-2026-09.md) cho
+snapshot mới. Qt/Bing đã có commit code `d1ab4ca`/`a5ba2be`, cùng commit tài liệu
+theo sau; lấy HEAD cuối từ Git. Artifact mới là `VideoCaptioner-ErrorFix-20260909`,
+409 test pass/24 deselected và hai ca shutdown EXE pass. R6 phía dưới vẫn là
+bằng chứng pipeline GUI kế thừa. Không dùng các checkpoint lịch sử để reset hoặc
+coi các thay đổi đã commit là chưa triển khai. Ưu tiên tiếp theo: tái hiện và sửa
+đường Google/DeepLX có thể nuốt lỗi/cache bản dịch thiếu bằng test cô lập.
+
 ## Hoàn tất lượt theo session — artifact cuối R6
 
 Đọc [báo cáo cuối](dubbing-review-resume-2026-09.md) và
