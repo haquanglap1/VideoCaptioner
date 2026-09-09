@@ -67,6 +67,7 @@ def run(args: Namespace, config: dict) -> int:
         output.info(f"Step 1/{total_steps}: Transcribing...")
     subtitle_path = str(out_dir / f"{path.stem}.srt")
     dubbing_subtitle_path = str(out_dir / f"{path.stem}_dubbing-target.srt")
+    input_subtitle_layout = None
 
     # Translation and cue-preserving optimization can use native sentence timing.
     need_word_ts = not no_split and not (no_optimize and no_translate)
@@ -117,6 +118,9 @@ def run(args: Namespace, config: dict) -> int:
         if ret != 0:
             return ret
         subtitle_path = processed_path
+        from videocaptioner.cli.validators import resolve_layout
+
+        input_subtitle_layout = resolve_layout(get(config, "synthesize.layout", "target-above"))
     else:
         if not quiet:
             output.info(f"Step 2/{total_steps}: Skipped (optimization and translation disabled)")
@@ -162,6 +166,7 @@ def run(args: Namespace, config: dict) -> int:
             style=None, layout=getattr(args, "layout", None),
             format=None, verbose=verbose, quiet=quiet,
             config=getattr(args, "config", None),
+            input_subtitle_layout=input_subtitle_layout,
         )
         from videocaptioner.cli.commands.synthesize import run as synthesize_run
         ret = synthesize_run(syn_args, config)

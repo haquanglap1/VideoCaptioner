@@ -4,6 +4,7 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 from qfluentwidgets import SegmentedWidget
 
+from videocaptioner.core.entities import SubtitleLayoutEnum, SubtitleTask
 from videocaptioner.core.llm.context import generate_task_id
 
 
@@ -14,6 +15,8 @@ class HomeInterface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_task_id: Optional[str] = None
+        self._display_subtitle_handoff: tuple[str, SubtitleLayoutEnum] | None = None
+        self._display_subtitle_task: SubtitleTask | None = None
         self.setObjectName("HomeInterface")
         self.setStyleSheet("HomeInterface{background: white}")
 
@@ -147,6 +150,13 @@ class HomeInterface(QWidget):
         from videocaptioner.ui.task_factory import TaskFactory
 
         subtitle_interface = self.subtitle_optimization_interface
+        subtitle_task = subtitle_interface.task
+        self._display_subtitle_task = subtitle_task
+        self._display_subtitle_handoff = (
+            (subtitle_task.output_path, subtitle_task.subtitle_config.subtitle_layout)
+            if subtitle_task and subtitle_task.output_path and subtitle_task.subtitle_config
+            else None
+        )
         dubbing_task = TaskFactory.create_dubbing_task(
             video_path,
             subtitle_path,
@@ -166,8 +176,14 @@ class HomeInterface(QWidget):
     def switch_to_video_synthesis(self, video_path, subtitle_path):
         from videocaptioner.ui.task_factory import TaskFactory
 
+        handoff = self._display_subtitle_handoff
+        input_layout = handoff[1] if handoff and handoff[0] == subtitle_path else None
+        producer = self._display_subtitle_task
+        if input_layout is not None and producer and producer.subtitle_config:
+            input_layout = producer.subtitle_config.subtitle_layout
         synthesis_task = TaskFactory.create_synthesis_task(
-            video_path, subtitle_path, need_next_task=True, task_id=self._current_task_id
+            video_path, subtitle_path, need_next_task=True, task_id=self._current_task_id,
+            input_subtitle_layout=input_layout,
         )
         self._current_task_id = None
         interface = self.video_synthesis_interface

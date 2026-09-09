@@ -33,7 +33,9 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
-hiddenimports += ["videocaptioner.core.dubbing.scheduling"]
+hiddenimports += ["videocaptioner.core.dubbing.scheduling", "videocaptioner.core.dubbing.review",
+                  "videocaptioner.ui.components.dubbing_review_dialog",
+                  "videocaptioner.core.subtitle.synthesis"]
 hiddenimports += ["videocaptioner.core.tts.omnivoice.provider", "videocaptioner.core.tts.omnivoice.runtime",
                   "videocaptioner.ui.components.omnivoice_panel"]
 # S5 recipes/current bridge are data, including reuse of compatible old runtimes.

@@ -984,7 +984,7 @@ class SubtitleInterface(QWidget):
         # re-export so a later layout change reaches the on-disk files.
         if not (self.task and self.model._data):
             return
-        editing.reexport_pipeline_outputs(
+        written = editing.reexport_pipeline_outputs(
             self.model._data,
             self.task.output_path,
             self.task.video_path,
@@ -992,6 +992,8 @@ class SubtitleInterface(QWidget):
             style=self._current_ass_style(),
             document=self._context_data,
         )
+        if self.task.subtitle_config and self.task.output_path and Path(self.task.output_path) in map(Path, written):
+            self.task.subtitle_config.subtitle_layout = layout
 
     def on_open_in_video_editor(self) -> None:
         """Hand off the current editable table without mutating its source SRT."""

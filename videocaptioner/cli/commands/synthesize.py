@@ -228,11 +228,14 @@ def run(args: Namespace, config: dict) -> int:
             from videocaptioner.cli.validators import resolve_layout
             layout_str = get(config, "synthesize.layout", "target-above")
             layout = resolve_layout(layout_str)
+            from videocaptioner.core.subtitle.synthesis import load_synthesis_subtitles
+
+            asr_data = load_synthesis_subtitles(
+                str(subtitle_path), input_layout=getattr(args, "input_subtitle_layout", None)
+            )
 
             if mode == "rounded":
-                from videocaptioner.core.asr.asr_data import ASRData
                 from videocaptioner.core.subtitle.rounded_renderer import render_rounded_video
-                asr_data = ASRData.from_subtitle_file(str(subtitle_path))
                 render_rounded_video(
                     video_path=str(video_path),
                     asr_data=asr_data,
@@ -244,9 +247,7 @@ def run(args: Namespace, config: dict) -> int:
                     progress_callback=progress_callback,
                 )
             else:
-                from videocaptioner.core.asr.asr_data import ASRData
                 from videocaptioner.core.subtitle.ass_renderer import render_ass_video
-                asr_data = ASRData.from_subtitle_file(str(subtitle_path))
 
                 # Register custom font if provided
                 if font_file:
