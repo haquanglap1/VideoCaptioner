@@ -1,5 +1,66 @@
 # Tiếp tục ASR và ghi nhớ hạng mục OmniVoice Studio
 
+## Hoàn tất lượt theo session — artifact cuối R6
+
+Đọc [báo cáo cuối](dubbing-review-resume-2026-09.md) và
+[bảng session](../plans/asr-completion-sessions-2026-09.md). Review/resume, chọn
+cache riêng, downloader, Unicode entry và input-layout synthesis đã hoàn thiện.
+User đã cho phép tiếp tục GUI sau Escape; các ghi chú đang chờ bên dưới là lịch sử.
+
+R6 build/startup/CLI và pipeline GUI với phụ đề/WAV có sẵn đã pass, track cuối
+giữ đúng VI trên/English dưới. Artifact nguyên onedir ở
+`dist/VideoCaptioner-ReviewResume-20260909-R6/`. Source/video/cache/settings giữ;
+receipt lưu dưới `build/session-completion-20260909/`. Không chạy lại helper
+exclusive-create, inference hoặc render bài giảng đã được chấp nhận.
+
+User yêu cầu commit/push toàn snapshot lượt này theo từng phần lên
+`origin/codex/asr-s3-native`; lấy HEAD thật bằng `git log -1`, đối chiếu tracking.
+Không merge master/tag/release. Phần quality/RTF, model gated/người nói và fresh
+online inference vẫn theo phạm vi đã chốt; không công bố pass vượt bằng chứng.
+
+## Checkpoint mới: R4 sửa Unicode, GUI còn chờ sau Escape
+
+R4 đã build và CLI check thành công. Core/downloader/review/scroll/chọn cache riêng
+đã qua test; bytecode trong artifact khớp source. CLI R3 bị cp1252 trên `--help`
+(user gửi ảnh); entry đã sửa UTF-8 và R4 `--help`/`dub --help` exit 0, arg Unicode
+sai exit 2 đúng. Không chạy lại helper có receipt exclusive-create hoặc build
+bản cùng tên. [Bảng session](../plans/asr-completion-sessions-2026-09.md) và
+[báo cáo](dubbing-review-resume-2026-09.md) ghi hash/gate từng bản.
+
+User nhấn Escape dừng Computer Use khi mở R2; chưa có xác nhận tiếp tục chuột/bàn
+phím. R2 đã đóng exit 0; R4 chưa mở GUI. Workflow GUI review/save/open/resume và
+OmniVoice reuse từ chính artifact còn chờ. Fixture HTTP/headless đã được dừng
+đúng process do task tạo (`server-stopped.json` trong evidence); không coi
+`server.json` cũ là server còn sống và không chạy lại helper exclusive-create
+nguyên trạng. Khi có phép tiếp tục GUI, chuẩn bị server/receipt mới rồi dùng
+video/SRT fixture đã có. Chưa có request TTS fixture hoặc render trong workflow native đã dừng.
+Không reset thay đổi, không chạy lại bài giảng/model/API. Chưa commit/push; quyền
+Git đã cấp vẫn giữ, thực hiện sau khi chốt nghiệm thu còn thiếu.
+
+## Lượt hiện tại: hoàn thiện theo session và chốt Git
+
+User yêu cầu hoàn thành phần còn lại theo session nhỏ rồi commit/push lên
+`origin/codex/asr-s3-native`. Đọc [bảng session](../plans/asr-completion-sessions-2026-09.md)
+trước các ghi chú lịch sử dưới đây. Nền là `f510846` cộng sửa handoff SRT hiển thị
+chưa commit; không reset/ghi đè thay đổi đang làm. Các session mới triển khai
+review/resume kế hoạch lời đọc, GUI, downloader và nghiệm thu EXE.
+Không dùng các giới hạn quyền commit/push cũ để phủ nhận yêu cầu mới này.
+
+## Sau snapshot f510846: đã rà luồng GUI lồng tiếng
+
+User chọn tiếp tục rà GUI/EXE với artifact/cache. Đọc
+[báo cáo handoff](dubbing-gui-handoff-2026-09.md): GUI hiện chưa khôi phục kế
+hoạch lời đọc đã rút gọn của job cần review; đường mở editor chỉ mang video/SRT.
+151 WAV cuối còn đủ, 121 nhóm đổi lời; replay timing khớp report, không inference.
+
+Source sửa một lỗi riêng: bỏ qua dubbing phải chuyển SRT hiển thị sang synthesis.
+139 test UI/thread/CLI pass, Ruff/pyright/sync pass. EXE GUIResume được kiểm tra
+method trong PYZ và còn lỗi cũ; **chưa build lại, chưa có sửa mới trong EXE**.
+HEAD vẫn `f510846`; working tree nay có code/test/tài liệu chưa commit, phải giữ.
+Ca tiếp theo đã mô tả: review/tiếp tục giữ wording, ánh xạ cue/group và WAV cache;
+chưa triển khai tính năng này. Không tự chạy lại helper/media/model hoặc tìm key.
+Quyền commit/push cũ không áp dụng; OCR dừng. Phần bàn giao dưới là lịch sử snapshot.
+
 ## Snapshot bàn giao: user yêu cầu commit và push
 
 User đã yêu cầu commit/push toàn bộ thay đổi hiện tại: ASR câu thực dụng có

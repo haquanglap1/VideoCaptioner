@@ -11,7 +11,7 @@ VideoCaptioner là công cụ xử lý phụ đề video bằng AI, hỗ trợ n
 - Xử lý trọn quy trình từ video đầu vào đến video có phụ đề.
 - Lồng tiếng Natural theo timeline đo từ audio thật: ưu tiên bản dịch, mượn khoảng lặng an toàn,
   cache WAV bền vững, viết lại câu vượt khung khi có LLM và không âm thầm cắt lời.
-- Giữ report review trong RAM để GUI giải thích lỗi; chỉ xuất JSON khi CLI được truyền `--report`.
+- Giữ kế hoạch review trong RAM để sửa lời đọc và tiếp tục; chỉ xuất JSON khi chọn Lưu kế hoạch hoặc CLI được truyền `--report`.
   Vẫn có chế độ Legacy cho workflow cần giới hạn tốc độ/cắt âm thanh như bản cũ.
 - Có tab `Video Editor` native PyQt5 để chỉnh subtitle/TTS trên timeline V1/A1/TS1, xem trước,
   tạo lại đúng group giọng đã chọn và export từ editor state hiện tại.
@@ -235,7 +235,26 @@ chung được dùng cho toàn job để giữ nhịp nhất quán. Nếu vẫn 
 app yêu cầu rút gọn/xem lại. [Chi tiết](docs/dev/natural-dubbing.md).
 
 Cache dùng `AppData/cache/dubbing_tts/v1/` với key SHA-256 không chứa API key hay transcript trong tên
-file. GUI/full pipeline không ghi report JSON; dùng `--report PATH` ở CLI khi thực sự cần lưu report.
+file. Report mặc định giữ trong RAM; GUI chỉ ghi JSON khi chọn **Lưu kế hoạch**, CLI khi dùng `--report PATH`.
+
+Khi cần review, dùng **Duyệt / sửa lời đọc** trong tab Lồng tiếng, sửa riêng nhóm
+cần rút ngắn rồi chọn **Tiếp tục lời đã duyệt**. App giữ phụ đề hiển thị, lời đọc
+của nhóm khác và tra lại cache; chỉ tổng hợp phần thiếu hoặc đã đổi. Lời đã duyệt
+không bị LLM tự viết lại khi tiếp tục. Timing vẫn được đo và kiểm tra trước khi ghép.
+
+**Lưu kế hoạch / Mở kế hoạch** cho phép tiếp tục sau khi đóng app; chọn lại đúng
+video, phụ đề và cấu hình giọng. App kiểm tra nội dung nguồn và cấu hình trước khi
+tạo audio. **Nhập checkpoint cũ** dành cho report v1 cũ: đối chiếu các nhóm và cache
+key với nguồn đang chọn, rồi liên kết cho lần tiếp tục; không xác minh được lịch sử
+nguồn nếu report cũ thiếu fingerprint. Review lời đọc thực hiện ở tab Lồng tiếng;
+**Open in Video Editor** vẫn mở video/phụ đề. Xem [hướng dẫn review/resume](docs/dev/natural-dubbing.md).
+
+Nếu WAV của checkpoint nằm ở một cache riêng, chọn **Thư mục WAV cache** chứa trực
+tiếp các cặp `<key>.wav` / `<key>.json` trước khi mở/nhập kế hoạch. Để trống để dùng
+cache mặc định. Thư mục này do bạn chọn, không lấy từ JSON và không tự chép cache.
+
+Pipeline giữ thứ tự bản gốc/bản dịch đã chọn khi chuyển sang ghép video, kể cả
+khi đổi kiểu hiển thị hoặc ghép lại. SRT đã định dạng không bị áp layout hai lần.
 
 ### VieNeu Local
 

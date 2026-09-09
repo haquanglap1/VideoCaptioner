@@ -1,5 +1,70 @@
 # Project Status
 
+## 2026-09-09 (hoàn tất các session; R6 nghiệm thu GUI và layout synthesis)
+
+- Review/resume đã có kế hoạch typed, sửa lời theo group, lưu/mở/nhập checkpoint,
+  cache riêng và kiểm tra nguồn/giọng. GUI R4/R5 giữ lời đã sửa qua restart, chỉ
+  tạo 1 WAV cho nhóm đổi; video/SRT gốc và nhóm khác được giữ.
+- Downloader OmniVoice hủy/resume/EOF/416/Range/ENOSPC và trạng thái Ready đã sửa;
+  model thật 13 file/3.267.470.260 byte được GUI R5 verify/reuse, metadata giữ nguyên.
+- Nghiệm thu thêm toàn điều phối GUI phát hiện synthesis áp layout hai lần.
+  Đã thêm input-layout marker độc lập output-layout, giữ reexport/rerun/standalone.
+  R6 từ video + phụ đề sẵn → 2 WAV cache hits → synthesis tự động; extract track
+  xác nhận 2 cue song ngữ đúng VI trên/English dưới. Không inference ASR/LLM/TTS mới.
+- Gate cuối source: UI/thread/CLI **302 pass / 10 deselected**, Ruff/Pyright/sync
+  pass. Gate dubbing 118, OmniVoice 27 và checkpoint thật 151 WAV được kế thừa theo
+  đúng phạm vi; không cộng lặp các suite. [Báo cáo](docs/dev/dubbing-review-resume-2026-09.md).
+- Artifact cuối `dist/VideoCaptioner-ReviewResume-20260909-R6/` nguyên onedir:
+  build exit 0 / 147,950 s, 6 WARNING/0 ERROR; EXE 31.260.697 byte, SHA-256
+  `aa1756106900ed3e8070b9fb6cd38927c9269e1b732a091ee4ddd60570d6fb2c`.
+  GUI sống 281,840 s, đóng exit 0/không child; CLI Unicode và bytecode 15 module
+  + entry pass. Test AppData chuyển nguyên sang evidence, hash EXE không đổi.
+- User đã cho phép tiếp tục GUI sau Escape và yêu cầu commit/push snapshot hiện
+  tại lên `origin/codex/asr-s3-native`. Git HEAD/tracking là nguồn trạng thái bàn
+  giao; không merge master/tag/release. Giữ mọi artifact cũ, video/cache/settings;
+  không mở lại benchmark, OCR hoặc key/API đã hết scope.
+
+## 2026-09-09 (review/resume, cache riêng, downloader; R4 sửa lỗi Unicode CLI)
+
+- Theo yêu cầu hoàn thành plan theo session rồi commit/push, đã triển khai core
+  `DubbingReview`, GUI sửa/lưu/mở/nhập checkpoint/tiếp tục, chọn cache riêng và
+  scroll ở 1050×800. Lỗi/hủy/mismatch giữ review; resume chỉ tạo WAV cần thiết,
+  giữ SRT hiển thị. [Báo cáo và gate](docs/dev/dubbing-review-resume-2026-09.md).
+- OmniVoice sửa hủy/resume, HTTP EOF/416/Range, ENOSPC và marker ready; model
+  thật được verify/reuse không tải lại. Checkpoint bài giảng giữ 121 wording
+  đổi và 151/151 WAV, replay 1,00×/trễ 2284 ms; không inference/render bài giảng.
+- Source gates: 118 test dubbing, 27 OmniVoice, 34 review/handoff/thread; tích hợp
+  sau sửa cuối 129 pass; toàn CLI sau sửa entry 129 pass. Các nhóm có overlap,
+  không cộng lặp. Ruff/Pyright/sync pass; skip/deselected lịch sử ghi trong báo cáo.
+- R1 GUI lộ thiếu vùng cuộn, đã sửa trong R2. User nhấn Escape dừng Computer Use
+  khi mở R2, nên GUI workflow còn chờ xác nhận tiếp tục. Selector cache vào R3.
+  CLI R3 `--help` lộ lỗi cp1252 (user cũng gửi ảnh); entry nay chuẩn hóa stream UTF-8.
+- R4 build exit 0/144,020 s, 6 WARNING/0 ERROR; EXE 31.258.522 byte, SHA-256
+  `3595071618d8bdac3bb496e979140859aa0efd094bad31626986ca33cce358bc`.
+  Chính R4 `--help`/`dub --help` exit 0, arg Unicode sai exit 2 đúng và stderr UTF-8;
+  8 module + entry bytecode khớp source. Chưa GUI startup/workflow trên R4.
+- Video/checkpoint/settings được hash kiểm tra giữ nguyên. Không commit/push
+  vì nghiệm thu GUI cuối đang chờ tiếp tục; quyền Git user đã cấp vẫn giữ.
+  Không tải model lớn/API, không benchmark sâu/OCR hoặc merge master/tag/release.
+- Sau ba lượt goal cùng chờ tiếp tục GUI, goal chuyển sang chờ user; đã xác minh
+  lại hash/CLI receipt R4 và đóng đúng headless HTTP fixture. Không có app nghiệm
+  thu hoặc session code còn chạy; không tự lặp build/test hoặc commit/push.
+
+
+## 2026-09-09 (rà luồng GUI lồng tiếng; sửa handoff phụ đề khi bỏ qua TTS)
+
+- Tiếp tục `f510846`, đầu lượt sạch. [Báo cáo](docs/dev/dubbing-gui-handoff-2026-09.md)
+  xác định GUI chưa khôi phục kế hoạch wording/report của job cần review; mở
+  Video Editor chỉ chuyển video/SRT, nên helper vẫn cần để tiếp tục checkpoint.
+- Đối chiếu SRT/report/cache: 180 cue/151 group khớp; 121 nhóm đổi wording,
+  đủ 151 WAV cuối. Replay timeline khớp 1,00×/trễ tối đa 2284 ms, không model/render.
+- Sửa `DubbingInterface.process`: tắt dubbing vẫn chuyển SRT hiển thị sang
+  synthesis, giữ layout song ngữ. Hai regression fail trước sửa; sau sửa
+  139 test UI/thread/CLI pass, Ruff/pyright/sync pass. Test engine giả, Qt thật.
+- EXE GUIResume được kiểm tra method trong PYZ, xác nhận còn lỗi handoff cũ;
+  không build mới, artifact chưa chứa sửa này. Giữ video/cache/settings và OCR dừng.
+  Ca tiếp theo là review/tiếp tục giữ wording + cache, chưa triển khai. Không commit/push.
+
 ## 2026-09-09 (chốt snapshot source để commit/push theo yêu cầu user)
 
 - Phạm vi snapshot: ASR thực dụng/Whisper dự phòng, OmniVoice Local cạnh VieNeu,

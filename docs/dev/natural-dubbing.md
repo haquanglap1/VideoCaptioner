@@ -21,8 +21,61 @@ song ngữ/đơn ngữ mà user đã chọn.
 7. Engine dựng voice track đúng vị trí group, giữ duration video và mix theo keep/reduce/mute.
 
 Report version `dubbing-report-v1` luôn tồn tại trong RAM để GUI hiển thị chi tiết. Không có file JSON mặc
-định; CLI chỉ ghi atomically khi user truyền `--report PATH`. Dữ liệu report không serialize API key,
+định; CLI ghi atomically khi user truyền `--report PATH`, GUI khi chọn **Lưu kế hoạch**. Dữ liệu report không serialize API key,
 credential URL hay raw provider response.
+
+## Duyệt lời đọc và tiếp tục
+
+Khi job dừng để review, mở **Duyệt / sửa lời đọc** ở tab Lồng tiếng. Bảng nhóm
+giữ cue membership, nguyên văn nguồn, phụ đề, lời trước rewrite và thông tin
+thời lượng/trễ. Chỉ ô lời đọc được sửa. **Áp dụng lời đọc** giữ thay đổi trong RAM;
+**Tiếp tục lời đã duyệt** dùng snapshot cấu hình của job và kiểm tra nguồn lại.
+
+Resume không gọi LLM để rewrite lại lời đã duyệt. Engine tính cache key từ lời đọc
+và cấu hình TTS hiện hành, bỏ qua `audio_path`, duration và cờ fit trong file nạp.
+WAV cache thiếu/hỏng được tổng hợp lại; WAV còn hợp lệ được dùng lại. Scheduler vẫn
+đo và kiểm tra timing đầy đủ, chỉ mix khi không còn nhóm cần review.
+
+**Lưu kế hoạch** ghi JSON atomically theo yêu cầu. Sau khi mở lại app, chọn video,
+phụ đề và cấu hình giọng rồi **Mở kế hoạch**. Mở file không tự tạo audio. Fingerprint
+SHA-256 của video, SRT lời đọc và SRT hiển thị (nếu có) được kiểm tra trong worker;
+đổi vị trí file nhưng giữ nguyên nội dung được phép. Nguồn/cấu hình không khớp thì
+dừng trước synthesis và giữ kế hoạch để sửa hoặc chọn lại nguồn đúng.
+
+Nếu WAV nằm ở cache riêng của job cũ, chọn **Thư mục WAV cache (tùy chọn)** trước
+khi mở/nhập kế hoạch. Chọn đúng thư mục `v1` chứa trực tiếp các cặp `<key>.wav` và
+`<key>.json`; để trống dùng cache mặc định. Đường dẫn là lựa chọn tường minh của
+user, không được nạp từ JSON hoặc tự chép vào AppData. Job chụp lựa chọn này;
+thay ô nhập sau đó không đổi cache của job đang review. Sau restart, chọn lại
+thư mục nếu cần vì report không lưu cache path. Thư mục sai bị chặn trong worker.
+
+Report cũ chưa có `resume_metadata` vẫn đọc bằng core, nhưng GUI cần action riêng
+**Nhập checkpoint cũ**. Import kiểm tra provider, mọi group/cue, source/display
+text, hình học timeline và cache key, rồi ghi provenance `legacy-user-bound`.
+Đây là liên kết với nguồn được chọn lúc import, không chứng minh danh tính media
+hoặc cấu hình chưa được ghi của job lịch sử. Không dùng đường dẫn audio trong JSON.
+
+Core contract: `DubbingReview.from_report(engine.last_report)`,
+`review.with_group_text(group_id, text)`, `review.save/load`,
+`engine.import_review(...)` và `engine.dub(..., review=review)`.
+`DubbingTask.dubbing_review` chuyển snapshot typed qua QThread. GUI giữ signal
+kết quả job tương thích và xử lý mở dialog/thoát busy sau khi QThread thực sự dừng.
+Editor project schema và thao tác undo/redo không đổi; tab Lồng tiếng sở hữu
+workflow review theo group.
+
+## Chuyển layout sang synthesis
+
+SRT hiển thị đã được bước phụ đề áp layout. Pipeline ghi layout đầu vào ở
+`SynthesisTask.input_subtitle_layout`, tách khỏi layout đầu ra hiện chọn.
+`core/subtitle/synthesis.py` phục hồi vai trò source/translation khi đọc SRT
+đã định dạng, rồi renderer áp layout một lần. Marker đến từ producer, không
+suy từ tên file/ngôn ngữ. Reexport thành công cập nhật marker; ghép lại cùng
+file giữ marker, đổi file thì trở về contract standalone.
+
+GUI soft/hard và CLI hard dùng helper chung. CLI soft vẫn nhúng file trực tiếp;
+file standalone không có marker, các flag/config public giữ nguyên. JSON/ASS
+giữ semantics của parser hiện có. Test gồm bốn layout, dòng đơn/ngôn ngữ đơn,
+thay layout đầu ra và giữ timing/nội dung.
 
 ## Đọc lần lượt, không chồng lời
 

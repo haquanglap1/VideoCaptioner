@@ -1,5 +1,33 @@
 # Hoàn thiện ASR theo mục tiêu speech-to-text
 
+## Hoàn tất các session triển khai và GUI của lượt tiếp tục
+
+[Báo cáo cuối](../dev/dubbing-review-resume-2026-09.md) và
+[bảng session](asr-completion-sessions-2026-09.md) ghi kết quả R6: core review/
+resume, GUI sửa/lưu/mở kế hoạch và cache riêng, downloader phục hồi lỗi, Unicode
+entry point và layout synthesis. GUI chạy xuyên các tab với phụ đề/WAV có sẵn,
+xuất track song ngữ đúng thứ tự; source, build và media gates được ghi riêng.
+Các ghi chú “chưa triển khai review/resume” phía dưới là lịch sử. Bản bài giảng,
+gated/người nói và quality/RTF giữ phạm vi đã chốt; không lặp inference/benchmark.
+
+## Yêu cầu hiện tại: hoàn thiện theo session rồi commit/push
+
+User đã yêu cầu tiếp tục hoàn thiện plan và commit/push sau khi kiểm tra.
+[Bảng session](asr-completion-sessions-2026-09.md) là trạng thái điều phối hiện tại:
+core review/resume, GUI sửa lời đọc, downloader OmniVoice và tích hợp/EXE/Git.
+Quyền mới thay các ghi chú chưa có quyền commit/push trong lịch sử bên dưới.
+Giữ bản lồng tiếng đã được chấp nhận, không mở lại benchmark sâu hoặc OCR.
+
+## Rà luồng GUI lồng tiếng sau snapshot f510846
+
+[Báo cáo handoff](../dev/dubbing-gui-handoff-2026-09.md) xác định khoảng trống
+review/tiếp tục: GUI chưa chuyển kế hoạch wording/report/cache sang editor.
+Checkpoint và đủ 151 WAV cuối còn nguyên. Đã sửa lỗi riêng khi tắt dubbing:
+synthesis nhận SRT hiển thị thay vì SRT TTS; 139 test và Ruff/pyright/sync pass.
+EXE GUIResume chưa rebuild, còn hành vi cũ. Ca nghiệm thu tiếp theo trong báo
+cáo tập trung giữ kế hoạch, sửa đúng nhóm và reuse cache; chưa triển khai tính
+năng resume, không mở lại inference/render bài giảng. Chưa commit/push.
+
 ## Tiếp tục được user chọn: GUI và tải model
 
 Đã nghiệm thu phạm vi tải model ASR trên máy này, xem
