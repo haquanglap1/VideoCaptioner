@@ -76,6 +76,7 @@ def package(args) -> dict:
         ("diarization", args.diarization_runtime, root / "diarization", root / "diarization"),
         ("omnivoice", args.omnivoice_runtime, root / "omnivoice", root / "omnivoice/env"),
         ("vieneu-runtime", args.vieneu_runtime, root / "vieneu-runtime", None),
+        ("ocr", getattr(args, "ocr_runtime", None), root / "ocr", root / "ocr/env"),
     ]
     for name, source, target, environment in selections:
         if source is None:
@@ -108,7 +109,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app-dir", type=Path, required=True)
     parser.add_argument("--python-base", type=Path, default=Path(sys.base_prefix))
-    for name in ("faster-whisper", "weights-dir", "qwen-runtime", "diarization-runtime", "omnivoice-runtime", "vieneu-runtime"):
+    for name in ("faster-whisper", "weights-dir", "qwen-runtime", "diarization-runtime", "omnivoice-runtime", "vieneu-runtime", "ocr-runtime"):
         parser.add_argument("--" + name, type=Path)
     package(parser.parse_args())
 
