@@ -1,5 +1,44 @@
 # Project Status
 
+## 2026-09-10 (submit/push snapshot pilot OCR và prompt phiên sau)
+
+- User yêu cầu submit/push phần OCR hiện có lên `origin/codex/asr-s3-native`.
+  Code pilot/runtime/packager/test chốt ở **`0348d7e`**; commit tài liệu theo sau,
+  lấy HEAD cuối và tracking từ Git khi tiếp tục.
+- [Prompt phiên sau](docs/dev/ocr-next-session-prompt.md) đã chuyển sang trạng thái
+  sau pilot: dùng lại 13 crop/runtime, giữ lỗi chữ và giới hạn timing; chốt cấu hình
+  AI trước API, tiếp tục phần local OCR-2 độc lập theo plan, chưa làm toàn GUI.
+- Giữ bằng chứng 158 tests/Ruff/Pyright/sync, 13 crop local và 6 fixture packaged
+  Python từ lượt trước. Không chạy lại test/model/build/API chỉ để chốt Git.
+  Media/raw/runtime/key không vào commit; quyền push chỉ cho snapshot này.
+
+## 2026-09-10 (OCR-1: pilot local 13 crop, nhánh AI đã chuẩn bị)
+
+- Worktree ASR-S3, HEAD đầu `df3aeee`, sạch và trùng origin. Một scratch
+  `build/ocr-pilot-20260910/`; giữ sample/ASR/Soniox/dịch/TTS cũ, không mở GUI.
+- Trích **13 crop màu gốc 1920×80**, giữ ROI/PTS/time base/hash. Prototype 25 Hz
+  khác nguồn 30 fps: chọn frame PTS gần nhất, delta tối đa **13,3125 ms**. Biên
+  cue vẫn prototype, chưa nghiệm thu timing OCR hay timestamp giọng nói.
+- Runtime riêng **RapidOCR 3.9.2 / ONNX CPU 1.29.0 / Python 3.12.13**, 23 deps
+  lock/hash; PP-OCRv5 mobile detector + Chinese server recognizer, dictionary
+  18.383 entry có SHA. Không thêm NumPy/cv2/ONNX vào môi trường app.
+- Lượt local thành công: **13/13 có chữ, 10/13 exact, 12/13 đủ chữ** so tham
+  chiếu agent (chưa native-speaker ground truth). Một chữ bị bỏ; hai vấn đề dấu
+  ba chấm và một khác biệt mã dấu hỏi. Không sửa raw hoặc đoán chữ bổ sung.
+- Load **0,435 s**, vòng 13 crop **2,440 s**, process **3,703 s**, peak working
+  set **490.553.344 byte**. 13 fresh/0 cache, 13 detector+13 recognizer, 0 API.
+  Lỗi serializer ở các lượt đầu giữ riêng; biên bản tính đủ attempts thực.
+- **6/6 fixture tổng hợp exact** trên Python payload riêng; model package OCR
+  **4.477 file / 398.907.184 byte**, không còn venv home ngoài gói. Packager thêm
+  `--ocr-runtime`; chưa build EXE hoặc thử OCR GUI/frozen/khác ổ.
+- **158 test pass**, Ruff/Pyright/translations pass. Không đổi code app, dependency
+  app, spec hoặc chạy lại nghiệm thu ASR. Full suite chưa chạy.
+- AI có prompt/input/metric chung, đã hỏi endpoint/model/key scope/budget nhưng
+  chưa chốt: **0 API call**, usage/cost null. Giữ cả hai hướng, chưa chọn engine
+  mặc định hoặc gọi so sánh OCR-1 hoàn tất. [Biên bản](docs/dev/ocr-pilot-2026-09.md).
+  Bước tiếp: chốt nhánh AI khi user chọn, xử lý review lỗi chữ và OCR-2 PTS/tracking
+  theo plan, rồi mới CLI/GUI. Không commit/push.
+
 ## 2026-09-10 (submit/push snapshot ASR Recovery và prompt OCR)
 
 - User yêu cầu “submit and push” lên `origin/codex/asr-s3-native`. Chốt code:

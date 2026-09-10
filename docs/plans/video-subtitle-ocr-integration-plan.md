@@ -1,5 +1,12 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Cập nhật sau pilot 2026-09-10:** [OCR-1 local đã đo trên 13 crop](../dev/ocr-pilot-2026-09.md):
+13/13 có chữ, 10/13 exact và 12/13 đủ chữ theo tham chiếu agent; chưa đủ để xuất
+không review. Runtime CPU/package riêng đã kiểm, 6 fixture tổng hợp pass. Nhánh AI
+đã chuẩn bị nhưng chưa chọn endpoint/model/key scope/budget; chưa có API comparison.
+Các mô tả “chưa chạy OCR” bên dưới là lịch sử OCR-0, không phải trạng thái hiện tại.
+Chưa triển khai OCR-2/3/4 hoặc chốt engine mặc định.
+
 **User ngày 2026-09-10 đã mở lại OCR cho phiên kế tiếp sau sửa Soniox/Qwen.**
 Theo [prompt OCR đã cập nhật](../dev/ocr-next-session-prompt.md), bắt đầu pilot OCR-1
 trên cùng 13 crop. OCR chưa được khởi chạy trong phiên sửa ASR; các gate ASR còn mở
