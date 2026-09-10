@@ -11,6 +11,7 @@ from PyQt5.QtCore import QEvent, QEventLoop, QObject, QTimer
 from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtWidgets import QApplication, QWidget
 
+from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.thread.version_checker_thread import VersionChecker
 from videocaptioner.ui.thread.worker_lifecycle import supervisor
 from videocaptioner.ui.view.main_window import MainWindow
@@ -34,6 +35,7 @@ def pump_until(predicate, timeout=1500):
 
 @pytest.fixture
 def window(qapp, monkeypatch):
+    monkeypatch.setattr(cfg.checkUpdateAtStartUp, "value", True)
     monkeypatch.setattr(VersionChecker, "get_latest_version_info", lambda self: {})
     monkeypatch.setattr("videocaptioner.ui.thread.version_checker_thread.get_version_state_cache", lambda: {})
     monkeypatch.setattr(MainWindow, "stop", lambda self: None)
@@ -85,6 +87,15 @@ def test_completed_check_leaves_no_idle_thread(window):
     thread = window.versionThread
     assert pump_until(thread.isFinished)
     assert thread.wait(1000)
+
+
+def test_disabled_startup_update_still_checks_media_tools(window, monkeypatch):
+    monkeypatch.setattr(cfg.checkUpdateAtStartUp, "value", False)
+    media_checks = []
+    monkeypatch.setattr(window, "_check_ffmpeg", lambda: media_checks.append(True))
+    window._start_background_services()
+    assert window.versionThread is None
+    assert media_checks == [True]
 
 
 def test_close_during_request_returns_promptly_and_retains_worker(window, monkeypatch):

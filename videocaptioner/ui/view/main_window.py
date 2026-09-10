@@ -164,7 +164,7 @@ class MainWindow(FluentWindow):
     def _start_background_services(self) -> None:
         if self._closing:
             return
-        if self.versionThread is None:
+        if cfg.checkUpdateAtStartUp.value and self.versionThread is None:
             from videocaptioner.ui.thread.version_checker_thread import VersionChecker
 
             self.versionChecker = VersionChecker()
