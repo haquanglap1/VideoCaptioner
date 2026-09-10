@@ -209,7 +209,7 @@ def run(args: Namespace, config: dict) -> int:
             if not str(output_path).lower().endswith(".json"):
                 output.warn("SRT/ASS/text cannot retain conversation context; use JSON to reopen it.")
         # 1. Split (if word-level timestamps available)
-        if need_split and (asr_data.has_metadata or asr_data.is_word_timestamp()):
+        if need_split:
             if progress:
                 progress.update(5, "Splitting subtitles...")
             from videocaptioner.core.split.split import SubtitleSplitter
@@ -236,7 +236,6 @@ def run(args: Namespace, config: dict) -> int:
             )
             components.append(optimizer)
             asr_data = optimizer.optimize_subtitle(asr_data)
-            asr_data.remove_punctuation()
 
         # 3. Translate
         if need_translate:
@@ -267,7 +266,6 @@ def run(args: Namespace, config: dict) -> int:
             )
             components.append(translator)
             asr_data = translator.translate_subtitle(asr_data)
-            asr_data.remove_punctuation()
 
         # 4. Save
         from videocaptioner.cli.validators import resolve_layout

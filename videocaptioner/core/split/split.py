@@ -1,11 +1,11 @@
 import atexit
-import difflib
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Union
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.llm.context import submit_with_context
-from videocaptioner.core.split.split_by_llm import split_by_llm
+from videocaptioner.core.split.split_by_llm import source_spans_for_split, split_by_llm
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.text_utils import (
     count_words,
@@ -15,6 +15,8 @@ from videocaptioner.core.utils.text_utils import (
 )
 
 logger = setup_logger("subtitle_splitter")
+_SENTENCE_END_RE = re.compile(r"[.!?。！？][\"'”’）)\]]*\s*$")
+_CLAUSE_END_RE = re.compile(r"[,;:，；：]\s*$")
 
 # ==================== Configuration constants ====================
 
@@ -48,34 +50,37 @@ RULE_MIN_SEGMENT_SIZE = 4  # Minimum segment size for rule-based splitting
 PREFIX_WORD_RATIO = 0.6  # Split ratio at prefix words
 SUFFIX_WORD_RATIO = 0.4  # Split ratio at suffix words
 
-# Matching
-MATCH_SIMILARITY_THRESHOLD = 0.5  # Similarity threshold for text matching
-MATCH_MAX_SHIFT = 30  # Largest sliding-window offset while matching
-MATCH_MAX_UNMATCHED = 5  # Largest allowed number of unmatched sentences
-MATCH_LARGE_SHIFT = 100  # Large offset used when nothing matches
+# Kept for callers of the old matching helper; matching itself is now exact.
+MATCH_MAX_UNMATCHED = 5
 
 
 def preprocess_segments(
-    segments: List[ASRDataSeg], need_lower: bool = True
+    segments: List[ASRDataSeg], need_lower: bool = True, *, preserve_punctuation: bool = False
 ) -> List[ASRDataSeg]:
     """Preprocess ASR segments.
 
-    1. Drop segments that are only punctuation
+    1. Keep punctuation when requested by the speech segmentation path
     2. Add spaces for space-separated languages (English, Russian, Arabic, ...; not CJK)
 
     Args:
         segments: ASR segment list
         need_lower: lowercase the text (Latin and Cyrillic scripts only)
+        preserve_punctuation: preserve pause marks and space punctuated words
 
     Returns:
         Processed segment list
     """
     new_segments = []
     for seg in segments:
-        if not is_pure_punctuation(seg.text):
+        if preserve_punctuation or not is_pure_punctuation(seg.text):
+            seg = seg.clone()
             text = seg.text.strip()
             # Space-separated language (not CJK)?
-            if is_space_separated_language(text):
+            lexical = "".join(char for char in text if char.isalnum())
+            needs_spaces = is_space_separated_language(text) or (
+                preserve_punctuation and bool(lexical) and not is_mainly_cjk(lexical)
+            )
+            if needs_spaces:
                 if need_lower:
                     text = text.lower()
                 seg.text = text + " "
@@ -151,11 +156,15 @@ class SubtitleSplitter:
 
                 return native_cues(asr_data, self.max_word_count_cjk)
 
-            if not asr_data.is_word_timestamp():
-                asr_data = asr_data.split_to_word_segments()
-
-            # 2. Preprocess
-            asr_data.segments = preprocess_segments(asr_data.segments, need_lower=False)
+            asr_data = asr_data.with_segments([seg.clone() for seg in asr_data.segments])
+            speech_only = asr_data.with_segments([seg for seg in asr_data if not is_pure_punctuation(seg.text)])
+            if not speech_only.is_word_timestamp():
+                # These source slices already retain their original separators.
+                asr_data.split_to_word_segments(preserve_punctuation=True)
+            else:
+                asr_data.segments = preprocess_segments(
+                    asr_data.segments, need_lower=False, preserve_punctuation=True
+                )
             txt = asr_data.to_txt().replace("\n", "")
 
             # 3. Decide the segment count and split
@@ -167,11 +176,13 @@ class SubtitleSplitter:
 
             # 4. Process concurrently
             processed_segments = self._process_segments(asr_data_list)
+            if not self.is_running:
+                raise RuntimeError("Segmentation cancelled; no result was applied.")
 
             # 5. Merge and optimize
             final_segments = self._merge_processed_segments(processed_segments)
 
-            return ASRData(final_segments)
+            return asr_data.with_segments(final_segments)
 
         except Exception as e:
             logger.error(f"Split failed:{str(e)}")
@@ -219,22 +230,24 @@ class SubtitleSplitter:
         # Initial split points
         split_indices = [i * words_per_segment for i in range(1, num_segments)]
 
-        # Adjust each split point to the largest nearby time gap
+        # Keep independent requests near sentence boundaries when possible.
         adjusted_split_indices = []
         for split_point in split_indices:
             start = max(0, split_point - SPLIT_SEARCH_RANGE)
             end = min(total_segs - 1, split_point + SPLIT_SEARCH_RANGE)
 
-            # Find the largest gap
-            max_gap = -1
+            best_rank = None
             best_index = split_point
 
             for j in range(start, end):
                 gap = (
                     asr_data.segments[j + 1].start_time - asr_data.segments[j].end_time
                 )
-                if gap > max_gap:
-                    max_gap = gap
+                sentence_end = bool(_SENTENCE_END_RE.search(asr_data.segments[j].text))
+                clause_end = bool(_CLAUSE_END_RE.search(asr_data.segments[j].text))
+                rank = (gap > MAX_GAP, sentence_end, clause_end, gap, -abs(j - split_point))
+                if best_rank is None or rank > best_rank:
+                    best_rank = rank
                     best_index = j
 
             adjusted_split_indices.append(best_index)
@@ -275,7 +288,7 @@ class SubtitleSplitter:
                 result = future.result()
                 processed_segments.append(result)
             except Exception as e:
-                logger.error(f"Segment processing failed:{str(e)}")
+                raise RuntimeError("A segmentation chunk failed; no partial document was returned.") from e
 
         return processed_segments
 
@@ -677,111 +690,24 @@ class SubtitleSplitter:
         sentences: List[str],
         max_unmatched: int = MATCH_MAX_UNMATCHED,
     ) -> List[ASRDataSeg]:
-        """Merge ASR segments according to the sentences returned by the LLM.
-
-        Sliding-window matching:
-        1. For each LLM sentence, find the best matching run of ASR segments
-        2. Match by text similarity
-        3. Merge the matched segments
-
-        Args:
-            segments: ASR segment list
-            sentences: sentences returned by the LLM
-            max_unmatched: largest allowed number of unmatched sentences
-
-        Returns:
-            Merged segment list
-
-        Raises:
-            ValueError: when unmatched sentences exceed the threshold
-        """
-
-        def preprocess_text(s: str) -> str:
-            """Normalize text: lowercase and collapse whitespace."""
-            return " ".join(s.lower().split())
-
-        asr_texts = [seg.text for seg in segments]
-        asr_len = len(asr_texts)
-        asr_index = 0
-        threshold = MATCH_SIMILARITY_THRESHOLD
-        max_shift = MATCH_MAX_SHIFT
-        unmatched_count = 0
-
-        new_segments = []
-
-        for sentence in sentences:
-            logger.debug("==========")
-            logger.debug(f"Processing sentence: {sentence}")
-            logger.debug("Next sentences: :" + "".join(asr_texts[asr_index : asr_index + 10]))
-
-            sentence_proc = preprocess_text(sentence)
-            word_count = count_words(sentence_proc)
-            best_ratio = 0.0
-            best_pos = None
-            best_window_size = 0
-
-            # Sliding window size
-            max_window_size = min(word_count * 2, asr_len - asr_index)
-            min_window_size = max(1, word_count // 2)
-            window_sizes = sorted(
-                range(min_window_size, max_window_size + 1),
-                key=lambda x: abs(x - word_count),
-            )
-
-            # Sliding-window match
-            for window_size in window_sizes:
-                max_start = min(asr_index + max_shift + 1, asr_len - window_size + 1)
-                for start in range(asr_index, max_start):
-                    substr = "".join(asr_texts[start : start + window_size])
-                    substr_proc = preprocess_text(substr)
-                    ratio = difflib.SequenceMatcher(
-                        None, sentence_proc, substr_proc
-                    ).ratio()
-
-                    if ratio > best_ratio:
-                        best_ratio = ratio
-                        best_pos = start
-                        best_window_size = window_size
-                    if ratio == 1.0:
-                        break
-                if best_ratio == 1.0:
-                    break
-
-            # Apply the match
-            if best_ratio >= threshold and best_pos is not None:
-                start_seg_index = best_pos
-                end_seg_index = best_pos + best_window_size - 1
-
-                segs_to_merge = segments[start_seg_index : end_seg_index + 1]
-
-                # Cut by time so no segment spans too long
-                seg_groups = self._group_by_time_gaps(segs_to_merge, max_gap=MAX_GAP)
-
-                for group in seg_groups:
-                    merged_text = "".join(seg.text for seg in group)
-                    merged_start_time = group[0].start_time
-                    merged_end_time = group[-1].end_time
-                    merged_seg = ASRDataSeg(
-                        merged_text, merged_start_time, merged_end_time
-                    )
-
-                    logger.debug(f"Merged segments: {merged_seg.text}")
-
-                    # Split over-long segments
-                    split_segs = self._split_long_segment(group)
-                    new_segments.extend(split_segs)
-
-                max_shift = MATCH_MAX_SHIFT
-                asr_index = end_seg_index + 1
-            else:
-                logger.warning(f"Cannot match sentence: {sentence}")
-                unmatched_count += 1
-                if unmatched_count > max_unmatched:
-                    raise ValueError(f"Unmatched sentences exceeded threshold {max_unmatched},processing aborted")
-                max_shift = MATCH_LARGE_SHIFT
-                asr_index = min(asr_index + 1, asr_len - 1)
-
-        return new_segments
+        """Consume each source token once, in order, using only its existing timing."""
+        text = "".join(seg.text for seg in segments)
+        spans = source_spans_for_split(text, sentences)
+        result = []
+        index = consumed = 0
+        for start, end in spans:
+            target = consumed + len("".join(text[start:end].split()))
+            first = index
+            while index < len(segments) and consumed < target:
+                consumed += len("".join(segments[index].text.split()))
+                index += 1
+            if consumed != target or first == index:
+                raise ValueError("A proposed boundary cuts inside an ASR token; keep the original timing units.")
+            for group in self._group_by_time_gaps(segments[first:index], max_gap=MAX_GAP):
+                result.extend(self._split_long_segment(group))
+        if index != len(segments):
+            raise ValueError("Segmentation did not consume every source token.")
+        return result
 
     def stop(self):
         """Stop the splitter and release resources."""

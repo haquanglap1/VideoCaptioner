@@ -158,6 +158,20 @@ Kết quả Soniox/Scribe lỗi timing được giữ riêng để mở bằng *
 user sửa timing có undo/redo rồi validate/resume tại máy, không upload lại. CLI có lệnh `asr-review`.
 Xem [hướng dẫn S4.1, cấu hình timeout và review/resume](docs/dev/asr-s41.md).
 
+## Phân đoạn LLM để chuẩn bị lời đọc
+
+Phân đoạn ưu tiên một câu trọn ý; câu dài mới tách theo mệnh đề trong giới hạn
+ký tự/từ đã chọn. Dấu phẩy không tự tạo đoạn mới. Prompt giữ nguyên chữ, tên,
+số, phủ định, từ lặp và dấu câu; không tự đoán sửa ASR hoặc chèn nhãn ngắt nghỉ.
+Kết quả đổi lời/thiếu lời bị từ chối trước khi ghép timing. Dấu câu được giữ qua
+tối ưu/dịch và SRT chuyển sang lồng tiếng để TTS có tín hiệu ngắt nghỉ.
+
+CLI thực hiện phân đoạn khi tùy chọn split đang bật, kể cả SRT câu cũ;
+`--no-split` bỏ qua bước này. Timing từ SRT cũ vẫn là **ước lượng** khi chia lại,
+không thay thế timestamp theo từ của ASR. Dữ liệu native có metadata vẫn đi qua
+cơ chế phân câu/timing native và giữ guard ngữ cảnh/người nói.
+Xem [hợp đồng phân đoạn và validation](docs/dev/speech-segmentation-2026-09.md).
+
 ## Qwen local và hybrid người nói (S5)
 
 Chọn `Qwen3-ASR [Local]` trong GUI hoặc `--asr qwen-local --language zh` trong CLI.

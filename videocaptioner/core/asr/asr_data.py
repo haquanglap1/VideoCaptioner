@@ -22,7 +22,7 @@ from .metadata import ASRAudioEvent, ASRMetadata
 
 # 多语言分词模式(支持词级和字符级语言)
 _WORD_SPLIT_PATTERN = (
-    r"[a-zA-Z\u00c0-\u00ff\u0100-\u017f']+"  # 拉丁字符(含扩展)
+    r"[a-zA-Z\u00c0-\u00ff\u0100-\u017f\u1e00-\u1eff\u0300-\u036f'’]+"  # Latin, including Vietnamese
     r"|[\u0400-\u04ff]+"  # 西里尔字母(俄文)
     r"|[\u0370-\u03ff]+"  # 希腊字母
     r"|[\u0600-\u06ff]+"  # 阿拉伯文
@@ -209,13 +209,11 @@ class ASRData:
 
         return word_level_ratio >= WORD_LEVEL_THRESHOLD
 
-    def split_to_word_segments(self) -> "ASRData":
-        """将句子级字幕分割为词级字幕,并按音素估算分配时间戳
+    def split_to_word_segments(self, *, preserve_punctuation: bool = False) -> "ASRData":
+        """Estimate legacy word timing; optionally retain the complete source text.
 
-        时间戳分配基于音素估算(每4个字符约1个音素)
-
-        Returns:
-            修改后的ASRData实例
+        Native timing/context guards still apply. Punctuation stays attached to
+        adjacent words without adding phonemes to the existing timing estimate.
         """
         if self.conversation_context.enabled:
             raise ValueError("Re-segmentation would change context associations; disable split and review.")
@@ -232,6 +230,8 @@ class ASRData:
             words_list = list(re.finditer(_WORD_SPLIT_PATTERN, text))
 
             if not words_list:
+                if preserve_punctuation:
+                    new_segments.append(seg.clone())
                 continue
 
             # 计算总音素数
@@ -242,12 +242,18 @@ class ASRData:
 
             # 为每个词分配时间戳
             current_time = seg.start_time
-            for word_match in words_list:
+            for index, word_match in enumerate(words_list):
                 word = word_match.group()
                 word_phonemes = math.ceil(len(word) / CHARS_PER_PHONEME)
                 word_duration = int(time_per_phoneme * word_phonemes)
 
                 word_end_time = min(current_time + word_duration, seg.end_time)
+                if preserve_punctuation:
+                    start = 0 if index == 0 else word_match.start()
+                    end = words_list[index + 1].start() if index + 1 < len(words_list) else len(text)
+                    word = text[start:end]
+                    if index == len(words_list) - 1:
+                        word_end_time = seg.end_time
                 new_segments.append(
                     ASRDataSeg(
                         text=word, start_time=current_time, end_time=word_end_time

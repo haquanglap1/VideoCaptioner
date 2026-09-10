@@ -1,5 +1,7 @@
-import difflib
+"""Lossless LLM segmentation into coherent spoken clauses."""
+import json
 import re
+import unicodedata
 from typing import List, Tuple
 
 from ..llm import call_llm
@@ -8,8 +10,43 @@ from ..utils.logger import setup_logger
 from ..utils.text_utils import count_words, is_mainly_cjk
 
 logger = setup_logger("split_by_llm")
+MAX_STEPS = 2
+_PROTECTED_TOKEN_RE = re.compile(
+    r"(?:https?://|www\.)\S+|[\w.+-]+@[\w.-]+\.\w+"
+    r"|\d+(?:[.,:/-]\d+)+|[^\W\d_]+(?:['’\-][^\W\d_]+)+",
+    re.UNICODE,
+)
 
-MAX_STEPS = 2  # Agent loop max retry count
+
+def source_spans_for_split(text: str, parts: List[str]) -> List[Tuple[int, int]]:
+    """Map all proposed parts to source spans, allowing whitespace normalization only."""
+    if not parts or any(not isinstance(part, str) or not part.strip() for part in parts):
+        raise ValueError("Every segment must contain source text; empty segments are not allowed.")
+    positions = [i for i, char in enumerate(text) if not char.isspace()]
+    source = "".join(text[i] for i in positions)
+    proposed = "".join("".join(part.split()) for part in parts)
+    if not source or source != proposed:
+        raise ValueError("Source content changed. Keep every word, number, repetition and punctuation in order.")
+
+    protected = list(_PROTECTED_TOKEN_RE.finditer(text))
+    spans = []
+    consumed = start = 0
+    for part in parts:
+        consumed += len("".join(part.split()))
+        end = positions[consumed] if consumed < len(positions) else len(text)
+        if consumed < len(positions):
+            left = positions[consumed - 1]
+            a, b = text[left], text[end]
+            a_word = a.isalnum() or unicodedata.category(a).startswith("M")
+            b_word = b.isalnum() or unicodedata.category(b).startswith("M")
+            if (end == left + 1 and a_word and b_word
+                    and not is_mainly_cjk(a) and not is_mainly_cjk(b)):
+                raise ValueError("A boundary cuts inside a word or identifier. Break only between complete units.")
+            if any(match.start() < end < match.end() for match in protected):
+                raise ValueError("A boundary cuts a number, contraction, URL or other protected token.")
+        spans.append((start, end))
+        start = end
+    return spans
 
 
 def split_by_llm(
@@ -19,198 +56,58 @@ def split_by_llm(
     max_word_count_english: int = 12,
     request=None,
 ) -> List[str]:
-    """使用LLM进行文本断句（固定使用句子Segments）
-
-    Args:
-        text: 待断句的文本
-        model: LLM模型名称
-        max_word_count_cjk: 中文最大字符数
-        max_word_count_english: 英文最大单词数
-
-    Returns:
-        断句后的文本列表
-    """
+    """Request sentence/clause boundaries without allowing a rewrite of the speech."""
+    if not text.strip():
+        return []
     try:
-        return _split_with_agent_loop(
-            text, model, max_word_count_cjk, max_word_count_english, request
-        )
-    except Exception as e:
-        logger.error(f"Sentence splitting failed: {e}")
+        return _split_with_agent_loop(text, model, max_word_count_cjk, max_word_count_english, request)
+    except Exception as exc:
+        logger.warning("LLM segmentation failed (%s); preserving original text.", type(exc).__name__)
         return [text]
 
 
-def _split_with_agent_loop(
-    text: str,
-    model: str,
-    max_word_count_cjk: int,
-    max_word_count_english: int,
-    request=None,
-) -> List[str]:
-    """使用agent loop 建立反馈循环进行文本断句，自动验证和修正"""
-    prompt_path = "split/sentence"
-    system_prompt = get_prompt(
-        prompt_path,
-        max_word_count_cjk=max_word_count_cjk,
-        max_word_count_english=max_word_count_english,
-    )
-
-    user_prompt = (
-        f"Please use multiple <br> tags to separate the following sentence:\n{text}"
-    )
-
+def _split_with_agent_loop(text, model, max_word_count_cjk, max_word_count_english, request=None):
+    system_prompt = get_prompt("split/sentence", max_word_count_cjk=max_word_count_cjk,
+                               max_word_count_english=max_word_count_english)
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
+        {"role": "user", "content": json.dumps({"transcript": text}, ensure_ascii=False)},
     ]
-
-    last_result = None
-
     for step in range(MAX_STEPS):
-        response = (request or call_llm)(
-            messages=messages,
-            model=model,
-            temperature=0.1,
-        )
-
-        result_text = response.choices[0].message.content
-
-        # 解析结果
-        result_text_cleaned = re.sub(r"\n+", "", result_text)
-        split_result = [
-            segment.strip()
-            for segment in result_text_cleaned.split("<br>")
-            if segment.strip()
-        ]
-        last_result = split_result
-
-        # 验证结果
-        is_valid, error_message = _validate_split_result(
-            original_text=text,
-            split_result=split_result,
-            max_word_count_cjk=max_word_count_cjk,
-            max_word_count_english=max_word_count_english,
-        )
-
-        if is_valid:
-            return split_result
-
-        # 添加反馈到对话
-        logger.warning(
-            f"Split validation failed. Feedback loop (第{step + 1}次尝试):\n {error_message}\n\n"
-        )
-        messages.append({"role": "assistant", "content": result_text})
-        messages.append(
-            {
-                "role": "user",
-                "content": f"Error: {error_message}\nFix the errors above and output the COMPLETE corrected text with <br> tags (include ALL segments, not just the fixed ones), no explanation.",
-            }
-        )
-
-    return last_result if last_result else [text]
+        response = (request or call_llm)(messages=messages, model=model, temperature=0.1)
+        content = response.choices[0].message.content
+        parts = [part.strip() for part in content.split("<br>")] if isinstance(content, str) else []
+        valid, reason = _validate_split_result(text, parts, max_word_count_cjk, max_word_count_english)
+        if valid:
+            # Use the source slices, not the model's whitespace or reconstructed words.
+            return [text[start:end].strip() for start, end in source_spans_for_split(text, parts)]
+        logger.warning("Split validation failed (attempt %d/%d): %s", step + 1, MAX_STEPS, reason)
+        if isinstance(content, str):
+            messages.append({"role": "assistant", "content": content})
+        messages.append({"role": "user", "content": (
+            f"Invalid segmentation: {reason}\n"
+            "Return the COMPLETE original transcript with only legal <br> boundaries. "
+            "Preserve complete sentences when they fit; never remove or rewrite speech to meet a limit. "
+            "No explanation, Markdown, SSML, labels or empty segments."
+        )})
+    logger.warning("No valid LLM segmentation after %d attempts; preserving original text.", MAX_STEPS)
+    return [text]
 
 
-def _validate_split_result(
-    original_text: str,
-    split_result: List[str],
-    max_word_count_cjk: int,
-    max_word_count_english: int,
-) -> Tuple[bool, str]:
-    """验证断句结果: 内容一致性、Segments数量、长度限制
-
-    Returns: (is_valid, error_feedback)
-    """
-    # 检查是否为空
-    if not split_result:
-        return False, "No segments found. Split the text with <br> tags."
-
-    # 检查内容是否被修改（使用difflib精确定位差异）
-    original_cleaned = re.sub(r"\s+", " ", original_text)
-    text_is_cjk = is_mainly_cjk(original_cleaned)
-
-    merged_char = "" if text_is_cjk else " "
-    merged = merged_char.join(split_result)
-    merged_cleaned = re.sub(r"\s+", " ", merged)
-
-    # 使用SequenceMatcher计算相似度和差异
-    matcher = difflib.SequenceMatcher(None, original_cleaned, merged_cleaned)
-    similarity_ratio = matcher.ratio()
-
-    # 允许98%以上的相似度（容忍少量标点或空格差异）
-    if similarity_ratio < 0.96:
-        differences = []
-        context_size = 5 if text_is_cjk else 20
-
-        for opcode, a0, a1, b0, b1 in matcher.get_opcodes():
-            if opcode == "replace":
-                # 获取前后文
-                before = original_cleaned[max(0, a0 - context_size) : a0]
-                orig_part = original_cleaned[a0:a1]
-                after = original_cleaned[a1 : a1 + context_size]
-
-                new_part = merged_cleaned[b0:b1]
-
-                if orig_part.isspace() or new_part.isspace():
-                    continue
-
-                differences.append(
-                    f"...{before}[{orig_part}]{after}... → changed to [{new_part}]"
-                )
-
-            elif opcode == "delete":
-                before = original_cleaned[max(0, a0 - context_size) : a0]
-                deleted_part = original_cleaned[a0:a1]
-                after = original_cleaned[a1 : a1 + context_size]
-
-                if deleted_part.isspace():
-                    continue
-
-                differences.append(f"...{before}[{deleted_part}]{after}... → deleted")
-
-            elif opcode == "insert":
-                # 对于插入，显示插入位置的上下文
-                before = merged_cleaned[max(0, b0 - context_size) : b0]
-                inserted_part = merged_cleaned[b0:b1]
-                after = merged_cleaned[b1 : b1 + context_size]
-
-                if inserted_part.isspace():
-                    continue
-
-                differences.append(
-                    f"Wrongly inserted [{inserted_part}] between '...{before}' and '{after}...'"
-                )
-
-        if differences:
-            error_msg = f"Content modified (similarity: {similarity_ratio:.1%}):\n"
-            error_msg += "\n".join(f"- {diff}" for diff in differences)
-            error_msg += (
-                "\nKeep original text unchanged, only insert <br> between words."
-            )
-            return False, error_msg
-
-    # 检查每段长度是否超限
-    violations = []
-    for i, segment in enumerate(split_result, 1):
-        word_count = count_words(segment)
-
-        max_allowed = max_word_count_cjk if text_is_cjk else max_word_count_english
-
-        if word_count > max_allowed:
-            segment_preview = segment[:40] + "..." if len(segment) > 40 else segment
-            violations.append(
-                f"Segment {i} '{segment_preview}': {word_count} {'chars' if text_is_cjk else 'words'} > {max_allowed} limit"
-            )
-
-    if violations:
-        error_msg = "Length violations:\n" + "\n".join(f"- {v}" for v in violations)
-        error_msg += "\n\nSplit these long segments further with <br>, then output the COMPLETE text with ALL segments (not just the fixed ones)."
-        return False, error_msg
-
+def _validate_split_result(original_text: str, split_result: List[str],
+                           max_word_count_cjk: int, max_word_count_english: int) -> Tuple[bool, str]:
+    """Require complete source coverage and legal boundaries before applying timing."""
+    try:
+        spans = source_spans_for_split(original_text, split_result)
+    except ValueError as exc:
+        return False, str(exc)
+    for index, (start, end) in enumerate(spans, 1):
+        part = original_text[start:end].strip()
+        size = count_words(part)
+        limit = max_word_count_cjk if is_mainly_cjk(part) else max_word_count_english
+        if size == 0:
+            return False, f"Segment {index} contains only punctuation; attach it to its sentence."
+        if size > limit:
+            return False, (f"Segment {index} has {size} units, above the {limit} limit. "
+                           "Split at a complete clause boundary and return ALL segments.")
     return True, ""
-
-
-if __name__ == "__main__":
-    sample_text = "大家好我叫杨玉溪来自有着良好音乐氛围的福建厦门自记事起我眼中的世界就是朦胧的童话书是各色杂乱的线条电视机是颜色各异的雪花小伙伴是只听其声不便骑行的马赛克后来我才知道这是一种眼底黄斑疾病虽不至于失明但终身无法治愈"
-    sentences = split_by_llm(sample_text)
-    print(f"断句结果 ({len(sentences)} 段):")
-    for i, seg in enumerate(sentences, 1):
-        print(f"  {i}. {seg}")

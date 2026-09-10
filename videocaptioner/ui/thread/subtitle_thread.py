@@ -126,17 +126,13 @@ class SubtitleThread(QThread):
 
             asr_data = self.task.asr_data if self.task.asr_data is not None else ASRData.from_subtitle_file(subtitle_path)
 
-            # 1. Split into word-level timestamps (unsegmented subtitles with split enabled)
-            if subtitle_config.need_split and not asr_data.has_metadata and not asr_data.is_word_timestamp():
-                asr_data.split_to_word_segments()
-
             # Verify the LLM configuration
             if self.need_llm(subtitle_config, asr_data):
                 self.progress.emit(2, self.tr("开始验证 LLM 配置..."))
                 subtitle_config = self._setup_llm_config()
 
             # 2. Re-segment word-level subtitles into sentences
-            if asr_data.is_word_timestamp() or (asr_data.has_metadata and subtitle_config.need_split):
+            if asr_data.is_word_timestamp() or subtitle_config.need_split:
                 update_stage("split")
                 self.progress.emit(5, self.tr("字幕断句..."))
                 logger.info("正在字幕断句...")
@@ -176,7 +172,6 @@ class SubtitleThread(QThread):
                 )
                 self.optimizer = optimizer
                 asr_data = optimizer.optimize_subtitle(asr_data)
-                asr_data.remove_punctuation()
 
             # 4. Translate subtitles
             if self.cancelled():
@@ -208,9 +203,6 @@ class SubtitleThread(QThread):
                 asr_data = translator.translate_subtitle(asr_data)
                 if self.cancelled():
                     return
-
-                # Strip trailing punctuation
-                asr_data.remove_punctuation()
 
                 # Save the translation (monolingual and bilingual layouts)
                 if self.task.need_next_task and self.task.video_path:
@@ -272,7 +264,7 @@ class SubtitleThread(QThread):
     def need_llm(self, subtitle_config: SubtitleConfig, asr_data: ASRData):
         return (
             subtitle_config.need_optimize
-            or (asr_data.is_word_timestamp() and not asr_data.has_metadata)
+            or ((subtitle_config.need_split or asr_data.is_word_timestamp()) and not asr_data.has_metadata)
             or (
                 subtitle_config.need_translate
                 and subtitle_config.translator_service
