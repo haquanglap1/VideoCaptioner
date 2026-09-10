@@ -1,5 +1,105 @@
 # Project Status
 
+## 2026-09-10 (submit/push OCR-3/4 và prompt phiên sau)
+
+- User yêu cầu submit/push snapshot OCR đã nghiệm thu và prompt bàn giao.
+  Code/domain/GUI/CLI/resources/packager/test chốt ở **`dbbd062`** (42 file);
+  6 file tài liệu đi theo, lấy HEAD cuối và tracking/origin từ Git khi tiếp tục.
+- [Prompt phiên sau](docs/dev/ocr-next-session-prompt.md) đã chuyển sang OCR-4
+  continuation: ưu tiên toàn flow GUI trên EXE hiện có, khả năng di chuyển gói
+  đầy đủ, rồi review/chất lượng và các phần runtime/cache còn thiếu. Không viết
+  lại OCR-3 hoặc lấy snapshot cũ làm trạng thái hiện tại.
+- Giữ gate 1.735 offline pass/5 skip/51 deselected, source GUI/frozen CLI fixture,
+  GUI EXE startup/close, mọi hash model và 32 module PYZ khớp source. Không chạy
+  lại test/model/API/build chỉ để chốt Git; raw/media/key/log/model ngoài Git.
+- Artifact `VideoCaptioner-OCR4-20260910` giữ nguyên; build sau dùng lại bộ đã có
+  OCR thì không ghép thêm component OCR lần hai. Crop 5 vision vẫn cần quyền
+  cho request thứ 14; submit/push không tăng budget hoặc cấp quyền commit phiên sau.
+
+## 2026-09-10 (tiếp tục OCR-4: GUI local, crop review và EXE kèm OCR)
+
+- Giữ thay đổi OCR-3 trên ASR-S3, HEAD **dc94a46**, không commit/push hoặc sửa master.
+  Thêm **Nhận dạng → OCR phụ đề trong hình**: chọn video/selection/ROI qua ảnh
+  SAR/rotation/letterbox; mở cửa sổ không IO/model/network. Chọn/kiểm runtime đã
+  cài, worker giữ contextvars/progress/cancel/partial review, không tự cài/tải.
+- Crop review chọn đúng PTS và verify nguồn + SHA RGB trước khi hiển thị; raw/
+  edited/candidate và lý do review tiếng Việt. Duyệt có ghi chú, undo/redo qua
+  CommandStack; không duyệt cả nhóm ngầm. Save/load/verify/export chạy trong worker;
+  kết quả muộn không sửa dialog đã đóng. Handoff typed sang bảng phụ đề không tự
+  dịch/TTS/optimize/split. Còn nghi vấn thì giữ review, không bắt user đoán chữ Trung.
+- Bundled `resources/ocr` có profile/worker hiện tại, giữ AST của pilot worker;
+  CLI mặc định dùng bundled bridge/profile và `models/ocr`, giữ explicit overrides.
+  Packager/spec ghép OCR vào bản sao bộ model đầy đủ, chặn thiếu owner/collision/
+  path escape/hash sai và giữ inventory ASR/TTS. Không ghi đè runtime/payload cũ.
+- Scoped **271 pass** trước tinh chỉnh cuối; full offline Qt offscreen cuối
+  **1.735 pass /5 skip /51 deselected**, 159,84 s, exit 0. 4 skip TTS cần key/service,
+  1 QtMultimedia native. Ruff/Pyright **0/0**/translations pass.
+- Native source OCR dialog + runtime thật: fixture VFR/nonzero PTS/no-audio,
+  **3/3 câu hai dòng exact**, 13 frame /3 track /6 candidate /2 fresh /4 cache;
+  2 detector /4 recognizer /0 classifier, job 2,922 s. Crop/review/save-reopen/IDs
+  pass, đóng exit 0, 0 worker còn lại. Không dùng làm benchmark video riêng/dài.
+- Build `dist/VideoCaptioner-OCR4-20260910/`: **exit 0**, khoảng 440,338 s kể cả
+  copy/verify payload; 6 warning quen thuộc /0 error. EXE **31.385.562 byte**,
+  local **19:42:10**, SHA-256
+  `865c07a6104168bd6f7758abc04c70c0d45747a701aa779415bcf1d44664e7ff`.
+  **127.610 file model /48.739.395.432 byte**, mọi hash đích khớp manifest; giữ
+  đủ ASR/TTS cũ và thêm OCR. 32 module thay đổi trong PYZ khớp source, resources
+  khớp, không bundle OCR dependency vào host.
+- Frozen CLI OCR thật trên cùng fixture, tự tìm runtime/bridge trong gói:
+  **3/3 exact**, raw/cue IDs/config/source khớp source; **2 fresh /4 cache**,
+  2 detector /4 recognizer /0 classifier. Exit **5 đúng review guard**, không SRT
+  giả success; `ocr-review` bản đã duyệt exit **0**, không inference lại.
+  CLI process 4,531 s, job 3,203 s, inference 0,173 s, các stage có overlap.
+- Smoke GUI đúng artifact: cửa sổ sau **1,719 s**, sống 25 s, đóng **exit 0**,
+  0 process con sót/không traceback stderr. Binary GUI mới chỉ startup/close;
+  toàn flow GUI OCR đo ở source, flow binary OCR đo qua CLI. Chưa chuyển toàn gói
+  EXE sang ổ khác hoặc nghiệm thu lại từng ASR/TTS runtime/media workflow.
+- Tổng phiên này **4 CPU request /4 response**, **4 detector /8 recognizer /
+  0 classifier attempts**, **0 vision request**; giữ ledger cũ riêng, 13/13 crop
+  gốc vẫn khớp SHA. Evidence ở `build/ocr-pilot-20260910/ocr4-gui-09/`.
+  [Biên bản](docs/dev/ocr-gui-2026-09.md) ghi gate source/frozen riêng.
+- Còn mở: hiệu chuẩn/chất lượng video riêng, downloader/update OCR, cache disk,
+  resume inference bị hủy, subtitle stream extraction/PGS, review có Việt draft/
+  AI vision. Native full-suite teardown **0xC0000005** cũ chưa được xác định/sửa;
+  không gọi toàn OCR-4/sản phẩm hoàn tất. Crop 5 vision chưa được duyệt request 14.
+
+## 2026-09-10 (OCR-3 source: visual identity/document/review/CLI và metadata)
+
+- Tiếp tục ASR-S3 từ HEAD **dc94a46**, sạch/khớp origin lúc bắt đầu. Thay đổi
+  chưa commit/push; không sửa master, dependency, model/runtime hay artifact cũ.
+- `VisualSourceIdentity` giữ SHA toàn video snapshot + stream/geometry/SAR/rotation/
+  time base/origin/selection. `ocr-document-v1` có stable cue/candidate IDs, raw và
+  edited riêng, canonical integer ms cùng exact rational ms/PTS/clipped/uncertainty,
+  profile/config snapshot và atomic save/load validation. Đồng thuận profile chưa
+  hiệu chuẩn vẫn review; empty/missing/incomplete/mismatch không xuất success.
+- Thêm CLI source `ocr` và `ocr-review`; root/bridge/profile SHA tường minh, không
+  cài/tải model hoặc gọi vision. Review/resume hash/probe đúng video, chọn nguyên
+  engine read và sửa timing tường minh, lưu quyết định riêng; chưa resume inference
+  của scan bị hủy. Processing/review còn lỗi trả exit 5, không tạo subtitle success.
+- Optional OCR metadata đi qua ASRData/clone/dịch/JSON/table/editor mà không giả
+  timing/speaker ASR. Hai dòng nguồn giữ nguyên một cue. CLI subtitle với OCR mặc
+  định không optimize/split; `--optimize` opt-in cho chỉnh text. Editor split cần
+  text boundary tường minh, merge giữ lineage/ID, edit/undo/redo qua CommandStack;
+  normal save vẫn JSON + SRT, ASS chỉ action riêng. Worker editor verify nguồn hình.
+- Gate: **278 scoped passed** (101 OCR +149 CLI +8 editor +20 subtitle editing),
+  20,70 s. Full offline Qt offscreen **1.718 passed /5 skipped /51 deselected**,
+  154,29 s, exit 0; 4 skip TTS cần key/service, 1 QtMultimedia native backend.
+  Ruff app/tests pass, Pyright app **0 errors/0 warnings**, translations in sync.
+  Ban đầu Pyright dùng sai venv và một lệnh test sai filename; đã sửa command và
+  chạy gate thành công trên môi trường Python 3.12.13 dùng chung, không cài thêm.
+- Test mới dùng readings tổng hợp và FFmpeg video fixtures: no-audio, VFR/nonzero
+  PTS/offset, cùng PCM silence/duration nhưng khác chữ; verify mismatch, failure
+  checkpoint/atomic IO, raw/candidate IDs, two-line translation, split/merge/edit/undo/
+  redo/JSON/project. Không lấy fake recognition làm bằng chứng OCR accuracy.
+- **13/13 crop gốc khớp SHA**, 0 lượt OCR model/vision mới; scratch mới chỉ ở
+  `build/ocr-pilot-20260910/ocr3-contract-08/`. Không đổi evidence chất lượng cũ,
+  crop 5 vẫn chờ budget request thứ 14. Không đọc key hoặc chạy lại media job riêng.
+- [Biên bản và lệnh OCR-3](docs/dev/ocr-document-2026-09.md) ghi đủ contract/phạm vi.
+  Chưa có crop/ROI review GUI, model manager, cache disk hoặc OCR frozen mới;
+  bridge source chưa vào payload portable cũ. Không nghiệm thu pip-installed,
+  isolated model, packaged Python, native GUI hay EXE mới trong phiên. Native
+  teardown **0xC0000005** cũ vẫn mở; chưa gọi OCR toàn sản phẩm hoàn tất.
+
 ## 2026-09-10 (submit/push OCR-2 CPU streaming và prompt phiên sau)
 
 - User yêu cầu submit/push snapshot OCR hiện có. Code/domain/CPU supervisor/

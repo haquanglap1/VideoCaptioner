@@ -102,6 +102,24 @@ giá trị mặc định. Cấu hình GUI là `AppData/settings.json` của bả
 base URL, model của dịch vụ LLM đang chọn, Whisper API, DeepLX endpoint và TTS lồng tiếng, nên nhập key
 một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate...) không được kế thừa.
 
+## OCR phụ đề trong hình (source)
+
+Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và lưu `ocr-document-v1`
+để review; `ocr-review --source VIDEO` kiểm SHA toàn nguồn và tiếp tục tại máy.
+JSON phụ đề đã duyệt giữ raw/candidate/PTS qua dịch và Video Editor, kể cả hai
+dòng chữ nguồn. CLI `subtitle` với OCR mặc định giữ câu/giờ/chữ đã đo; chỉ
+`--optimize` tường minh mới bật chỉnh text LLM.
+
+Trong màn Nhận dạng, **OCR phụ đề trong hình** mở luồng chọn video/đoạn/ROI,
+chạy CPU có hủy, xem crop và lưu/mở review. Nút kiểm tra model dùng runtime đã
+cài; mở cửa sổ không tự tải/nạp. CLI tự tìm bridge/profile và `models/ocr/`
+trong bộ portable, vẫn cho truyền runtime tường minh.
+
+Profile hiện chưa hiệu chuẩn: đồng thuận không tự thành accepted; chưa giải
+quyết review thì không xuất subtitle success. Không tự sửa/điền chữ hoặc gọi
+vision. Xem [GUI, đóng gói và giới hạn](docs/dev/ocr-gui-2026-09.md),
+[contract và lệnh OCR-3](docs/dev/ocr-document-2026-09.md).
+
 ## ASR qua API tương thích OpenAI
 
 Trong cài đặt Whisper API, chọn preset `VideoCaptioner API`, `Groq`, `OpenAI` hoặc `Custom`.

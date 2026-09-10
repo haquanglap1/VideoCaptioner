@@ -1,5 +1,17 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Tiếp tục OCR-4, 2026-09-10:** đã thêm [GUI OCR local, crop review và bundle runtime](../dev/ocr-gui-2026-09.md).
+Có chọn video/selection/ROI, worker hủy được, preview đúng crop/PTS/hash, review có
+undo/redo và handoff bảng phụ đề; runtime dùng bộ đã cài. Chưa có downloader,
+cache disk, auto acceptance hoặc budget vision mới. Gate binary ghi riêng trong
+biên bản OCR-4, không dùng source pass để suy ra frozen/GUI pass.
+
+**OCR-3 source, 2026-09-10:** đã có [visual identity/document/review/CLI và metadata](../dev/ocr-document-2026-09.md),
+giữ raw/edited/PTS qua JSON/dịch/editor, chặn source mismatch và review chưa giải
+quyết. Profile vẫn chưa hiệu chuẩn; không mở lại model/vision hoặc gọi OCR toàn
+sản phẩm hoàn tất. GUI/model manager/cache disk/binary OCR vẫn chưa có; trạng
+thái OCR-3 chưa triển khai trong các snapshot bên dưới là lịch sử trước phiên này.
+
 **Tiếp tục 2026-09-10:** [CPU worker đã nối và quét sample thật](../dev/ocr-runtime-2026-09.md):
 1.800 frame → 13 track, 38 fresh/1 cache hit, 10/13 exact và 12/13 đủ chữ-số,
 hủy inference/process/readers đã kiểm. Đã sửa Unicode pipe và codec noise tracking.
