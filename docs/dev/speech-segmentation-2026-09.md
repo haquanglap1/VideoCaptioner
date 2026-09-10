@@ -1,5 +1,9 @@
 # Phân đoạn cho câu đọc liền mạch — 2026-09-10
 
+Nghiệm thu clip 30 giây sau snapshot: [biên bản câu đọc](speech-listening-2026-09.md).
+Prompt mới giữ 6 cue; EXE SpeechSegmentation dùng 6 WAV cache, 0 TTS mới, media
+giống byte bản cũ. Text/timing/media pass; chất lượng nghe vẫn chờ user duyệt.
+
 User yêu cầu siết prompt phân đoạn LLM sau speech-to-text để AI lồng tiếng đọc
 câu liền mạch, chính xác hơn và có ngắt nghỉ tự nhiên. Làm trên worktree
 `VideoCaptioner-ASR-S3`, giữ các thay đổi chưa commit và toàn bộ artifact/media

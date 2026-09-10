@@ -1,5 +1,94 @@
 # Project Status
 
+## 2026-09-10 (submit/push snapshot ASR Recovery và prompt OCR)
+
+- User yêu cầu “submit and push” lên `origin/codex/asr-s3-native`. Chốt code:
+  **`9ae8465`** (startup update) và **`1a10f69`** (Soniox/Qwen/model portable).
+  Commit tài liệu theo sau; lấy HEAD cuối/tracking từ Git khi tiếp tục.
+- Giữ đúng bằng chứng đã có: 951 pass/23 deselected, 21 test scoped sau discovery,
+  Ruff/Pyright/sync, phục hồi 21 cue từ review qua source/frozen, 15 module PYZ,
+  model/runtime hash và GUI ổ C. Không chạy lại test/build/API chỉ để chốt Git.
+- [Prompt OCR](docs/dev/ocr-next-session-prompt.md) đã cập nhật trạng thái commit;
+  bước tiếp là pilot OCR-1 trên 13 crop. Quyền commit/push không tự áp dụng cho
+  thay đổi của phiên sau. EXE/models/cache/media/key và evidence không vào Git.
+
+## 2026-09-10 (sửa Soniox/Qwen, bản test kèm model và mở lại OCR)
+
+- Soniox sentence output không còn chặn toàn SRT vì point token 0 ms nằm trong
+  cue có span lời nói dương cùng nguồn/người nói ở gần. Giữ nguyên chữ/mốc provider;
+  không nội suy word timing. Word mode, invalid/bounds/coverage và cue không có
+  anchor vẫn strict. Review cũ resume local, raw/checksum/overrides giữ nguyên.
+- Review thật **185 token → 21 cue SRT**, 174 ID lời/punctuation và 11 spacing giữ
+  đủ text, **0 override / 0 request Soniox mới**. Source và CLI frozen ở ổ C cho
+  SRT giống byte tại `build/asr-recovery-20260910/output/`.
+- Qwen GUI có ô ngôn ngữ, Auto được ghi rõ là preset Chinese (zh) của luồng hiện
+  tại; không đổi ngôn ngữ đã lưu của engine khác. Ngôn ngữ khác tường minh vẫn bị
+  chặn trước recognition; CLI dùng `--language zh`. GUI split dùng câu native/Qwen,
+  không ép word timing. Faster-Whisper tìm được tool cài sau startup và trong models/.
+- Gate **951 pass / 23 deselected / 1 warning**, sau bổ sung manager discovery
+  **21 test scoped pass**; Ruff/Pyright/sync pass. **15 module PYZ** khớp source cuối.
+- Bản giao **`dist/VideoCaptioner-ASRRecovery-20260910/`**, nguyên onedir kèm models.
+  Build cuối exit 0/**198,274 s**, 6 WARNING/0 ERROR; EXE **31.267.206 byte**, SHA
+  `bb6a7dfcbb10bcb5f1ffe48cda39788a16f1b77469c825f70e89e5fb5c2a1624`.
+- Model/runtime **123.133 file / 48.340.488.248 byte** khớp SHA nguồn và bản chép;
+  đủ Faster-Whisper large-v3, Qwen 0.6B/1.7B/aligner, Community-1, OmniVoice, VieNeu.
+  Có CPython base riêng, không còn phụ thuộc venv home máy dev. Đã chép và xác minh
+  toàn bộ ở ổ C; bốn Python/NumPy/Torch nạp từ gói. CLI model status tự tìm đủ model.
+- GUI ổ C **45,828 s**, đóng exit 0, không child/traceback/update ngoài ý muốn.
+  Chưa inference ASR/TTS mới trên mọi model. Xóa bản test Temp ổ C bị policy chặn,
+  giữ bản sao đã đóng và evidence; model nguồn và artifact bàn giao không bị xóa.
+- AGENTS/CLAUDE/spec có quy tắc gói test kèm `models/`, được tái sử dụng ở các build
+  sau. [Biên bản](docs/dev/asr-recovery-2026-09.md) và
+  [prompt OCR phiên sau](docs/dev/ocr-next-session-prompt.md) đã cập nhật: mở lại
+  OCR-1 trên 13 crop theo chỉ đạo mới; chưa chạy OCR trong phiên này. Không commit/push.
+
+## 2026-09-10 (portable sang ổ khác, sửa công tắc startup update)
+
+- User yêu cầu build EXE để tự đưa sang ổ khác. Bản giao nguyên onedir trong
+  **`dist/VideoCaptioner-20260910-R2-Portable.zip`**, có FFmpeg/ffprobe và hướng
+  dẫn; không kèm model/runtime AI hoặc credential/media/settings cá nhân.
+- Candidate đầu phát hiện `_start_background_services()` bỏ qua công tắc tắt
+  update; log có kiểm tra GitHub và tải bản cũ rồi hủy. Giữ candidate ở scratch,
+  không giao. Sửa đúng điều kiện tạo VersionChecker; kiểm tra FFmpeg vẫn chạy.
+  Regression fail trước sửa; sau sửa **160 pass**, Ruff/Pyright/sync pass.
+- R2 sinh version bằng generator của Hatch VCS trong snapshot build (toolchain
+  đã cache, không cài): `1.5.1.dev90+gf03420c7e.d20260910`, tránh fallback
+  `0.0.0-dev` khi build trực tiếp từ worktree. Không sửa tay `_version.py`.
+- Build exit 0/**205,342 s**, 6 WARNING/0 ERROR; EXE **31.264.100 byte**,
+  SHA `a897118666718784b69ebf234028a22ebd2583c2e4d8c2e2ae63c505fc12778d`.
+  ZIP **232.660.344 byte**, 590 file; SHA
+  `4049aae64d9c5cae9e1f2d53b943561871815cf793e1125313329f91f041e6ed`.
+- Giải nén ZIP sang ổ C và đối chiếu hash; 10 module/2 prompt khớp source,
+  CLI help/ffprobe pass. GUI hiện sau 1,049 s, sống 45 s, tổng **45,591 s**,
+  đóng exit 0/không child/traceback/hoạt động update trong log. Không bật
+  Computer Use. [Biên bản build](docs/dev/portable-build-2026-09.md).
+- Không chạy media/API lại trên R2; kế thừa đúng phạm vi nghiệm thu clip,
+  **nghe vẫn chờ user duyệt**. Không commit/push; giữ mọi thay đổi và artifact cũ.
+
+## 2026-09-10 (nghiệm thu câu đọc clip 30 giây sau phân đoạn mới)
+
+- Bắt đầu từ **`f03420c`**, sạch và khớp upstream/origin/remote. Làm đúng
+  `VideoCaptioner-ASR-S3`; không sửa master, commit/push hoặc code app.
+- Split source core với gateway/model đã chọn, timeout 300 s: **1 batch,
+  2 request tuần tự / 44,413 s**. Phản hồi đầu ngoài định dạng bị guard từ chối;
+  feedback thứ hai hợp lệ. Giữ nguyên 6 cue/text/punctuation/timing; không ASR
+  lại. Timing trung gian vẫn ước lượng SRT legacy. Không tính là test đa luồng mới.
+- Câu dài đầu 29 đơn vị theo bộ đếm hiện tại (có punctuation) vượt limit 25,
+  chia mệnh đề; câu hỏi có dấu phẩy giữ nguyên. Clip không có câu đúng sát ngưỡng.
+  0 request dịch mới; SRT TTS/hiển thị và TXT giống byte bản đã dịch.
+- EXE **SpeechSegmentation-20260910**: CLI dub exit 0/**18,626 s**, **6 cache hit /
+  0 TTS attempt**, 6 fit; Natural **1,00×**, delay cap 2500 ms/review, thực tế
+  0 dịch start/tăng tốc/cắt lời. Synthesis exit 0/**0,530 s**, decode/extract pass,
+  đủ 6 cue Việt trên/Trung dưới, H.264/AAC 24 kHz/mov_text, video 30 s.
+- Video mới giống byte bản R2 cũ, không chứng minh cải thiện nhịp đọc. Nhóm
+  3/4/5 mượn khoảng lặng sau SRT 860/440/740 ms, không chồng nhóm sau. Đã cung
+  cấp audio nghe và yêu cầu preview video; **chưa có user duyệt nghe**. Computer
+  Use không bật. [Biên bản và giới hạn](docs/dev/speech-listening-2026-09.md).
+- Giữ output/kế hoạch/6 WAV ở `build/speech-listening-20260910/`, 23 file cũ giữ
+  hash/mtime. ZIP **59 entry / 41.692 byte** đã verify. Kiểm duyệt tự động chặn
+  xóa file tạm; 5 junction chuyển khỏi EXE vào scratch, khoảng 441 KB file phụ
+  còn giữ. Không tải/cài/build/test lại; chỉ kiểm tra diff tài liệu cuối.
+
 ## 2026-09-10 (chốt snapshot và prompt nghiệm thu câu đọc phiên sau)
 
 - User yêu cầu “submit and push, prompt next session” lên `origin/codex/asr-s3-native`.

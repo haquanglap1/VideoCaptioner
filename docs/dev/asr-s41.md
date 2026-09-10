@@ -81,9 +81,11 @@ không in transcript ra log mặc định. Sai tham số/range hoặc dùng cùn
 subtitle output trả exit 2. Resume chỉ đọc local JSON: không cần audio, API key, FFmpeg hay upload.
 
 Không tự clamp/nội suy/chia đều thời gian, bỏ chữ, nối speaker giữa request hoặc tạo word time từ
-sentence. Soniox token-only vẫn cần xử lý mọi lexical token 0 ms. Grouped output chỉ ghép các
-span đã đo/đã được user sửa và validate, cùng nguồn/speaker; đây không phải sentence timestamps
-do provider trả. Group chứa ít nhất một override được đánh dấu **edited**, giữ ID token liên quan.
+sentence. Soniox token-only vẫn cần xử lý mọi lexical token 0 ms. Chế độ câu có thể giữ point
+timestamp trong cue cùng nguồn/speaker có span lời nói dương ở gần (tối đa 800 ms), dùng nguyên
+mốc provider; thiếu/đảo/out-of-bounds hoặc không có anchor vẫn review. Bản review câu cũ được
+validate/resume bằng cùng đường này mà không sửa raw hay tạo override. Đây là timing ghép câu,
+không phải word timestamp đã được sửa. Group chứa override vẫn đánh dấu **edited**, giữ ID liên quan.
 Known/unknown speaker và overlap vẫn được bảo toàn. Cleanup remote vẫn chỉ áp dụng tài nguyên
 thuộc job; các guard POST acceptance/cancel/409 S3 không thay đổi.
 

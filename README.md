@@ -142,6 +142,11 @@ hạn provider/app, không tự chia rồi gán cùng speaker giữa các reques
 hủy xử lý hoặc phí phía provider. Xem [hợp đồng, giới hạn và trạng thái nghiệm thu S3](docs/dev/asr-native-s3.md).
 S3 chưa có nghiệm thu API thật; không thay trạng thái GPT gateway→SRT/phồn thể còn thiếu của S2.
 
+Soniox xuất theo câu có thể giữ token dài 0 ms trong cue cùng người nói có span lời
+nói hợp lệ ở gần, dùng nguyên mốc provider để xuất SRT. Không suy thành timestamp
+từng từ. Chế độ word vẫn strict; thiếu/đảo/vượt thời lượng hoặc cue không có anchor
+vẫn giữ review. Bản review câu cũ có thể **Kiểm tra và xuất** lại tại máy, không upload.
+
 ## Ngữ cảnh xưng hô Trung → Việt (S4)
 
 Trong tab phụ đề hoặc Video Editor, mở **More → Ngữ cảnh xưng hô** để khai báo nhân vật,
@@ -210,6 +215,12 @@ CLI dùng `--fw-program`, `--fw-model-dir`, `--fw-model`, `--fw-device` ngay c�
 khi chọn `--asr qwen-local`. Thiếu công cụ hoặc dự phòng lỗi vẫn giữ TXT/review.
 `--word-timestamps` và các review policy cũ giữ kiểm tra timing nghiêm ngặt.
 Chế độ câu hướng đến phụ đề tương đối khớp, không bảo đảm độ chính xác từng chữ.
+
+Trang Qwen có lựa chọn ngôn ngữ nguồn. Trong GUI, Auto dùng preset Chinese (zh)
+của luồng Qwen hiện tại, được ghi rõ trong cài đặt; đây không phải nhận diện ngôn ngữ.
+Lựa chọn ngôn ngữ khác tường minh vẫn được giữ và báo chưa hỗ trợ trước khi chạy.
+CLI tiếp tục chọn `--language zh`. Bật split trong GUI dùng timing câu native/Qwen,
+không tự yêu cầu timestamp từng từ chỉ để phân đoạn.
 
 Nhận dạng chia request tối đa 30 giây, giữ đủ sample khi không tìm được khoảng lặng.
 Chunk timeout được thử lại một lần với cửa sổ tối đa 15 giây; cache giữ chunk đã xong,
@@ -362,6 +373,21 @@ Build tạo thư mục `dist/VideoCaptioner/` chứa `VideoCaptioner.exe` và c�
 nguyên thư mục hoặc đóng nó vào installer; không chép riêng file EXE. Chế độ `onedir` tránh bước tự giải
 nén hơn 100 MB vào `%TEMP%` ở mỗi lần mở app. Nếu ứng dụng cần gọi FFmpeg bên ngoài, máy đích cũng cần
 có FFmpeg trong `PATH` hoặc đi kèm thư mục công cụ tương ứng.
+
+Bản EXE test của user mặc định kèm **`models/` cạnh EXE**, có marker
+`portable-models.json`. App tự dùng thư mục này cho weights và runtime Qwen/aligner,
+Community-1, OmniVoice, VieNeu; Faster-Whisper executable nằm trong
+`models/tools/Faster-Whisper-XXL/`. Để trống các ô runtime để dùng gói đi kèm;
+đường dẫn ngoài do user chọn tường minh vẫn được ưu tiên.
+
+`scripts/package_test_models.py` stage từ cài đặt có sẵn bằng các tùy chọn
+`--app-dir`, `--faster-whisper`, `--weights-dir`, `--qwen-runtime`,
+`--diarization-runtime`, `--omnivoice-runtime`, `--vieneu-runtime`.
+Script dùng Python 3.12 đã có, chép cả CPython base và dependency cần thiết để
+không giữ `pyvenv.cfg` trỏ về máy dev. Không tải/cài package hoặc model.
+Truyền `VC_TEST_MODELS_DIR` trỏ tới thư mục models đã stage khi chạy spec để kèm
+payload. Giữ nguyên toàn thư mục ứng dụng khi chuyển ổ; không đưa key/settings,
+media hoặc cache job cá nhân vào gói. Xem [nghiệm thu phục hồi ASR và model portable](docs/dev/asr-recovery-2026-09.md).
 
 Đặt tên build riêng mà không tạo thêm file spec:
 

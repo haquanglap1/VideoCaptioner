@@ -110,7 +110,8 @@ business logic mới vào view khi logic có thể nằm trong `core/` (ví dụ
   Mọi mutation đi qua `CommandStack`; normal save chỉ persist JSON + SRT, ASS chỉ qua `Save as ASS`.
   Preview và export dùng chung `build_visual_filter_graph`. Không thêm PySide6 hoặc MPV vào editor.
 - VieNeu Local pin model theo commit SHA trong suốt một dubbing job; không import VieNeu/CUDA/FastAPI
-  vào Qt process. Base build không có `runtime/vieneu/` phải disable action thay vì spam lỗi.
+  vào Qt process. Build không có runtime VieNeu (`runtime/vieneu/` hoặc `models/vieneu-runtime/`
+  của gói portable) phải disable action thay vì spam lỗi.
 
 ## Cài đặt và lệnh chuẩn (PowerShell 7)
 
@@ -161,6 +162,14 @@ uv run --frozen pyinstaller VideoCaptioner.spec --clean --noconfirm
 ```
 
 Spec build ở chế độ `onedir`: phân phối nguyên thư mục `dist/VideoCaptioner/`, không chép riêng file EXE.
+Theo yêu cầu user từ 2026-09-10, bản EXE để test phải kèm các model/runtime đã cài trong
+`models/` cạnh EXE, tự tìm được khi chuyển ổ; chỉ làm bản nhẹ nếu user yêu cầu. Dùng
+`scripts/package_test_models.py` để stage từ cài đặt đã có, rồi truyền `VC_TEST_MODELS_DIR`
+vào spec. Giữ Python/runtime riêng, không chỉ chép weights rồi để phụ thuộc đường dẫn máy dev.
+Nếu đã có bộ `models/portable-models.json` được verify và model/runtime không đổi, dùng lại
+bộ đó trực tiếp qua `VC_TEST_MODELS_DIR`; không stage lại từ đầu chỉ vì build EXE mới.
+Không tải lại model hoặc cài dependency để đóng gói; không mang key, settings, media, cache job
+và log cá nhân vào gói. Báo inventory model thực sự có/thiếu và kiểm tra đường dẫn sau di chuyển.
 Nếu cần tên riêng, không tạo thêm file spec:
 
 ```powershell

@@ -1,8 +1,9 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
-**Tạm dừng theo chỉ đạo mới ngày 2026-09-08: hoàn tất ASR trước, rồi mới làm OCR.**
-Theo [prompt ASR hiện tại](../dev/asr-completion-next-session-prompt.md); các gói OCR
-bên dưới chưa được khởi chạy và không thay thế lỗi/tiêu chí nghiệm thu ASR còn mở.
+**User ngày 2026-09-10 đã mở lại OCR cho phiên kế tiếp sau sửa Soniox/Qwen.**
+Theo [prompt OCR đã cập nhật](../dev/ocr-next-session-prompt.md), bắt đầu pilot OCR-1
+trên cùng 13 crop. OCR chưa được khởi chạy trong phiên sửa ASR; các gate ASR còn mở
+giữ phạm vi riêng, không dùng chúng để tự trì hoãn yêu cầu OCR mới.
 
 Ngày 2026-09-08. Trạng thái: **thống kê prototype và thiết kế, chưa triển khai tính năng**.
 Baseline code Lifetime `e6c0074`, HEAD `fb2bfad`, nhánh `codex/asr-s3-native`.
