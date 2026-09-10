@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from videocaptioner.config import ROOT_PATH, portable_models_path
+
 POLICY = "omnivoice-local-v1"
 CODE_REVISION = "08be0b4ccbac3e13e374e86fbfead4b4cac343e2"
 MODEL_REVISION = "c5fdb5ccb189668d56333f77ba2629f4cd7535f4"
@@ -22,6 +24,9 @@ def runtime_root(explicit: str = "") -> Path:
     selected = explicit or os.environ.get("VIDEOCAPTIONER_OMNIVOICE_RUNTIME", "")
     if selected:
         return Path(selected).expanduser().resolve()
+    packaged = portable_models_path(Path(ROOT_PATH))
+    if packaged:
+        return packaged / "omnivoice"
     from platformdirs import user_data_dir
     return Path(user_data_dir("VideoCaptioner", appauthor=False)) / "runtimes" / f"omnivoice-{CODE_REVISION[:8]}"
 

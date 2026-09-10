@@ -45,6 +45,47 @@ def test_task_factory_snapshots_local_options(qapp):
         cfg.set(cfg.local_asr_diarize, old_diarize)
 
 
+@pytest.mark.parametrize("engine", ["QWEN_LOCAL", "SONIOX", "SCRIBE", "FASTER_WHISPER"])
+def test_gui_split_keeps_native_sentence_output_and_qwen_language_is_explicit(qapp, monkeypatch, engine):
+    from videocaptioner.core.entities import TranscribeLanguageEnum, TranscribeModelEnum
+    from videocaptioner.ui.task_factory import TaskFactory
+
+    monkeypatch.setattr(cfg.transcribe_model, "value", getattr(TranscribeModelEnum, engine))
+    monkeypatch.setattr(cfg.transcribe_language, "value", TranscribeLanguageEnum.AUTO)
+    monkeypatch.setattr(cfg.need_split, "value", True)
+    task = TaskFactory.create_transcribe_task("synthetic.wav", need_next_task=True)
+    assert task.transcribe_config.need_word_time_stamp is (engine == "FASTER_WHISPER")
+    assert task.transcribe_config.transcribe_language == ("zh" if engine == "QWEN_LOCAL" else "")
+    assert cfg.transcribe_language.value == TranscribeLanguageEnum.AUTO
+
+
+def test_qwen_explicit_non_chinese_language_is_not_overwritten(qapp, monkeypatch):
+    from videocaptioner.core.asr.local.pipeline import QwenLocalASR
+    from videocaptioner.core.entities import TranscribeLanguageEnum, TranscribeModelEnum
+    from videocaptioner.ui.task_factory import TaskFactory
+
+    monkeypatch.setattr(cfg.transcribe_model, "value", TranscribeModelEnum.QWEN_LOCAL)
+    monkeypatch.setattr(cfg.transcribe_language, "value", TranscribeLanguageEnum.ENGLISH)
+    task = TaskFactory.create_transcribe_task("synthetic.wav")
+    assert task.transcribe_config.transcribe_language == "en"
+    with pytest.raises(LocalRuntimeError, match="Choose Chinese"):
+        QwenLocalASR("unused", task.transcribe_config)
+
+
+def test_faster_whisper_manager_detects_portable_program(qapp, monkeypatch, tmp_path):
+    from videocaptioner.ui.components import FasterWhisperSettingWidget as module
+
+    models = tmp_path / "models"
+    directory = models / "tools/Faster-Whisper-XXL"
+    directory.mkdir(parents=True)
+    (directory / "faster-whisper-xxl.exe").write_bytes(b"x" * module.MIN_PROGRAM_SIZE)
+    monkeypatch.setattr(module, "portable_models_path", lambda: models)
+    monkeypatch.setattr(module, "BIN_PATH", tmp_path / "empty-bin")
+    monkeypatch.setattr(module, "LEGACY_BIN_PATH", tmp_path / "empty-legacy")
+    found, versions = module.check_faster_whisper_exists()
+    assert found and versions
+
+
 def test_worker_preserves_context_and_cancel_releases_runtime(qapp, monkeypatch):
     variable = ContextVar("stage", default="unset")
     variable.set("snapshot")

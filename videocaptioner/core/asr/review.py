@@ -14,7 +14,7 @@ from uuid import uuid4
 from .api_profiles import ASRAPIError
 from .asr_data import ASRData
 from .audio_identity import AudioIdentity
-from .native_result import _timing, native_cues, parse_native
+from .native_result import _timing, parse_native
 
 SCHEMA = "asr-review-v1"
 RawTime = int | float | str | bool | None
@@ -130,6 +130,14 @@ class NativeReview:
                 issues.append(TimingIssue(token.id, index, "Missing, nonfinite, negative, reversed or out-of-bounds timestamp"))
             elif times[0] == times[1] and token.kind != "audio_event" and any(c.isalnum() for c in token.text):
                 issues.append(TimingIssue(token.id, index, "Zero-duration speech token"))
+        if issues and self.provider == "soniox" and not self.word_timing:
+            try:
+                parse_native(self.response(), self.provider, self.duration_ms, self.scope, self.diarize,
+                             token_ids=tuple(t.id for t in self.tokens), word_timing=False)
+            except ASRAPIError:
+                pass
+            else:
+                return ()
         return tuple(issues)
 
     def edit_timing(self, token_id: str, start_ms: int, end_ms: int) -> NativeReview:
@@ -146,9 +154,9 @@ class NativeReview:
             raise ASRAPIError("Native timing still requires review; no subtitles were exported.")
         data = parse_native(self.response(), self.provider, self.duration_ms, self.scope, self.diarize,
                             token_ids=tuple(t.id for t in self.tokens),
-                            edited_token_ids=frozenset(o.token_id for o in self.overrides))
+                            edited_token_ids=frozenset(o.token_id for o in self.overrides), word_timing=self.word_timing)
         data.audio_identity = self.audio_identity
-        return data if self.word_timing else native_cues(data)
+        return data
 
     def to_dict(self) -> dict:
         return {"schema": SCHEMA, "recognition_sha256": self.recognition_fingerprint(), **self._payload()}

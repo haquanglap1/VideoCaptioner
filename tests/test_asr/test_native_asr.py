@@ -175,6 +175,38 @@ def test_soniox_wire_poll_retry_and_owned_cleanup(audio):
         f"/v1/transcriptions/{JOB_ID}", f"/v1/files/{FILE_ID}"]
 
 
+def test_sentence_zero_token_is_cached_raw_and_word_replay_still_reviews(audio, tmp_path, monkeypatch):
+    from diskcache import Cache
+
+    from videocaptioner.core.asr.review import NativeReviewRequired
+
+    class Server(SonioxServer):
+        async def __call__(self, request):
+            if request.url.path.endswith("/transcript"):
+                return httpx.Response(200, json={"text": "这里有人。", "tokens": [
+                    {"text": "这", "start_ms": 100, "end_ms": 200, "speaker": "1"},
+                    {"text": "里", "start_ms": 200, "end_ms": 200, "speaker": "1"},
+                    {"text": "有人。", "start_ms": 300, "end_ms": 600, "speaker": "1"},
+                ]})
+            return await super().__call__(request)
+
+    cache = Cache(str(tmp_path / "cache"))
+    monkeypatch.setattr(native_api, "get_asr_cache", lambda: cache)
+    monkeypatch.setattr(native_api, "is_cache_enabled", lambda: True)
+    server = Server()
+    try:
+        config = NativeASRConfig("soniox", "soniox-test-key")
+        job = NativeASR(str(audio), config, "zh", word_timing=False, transport=httpx.MockTransport(server))
+        assert job.run().segments[0].text == "这里有人。"
+        requests_before = len(server.requests)
+        strict = NativeASR(str(audio), config, "zh", word_timing=True, transport=httpx.MockTransport(server))
+        with pytest.raises(NativeReviewRequired):
+            strict.run()
+        assert len(server.requests) == requests_before
+    finally:
+        cache.close()
+
+
 @pytest.mark.parametrize("error", [401, 403, 404, 413, 429, 500,
                                   httpx.ReadTimeout("private-response"), httpx.ConnectError("private-response")])
 def test_submit_is_never_repeated_when_rejected_or_uncertain(audio, error):

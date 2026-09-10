@@ -14,7 +14,7 @@ from contextvars import copy_context
 from dataclasses import dataclass
 from pathlib import Path
 
-from videocaptioner.config import ROOT_PATH
+from videocaptioner.config import ROOT_PATH, portable_models_path
 from videocaptioner.core.utils.gpu_lease import GPULease
 from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_environment
 
@@ -63,7 +63,9 @@ class LocalLayout:
 
 def default_root(runtime: str) -> Path:
     variable = "VIDEOCAPTIONER_QWEN_RUNTIME" if runtime == "qwen" else "VIDEOCAPTIONER_DIARIZATION_RUNTIME"
-    return Path(os.environ.get(variable, "") or Path(ROOT_PATH) / "runtime" / f"local-{runtime}")
+    packaged = portable_models_path(Path(ROOT_PATH))
+    default = packaged / runtime if packaged else Path(ROOT_PATH) / "runtime" / f"local-{runtime}"
+    return Path(os.environ.get(variable, "") or default)
 
 
 def locate(model_id: str, root: str | Path = "", *, verify: bool = False, check: Check = lambda: None) -> LocalLayout:
@@ -105,6 +107,8 @@ def _locate_exact(model_id: str, root: str | Path = "", *, verify: bool = False,
     if not preparing and (root / ".installing").exists():
         raise LocalRuntimeError("Local runtime incomplete: installation is in progress.")
     python = root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if os.name == "nt" and (root / "python.exe").is_file():
+        python = root / "python.exe"
     recipe = recipe_directory()
     try:
         manifest = json.loads((root / "runtime-manifest.json").read_text(encoding="utf-8"))

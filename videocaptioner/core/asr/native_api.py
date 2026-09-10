@@ -25,7 +25,7 @@ from .api_transcription import audio_attachment
 from .asr_data import ASRData
 from .audio_identity import AudioIdentity
 from .native_profiles import NATIVE_PROFILES, NativeASRConfig
-from .native_result import native_cues, parse_native
+from .native_result import parse_native
 from .review import NativeReview, NativeReviewRequired
 
 logger = setup_logger("native_asr")
@@ -183,7 +183,8 @@ class NativeASR:
                                            self.duration_ms, self.config.diarize, self.word_timing, self.language,
                                            audio_identity=self.audio_identity)
             try:
-                result = parse_native(response, self.config.provider, self.duration_ms, scope, self.config.diarize)
+                result = parse_native(response, self.config.provider, self.duration_ms, scope, self.config.diarize,
+                                      word_timing=self.word_timing)
             except ASRAPIError as exc:
                 try:
                     review_path = review.save_new()
@@ -205,7 +206,7 @@ class NativeASR:
                 observed = len({seg.speaker for seg in result if seg.speaker is not None})
                 callback(100, f"Native ASR: {len(result)} timed speech spans; {observed} anonymous speaker labels observed. "
                          + " ".join(self.state.warnings))
-            return result if self.word_timing else native_cues(result)
+            return result
         except NativeReviewRequired:
             raise
         except NativeAPIError as exc:

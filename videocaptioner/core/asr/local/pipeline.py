@@ -61,7 +61,13 @@ class QwenLocalASR:
     def __init__(self, audio_path: str, config):
         self.audio_path, self.config = audio_path, config
         self.options = config.local_asr
-        chinese_language(config.transcribe_language)
+        try:
+            chinese_language(config.transcribe_language)
+        except AlignmentError:
+            raise LocalRuntimeError(
+                "Qwen Local currently supports Chinese (zh). Choose Chinese in the source-language setting "
+                "(CLI: --language zh). No recognition or alignment was started."
+            ) from None
         self.recognition_layout = None
 
     def run(self, callback=None) -> ASRData:

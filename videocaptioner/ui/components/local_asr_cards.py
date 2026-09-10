@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
 from qfluentwidgets import ComboBoxSettingCard, PushSettingCard, SettingCardGroup, SwitchSettingCard
 from qfluentwidgets import FluentIcon as FIF
 
+from videocaptioner.core.entities import TranscribeLanguageEnum
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.thread.local_asr_thread import LocalASRThread
 from videocaptioner.ui.thread.worker_lifecycle import cancel_worker, connect_current, retain_worker
@@ -143,6 +144,9 @@ class LocalASRCards(QWidget):
         self.hide()
         self.model = ComboBoxSettingCard(cfg.local_asr_model, FIF.MICROPHONE, self.tr("Qwen local recognition"),
                         self.tr("Chinese (zh). Model choice is explicit; no automatic fallback."), ["Qwen 1.7B", "Qwen 0.6B"], group)
+        self.language = ComboBoxSettingCard(cfg.transcribe_language, FIF.LANGUAGE, self.tr("Ngôn ngữ nguồn Qwen"),
+                        self.tr("Qwen hiện hỗ trợ tiếng Trung (zh). Tự động trong giao diện dùng tiếng Trung cho Qwen."),
+                        [self.tr(language.value) for language in TranscribeLanguageEnum], group)
         self.diarize = SwitchSettingCard(FIF.PEOPLE, self.tr("Local speaker diarization"),
                         self.tr("Community-1 for Qwen or Whisper API. Ambiguous speakers remain unknown for review."),
                         configItem=cfg.local_asr_diarize, parent=group)
@@ -153,8 +157,8 @@ class LocalASRCards(QWidget):
         self.manager = PushSettingCard(self.tr("Manage models"), FIF.FOLDER, self.tr("Local ASR runtimes"),
                          self.tr("Explicit install, file check and health probe. Opening settings does not start a model."), group)
         self.manager.clicked.connect(self.open_manager)
-        self.cards = [self.model, self.diarize, self.chunk, self.timeout, self.manager]
-        for card in (self.model, self.diarize, self.manager):
+        self.cards = [self.model, self.language, self.diarize, self.chunk, self.timeout, self.manager]
+        for card in (self.model, self.language, self.diarize, self.manager):
             card.contentLabel.setWordWrap(True)
             card.contentLabel.setMinimumHeight(44)
             card.setFixedHeight(102)

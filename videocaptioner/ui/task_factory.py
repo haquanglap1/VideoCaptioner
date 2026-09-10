@@ -24,6 +24,7 @@ from videocaptioner.core.entities import (
     SynthesisConfig,
     SynthesisTask,
     TranscribeConfig,
+    TranscribeModelEnum,
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
@@ -94,9 +95,17 @@ class TaskFactory:
             need_word_time_stamp = False
             output_path = str(Path(file_path).parent / f"{file_name}.srt")
 
+        engine = cfg.transcribe_model.value
+        language = LANGUAGES[cfg.transcribe_language.value.value]
+        if engine == TranscribeModelEnum.QWEN_LOCAL and not language:
+            # The Qwen settings page explicitly labels this Chinese-only GUI preset.
+            language = "zh"
+        if engine in (TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE, TranscribeModelEnum.QWEN_LOCAL):
+            # Native segmentation consumes sentence spans; split does not request strict word output.
+            need_word_time_stamp = False
         config = TranscribeConfig(
             transcribe_model=cfg.transcribe_model.value,
-            transcribe_language=LANGUAGES[cfg.transcribe_language.value.value],
+            transcribe_language=language,
             need_word_time_stamp=need_word_time_stamp,
             output_format=cfg.transcribe_output_format.value,
             # Whisper Cpp 配置

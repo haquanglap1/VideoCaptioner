@@ -23,7 +23,7 @@ def _timing(item: dict, start_key: str, end_key: str, scale: int, duration: int)
 
 def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diarize: bool, *,
                  token_ids: tuple[str, ...] | None = None,
-                 edited_token_ids: frozenset[str] = frozenset()) -> ASRData:
+                 edited_token_ids: frozenset[str] = frozenset(), word_timing: bool = True) -> ASRData:
     if provider not in ("soniox", "scribe") or not isinstance(value, dict):
         raise ASRAPIError("Malformed native transcription; review required.")
     text = value.get("text")
@@ -34,6 +34,8 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
     events = []
     parts = []
     pending_space = ""
+    sentence_mode = provider == "soniox" and not word_timing
+    speech_times: dict[str, tuple[int, int]] = {}
     if token_ids is not None and len(token_ids) != len(items):
         raise ASRAPIError("Missing native token association; review required.")
     for index, item in enumerate(items):
@@ -69,8 +71,10 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
             continue
         if not part:
             continue
-        if start == end and any(char.isalnum() for char in part):
-            raise ASRAPIError("Zero-duration speech token; review required.")
+        if any(char.isalnum() for char in part):
+            speech_times[token_id] = (start, end)
+            if start == end and not sentence_mode:
+                raise ASRAPIError("Zero-duration speech token; review required.")
         segment = ASRDataSeg(pending_space + part, start, end, metadata=metadata,
                              cue_id=f"{provider}:{scope}:{token_id}")
         pending_space = ""
@@ -91,10 +95,30 @@ def parse_native(value: Any, provider: str, duration_ms: int, scope: str, diariz
             segments.append(segment)
     if "".join(parts) != text:
         raise ASRAPIError("Native transcript/token coverage mismatch; review required.")
-    if any(seg.start_time == seg.end_time for seg in segments):
+    if not sentence_mode and any(seg.start_time == seg.end_time for seg in segments):
         raise ASRAPIError("Standalone zero-duration punctuation; review required.")
     # Sorting by ASRData permits interleaved overlapping speakers without discarding any tokens.
-    return ASRData(segments, events)
+    data = ASRData(segments, events)
+    if not word_timing:
+        data = native_cues(data)
+    if sentence_mode:
+        _validate_sentence_anchors(data, speech_times)
+    return data
+
+
+def _validate_sentence_anchors(data: ASRData, speech_times: dict[str, tuple[int, int]]) -> None:
+    """Keep native point timestamps within a nearby, positively timed same-speaker cue."""
+    for cue in data:
+        if cue.start_time >= cue.end_time:
+            raise ASRAPIError("Zero-duration sentence; review required.")
+        assert cue.metadata is not None
+        times = [speech_times[token] for token in cue.metadata.token_ids if token in speech_times]
+        anchors = [(start, end) for start, end in times if start < end]
+        for start, end in times:
+            if start != end:
+                continue
+            if not anchors or min(max(left - start, start - right, 0) for left, right in anchors) > 800:
+                raise ASRAPIError("Unanchored zero-duration speech token; review required.")
 
 
 def native_cues(data: ASRData, max_chars: int = 40, *,

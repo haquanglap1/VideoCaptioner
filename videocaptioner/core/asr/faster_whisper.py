@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
 
+from videocaptioner.config import FASTER_WHISPER_PATH
+
 try:
     import GPUtil
 except ImportError:
@@ -37,7 +39,16 @@ def _is_valid_program(path: Optional[str]) -> bool:
 
 def _which_valid(program: str) -> Optional[str]:
     path = shutil.which(program)
-    return path if _is_valid_program(path) else None
+    if _is_valid_program(path):
+        return path
+    # Tools installed while the GUI is open are not in its startup PATH yet.
+    if Path(program).name == program:
+        names = (program, program + ".exe") if os.name == "nt" else (program,)
+        for name in names:
+            candidate = str(FASTER_WHISPER_PATH / name)
+            if _is_valid_program(candidate):
+                return candidate
+    return None
 
 
 def resolve_program(configured: str, device: str) -> str:

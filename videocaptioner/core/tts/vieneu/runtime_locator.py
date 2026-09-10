@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from videocaptioner.config import ROOT_PATH
+from videocaptioner.config import ROOT_PATH, portable_models_path
 
 
 @dataclass(frozen=True)
@@ -84,7 +84,8 @@ class VieNeuRuntimeLocator:
             layout.validate()
             return layout
 
-        packaged_root = self.app_root / "runtime" / "vieneu"
+        models = portable_models_path(self.app_root)
+        packaged_root = models / "vieneu-runtime" if models else self.app_root / "runtime" / "vieneu"
         runtime_root, python = self._python_from_root(packaged_root)
         bridge = self._default_bridge(packaged_root)
         layout = VieNeuRuntimeLayout(

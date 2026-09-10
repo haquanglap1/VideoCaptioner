@@ -13,6 +13,8 @@ on every launch.
 """
 
 import os
+import shutil
+from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -112,3 +114,15 @@ coll = COLLECT(
     upx_exclude=[],
     name=BUILD_NAME,
 )
+
+# Test distributions keep installed AI environments/weights beside the EXE, outside _internal.
+# The staging tool never downloads models or copies user settings/credentials.
+model_payload = os.environ.get("VC_TEST_MODELS_DIR", "")
+if model_payload:
+    source_models = Path(model_payload).resolve()
+    target_models = (Path(DISTPATH) / BUILD_NAME / "models").resolve()
+    if not (source_models / "portable-models.json").is_file():
+        raise ValueError("VC_TEST_MODELS_DIR must contain a verified portable-models.json")
+    if target_models.is_relative_to(source_models) or source_models.is_relative_to(target_models):
+        raise ValueError("Model staging must be separate from the build output")
+    shutil.copytree(source_models, target_models)

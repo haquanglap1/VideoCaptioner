@@ -101,6 +101,8 @@ class OmniVoiceRuntime:
             env = child_environment({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
                                      "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1", "PYTHONIOENCODING": "utf-8"})
             python = root / "env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            if os.name == "nt" and (root / "env/python.exe").is_file():
+                python = root / "env/python.exe"
             self.process = subprocess.Popen([str(python), "-u", str(resources() / "worker.py"),
                 "--model", str(root / "model"), "--scratch", str(scratch)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.log, text=True, encoding="utf-8",

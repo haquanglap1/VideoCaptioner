@@ -57,9 +57,11 @@ class VieNeuManagedService:
 
     @staticmethod
     def runtime_manifest() -> dict:
-        from videocaptioner.config import ROOT_PATH
+        from videocaptioner.config import ROOT_PATH, portable_models_path
 
+        models = portable_models_path(Path(ROOT_PATH))
         candidates = (
+            (models / "vieneu-runtime" if models else Path(ROOT_PATH) / "runtime" / "vieneu") / "runtime-manifest.json",
             Path(ROOT_PATH) / "runtime" / "vieneu" / "runtime-manifest.json",
             Path(__file__).resolve().parents[4]
             / "runtime"
