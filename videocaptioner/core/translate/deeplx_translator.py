@@ -90,7 +90,9 @@ class DeepLXTranslator(BaseTranslator):
         chunk_key = generate_cache_key(chunk)
         endpoint_key = generate_cache_key(self.endpoint)
         lang = self.target_language.value
-        return f"{class_name}:validated-v2:{endpoint_key}:{chunk_key}:{lang}"
+        target_code = get_language_code(self.target_language, "deeplx")
+        # Old entries may contain Chinese from an unmapped target's fallback.
+        return f"{class_name}:validated-v2:{endpoint_key}:{chunk_key}:{lang}:{target_code}"
 
     def close(self):
         super().close()

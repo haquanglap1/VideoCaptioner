@@ -158,7 +158,7 @@ BING_LANG_MAP = {
     TargetLanguage.PERSIAN: "fa",
 }
 
-# DeepL 语言代码映射
+# DeepL language codes.
 DEEPL_LANG_MAP = {
     # 中文
     TargetLanguage.SIMPLIFIED_CHINESE: "zh-Hans",
@@ -171,6 +171,7 @@ DEEPL_LANG_MAP = {
     TargetLanguage.JAPANESE: "ja",
     TargetLanguage.KOREAN: "ko",
     TargetLanguage.INDONESIAN: "id",
+    TargetLanguage.VIETNAMESE: "vi",
     # 欧洲语言
     TargetLanguage.FRENCH: "fr",
     TargetLanguage.GERMAN: "de",
@@ -199,28 +200,20 @@ DEEPL_LANG_MAP = {
 
 
 def get_language_code(target_language: TargetLanguage, translator_type: str) -> str:
-    """
-    获取翻译服务对应的语言代码
-
-    Args:
-        target_language: 目标语言枚举
-        translator_type: 翻译器类型（google/bing/deeplx）
-
-    Returns:
-        语言代码字符串
-    """
+    """Resolve a provider's language code without changing a DeepLX target."""
     lang_map = {
         "google": GOOGLE_LANG_MAP,
         "bing": BING_LANG_MAP,
         "deeplx": DEEPL_LANG_MAP,
     }
 
-    # 获取对应的语言映射
     mapping = lang_map.get(translator_type, {})
 
-    # 使用枚举的 value（中文名称）查找语言代码
     if target_language in mapping:
         return mapping[target_language]
 
-    # 默认返回简体中文
+    if translator_type == "deeplx":
+        raise ValueError(f"DeepLX target language is not configured: {target_language.name}.")
+
+    # Preserve the existing fallback for other providers.
     return mapping.get(TargetLanguage.SIMPLIFIED_CHINESE, "zh-CN")

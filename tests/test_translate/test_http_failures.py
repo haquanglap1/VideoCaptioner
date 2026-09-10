@@ -308,3 +308,49 @@ def test_deeplx_effective_endpoint_controls_cache_identity(engine, monkeypatch):
             overridden.close()
     finally:
         from_environment.close()
+
+
+@pytest.mark.parametrize("engine", ["deeplx"], indirect=True)
+def test_deeplx_vietnamese_request_keeps_selected_language(engine):
+    engine.send.return_value = success("deeplx")
+    engine.translator._safe_translate_chunk(chunk())
+    assert all(call.kwargs["json"]["target_lang"] == "vi" for call in engine.send.call_args_list)
+
+
+@pytest.mark.parametrize("engine", ["deeplx"], indirect=True)
+def test_deeplx_skips_cache_written_before_target_language_fix(engine):
+    source = chunk()
+    old_key = (f"DeepLXTranslator:validated-v2:{generate_cache_key(engine.translator.endpoint)}:"
+               f"{generate_cache_key(source)}:{TargetLanguage.VIETNAMESE.value}")
+    wrong_language = deepcopy(source)
+    for row in wrong_language:
+        row.translated_text = "Wrong target language from old mapping."
+    engine.cache.set(old_key, wrong_language)
+    engine.send.return_value = success("deeplx", "Bản dịch mới.")
+
+    result = engine.translator._safe_translate_chunk(source)
+    assert engine.send.call_count == len(source)
+    assert all(row.translated_text == "Bản dịch mới." for row in result)
+    assert engine.cache.get(old_key) == wrong_language
+    engine.send.reset_mock()
+    assert engine.translator._safe_translate_chunk(chunk()) == result
+    engine.send.assert_not_called()
+
+
+@pytest.mark.parametrize("engine", ["deeplx"], indirect=True)
+def test_deeplx_effective_target_language_controls_cache_identity(engine, monkeypatch):
+    from videocaptioner.core.translate.types import DEEPL_LANG_MAP
+
+    before = engine.translator._get_cache_key(chunk())
+    monkeypatch.setitem(DEEPL_LANG_MAP, TargetLanguage.VIETNAMESE, "different-test-code")
+    assert engine.translator._get_cache_key(chunk()) != before
+
+
+@pytest.mark.parametrize("engine", ["deeplx"], indirect=True)
+def test_deeplx_unmapped_language_fails_before_request_or_cache(engine):
+    engine.translator.target_language = TargetLanguage.CANTONESE
+    engine.send.return_value = success("deeplx")
+    with pytest.raises(ValueError, match="DeepLX target language is not configured"):
+        engine.translator._safe_translate_chunk(chunk())
+    engine.send.assert_not_called()
+    assert not engine.updates and len(engine.cache) == 0
