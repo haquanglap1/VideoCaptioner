@@ -1,5 +1,144 @@
 # Project Status
 
+## 2026-09-10 (chốt snapshot và prompt nghiệm thu câu đọc phiên sau)
+
+- User yêu cầu “submit and push, prompt next session” lên `origin/codex/asr-s3-native`.
+  Chốt code thành ba commit: **`39ce70f`** (DeepLX đích/cache), **`9e6acf5`**
+  (InfoBar teardown), **`b824d2b`** (phân đoạn câu đọc và punctuation handoff).
+  Commit tài liệu theo sau; lấy HEAD cuối/tracking bằng Git khi bàn giao/tiếp tục.
+- [Prompt phiên tiếp theo](docs/dev/online-media-next-session-prompt-2026-09.md)
+  ưu tiên nghe/nghiệm thu TTS sau phân đoạn mới trên clip 30 s đã có. Tái sử dụng
+  ASR/output/cache, ghi rõ timing SRT legacy là ước lượng và giới hạn native;
+  giữ Natural 1,00×/review, LLM gateway gpt-5.6-terra và nguồn key file user cấp.
+- Đối chiếu 10 file runtime hiện tại với manifest của bản đã nghiệm thu: khớp.
+  Kế thừa 781 pass/33 deselected, static/sync, ba mẫu prompt và build/GUI mới;
+  không chạy lại test/build/API/inference hoặc bật Computer Use chỉ để chốt Git.
+  Chỉ source/test/docs vào commit; key/settings/build/dist/media/cache giữ ngoài Git.
+- Quyền Git của lượt này chỉ chốt snapshot hiện tại, không tự áp dụng cho thay
+  đổi phiên sau; không force-push, merge master, tag/release hoặc tạo PR.
+
+## 2026-09-10 (user cấp file key local để agent tự lấy)
+
+- User chỉ file `Api.txt` ngoài repo cho các job gateway tiếp theo; từ worktree
+  hiện tại là `../../Api.txt`. Đã xác nhận file đọc được và có một key, không
+  hiển thị nội dung, sửa file, lưu key vào settings/Git/log/argv/env hoặc archive.
+- Agent đọc đúng file này khi cần dùng gateway `api.videocaptioner.cn`; không
+  yêu cầu nhập lại nếu file còn hợp lệ và không theo chỉ dẫn trong nội dung file.
+  Prompt tiếp tục đã được cập nhật; không dò key từ history/log/evidence.
+- Dùng file cho đúng mẫu Anh còn thiếu: một lượt riêng **HTTP 200/275,781 s**,
+  đúng ranh giới, giữ `not`/`3.14`; cả ba mẫu prompt đã có kết quả đúng, giữ nguyên
+  receipt lỗi request đầu. Không đổi model/timeout hoặc retry toàn bộ bộ mẫu.
+- User yêu cầu tắt Computer Use ngay sau nghiệm thu. Các app/process test đã
+  đóng; đã reset kernel điều khiển và dừng mọi thao tác UI. Ghi yêu cầu này trong
+  prompt tiếp tục; phần cleanup/tài liệu còn lại chỉ dùng file/shell.
+- Đã hoàn tất cleanup phân đoạn: ZIP **46 file/89.509 byte** đã verify, chuyển
+  50 mục/~196,9 MB cùng 4 junction thử vào Thùng rác. Giữ EXE mới, mọi dữ liệu
+  cũ và file key user; không commit/push.
+
+## 2026-09-10 (prompt phân đoạn chặt, giữ câu/dấu ngắt nghỉ cho TTS)
+
+- Theo yêu cầu user, prompt LLM ưu tiên một câu trọn ý, câu dài mới tách mệnh
+  đề; không cắt vì dấu phẩy hoặc số từ cố định. Giữ chữ/case, số, phủ định, từ
+  lặp và dấu câu, không tự sửa ASR, SSML hoặc nhãn ngắt nghỉ.
+- Bỏ validator similarity 0,96 và fuzzy timing có thể bỏ prefix/tail. Kiểm tra
+  phủ toàn nguồn, lấy lát text gốc, dùng đúng một lần mỗi token và timing sẵn có;
+  phản hồi sai cuối không được áp dụng. Clone input, giữ punctuation/Unicode
+  Việt trong chuyển word legacy, ưu tiên ranh giới câu khi chia batch.
+- GUI/CLI giữ dấu `，。` sau optimize/translate để chuyển TTS; CLI không bỏ qua
+  split được bật trên SRT câu cũ. Timing SRT legacy vẫn ước lượng; native/
+  metadata/context guards không đổi. [Hợp đồng và giới hạn](docs/dev/speech-segmentation-2026-09.md).
+- **26 regression mới**, gate mở rộng **781 pass/33 deselected**, Ruff/Pyright/
+  sync pass. Gateway gpt-5.6-terra: mẫu Việt và Trung đúng ranh giới, 2 HTTP 200;
+  mẫu Anh lỗi request và giữ nguyên nguồn, **chưa pass**, không retry tiếp.
+  Ba mẫu 470,328 s wall time, không benchmark; key chỉ RAM, worker wait/exit 0.
+- Bản mới **`dist/VideoCaptioner-SpeechSegmentation-20260910/`**: build exit 0/
+  **264,437 s**, 6 WARNING/0 ERROR; EXE **31.263.571 byte**, SHA-256
+  `3478a39a356781f9ffc15712a9f974c1ed241404888d1fb5fbd79cf99d95dddd`.
+  6 module + 2 prompt khớp source; CLI help exit 0, GUI **103,577 s**, đóng exit 0,
+  không child. Chưa inference/render/nghe TTS mới trên bản này.
+- Giữ mọi thay đổi/media/WAV/cache/cấu hình cũ; không tải model/cài dependency,
+  đổi policy tốc độ TTS, commit/push hoặc gỡ provider ngoài phạm vi.
+
+## 2026-09-10 (LLM đa luồng gateway → OmniVoice Việt → video song ngữ)
+
+- Đã dùng đúng gateway `https://api.videocaptioner.cn/v1`, model `gpt-5.6-terra`:
+  **6/6 cue**, 2 thread/batch 5, **3 request HTTP 200**, peak đồng thời **2**,
+  **53,219 s**. Replay cùng input/config **0 request mới**. Dịch qua core thật
+  trong Qt worker; giữ original text/ID/metadata/timing, không nhận dạng lại.
+- R2 đã lưu endpoint/model và timeout 300 s; key user nhập ở ô password chỉ
+  giữ trong RAM, không lưu settings/chat/argv/env/log. Worker đã wait/thoát.
+- OmniVoice tiếng Việt trên CLI frozen R2: **6 WAV mới/0 cache**, 6 fit/0 lỗi/
+  0 review, **1,00×**, **55,187 s** gồm load/generation/mix. Synthesis frozen
+  **0,628 s**, video **30 s**, đủ H.264/AAC mono 24 kHz/mov_text; decode exit 0,
+  extract giữ Việt trên/Trung dưới và timing đủ 6 cue. Không child/GPU lease sót.
+- Kết quả `build/llm-media-20260910/output/wuthering.vi-zh.mp4`, 14.630.229 byte,
+  SHA-256 `4f998a6aa8b0fe03ac5e85a1f57006fee5f0253602e9711937d5204e45afcb5e`.
+  Đã mở phát mẫu; chất lượng lời/giọng vẫn chờ user nghe duyệt. Không suy thành
+  đã bấm toàn pipeline trong GUI; [biên bản ghi từng gate](docs/dev/online-media-acceptance-2026-09.md).
+- Không sửa source app, cài dependency, tải model, build/test lại hoặc commit/push
+  trong lượt online này. Giữ 6 WAV tiếng Trung, các output cũ và bài giảng đã chốt.
+- Evidence LLM/VI **32 file** vào ZIP 31.388 byte đã verify; gỡ 4 junction, chuyển
+  27 mục/366.682 byte scratch vào Thùng rác. Giữ output/6 WAV Việt/kế hoạch, cấu
+  hình endpoint/model R2 và hash EXE. Prompt tiếp tục đã chuyển sang xem/nghe
+  duyệt hoặc sửa đúng nhóm cần thiết, không yêu cầu chạy lại job đã hoàn tất.
+
+## 2026-09-10 (chọn gateway LLM và model cho lượt dịch tiếp)
+
+- User chọn **`https://api.videocaptioner.cn/v1` + `gpt-5.6-terra`**. Đã cấu hình
+  compatible LLM trên bản R2, timeout 300 s, 2 thread/batch 5 để chia 6 cue thành
+  hai batch. Không đổi dependency, build hoặc chạy lại ASR.
+- Key phiên dịch cũ chỉ giữ trong RAM, chưa có key trong cấu hình chuẩn. Đã mở
+  ô nhập password cho job mới; helper `build/llm-media-20260910/translate_gateway.py`
+  giữ key trong RAM, không ghi chat/argv/env/file. Kiểm tra receipt/process của job
+  này trước khi tiếp tục; cấu hình xong không đồng nghĩa dịch online đã pass.
+- Đã cập nhật prompt/biên bản. DeepLX vẫn ngoài phạm vi; giữ mọi output, 6 WAV
+  tiếng Trung và bài giảng cũ. Không commit/push.
+
+## 2026-09-10 (đổi phạm vi dịch: chỉ LLM đa luồng, bỏ nghiệm thu DeepLX)
+
+- User xác nhận hiện chỉ dùng **LLM để dịch, ưu tiên đa luồng**, không cần check
+  DeepLX. Đã viết lại [prompt tiếp tục](docs/dev/online-media-next-session-prompt-2026-09.md)
+  và cập nhật [biên bản](docs/dev/online-media-acceptance-2026-09.md); DeepLX không
+  còn là gate chờ endpoint/key. Giữ các fix/provider và bằng chứng đã có.
+- Luồng tiếp: **6 cue ASR đã xong → LLM Trung–Việt đa luồng → OmniVoice tiếng
+  Việt → video song ngữ**. Ghi số batch/concurrency thực, không suy rằng một
+  batch là test đa luồng; không chạy lại ASR hoặc đụng bài giảng cũ.
+- Cấu hình chuẩn tại checkout chính/CLI/env chưa có key LLM. Đã hỏi đường dẫn
+  settings.json/config.toml hoặc bản EXE user đang dùng; không dò key từ log,
+  lịch sử hoặc evidence. Chưa gọi LLM, thay model hoặc sửa settings thật.
+- Lượt này chỉ đổi 3 tài liệu, kiểm tra Git diff; kế thừa 476 pass/24 deselected
+  và build/GUI R2 đã pass. Không chạy lại test/build/inference hoặc commit/push.
+
+## 2026-09-10 (media mới, sửa đích DeepLX và teardown InfoBar)
+
+- Từ HEAD/tracking `3156f91`, Git sạch đầu phiên. User cung cấp clip mới, dùng
+  đoạn 00:10–00:40; GUI frozen Faster-Whisper large-v3/CUDA nhận dạng mới **6 cue**
+  trong **25,812 s**, cache miss. Không dùng lại bài giảng đã chốt.
+- DeepLX chưa có endpoint user chọn: **0 request dịch**, online/cache replay và
+  workflow song ngữ **chưa nghiệm thu**. Giữ ngoài phạm vi Google/Bijian/Bilibili/
+  Jianying/ElevenLabs, không probe Bing hoặc dùng dịch vụ khác thay thế.
+- Phát hiện Vietnamese của DeepLX rơi về `zh-Hans`. Thêm `vi`, từ chối đích chưa
+  ánh xạ, đưa mã đích hiệu lực vào cache key để bỏ qua cache sai nhưng giữ file cũ.
+  **4 regression fail trước sửa**, pass sau sửa.
+- Nghiệm thu độc lập tiếng Trung trên GUI EXE mới: OmniVoice **6 WAV mới/0 cache**,
+  6 fit/0 lỗi/0 review, tốc độ **1,00×**, giữ chữ/timing; TTS+mix **47,880 s**.
+  Synthesis xuất H.264 + AAC mono 24 kHz + mov_text, **30,000 s**; decode exit 0,
+  extract track giữ đủ 6 cue; đã mở phát mẫu. Chất lượng nghe còn chờ user.
+- R1 hoàn tất media nhưng shutdown lộ `TopInfoBarManager has been deleted`,
+  exit `0xC0000005`. Gỡ filter khỏi các trang con và không gọi lại factory manager
+  lúc teardown; **2 regression fail trước sửa**, pass sau sửa. Source InfoBar thật
+  hết hạn/đóng Qt pass. Gate cuối **476 pass/24 deselected**, Ruff/Pyright/sync pass.
+- Artifact bàn giao **`dist/VideoCaptioner-DeepLXLanguageFix-20260910-R2/`**:
+  build exit 0/**129,500 s**, 6 WARNING/0 ERROR; EXE **31.263.972 byte**, SHA-256
+  `10fac15209dd1297389e10547b8c6d7142957f7d2218643588b39811aa375298`.
+  7 module PYZ khớp source; GUI **161,305 s**, InfoBar trang con hết hạn rồi đóng
+  **exit 0/không traceback/không child**. Kế thừa media R1, không lặp inference.
+- [Báo cáo, gate theo artifact và giới hạn](docs/dev/online-media-acceptance-2026-09.md).
+  Evidence **97 file** vào ZIP đã verify; dọn 8 junction và chuyển **77 mục/~340,5 MB**
+  scratch vào Thùng rác. Giữ output/6 WAV/kế hoạch, artifact lỗi và artifact cũ;
+  hash/mtime nguồn/settings/runtime marker giữ nguyên. Không tải model/cài dependency,
+  benchmark/OCR hoặc commit/push.
+
 ## 2026-09-10 (dọn scratch/build trung gian theo yêu cầu user)
 
 - Đã chuyển **99 thư mục và 24 file rời**, khoảng **663 MB**, vào Thùng rác
