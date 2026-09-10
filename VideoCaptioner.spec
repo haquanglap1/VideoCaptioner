@@ -55,6 +55,10 @@ hiddenimports += ["videocaptioner.core.translate.conversation",
 hiddenimports += ["videocaptioner.core.asr.review",
                   "videocaptioner.ui.components.asr_review_dialog",
                   "videocaptioner.ui.thread.worker_lifecycle"]
+hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.thread.ocr_thread",
+                  "videocaptioner.core.ocr.installation", "videocaptioner.cli.commands.ocr"]
+# The external OCR bridge/profile are bundled by the package resource tree above.
+# ONNX/OpenCV/NumPy stay in models/ocr/env, never inside the Qt executable.
 hiddenimports += collect_submodules("videocaptioner")
 # Native settings/probe pages load lazily; explicitly retain their frozen entry points.
 hiddenimports += ["videocaptioner.core.asr.native_api",
@@ -79,7 +83,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["torch", "torchaudio", "qwen_asr", "pyannote", "torchcodec"],
+    excludes=["torch", "torchaudio", "qwen_asr", "pyannote", "torchcodec", "numpy", "cv2", "onnxruntime", "rapidocr", "paddle"],
     noarchive=False,
     optimize=0,
 )
@@ -126,3 +130,8 @@ if model_payload:
     if target_models.is_relative_to(source_models) or source_models.is_relative_to(target_models):
         raise ValueError("Model staging must be separate from the build output")
     shutil.copytree(source_models, target_models)
+    ocr_payload = os.environ.get("VC_TEST_OCR_MODELS_DIR", "")
+    if ocr_payload:
+        from scripts.package_test_models import append_ocr_payload
+
+        append_ocr_payload(target_models, Path(ocr_payload))

@@ -8,6 +8,7 @@ from typing import Any, Callable, Protocol
 from uuid import uuid4
 
 from videocaptioner.core.asr.metadata import ASRMetadata
+from videocaptioner.core.ocr.metadata import OcrMetadata
 from videocaptioner.core.translate.conversation import ConversationContext, check_context_update
 
 from .models import EditorCue, EditorLayer, EditorProject
@@ -139,6 +140,7 @@ class EditCueTextCommand:
     new_text: str
     description: str = "Edit cue text"
     _old_text: str | None = field(default=None, init=False)
+    _old_ocr: OcrMetadata | None = field(default=None, init=False)
 
     def execute(self) -> None:
         if self.field_name not in {"source_text", "display_text", "tts_text"}:
@@ -146,12 +148,18 @@ class EditCueTextCommand:
         cue = self.project.cue_by_id(self.cue_id)
         if self._old_text is None:
             self._old_text = str(getattr(cue, self.field_name))
+            self._old_ocr = cue.ocr_metadata
+        if cue.ocr_metadata is not None and self.field_name == "source_text":
+            if not self.new_text.strip():
+                raise ValueError("An OCR source cue cannot be silently emptied")
+            cue.ocr_metadata = cue.ocr_metadata.edited(text=True)
         setattr(cue, self.field_name, str(self.new_text))
         self.project.touch()
 
     def undo(self) -> None:
         cue = self.project.cue_by_id(self.cue_id)
         setattr(cue, self.field_name, self._old_text or "")
+        cue.ocr_metadata = self._old_ocr
         self.project.touch()
 
 
@@ -184,17 +192,21 @@ class EditCueTimingCommand:
     description: str = "Edit cue timing"
     _old_timing: tuple[int, int] | None = field(default=None, init=False)
     _old_metadata: ASRMetadata | None = field(default=None, init=False)
+    _old_ocr: OcrMetadata | None = field(default=None, init=False)
 
     def execute(self) -> None:
         cue = self.project.cue_by_id(self.cue_id)
         if self._old_timing is None:
             self._old_timing = (cue.start_ms, cue.end_ms)
             self._old_metadata = cue.asr_metadata
+            self._old_ocr = cue.ocr_metadata
         self.project.validate_cue_timing(self.start_ms, self.end_ms, excluding_id=cue.id)
         cue.start_ms = int(self.start_ms)
         cue.end_ms = int(self.end_ms)
         if cue.asr_metadata is not None:
             cue.asr_metadata = replace(cue.asr_metadata, timing="edited")
+        if cue.ocr_metadata is not None:
+            cue.ocr_metadata = cue.ocr_metadata.edited(timing=True)
         self.project.cues.sort(key=lambda item: (item.start_ms, item.end_ms, item.id))
         self.project.touch()
 
@@ -204,6 +216,7 @@ class EditCueTimingCommand:
         cue = self.project.cue_by_id(self.cue_id)
         cue.start_ms, cue.end_ms = self._old_timing
         cue.asr_metadata = self._old_metadata
+        cue.ocr_metadata = self._old_ocr
         self.project.cues.sort(key=lambda item: (item.start_ms, item.end_ms, item.id))
         self.project.touch()
 
@@ -297,12 +310,28 @@ class SplitCueCommand:
     description: str = "Split cue"
     _original: EditorCue | None = field(default=None, init=False)
     _right: EditorCue | None = field(default=None, init=False)
+    source_split_index: int | None = None
+    display_split_index: int | None = None
+    tts_split_index: int | None = None
+
+    def _ocr_parts(self, cue: EditorCue) -> tuple[tuple[str, str], ...]:
+        result = []
+        for text, index in ((cue.source_text, self.source_split_index),
+                             (cue.display_text, self.display_split_index), (cue.tts_text, self.tts_split_index)):
+            if index is None and text == cue.source_text:
+                index = self.source_split_index
+            if type(index) is not int or not 0 < index < len(text) or not text[:index].strip() or not text[index:].strip():
+                raise ValueError("OCR split requires an explicit text boundary for each distinct source/display/TTS text")
+            result.append((text[:index], text[index:]))
+        return tuple(result)
 
     def execute(self) -> None:
         cue = self.project.cue_by_id(self.cue_id)
         split_ms = int(self.split_ms)
         if cue.asr_metadata is not None:
             raise ValueError("Native cue split needs an explicit text boundary; review the measured ASR spans.")
+        if cue.ocr_metadata is not None:
+            self._ocr_parts(self._original or cue)
         if split_ms - cue.start_ms < 50 or cue.end_ms - split_ms < 50:
             raise ValueError("Split point must leave at least 50 ms on both sides")
         if self._original is None:
@@ -310,6 +339,8 @@ class SplitCueCommand:
             source_left, source_right = _split_text(cue.source_text)
             display_left, display_right = _split_text(cue.display_text)
             tts_left, tts_right = _split_text(cue.tts_text)
+            if cue.ocr_metadata is not None:
+                (source_left, source_right), (display_left, display_right), (tts_left, tts_right) = self._ocr_parts(cue)
             self._right = deepcopy(cue)
             self._right.id = f"cue-{uuid4().hex[:16]}"
             self._right.start_ms = split_ms
@@ -319,6 +350,8 @@ class SplitCueCommand:
             self._right.audio_path = ""
             self._right.group_id = ""
             self._right.fit_status = "pending"
+            if cue.ocr_metadata is not None:
+                self._right.ocr_metadata = cue.ocr_metadata.edited(text=True, timing=True)
             cue.source_text = source_left
             cue.display_text = display_left
             cue.tts_text = tts_left
@@ -327,7 +360,11 @@ class SplitCueCommand:
             cue.source_text, _ = _split_text(self._original.source_text)
             cue.display_text, _ = _split_text(self._original.display_text)
             cue.tts_text, _ = _split_text(self._original.tts_text)
+            if cue.ocr_metadata is not None:
+                (cue.source_text, _), (cue.display_text, _), (cue.tts_text, _) = self._ocr_parts(self._original)
         cue.end_ms = split_ms
+        if cue.ocr_metadata is not None:
+            cue.ocr_metadata = cue.ocr_metadata.edited(text=True, timing=True)
         cue.audio_path = ""
         cue.group_id = ""
         cue.fit_status = "pending"

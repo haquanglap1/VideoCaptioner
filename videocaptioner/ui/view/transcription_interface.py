@@ -453,6 +453,7 @@ class VideoInfoCard(CardWidget):
 
 class TranscriptionInterface(QWidget):
     recognized = pyqtSignal(object)
+    ocr_ready = pyqtSignal(object, str, str)
     """转录界面类,用于显示视频信息和转录进度"""
 
     finished = pyqtSignal(str, str)
@@ -499,6 +500,7 @@ class TranscriptionInterface(QWidget):
         self.command_bar.addAction(self.open_file_action)
         self.command_bar.addAction(Action(FluentIcon.EDIT, self.tr("Open ASR review"),
                                           triggered=self.open_asr_review))
+        self.command_bar.addAction(Action(FluentIcon.PHOTO, "OCR phụ đề trong hình", triggered=self.open_ocr))
 
         self.command_bar.addSeparator()
 
@@ -536,6 +538,16 @@ class TranscriptionInterface(QWidget):
         )
 
         self.main_layout.addWidget(self.command_bar)
+
+    def open_ocr(self):
+        from videocaptioner.ui.components.ocr_dialog import OcrDialog
+
+        if self.is_processing:
+            InfoBar.warning(self.tr("Review required"), "Hoàn tất hoặc hủy ASR đang chạy trước khi mở OCR.", parent=self)
+            return
+        dialog = OcrDialog(self.window(), source=self.task.file_path if self.task and self.task.file_path else "")
+        dialog.subtitles_ready.connect(self.ocr_ready.emit)
+        dialog.exec_()
 
     def open_asr_review(self):
         from videocaptioner.core.asr.review import NativeReview, review_directory

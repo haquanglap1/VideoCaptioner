@@ -56,9 +56,22 @@ def run(args: Namespace, config: dict) -> int:
     if err is not None:
         return err
 
+    from videocaptioner.core.asr.asr_data import ASRData
+
+    asr_data = getattr(args, "asr_data", None)
+    if asr_data is None:
+        try:
+            asr_data = ASRData.from_subtitle_file(str(input_path))
+        except (OSError, ValueError, TypeError, KeyError):
+            output.error("Cannot read subtitle document; review JSON schema and cue associations.")
+            return EXIT.RUNTIME_ERROR
+
     need_optimize = get(config, "subtitle.optimize", True)
     need_translate = get(config, "subtitle.translate", False)
     need_split = get(config, "subtitle.split", True)
+    if asr_data.visual_source or any(s.ocr_metadata for s in asr_data):
+        need_split = False
+        need_optimize = bool(getattr(args, "optimize", False) and not getattr(args, "no_optimize", False))
 
     # If user explicitly specified translator or target language, enable translation
     explicitly_wants_translate = getattr(args, "translator", None) or getattr(args, "target_language", None)
@@ -169,16 +182,6 @@ def run(args: Namespace, config: dict) -> int:
             output.info(f"Translator: {translator_service}, Target: {target_lang_code}")
         if needs_llm and llm_model:
             output.info(f"LLM: {llm_model} @ {llm_api_base}")
-
-    # Load subtitle data
-    from videocaptioner.core.asr.asr_data import ASRData
-    asr_data = getattr(args, "asr_data", None)
-    if asr_data is None:
-        try:
-            asr_data = ASRData.from_subtitle_file(str(input_path))
-        except (OSError, ValueError, TypeError, KeyError):
-            output.error("Cannot read subtitle document; review JSON schema and cue associations.")
-            return EXIT.RUNTIME_ERROR
 
     if len(asr_data.segments) == 0 and not quiet:
         output.warn(f"Input file contains 0 subtitle segments: {input_path}")

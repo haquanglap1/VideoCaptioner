@@ -82,6 +82,7 @@ class HomeInterface(QWidget):
             interface.finished.connect(self.switch_to_subtitle_optimization)
             interface.recognized.connect(lambda task: self.switch_to_subtitle_optimization(
                 task.output_path, task.file_path, task.asr_data))
+            interface.ocr_ready.connect(self.open_ocr_subtitles)
         elif route_key == "SubtitleInterface":
             from videocaptioner.ui.view.subtitle_interface import SubtitleInterface
 
@@ -132,6 +133,20 @@ class HomeInterface(QWidget):
         interface.process()
         self.stackedWidget.setCurrentWidget(interface)
         self.pivot.setCurrentItem("TranscriptionInterface")
+
+    def open_ocr_subtitles(self, data, file_path, video_path):
+        from videocaptioner.ui.task_factory import TaskFactory
+
+        task = TaskFactory.create_subtitle_task(file_path, video_path, need_next_task=False)
+        task.asr_data = data
+        if task.subtitle_config:
+            task.subtitle_config.need_split = False
+            task.subtitle_config.need_optimize = False
+            task.subtitle_config.need_translate = False
+        interface = self.subtitle_optimization_interface
+        interface.set_task(task)
+        self.stackedWidget.setCurrentWidget(interface)
+        self.pivot.setCurrentItem("SubtitleInterface")
 
     def switch_to_subtitle_optimization(self, file_path, video_path, asr_data=None):
         from videocaptioner.ui.task_factory import TaskFactory

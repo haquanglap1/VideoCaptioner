@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from videocaptioner.core.asr.audio_identity import AudioIdentity
 from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
+from videocaptioner.core.ocr.identity import VisualSourceIdentity
+from videocaptioner.core.ocr.metadata import OcrMetadata
 from videocaptioner.core.translate.conversation import ConversationContext
 
 EDITOR_PROJECT_SCHEMA = "editor-project-v1"
@@ -121,6 +123,7 @@ class EditorCue:
     fit_ratio: float = 0.0
     warnings: list[str] = field(default_factory=list)
     asr_metadata: ASRMetadata | None = None
+    ocr_metadata: OcrMetadata | None = None
 
     @property
     def duration_ms(self) -> int:
@@ -129,10 +132,22 @@ class EditorCue:
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["voice_settings"] = sanitize_voice_settings(self.voice_settings)
+        if self.ocr_metadata is not None:
+            observations = self.ocr_metadata.observations
+            data["ocr_metadata"] = self.ocr_metadata.edited(
+                text=self.source_text != " ".join(c.text for c in observations),
+                timing=(self.start_ms, self.end_ms) != (observations[0].start_ms, observations[-1].end_ms),
+            ).to_dict()
+        else:
+            data.pop("ocr_metadata", None)
         return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EditorCue":
+        if data.get("ocr_metadata") is not None:
+            if (any(type(data.get(key)) is not int for key in ("start_ms", "end_ms"))
+                    or any(type(data.get(key)) is not str for key in ("id", "source_text", "display_text", "tts_text"))):
+                raise ValueError("Invalid OCR editor cue fields")
         display = str(data.get("display_text", data.get("subtitle_text", "")))
         return cls(
             id=str(data.get("id", f"cue-{uuid4().hex[:16]}")),
@@ -143,6 +158,7 @@ class EditorCue:
             tts_text=str(data.get("tts_text", display)),
             speaker=str(data.get("speaker", "")),
             asr_metadata=ASRMetadata.from_dict(data.get("asr_metadata")),
+            ocr_metadata=OcrMetadata.from_dict(data.get("ocr_metadata")),
             voice=str(data.get("voice", "")),
             voice_speed=float(data.get("voice_speed", 1.0)),
             voice_settings=sanitize_voice_settings(dict(data.get("voice_settings", {}) or {})),
@@ -248,6 +264,7 @@ class EditorProject:
     conversation_context: ConversationContext = field(default_factory=ConversationContext)
     audio_identity: AudioIdentity | None = None
     pending_diarization: bool = False
+    visual_source: VisualSourceIdentity | None = None
 
     def __post_init__(self) -> None:
         if type(self.pending_diarization) is not bool:
@@ -311,28 +328,33 @@ class EditorProject:
         if start_ms < 0:
             raise ValueError("Cue start must be non-negative")
         native = bool(excluding_id and self.cue_by_id(excluding_id).asr_metadata)
-        if end_ms - start_ms < (1 if native else MIN_CUE_DURATION_MS):
+        ocr = bool(excluding_id and self.cue_by_id(excluding_id).ocr_metadata)
+        if end_ms - start_ms < (1 if native or ocr else MIN_CUE_DURATION_MS):
             raise ValueError(f"Cue duration must be at least {MIN_CUE_DURATION_MS} ms")
         if self.duration_ms and end_ms > self.duration_ms:
             raise ValueError("Cue end exceeds video duration")
         for cue in self.cues:
             if cue.id == excluding_id:
                 continue
-            if start_ms < cue.end_ms and end_ms > cue.start_ms and not (native and cue.asr_metadata):
+            if start_ms < cue.end_ms and end_ms > cue.start_ms and not (native and cue.asr_metadata and not ocr and not cue.ocr_metadata):
                 raise ValueError(f"Cue timing overlaps {cue.id}")
 
     def validate_all_cues(self) -> None:
         max_end = 0
         max_legacy_end = 0
         for cue in sorted(self.cues, key=lambda item: (item.start_ms, item.end_ms, item.id)):
-            if cue.start_ms < 0 or cue.end_ms - cue.start_ms < (1 if cue.asr_metadata else MIN_CUE_DURATION_MS):
+            if cue.ocr_metadata is not None:
+                cue.ocr_metadata.verify_source(self.visual_source)
+                if not cue.source_text.strip() or type(cue.start_ms) is not int or type(cue.end_ms) is not int:
+                    raise ValueError("Invalid OCR editor cue")
+            if cue.start_ms < 0 or cue.end_ms - cue.start_ms < (1 if cue.asr_metadata or cue.ocr_metadata else MIN_CUE_DURATION_MS):
                 raise ValueError(f"Invalid timing for {cue.id}")
             if self.duration_ms and cue.end_ms > self.duration_ms:
                 raise ValueError(f"Cue {cue.id} exceeds video duration")
-            if cue.start_ms < (max_legacy_end if cue.asr_metadata else max_end):
+            if cue.start_ms < (max_legacy_end if cue.asr_metadata and not cue.ocr_metadata else max_end):
                 raise ValueError(f"Cue {cue.id} overlaps a cue without native ASR provenance")
             max_end = max(max_end, cue.end_ms)
-            if cue.asr_metadata is None:
+            if cue.asr_metadata is None or cue.ocr_metadata is not None:
                 max_legacy_end = max(max_legacy_end, cue.end_ms)
 
     def touch(self) -> None:
@@ -355,6 +377,7 @@ class EditorProject:
             "audio_events": [event.to_dict() for event in self.audio_events],
             "conversation_context": self.conversation_context.to_dict(),
             **({"audio_identity": self.audio_identity.to_dict()} if self.audio_identity else {}),
+            **({"visual_source": self.visual_source.to_dict()} if self.visual_source else {}),
             **({"pending_diarization": True} if self.pending_diarization else {}),
             "tracks": [track.to_dict() for track in self.tracks],
             "layers": [layer.to_dict() for layer in self.layers],
@@ -384,6 +407,7 @@ class EditorProject:
             audio_events=[ASRAudioEvent.from_dict(item) for item in data.get("audio_events", [])],
             conversation_context=ConversationContext.from_dict(data.get("conversation_context")),
             audio_identity=AudioIdentity.from_dict(data.get("audio_identity")),
+            visual_source=VisualSourceIdentity.from_dict(data.get("visual_source")),
             pending_diarization=data.get("pending_diarization", False),
             tracks=[EditorTrack.from_dict(item) for item in data.get("tracks", [])],
             layers=[EditorLayer.from_dict(item) for item in data.get("layers", [])],

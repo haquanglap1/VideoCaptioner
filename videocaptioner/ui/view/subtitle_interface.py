@@ -567,6 +567,9 @@ class SubtitleInterface(QWidget):
             self.start_button.setEnabled(True)
             self.cancel_button.hide()
             return
+        if self.task.asr_data is not None and self.task.asr_data.visual_source and self.task.subtitle_config:
+            self.task.subtitle_config.need_split = False
+            self.task.subtitle_config.need_optimize = False
         self.subtitle_optimization_thread = SubtitleThread(self.task)
         worker = self.subtitle_optimization_thread
         retain_worker(worker)
@@ -695,6 +698,7 @@ class SubtitleInterface(QWidget):
                 events=self._context_data.events,
                 context=self._context_data.conversation_context,
                 audio_identity=self._context_data.audio_identity,
+                visual_source=self._context_data.visual_source,
                 pending_diarization=self._context_data.pending_diarization,
             )
             InfoBar.success(
@@ -881,6 +885,7 @@ class SubtitleInterface(QWidget):
         data.events = list(self._context_data.events)
         data.conversation_context = self._context_data.conversation_context
         data.audio_identity = self._context_data.audio_identity
+        data.visual_source = self._context_data.visual_source
         data.pending_diarization = self._context_data.pending_diarization
         return data
 
@@ -1016,6 +1021,7 @@ class SubtitleInterface(QWidget):
                 events=self._context_data.events,
                 context=self._context_data.conversation_context,
                 audio_identity=self._context_data.audio_identity,
+                visual_source=self._context_data.visual_source,
                 pending_diarization=self._context_data.pending_diarization,
             )
         except Exception as exc:

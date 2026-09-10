@@ -149,6 +149,8 @@ class SubtitleSplitter:
             else:
                 asr_data = subtitle_data
 
+            if asr_data.visual_source or any(seg.ocr_metadata for seg in asr_data):
+                raise ValueError("OCR split needs an explicit text boundary in the editor; disable automatic split.")
             if asr_data.conversation_context.enabled:
                 raise ValueError("Re-segmentation would change context associations; disable split and review.")
             if asr_data.has_metadata:

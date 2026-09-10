@@ -9,6 +9,8 @@ from typing import List, Optional, Tuple
 
 from langdetect import LangDetectException, detect
 
+from videocaptioner.core.ocr.identity import VisualSourceIdentity
+from videocaptioner.core.ocr.metadata import OcrMetadata, merge_ocr_metadata, merged_cue_id
 from videocaptioner.core.translate.conversation import (
     ConversationContext,
     SourceCue,
@@ -61,8 +63,10 @@ def handle_long_path(path: str) -> str:
 class ASRDataSeg:
     def __init__(
         self, text: str, start_time: int, end_time: int, translated_text: str = "",
-        metadata: Optional[ASRMetadata] = None, cue_id: str = ""
+        metadata: Optional[ASRMetadata] = None, cue_id: str = "",
+        ocr_metadata: Optional[OcrMetadata] = None,
     ):
+        self.ocr_metadata = ocr_metadata
         self.metadata = metadata
         self.cue_id = cue_id
         self.text = text
@@ -76,7 +80,18 @@ class ASRDataSeg:
 
     def clone(self, *, text: Optional[str] = None) -> "ASRDataSeg":
         return ASRDataSeg(self.text if text is None else text, self.start_time, self.end_time,
-                          self.translated_text, self.metadata, self.cue_id)
+                          self.translated_text, self.metadata, self.cue_id,
+                          self.current_ocr_metadata(text=text))
+
+    def current_ocr_metadata(self, *, text: Optional[str] = None) -> Optional[OcrMetadata]:
+        metadata = self.ocr_metadata
+        if metadata is None:
+            return None
+        observed = metadata.observations
+        return metadata.edited(
+            text=(self.text if text is None else text) != " ".join(c.text for c in observed),
+            timing=(self.start_time, self.end_time) != (observed[0].start_ms, observed[-1].end_ms),
+        )
 
     def to_srt_ts(self) -> str:
         """Convert to SRT timestamp format"""
@@ -126,7 +141,16 @@ class ASRDataSeg:
 class ASRData:
     def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None,
                  conversation_context: Optional[ConversationContext] = None,
-                 audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False):
+                 audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False,
+                 visual_source: Optional[VisualSourceIdentity] = None):
+        self.visual_source = visual_source
+        for segment in segments:
+            if segment.ocr_metadata is not None:
+                if (not segment.text.strip() or type(segment.start_time) is not int
+                        or type(segment.end_time) is not int or not 0 <= segment.start_time < segment.end_time):
+                    raise ValueError("Empty or invalid OCR cue requires review; it cannot be dropped.")
+                if visual_source is not None:
+                    segment.ocr_metadata.verify_source(visual_source)
         self.audio_identity = audio_identity
         self.pending_diarization = pending_diarization
         self.events = list(events or [])
@@ -146,7 +170,8 @@ class ASRData:
             raise ValueError("Duplicate cue IDs; review required.")
 
     def with_segments(self, segments: List[ASRDataSeg]) -> "ASRData":
-        return ASRData(segments, self.events, self.conversation_context, self.audio_identity, self.pending_diarization)
+        return ASRData(segments, self.events, self.conversation_context, self.audio_identity,
+                       self.pending_diarization, self.visual_source)
 
     def context_snapshot(self):
         return prepare_snapshot(tuple(SourceCue(s.cue_id, s.text, s.speaker or "") for s in self.segments),
@@ -154,7 +179,8 @@ class ASRData:
 
     @property
     def has_metadata(self) -> bool:
-        return bool(self.events) or any(seg.metadata is not None for seg in self.segments)
+        return bool(self.events or self.visual_source) or any(
+            seg.metadata is not None or seg.ocr_metadata is not None for seg in self.segments)
 
     def __iter__(self):
         return iter(self.segments)
@@ -196,6 +222,8 @@ class ASRData:
         Returns:
             True 如果80%+的片段符合词级模式
         """
+        if self.visual_source or any(seg.ocr_metadata for seg in self.segments):
+            return False
         if not self.segments:
             return False
 
@@ -289,6 +317,7 @@ class ASRData:
             ass_style: ASS style string (optional, uses default if None)
             layout: Subtitle layout mode
         """
+        self.validate_visual_source()
         save_path = handle_long_path(save_path)
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -377,19 +406,30 @@ class ASRData:
             }
             if segment.metadata is not None:
                 result_json[str(i)]["asr_metadata"] = segment.metadata.to_dict()
+            ocr = segment.current_ocr_metadata()
+            if ocr is not None:
+                result_json[str(i)]["ocr_metadata"] = ocr.to_dict()
         return result_json
 
     def to_document(self) -> dict:
-        if self.events or self.conversation_context.enabled or self.audio_identity or self.pending_diarization:
+        self.validate_visual_source()
+        if self.events or self.conversation_context.enabled or self.audio_identity or self.pending_diarization or self.visual_source:
             result = {"schema": "asr-native-v1", "cues": self.to_json(),
                     "conversation_context": self.conversation_context.to_dict(),
                     "events": [event.to_dict() for event in self.events]}
             if self.audio_identity is not None:
                 result["audio_identity"] = self.audio_identity.to_dict()
+            if self.visual_source is not None:
+                result["visual_source"] = self.visual_source.to_dict()
             if self.pending_diarization:
                 result["pending_diarization"] = True
             return result
         return self.to_json()
+
+    def validate_visual_source(self) -> None:
+        for segment in self.segments:
+            if segment.ocr_metadata is not None:
+                segment.ocr_metadata.verify_source(self.visual_source)
 
     def to_ass(
         self,
@@ -537,7 +577,10 @@ class ASRData:
             if seg.translated_text
         )
         merged_seg = ASRDataSeg(merged_text, merged_start_time, merged_end_time,
-                                translated_text=merged_translated, metadata=metadata)
+                                translated_text=merged_translated, metadata=metadata,
+                                ocr_metadata=merge_ocr_metadata([s.current_ocr_metadata() for s in span]))
+        if merged_seg.ocr_metadata is not None:
+            merged_seg.cue_id = merged_cue_id([s.cue_id for s in span])
         self.segments[start_index : end_index + 1] = [merged_seg]
 
     def merge_with_next_segment(self, index: int) -> None:
@@ -552,7 +595,11 @@ class ASRData:
         if current_seg.translated_text or next_seg.translated_text:
             merged_translated = f"{current_seg.translated_text} {next_seg.translated_text}".strip()
         merged_seg = ASRDataSeg(merged_text, current_seg.start_time, max(current_seg.end_time, next_seg.end_time),
-                                translated_text=merged_translated, metadata=metadata)
+                                translated_text=merged_translated, metadata=metadata,
+                                ocr_metadata=merge_ocr_metadata([current_seg.current_ocr_metadata(),
+                                                                 next_seg.current_ocr_metadata()]))
+        if merged_seg.ocr_metadata is not None:
+            merged_seg.cue_id = merged_cue_id([current_seg.cue_id, next_seg.cue_id])
         self.segments[index] = merged_seg
         del self.segments[index + 1]
 
@@ -639,6 +686,8 @@ class ASRData:
             data.events = [ASRAudioEvent.from_dict(item) for item in json_data.get("events", [])]
             data.conversation_context = ConversationContext.from_dict(json_data.get("conversation_context"))
             data.audio_identity = AudioIdentity.from_dict(json_data.get("audio_identity"))
+            data.visual_source = VisualSourceIdentity.from_dict(json_data.get("visual_source"))
+            data.validate_visual_source()
             data.pending_diarization = json_data.get("pending_diarization", False)
             if type(data.pending_diarization) is not bool:
                 raise ValueError("Invalid pending diarization state.")
@@ -653,6 +702,7 @@ class ASRData:
                 end_time=segment_data["end_time"],
                 metadata=ASRMetadata.from_dict(segment_data.get("asr_metadata")),
                 cue_id=segment_data.get("cue_id", ""),
+                ocr_metadata=OcrMetadata.from_dict(segment_data.get("ocr_metadata")),
             )
             segments.append(segment)
         return ASRData(segments)

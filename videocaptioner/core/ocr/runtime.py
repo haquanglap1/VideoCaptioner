@@ -25,6 +25,10 @@ PROTOCOL = "ocr-stream-v1"
 MAX_RESPONSE_BYTES = 1024 * 1024
 
 
+class OcrRuntimeMissing(OcrError):
+    pass
+
+
 @dataclass
 class RuntimeMetrics:
     requests: int = 0
@@ -154,7 +158,7 @@ class CpuOcrRuntime:
         if not python.is_file():
             python = self.root / ("env/Scripts/python.exe" if os.name == "nt" else "env/bin/python")
         if not python.is_file() or not self.bridge.is_file() or not (self.root / "profile.json").is_file():
-            raise OcrError("CPU OCR runtime is missing; select an already installed runtime")
+            raise OcrRuntimeMissing("CPU OCR runtime is missing; select an already installed runtime")
         if hashlib.sha256((self.root / "profile.json").read_bytes()).hexdigest() != self.profile_sha256:
             raise OcrError("CPU OCR profile hash mismatch")
         self.bridge_sha256 = hashlib.sha256(self.bridge.read_bytes()).hexdigest()

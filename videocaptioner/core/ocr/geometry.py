@@ -27,6 +27,8 @@ class Roi:
                 or min(self.x, self.y) < 0 or min(self.width, self.height) <= 0
                 or self.x + self.width > 1.000000001 or self.y + self.height > 1.000000001):
             raise ValueError("ROI must be a nonempty rectangle inside the displayed video")
+        for name in ("x", "y", "width", "height"):
+            object.__setattr__(self, name, float(getattr(self, name)))
 
     def pixels(self, width: int, height: int) -> PixelRect:
         if min(width, height) <= 0:

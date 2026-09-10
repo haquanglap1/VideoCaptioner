@@ -80,6 +80,7 @@ class EditorProjectStore:
         project.audio_events = list(asr_data.events)
         project.conversation_context = asr_data.conversation_context
         project.audio_identity = asr_data.audio_identity
+        project.visual_source = asr_data.visual_source
         project.pending_diarization = asr_data.pending_diarization
         project.validate_all_cues()
         project.is_dirty = False

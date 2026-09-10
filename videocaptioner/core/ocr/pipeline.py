@@ -28,6 +28,8 @@ class RegionResult:
     issues: tuple[str, ...]
     start_window_ms: tuple[Fraction, Fraction]
     end_window_ms: tuple[Fraction, Fraction]
+    first_pts: int | None = None
+    last_pts: int | None = None
 
     @property
     def needs_review(self) -> bool:
@@ -74,7 +76,8 @@ class OcrPipeline:
                 self.metrics.cache_hits += 1
             reads.append(CandidateRead(frame.pts, crop_hash, raw, hit))
         result = RegionResult(region.start_ms, region.end_ms, tuple(reads), choose_read(tuple(reads)),
-                              region.issues, region.start_window_ms, region.end_window_ms)
+                              region.issues, region.start_window_ms, region.end_window_ms,
+                              region.first_pts, region.last_pts)
         self.metrics.tracks += 1
         self.metrics.review_regions += result.needs_review
         return result

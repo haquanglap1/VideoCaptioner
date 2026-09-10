@@ -12,7 +12,19 @@ if TYPE_CHECKING:
     from videocaptioner.core.asr.asr_data import ASRData
     from videocaptioner.core.dubbing.config import DubbingConfig
     from videocaptioner.core.dubbing.review import DubbingReview
+    from videocaptioner.core.ocr.geometry import Roi
+    from videocaptioner.core.ocr.models import Selection
     from videocaptioner.core.translate.types import TargetLanguage
+
+
+@dataclass(frozen=True)
+class OcrTask:
+    file_path: str
+    roi: "Roi"
+    selection: "Selection"
+    runtime_path: str = ""
+    max_requests: int = 1000
+    expected_source_sha256: str = ""
 
 
 def _generate_task_id() -> str:

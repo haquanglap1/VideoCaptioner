@@ -215,6 +215,7 @@ def _build_subtitle_parser(subparsers) -> None:
 
     proc = p.add_argument_group("Processing options")
     proc.add_argument("--no-optimize", action="store_true", help="Skip LLM subtitle optimization")
+    proc.add_argument("--optimize", action="store_true", help="Explicitly enable LLM text editing for OCR input")
     proc.add_argument("--no-translate", action="store_true", help="Skip translation")
     proc.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
 
@@ -454,6 +455,35 @@ def build_parser() -> argparse.ArgumentParser:
 
     _build_transcribe_parser(subparsers)
     _build_subtitle_parser(subparsers)
+    ocr = subparsers.add_parser("ocr", help="Read a fixed video subtitle ROI with an installed CPU OCR runtime")
+    ocr.add_argument("input")
+    ocr.add_argument("--start-ms", type=int, required=True)
+    ocr.add_argument("--end-ms", type=int, required=True)
+    ocr.add_argument("--roi", required=True, help="Normalized display X,Y,WIDTH,HEIGHT after SAR/rotation")
+    ocr.add_argument("--language", choices=["zh"], default="zh")
+    ocr.add_argument("--ocr-runtime", help="Installed runtime root; defaults to models/ocr beside the app")
+    ocr.add_argument("--ocr-bridge", help="Explicit worker override; otherwise use the bundled bridge")
+    ocr.add_argument("--profile-sha256", help="Expected profile SHA-256; otherwise use the bundled recipe")
+    ocr.add_argument("--max-requests", type=int, default=1000)
+    ocr.add_argument("--timeout", type=float, default=30)
+    ocr.add_argument("--ffmpeg", default="ffmpeg")
+    ocr.add_argument("--ffprobe", default="ffprobe")
+    ocr.add_argument("--review", required=True, metavar="JSON")
+    ocr.add_argument("--report", metavar="JSON")
+    ocr.add_argument("-o", "--output", help="Export only if every cue passes review (.json or .srt)")
+    _add_common_options(ocr)
+    ocr.set_defaults(func=_run_ocr)
+    ocr_review = subparsers.add_parser("ocr-review", help="Verify visual source and resume OCR locally without inference")
+    ocr_review.add_argument("input")
+    ocr_review.add_argument("--source", required=True)
+    ocr_review.add_argument("--ffprobe", default="ffprobe")
+    ocr_review.add_argument("--select-candidate", action="append", metavar="CUE_ID:CANDIDATE_ID")
+    ocr_review.add_argument("--set-timing", action="append", metavar="CUE_ID:START_MS:END_MS")
+    ocr_review.add_argument("--note", help="Reason/evidence for explicit review decisions")
+    ocr_review.add_argument("--save-review", metavar="JSON")
+    ocr_review.add_argument("-o", "--output")
+    _add_common_options(ocr_review)
+    ocr_review.set_defaults(func=_run_ocr_review)
     review = subparsers.add_parser("asr-review", help="Validate/resume saved ASR review locally, without uploading")
     review.add_argument("input", help="ASR review JSON")
     review.add_argument("--set-timing", action="append", metavar="TOKEN_ID:START_MS:END_MS")
@@ -621,6 +651,18 @@ def _run_local_asr(args: argparse.Namespace) -> int:
 def _run_local_diarize(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.local_diarize import run
     return run(args)
+
+
+def _run_ocr(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import run
+
+    return run(args, {})
+
+
+def _run_ocr_review(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import review
+
+    return review(args, {})
 
 
 def _run_asr_review(args: argparse.Namespace) -> int:

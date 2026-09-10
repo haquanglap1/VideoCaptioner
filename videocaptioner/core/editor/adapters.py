@@ -28,6 +28,9 @@ def cues_from_asr(asr_data: ASRData) -> list[EditorCue]:
                 tts_text=display,
                 speaker=segment.speaker or "",
                 asr_metadata=segment.metadata,
+                ocr_metadata=segment.current_ocr_metadata(),
+                warnings=(["Short OCR display interval; measured timing retained"]
+                          if segment.ocr_metadata and segment.end_time - segment.start_time < 50 else []),
             )
         )
     return cues
@@ -49,23 +52,24 @@ def project_to_asr(project: EditorProject, *, display_only: bool = False) -> ASR
     for cue in sorted(project.cues, key=lambda item: (item.start_ms, item.end_ms, item.id)):
         if display_only:
             segments.append(ASRDataSeg(cue.display_text, cue.start_ms, cue.end_ms,
-                                       metadata=cue_metadata(cue), cue_id=cue.id))
+                                       metadata=cue_metadata(cue), cue_id=cue.id, ocr_metadata=cue.ocr_metadata))
         else:
             translated = cue.display_text if cue.display_text != cue.source_text else ""
             segments.append(
                 ASRDataSeg(cue.source_text or cue.display_text, cue.start_ms, cue.end_ms, translated,
-                           cue_metadata(cue), cue.id)
+                           cue_metadata(cue), cue.id, cue.ocr_metadata)
             )
     return ASRData(segments, project.audio_events, project.conversation_context,
-                   project.audio_identity, project.pending_diarization)
+                   project.audio_identity, project.pending_diarization, project.visual_source)
 
 
 def project_to_tts_asr(project: EditorProject) -> ASRData:
     return ASRData(
         [
-            ASRDataSeg(cue.tts_text, cue.start_ms, cue.end_ms, metadata=cue_metadata(cue))
+            ASRDataSeg(cue.tts_text, cue.start_ms, cue.end_ms, metadata=cue_metadata(cue),
+                       cue_id=cue.id, ocr_metadata=cue.ocr_metadata)
             for cue in sorted(project.cues, key=lambda item: (item.start_ms, item.end_ms, item.id))
-        ]
+        ], visual_source=project.visual_source
     )
 
 
