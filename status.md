@@ -1,5 +1,103 @@
 # Project Status
 
+## 2026-09-10 (submit/push OCR-2 CPU streaming và prompt phiên sau)
+
+- User yêu cầu submit/push snapshot OCR hiện có. Code/domain/CPU supervisor/
+  harness vision/test chốt ở **`ed1c3a6`** (23 file); 5 file tài liệu đi theo,
+  lấy HEAD cuối và tracking/origin từ Git khi tiếp tục.
+- [Prompt phiên sau](docs/dev/ocr-next-session-prompt.md) đã viết lại thành một
+  bản hiện tại: tiếp tục OCR-3 typed source identity/document/review/CLI/adapters,
+  giữ lỗi chữ/timing và phạm vi source/isolated runtime, chưa GUI/frozen.
+- Giữ bằng chứng 213 scoped pass, 1680 full offscreen pass/5 skip/51 deselected,
+  Ruff/Pyright/sync; native teardown failure cũ vẫn mở. Không chạy lại test/model/
+  API/build để chốt Git. Media/raw/runtime/key/log không vào commit.
+- Vision còn crop 5 timeout, cap 13 đã dùng hết, chưa được duyệt request thứ 14.
+  Yêu cầu submit/push này không mở lại budget API hoặc cho commit code phiên sau.
+
+## 2026-09-10 (tiếp tục: CPU OCR streaming thật, 12 ảnh vision có response)
+
+- Nối `CpuOcrRuntime` + bridge source riêng vào pipeline; giữ model CPU suốt job,
+  kiểm profile/model/dictionary/hash và protocol, không network/download. ROI truyền
+  qua một file RGB theo request có SHA, output UTF-8, stderr drain/bounded response,
+  timeout/cancel/kill tree/join/cleanup; thiếu runtime không tự cài.
+- Sửa hai lỗi đo được: stdout cp1252 của Python `-I` làm lỗi chữ Trung (ghi binary
+  UTF-8); edge filter khuếch đại nhiễu mức sáng 0–1 tạo nhóm chữ giả (lọc noise floor
+  trước edge). Decoder close nay idempotent, không kéo dài clock khi gọi lần hai.
+- Fixture có engine thật **3/3 text hai dòng exact**, 6 candidate → 2 fresh/4 cache,
+  2 detector/4 recognizer. Hủy sau detector-start đóng worker/join/job sạch trong
+  **0,377 s**, giữ attempt nhưng không suy detector hoàn tất.
+- Sample 60 s chạy source streaming: **1.800 frame / 13 track / 39 candidate**,
+  **38 fresh/1 cache**, 38 detector/38 recognizer/0 classifier, 0 network. **10/13
+  exact, 12/13 đủ chữ-số**; cả ba ảnh câu 4 vẫn bỏ “tháng”, tiếp tục review.
+  Không thay 13 crop ban đầu của phép so sánh local/vision.
+- Load **0,542 s**, inference **9,812 s**, tracking **17,464 s**, decode/pipeline
+  **28,968 s** có backpressure/overlap, worker process **30,797 s**, harness **30,889 s**
+  trừ host startup/import. Host/worker peak working set **36.552.704/510.349.312 byte**;
+  FFmpeg sampled RSS **98.553.856 byte**. Queue peak 4/bound 8, 3 ảnh/track, cleanup pass.
+- Hai biến thể có giới hạn của crop 4: crop sát detector box đọc lại “tháng” nhưng
+  còn lỗi dấu chấm; phóng 2× lại mất chữ. Giữ riêng, chưa bật preprocessing tự động.
+  Tổng cả debug/lỗi/hủy/biến thể trong lượt tiếp tục: **84 request worker, 81 response,
+  84 detector wrapper/59 recognizer wrapper/0 classifier**; một detector bị hủy chưa
+  rõ completion. Ledger giữ phạm vi riêng với 32+32 của OCR-1.
+- Vision tiếp tục đúng crop 6–13: **8 request/8 response mới**, cùng gateway/model/key,
+  không retry crop từng gửi. Tổng **13 attempts/12 response/1 timeout**, đủ cap cũ.
+  Trên 12 ảnh chung: local **9/12 exact, 11/12 đủ chữ-số**; vision **8/12 exact,
+  12/12 đủ chữ-số**. ASCII/fullwidth/dấu ba chấm gây khác codepoint, không kết luận
+  thắng/thua theo exact. Tham chiếu chưa native-confirmed; có báo cáo tiếng Việt.
+- Usage xác nhận 12 response **38.698 token** (38.090 input/608 output), provider
+  báo **26.880 cached input token**, khác 0 cache hit của app. Timeout/toàn lượt/cost
+  null. Response median **22,351 s**, max **241,266 s**; không suy backend từ alias.
+- Đã hỏi quyền thêm đúng 1 request cho crop 5 để hoàn tất 13 ảnh; flag retry/cap 14
+  đã chuẩn bị và test, **chưa gọi khi chưa có trả lời**. Receipt timeout cũ giữ nguyên.
+- Full offline Qt offscreen **1.680 pass/5 skip/51 deselected**, 172,56 s, exit 0.
+  Sau chỉnh/test cuối **213 scoped pass (64 OCR +149 CLI)**, 20,12 s. Ruff/Pyright 0/0/
+  translations pass. Native full teardown crash cũ chưa giải quyết; chưa GUI/frozen.
+- [Biên bản](docs/dev/ocr-runtime-2026-09.md). Bridge mới chỉ chạy từ source với
+  Python OCR cũ; không giả packaged/frozen pass, không thay inventory 48 GB.
+  Bước tiếp OCR-3 typed source identity/document/review/CLI/adapters; tiếp tục giữ
+  lỗi chữ/timing review, chưa chọn engine mặc định. Không commit/push hoặc sửa master.
+
+## 2026-09-10 (OCR-2 domain/fixture; vision gateway dừng ở timeout)
+
+- Tiếp tục đúng ASR-S3 tại **1457808**, sạch/khớp origin lúc bắt đầu. Có thay đổi
+  chưa commit trong phiên này; không commit/push hoặc sửa checkout master.
+- Thêm `core/ocr/`: ROI letterbox/SAR/rotation, snapshot video có SHA và cancel,
+  FFmpeg streaming RGB + PTS thật, queue 4/bound 8 payload, tối đa 3 ảnh/track,
+  tracking đổi một chữ/hai dòng/fade/lặp sau blank, consensus chọn chuỗi engine
+  thật, cache RAM theo source/profile/policy/crop và pipeline inject recognizer.
+  Không import dependency OCR/Qt vào host, chưa nối runtime nhận dạng/CLI/GUI.
+- Fixture lossless VFR/nonzero origin/offset/SAR/bốn rotation/no-audio và các
+  fault lifecycle pass. Sửa race lỗi reader bị EOF bỏ qua. Lượt đo riêng: **9
+  frame / 8 selected spans / 3 track**, queue peak 4, 2 ảnh/track, biên khớp PTS;
+  decode process **0,063 s**, tracking **0,024 s**, vòng chung **0,075 s** (overlap).
+  Host/FFmpeg peak working set **33.898.496 / 23.306.240 byte** trong mẫu ngắn này;
+  **0 detector/recognizer thật mới**, không suy thành tốc độ OCR hoặc video dài.
+- User chọn gateway `https://api.videocaptioner.cn/v1`, `gpt-5.6-terra`, chỉ định
+  nguồn key. `ocr_vision_pilot.py`: cùng 13 crop/prompt, tối đa 13 request,
+  1.000 completion token/request, timeout 300 s, retry 0, dừng lỗi đầu.
+  **5 attempts, 4 response, crop 5 timeout 300,009 s, 8 crop chưa gửi**.
+- Trên 4 crop chung: **local 3/4 exact và 3/4 đủ chữ; vision 3/4 exact và 4/4
+  đủ chữ**. Vision giữ chữ “tháng” ở crop 4 nhưng dùng sáu dấu chấm ASCII;
+  không coi khác encoding punctuation là sai nghĩa. Không chọn mặc định/thắng-thua.
+  Agent đã đối chiếu 13 ảnh, có diễn giải tiếng Việt, tham chiếu chưa native-confirmed.
+- Vision có **4.193 token được provider xác nhận cho 4 response** (3.896 input,
+  297 output); request timeout/toàn 5 attempts/cost = null. Vòng request **416,953 s**,
+  không phải toàn OS process wall. Receipt cũ giữ nguyên, script sửa tên metric
+  cho lượt sau. Prompt scratch CRLF khác hash plan LF: guard chặn trước API,
+  lượt thật dùng nguồn đúng SHA, nội dung không đổi.
+- Full offline **Qt offscreen: 1.663 passed / 5 skipped / 51 deselected**, exit 0;
+  4 skip TTS cần key/service, 1 QtMultimedia offscreen. **Lượt native trước đó tới
+  100% rồi exit 0xC0000005 lúc kết thúc; chưa xác định nguyên nhân, không gọi pass.**
+  Sau chỉnh cuối: **196 scoped pass (47 OCR + 149 CLI)**, 10,48 s. Ruff app/tests/script,
+  Pyright app 0/0, translations pass. Không dùng pass offline làm bằng chứng online.
+- Sample/mapping/reference/raw local và cả 13 crop khớp SHA cũ; không cài lại
+  model, đổi dependency, build EXE, nhận dạng/dịch/TTS/render lại dữ liệu của user.
+  Giữ raw/metrics/error cũ và mới trong một scratch `build/ocr-pilot-20260910/`.
+- [Biên bản và file thay đổi](docs/dev/ocr-streaming-2026-09.md). Còn mở: hoàn
+  tất so sánh vision, supervised CPU OCR streaming thật/cancel inference, hiệu
+  chuẩn tracking trên video riêng, cache disk; rồi OCR-3 document/identity/review/CLI/
+  editor và OCR-4 GUI/frozen. Không gọi OCR-2 hoặc OCR toàn sản phẩm hoàn tất.
+
 ## 2026-09-10 (submit/push snapshot pilot OCR và prompt phiên sau)
 
 - User yêu cầu submit/push phần OCR hiện có lên `origin/codex/asr-s3-native`.

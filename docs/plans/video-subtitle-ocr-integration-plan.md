@@ -1,5 +1,20 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Tiếp tục 2026-09-10:** [CPU worker đã nối và quét sample thật](../dev/ocr-runtime-2026-09.md):
+1.800 frame → 13 track, 38 fresh/1 cache hit, 10/13 exact và 12/13 đủ chữ-số,
+hủy inference/process/readers đã kiểm. Đã sửa Unicode pipe và codec noise tracking.
+Vision thêm 8 response, tổng 12/13 ảnh có kết quả trong 13 attempts; request crop 5
+bị timeout chưa retry. Chưa chốt engine/default hoặc hoàn tất chất lượng/timing
+độc lập/OCR-3/4. Các trạng thái “chưa nối CPU worker” bên dưới thuộc lượt trước.
+
+**Cập nhật tiếp 2026-09-10:** [OCR-2 domain/fixture và vision qua gateway](../dev/ocr-streaming-2026-09.md)
+đã có streaming PTS/ROI/buffer/tracking/consensus/cache RAM/lifecycle. Chưa nối
+recognizer CPU thật vào pipeline hoặc triển khai OCR-3/4. Vision `gpt-5.6-terra`
+qua gateway user chọn: 5 request, 4 response, crop 5 timeout, không retry; còn 8
+crop chưa gửi. Trên 4 crop chung, hai nhánh 3/4 exact; vision 4/4 đủ chữ, local 3/4.
+Không suy thắng/thua trên 13 crop hoặc chọn mặc định. Chi tiết gate/giới hạn nằm
+trong biên bản mới; các mô tả “chưa triển khai OCR-2” bên dưới là snapshot trước đó.
+
 **Cập nhật sau pilot 2026-09-10:** [OCR-1 local đã đo trên 13 crop](../dev/ocr-pilot-2026-09.md):
 13/13 có chữ, 10/13 exact và 12/13 đủ chữ theo tham chiếu agent; chưa đủ để xuất
 không review. Runtime CPU/package riêng đã kiểm, 6 fixture tổng hợp pass. Nhánh AI
