@@ -346,20 +346,24 @@ class MainWindow(FluentWindow):
         QApplication.quit()
 
     def _detach_info_bar_managers(self) -> None:
-        """Stop InfoBar managers from filtering this window's events.
-
-        qfluentwidgets installs its per-position InfoBarManager singletons as
-        event filters on the window the first time a bar is shown and never
-        removes them. At interpreter shutdown the managers die before the
-        window does, and every late event then logs "wrapped C/C++ object of
-        type BottomInfoBarManager has been deleted" through the excepthook.
-        """
+        """Detach existing notification filters before Qt tears down this tree."""
         try:
             from qfluentwidgets.components.widgets.info_bar import InfoBarManager
 
-            for position in InfoBarPosition:
-                if position in InfoBarManager.managers:
-                    self.removeEventFilter(InfoBarManager.make(position))
+            for manager_type in InfoBarManager.managers.values():
+                # make() calls the singleton's QObject initializer again. Teardown
+                # must use the existing instance and must not create unused ones.
+                manager = getattr(manager_type, "_instance", None)
+                if manager is None:
+                    continue
+                # Bars can belong to child pages; expired bars leave filters too.
+                for watched in list(manager.infoBars):
+                    try:
+                        if watched is self or self.isAncestorOf(watched):
+                            watched.removeEventFilter(manager)
+                    except RuntimeError:
+                        # A previously closed widget or manager may already be deleted.
+                        continue
         except Exception:
             pass
 

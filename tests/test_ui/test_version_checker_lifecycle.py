@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from PyQt5 import sip
-from PyQt5.QtCore import QEventLoop, QTimer
+from PyQt5.QtCore import QEvent, QEventLoop, QObject, QTimer
 from PyQt5.QtGui import QCloseEvent
 from PyQt5.QtWidgets import QApplication, QWidget
 
@@ -162,3 +162,64 @@ def test_queued_notifications_are_ignored_after_close(window, monkeypatch):
     monkeypatch.setattr("videocaptioner.ui.view.main_window.MessageBox", unexpected_dialog)
     window.onNewVersion("999.0.0", False, "synthetic update", "https://update.invalid")
     window.onAnnouncement("synthetic announcement")
+
+
+def test_close_detaches_info_bar_filters_from_descendants_only(window, monkeypatch):
+    from qfluentwidgets import InfoBarPosition
+    from qfluentwidgets.components.widgets.info_bar import InfoBarManager
+
+    page = QWidget(window)
+    panel = QWidget(page)
+    other_window = QWidget()
+    received = []
+    factory_calls = []
+
+    class Manager(QObject):
+        def eventFilter(self, watched, event):
+            if event.type() == QEvent.User:
+                received.append(watched)
+            return False
+
+    manager = Manager()
+    # Empty lists also occur after notification expiry; the filter remains installed.
+    manager.infoBars = {widget: [] for widget in (window, page, panel, other_window)}
+    manager_type = type("RegisteredManager", (), {"_instance": manager})
+    for widget in manager.infoBars:
+        widget.installEventFilter(manager)
+
+    def make(position):
+        factory_calls.append(position)
+        return manager
+
+    monkeypatch.setattr(InfoBarManager, "managers", {InfoBarPosition.TOP: manager_type})
+    monkeypatch.setattr(InfoBarManager, "make", make)
+    try:
+        QApplication.sendEvent(panel, QEvent(QEvent.User))
+        assert received == [panel]
+        received.clear()
+        window.closeEvent(QCloseEvent())
+        for widget in manager.infoBars:
+            QApplication.sendEvent(widget, QEvent(QEvent.User))
+        assert received == [other_window]
+        assert not factory_calls
+    finally:
+        for widget in manager.infoBars:
+            widget.removeEventFilter(manager)
+        other_window.deleteLater()
+
+
+def test_close_does_not_construct_unused_info_bar_managers(window, monkeypatch):
+    from qfluentwidgets import InfoBarPosition
+    from qfluentwidgets.components.widgets.info_bar import InfoBarManager
+
+    constructions = []
+
+    class UnusedManager:
+        _instance = None
+
+        def __init__(self):
+            constructions.append(True)
+
+    monkeypatch.setattr(InfoBarManager, "managers", {InfoBarPosition.TOP: UnusedManager})
+    window.closeEvent(QCloseEvent())
+    assert not constructions
