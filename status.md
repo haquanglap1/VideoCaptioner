@@ -1,5 +1,43 @@
 # Project Status
 
+## 2026-09-11 (Submit tài liệu chất lượng v6 và prompt tích hợp)
+
+- User yêu cầu commit/push snapshot tài liệu trên `codex/asr-s3-native`, gồm
+  biên bản v6, cập nhật plan/status và [prompt phiên sau](docs/dev/ocr-next-session-prompt.md).
+  **bdd8186** là baseline trước snapshot; lấy HEAD/tracking/remote thật từ Git.
+- Prompt giao bước tiếp cụ thể: tích hợp ứng viên **v6 medium**, profile đúng
+  version/model/dictionary từng stage, tương thích v5, giữ review/metadata/
+  lifecycle rồi kiểm source và binary riêng. Hybrid là phương án tốc độ đã đo.
+- Lượt submit chỉ rà soát diff/tài liệu; không rerun OCR/API/tests/build hoặc
+  hash payload49GB. Code/resource/runtime/artifact giữ nguyên; dữ liệu riêng,
+  weights và evidence ở scratch ngoài Git. Quyền submit không tăng cap API
+  hoặc cấp quyền commit/push thay đổi của phiên tiếp theo.
+
+## 2026-09-11 (OCR: chẩn đoán mất chữ, so v6 và cấu hình kết hợp)
+
+- Baseline `bdd8186`, đúng ASR-S3; user giao tiếp tục phần chất lượng/model.
+  [Biên bản và bước tiếp](docs/dev/ocr-quality-v6-2026-09.md). Không đổi code/
+  resource/profile mặc định/dependency/artifact; chưa commit/push.
+- V5 vẫn nhận ảnh tensor có đủ chữ nhưng bỏ chữ "tháng"; raw/score/bbox tái
+  hiện đúng. Sáu lượt nhận dạng chéo tensor cho thấy v6 đọc được từ chính
+  tensor v5; v5 nhạy với crop/hình học. Không tìm thấy tầng app xóa chữ.
+- V6 small và medium cùng **13/13 đủ chữ-số,11/13 exact** trên crop gốc.
+  Tám cue sau video đều đủ chữ ở ba cấu hình, nhưng small detector bỏ dấu
+  ba chấm đầu một cue. Thử có lý do v5 mobile det + v6 small rec giữ được.
+- Sau hai cue cuối chưa dùng chọn hybrid: medium **23/23 đủ chữ-số,19/23 exact**;
+  hybrid **23/23,18/23**. Mỗi cấu hình **6/6 fixture tổng hợp exact**. Tham chiếu
+  video agent đọc trước inference, chưa native-confirmed; dấu câu vẫn có sai khác.
+- Medium là ứng viên ưu tiên chất lượng; hybrid ưu tiên tốc độ. Cùng13crop,
+  loop medium **6,672s**, hybrid **1,880s**; chưa latency GUI/video hoặc calibration.
+  Chưa tích hợp/chọn mặc định từ một video; cần profile đúng version từng stage.
+- Dùng lại runtime và v6 small trong wheel; tải riêng hai weights medium
+  **138.749.438 byte**, khớp SHA catalog pin. Host không cài/nâng dependency.
+- Ledger mới **89det/96rec/0cls**, mọi begin/end khớp, worker exit0;
+  **0 vision/text LLM API**, cap14 giữ nguyên. **91 đường dẫn** theo dõi bảo toàn.
+  Evidence `ocr-quality-21/`; không rerun gate app/build/hash49GB.
+  Một lỗi in score cp1252 sau khi đã lưu đủ file được xử lý bằng đọc UTF-8,
+  không chạy inference/score lại. Gate mới chỉ isolated CPU/crop/receipt.
+
 ## 2026-09-11 (Submit snapshot LogsLayout và prompt phiên tiếp theo)
 
 - User yêu cầu commit/push thay đổi đã nghiệm thu trên `codex/asr-s3-native`,

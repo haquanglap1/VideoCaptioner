@@ -1,4 +1,90 @@
-# Prompt phiên tiếp theo — OCR RequestLogs đã sửa footer/layout, EXE LogsLayout
+# Prompt phiên tiếp theo — tích hợp OCR v6 medium từ kết quả đã đo
+
+Tiếp tục tại **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**, không làm
+ở checkout master. User ngày **2026-09-11** yêu cầu commit/push snapshot tài
+liệu chất lượng v6 và chuẩn bị prompt này. **bdd8186 là baseline trước snapshot
+tài liệu**, không phải HEAD cần checkout về; lấy HEAD/tracking/remote thật từ
+Git. Các ghi chú "chưa commit/push" ở các biên bản mô tả thời điểm đo trước submit.
+
+## Mục tiêu phiên tiếp theo
+
+Tiếp tục plan bằng **tích hợp PP-OCRv6 medium làm cấu hình ứng viên ưu tiên
+chất lượng**, từ weights/runtime đã có và bằng chứng bên dưới. Không quay lại
+hỏi chọn model từ đầu hoặc ưu tiên gate log/day rollover thay phần OCR này.
+Hybrid v5-det/v6-small-rec là phương án tốc độ đã đo, không bắt buộc mở thêm
+tùy chọn UI trong cùng lượt. Giữ review chưa hiệu chuẩn và raw nguyên trạng;
+không gọi 23/23 đủ chữ là 23/23 exact hoặc bằng chứng auto-accept.
+
+1. Đọc đầy đủ `AGENTS.md`, `README.md`, mục mới nhất của `status.md`,
+   `docs/dev/ocr-quality-v6-2026-09.md` và plan tổng thể. Chạy Git status, kiểm
+   HEAD/tracking/origin thật; giữ thay đổi ngoài task. Không reset/merge master.
+2. Kiểm contract trong `videocaptioner/core/ocr/profile.py`, `installation.py`,
+   `runtime.py` và `videocaptioner/resources/ocr/ocr_stream_worker.py`. Worker
+   hiện ghim enum v5: cần profile mô tả rõ version/model/language/dictionary
+   từng stage, validation và tương thích profile v5 cũ; không chỉ đổi tên weights.
+3. Dùng hai weights medium ở **`build/ocr-pilot-20260910/ocr-quality-21/weights/`**
+   và SHA/dictionary đã ghi trong biên bản. Dùng lại Python3.12.13/RapidOCR3.9.2/
+   ONNX Runtime CPU1.29.0 đã cài; không tải lại hoặc nâng dependency. Giữ runtime,
+   profile/model/manifest cũ; nếu cần layout/runtime ứng viên, tạo đích mới.
+4. Nối ứng viên qua pipeline/GUI hiện có, giữ source identity, stable IDs,
+   review/export guards và lifecycle. Không sửa document cũ để thay raw bằng
+   v6, không tự thêm/bớt/chuẩn hóa dấu câu. Test gần phần profile/runtime và
+   metadata/lifecycle trước; chạy gate app phù hợp với code đã đổi. Tận dụng
+   fixture/crop đã lưu, không lặp pilot/ma trận23crop chỉ để có số pass mới.
+5. Sau thay đổi runtime/resource, dùng **một `VideoCaptioner.spec`**, tên/output/
+   workpath mới và bộ models/media đã verify để đóng gói, giữ owner/inventory/
+   SHA guards. Payload mới phải phản ánh đúng OCR mới; không sửa manifest hoặc
+   weights của gói cũ, không stage lại ASR/TTS từ cài đặt gốc. Nghiệm thu riêng
+   artifact, startup và workflow GUI v6; source pass không thay frozen pass.
+   Nếu gate chưa chạy/không khả dụng, báo đúng phạm vi, không tự nâng bằng chứng.
+
+Lệnh host dùng `../VideoCaptioner/.venv/Scripts/python.exe`, Pyright dùng
+`--venvpath ../VideoCaptioner`. Không tạo Python3.13/global install/uv sync.
+Giữ settings/CLI config/OPENAI/LOG_PATH cô lập trong test, worker QThread phải
+`wait()` trước khi object ra khỏi scope. Không commit/push code phiên tiếp theo
+từ quyền submit snapshot này. **0 lượt API mới được cấp: cap vision14 đã hết**;
+không đọc Api.txt, gọi vision/dịch/TTS hoặc tải thêm model khác để né giới hạn.
+
+## Cập nhật mới nhất: chất lượng/model sau snapshot bdd8186
+
+User giao tiếp tục chẩn đoán mất chữ và so model sau trao đổi về chữ trắng/nền
+đen. Đọc thêm **`docs/dev/ocr-quality-v6-2026-09.md`** trước các snapshot dưới.
+Không đổi code ứng dụng/resource/profile mặc định/dependency/artifact ở lượt
+đo; chỉ thêm validation/tài liệu. Snapshot này được user yêu cầu submit cùng
+prompt phiên sau; lấy trạng thái commit/push thực tế từ Git.
+
+- V5 bỏ chữ "tháng" dù tensor đầu vào còn đầy đủ. Raw/score/bbox tái hiện đúng;
+  ma trận đổi riêng recognizer cho thấy v6 đọc được ngay tensor v5. Crop ảnh
+  thay đổi có thể làm v5 đọc được; không kết luận UI/ROI/CTC xóa chữ hoặc sửa painter.
+- Trọn bộ v6 small/medium: 13crop gốc cùng **11/13 exact,13/13 đủ chữ-số**.
+  Tám cue sau đều đủ chữ ở v5/small/medium; small detector bỏ dấu ba chấm đầu
+  một cue. Giữ lỗi; không chọn chỉ từ kết quả câu4.
+- Kết hợp v5 mobile detector + v6 small recognizer được thử theo giả thuyết
+  cụ thể từ ma trận và lỗi detector. Sau hai cue cuối chưa dùng chọn hybrid:
+  **medium23/23 đủ chữ-số,19/23 exact; hybrid23/23,18/23**. Cả hai **6/6 fixture
+  tổng hợp exact**. Tám cue sau đã dùng chọn hybrid, không gọi holdout đó độc lập
+  cho hybrid. Tham chiếu video do agent đọc trước inference, chưa native-confirmed.
+- Ưu tiên **medium cho chất lượng**, hybrid cho tốc độ; loop13crop **6,672s /
+  1,880s**, chưa latency video/GUI. Dấu câu còn sai khác, không sửa raw/auto-accept.
+- Runtime cũ giữ nguyên; v6 small có trong wheel; chỉ tải hai weights medium
+  **138.749.438 byte** vào scratch mới, đúng SHA pin. Không cài dependency/GPU.
+- Evidence **`build/ocr-pilot-20260910/ocr-quality-21/`**: plan/decision, weights,
+  trace/tensor/top5, raw/score,10crop mới đúng PTS/RGB SHA của scan cũ, reference
+  trước inference, ledger/summary/report/preservation. Tổng **89det/96rec/0cls**,
+  mọi begin/end khớp và worker exit0; **0 vision/text LLM API**, cap14 giữ nguyên.
+  **91 đường dẫn** bảo toàn. Một lỗi stdout cp1252 khi in sau khi đã lưu ba score
+  file được xử lý bằng đọc UTF-8; không rerun OCR/score. Giữ evidence lỗi.
+- Gate mới chỉ isolated CPU/crop/receipt; **chưa source app pipeline, packaged
+  Python, frozen CLI/native GUI v6/hybrid**. Không build hoặc rerun gates đã qua.
+  App/EXE vẫn v5/LogsLayout; các hạn chế bên dưới giữ nguyên trừ bằng chứng chất
+  lượng mới. Câu4 đã có candidate v6 đủ chữ, chưa được thay vào document cũ/app.
+
+Bước tiếp đúng plan là profile/runtime mô tả đúng version/model/dictionary từng
+stage, tích hợp ứng viên rồi kiểm pipeline/lifecycle và binary riêng. Worker
+app hiện ghim metadata v5: không chỉ đổi tên/đè weights để gọi là v6. Không tự
+tăng cap vision, cài model khác hoặc lặp phép đo đã có để lấy số pass mới.
+
+## Snapshot bàn giao LogsLayout trước phép đo chất lượng mới
 
 Tiếp tục **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**, không làm
 ở checkout master. User ngày **2026-09-11** đã yêu cầu commit/push snapshot

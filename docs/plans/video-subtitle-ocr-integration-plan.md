@@ -1,5 +1,15 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Chất lượng/model, 2026-09-11:** [chẩn đoán v5 và so sánh v6](../dev/ocr-quality-v6-2026-09.md)
+đã xác nhận tensor vẫn có chữ bị v5 bỏ sót. V6 medium và v5-det/v6-small-rec
+giữ đủ chữ/số **23/23** crop của video, exact lần lượt **19/23,18/23**, còn
+sai khác dấu câu; mỗi cấu hình qua6/6fixture tổng hợp. Trọn bộ v6 small có
+detector bỏ dấu ba chấm đầu một cue. Medium là ứng viên chất lượng, kết hợp
+là ứng viên tốc độ; **chưa tích hợp/đổi mặc định hoặc hiệu chuẩn auto-accept**.
+Bước tiếp là profile/runtime đúng model từng stage và nghiệm thu ứng dụng/
+binary sau khi tích hợp, không chạy thêm sweep hoặc chuyển ưu tiên sang log UI.
+Các số OCR-1 v5 bên dưới là baseline lịch sử; cap vision14 không tăng.
+
 **Tiếp tục 2026-09-11:** [bản Việt tham khảo trong review](../dev/ocr-review-assistance-2026-09.md)
 thêm action dịch text của một candidate và đối chiếu các bản đọc bằng tiếng Việt.
 Bản dịch chưa nhìn ảnh, chỉ giữ trong phiên, không thay raw/duyệt và chưa sửa
