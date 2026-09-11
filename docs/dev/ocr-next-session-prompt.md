@@ -1,9 +1,13 @@
-# Prompt phiên tiếp theo — OCR ReviewVI, nhật ký và vision đủ 13 crop
+# Prompt phiên tiếp theo — OCR RequestLogs đã sửa footer/layout, EXE LogsLayout
 
 Tiếp tục **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**, không làm
-ở checkout master. Đây là bàn giao snapshot ngày **2026-09-11** mà user yêu
-cầu submit/push. Quyền đó chỉ áp dụng snapshot vừa chốt, không tự cấp quyền
-commit/push code mới, gọi thêm API, tải model hoặc đổi dependency.
+ở checkout master. User ngày **2026-09-11** đã yêu cầu commit/push snapshot
+gồm nghiệm thu GUI RequestLogs bằng mock, sửa footer/layout, bản **LogsLayout**
+và prompt bàn giao này. **501c6ff là mốc trước snapshot LogsLayout**, không
+phải HEAD cần checkout về; lấy commit mới nhất và tracking/remote thực tế từ Git.
+Các câu "chưa commit/push" trong biên bản cũ là trạng thái tại lúc nghiệm thu.
+Quyền submit chỉ áp dụng snapshot đã chốt, không tự cấp quyền commit/push
+code tiếp theo, gọi thêm API, tải model hoặc đổi dependency.
 
 ## Bắt đầu
 
@@ -15,7 +19,7 @@ commit/push code mới, gọi thêm API, tải model hoặc đổi dependency.
    Đọc thêm tài liệu GUI/document/runtime khi cần contract hoặc lịch sử;
    không dùng snapshot cũ thay trạng thái hiện tại.
 2. Chạy `git status --short --branch`, lấy HEAD thật, đối chiếu tracking/origin.
-   **a528d85 là mốc trước snapshot này**, không phải HEAD cần checkout về.
+   **501c6ff và a528d85 đều là mốc cũ**, không phải HEAD cần checkout về.
    Các câu "chưa commit/push" trong biên bản cũ mô tả thời điểm nghiệm thu.
 3. Giữ mọi thay đổi ngoài task và mọi artifact/evidence/settings/media/key/log.
    Không reset, merge master, tag/release hoặc chạy lại gate chỉ để có số pass mới.
@@ -84,6 +88,25 @@ commit/push code mới, gọi thêm API, tải model hoặc đổi dependency.
 
 ## Artifact mới nhất — dùng lại
 
+**`dist/VideoCaptioner-OCR4-LogsLayout-20260911/`**, nguyên gói onedir mới nhất.
+
+- EXE **31.401.901 byte**, local **2026-09-11 13:23:45**, SHA-256
+  `3cafde0d06ad335ee44c3606d95d7f730e7a310246f8746f46ca789dcff95276`.
+- Build exit0, **340,906s**, **6 warning/0 error**; cùng inventory models/media
+  cũ, **127.610 file/48.739.395.432 byte** ở đích mới khớp SHA. 7 module khớp
+  PYZ, JSON Việt ở hai vị trí/resource/media đúng nguồn; OCR nặng ngoài host.
+- Source LLM/CLI **191 pass/0 skip/0 deselected**,6,60s; Ruff/Pyright0/0,
+  JSON Việt sync. TS Anh/Trung đã cập nhật; thiếu lrelease, QM giữ nguyên.
+  Full offline bên dưới là gate trước sửa layout, không rerun cho thay đổi UI hẹp.
+- Native GUI1050×800: sáu nhãn detail đủ khi sidebar mở/thu gọn; usage null
+  vẫn **—**, footer đúng0→4→1→0→4. Journal đầu tiên tự hiện không refresh.
+  Chỉ replay bốn entry metadata mock cũ; **0 HTTP request mới**, không server.
+- GUI sống219,125s gồm thao tác, exit0/0child/0traceback;44 đường dẫn và journal
+  replay giữ hash. PATH Windows/System32, settings mới không key. Chưa day
+  rollover hoặc workflow OCR/review Việt/media/online mới của bản này.
+
+### Artifact RequestLogs trước đó — giữ nguyên evidence
+
 **`dist/VideoCaptioner-OCR4-RequestLogs-20260911/`**, nguyên gói onedir.
 
 - EXE **31.401.858 byte**, local **2026-09-11 11:59:16**, SHA-256
@@ -93,14 +116,15 @@ commit/push code mới, gọi thêm API, tải model hoặc đổi dependency.
 - **127.610 model/runtime file /48.739.395.432 byte** khớp SHA tại đích mới,
   đủ bộ đã có Faster-Whisper, Qwen/aligner, Community-1, OmniVoice, VieNeu và OCR.
   FFmpeg/FFprobe ở `_internal/resource/bin`; 7 module khớp PYZ, OCR nặng không vào host.
-- GUI frozen mới **chỉ startup/close**: PATH Windows/System32, settings mới
+- Gate build ban đầu **startup/close**: PATH Windows/System32, settings mới
   không key, hiện3,109s/sống30s/exit0/0child/không traceback.
 - CLI chính EXE dịch SRT tổng hợp qua loopback mock: exit0, **một request/một
   journal**, output đúng. Usage12/6/18 **giả lập**, không cộng vào usage gateway.
   Harness đầu đoán hai request nên exit1; kiểm receipt đúng contract pass,
   giữ lỗi và không chạy request lần nữa.
-- **Chưa** gateway thật từ EXE, click log viewer hoặc dịch tham khảo qua GUI
-  frozen. API thật và native source log viewer là evidence riêng. Journal API
+- **Bổ sung sau snapshot501c6ff:** đã click review Việt và log viewer trong
+  GUI frozen bằng mock; chi tiết dưới đây. **Chưa gateway thật từ EXE**.
+  API thật và native source log viewer là evidence riêng. Journal API
   riêng không được chép vào gói; AppData artifact chỉ có smoke/mock data.
 
 Build sau vẫn một `VideoCaptioner.spec`. Chỉ khi code/resource thực sự đổi:
@@ -112,13 +136,24 @@ lại48GB từ cài đặt gốc, tải model hoặc cài dependency để đón
 
 ## Gate và việc tiếp theo
 
-- Source mới nhất: scoped **343 pass/14 deselected**, full offline FFmpeg+
+- Source trước sửa layout: scoped **343 pass/14 deselected**, full offline FFmpeg+
   Qt offscreen **1.774 pass/5 skip/51 deselected**, **158,31s**, exit0.
   Ruff/Pyright0/0, translations in sync. Skip4 TTS cần key/service,1 QtMultimedia
   cần backend native. Không coi offline/skip là nghiệm thu online.
 - Native source đã thấy review Việt với response tổng hợp và log viewer đọc
   journal API thật (8933 token/status/input/output/cached/unknown reasoning).
   Lỗi stdout/font wrapper của harness không phải fix painter của app.
+- GUI **RequestLogs hiện có** đã qua review Việt/journal bằng loopback:
+  **4 request/4 journal**,2success/1HTTP500/1cancelled,0retry tự động;
+  một retry tường minh tạo case hủy. Cache cùng candidate không gửi lại,
+  cue khác hoặc trùng chữ nhưng khác ID không hiện draft cũ. Xem một crop cũ,
+  không scan OCR; save review khớp bytes pending, export/handoff vẫn khóa.
+  Log viewer mở success/detail usage-null/lọc model/refresh; log CLI cũ giữ.
+  Usage mock120/30/150,cached80/reasoning10; các lượt khác thiếu hiện **—**.
+  Không dùng sentinel Việt làm tham chiếu chất lượng hoặc cộng usage vào gateway.
+  EXE exit0/0child/0job,server đóng; settings khôi phục nguyên bytes,
+  **43file +1path chưa tồn tại** bảo toàn, journal cũ giữ prefix.
+  Watcher50ms chỉ thấy loopback; không phải trace mọi kết nối/file/DLL.
 - Gói **Media-20260911 tại C** đã qua scan/runtime-check/crop/save-reopen GUI:
   fixture1,9s/13frame/3cue/6candidates,3/3 câu hai dòng exact,2request/2response,
   job2,391s/inference0,210s; progress100 nhưng6issue còn review/export khóa.
@@ -128,11 +163,13 @@ lại48GB từ cài đặt gốc, tải model hoặc cài dependency để đón
   save-reopen/cancel/close-while-busy trên fixture. Không gọi đó là gate mới
   của GUI RequestLogs. Không rerun OCR/API/build/hash49GB chỉ để tăng số pass.
 
-Ưu tiên tiếp là nghiệm thu **nhật ký và review Việt trong GUI của chính EXE
-RequestLogs hiện có** khi user giao tiếp flow này; dùng fixture/mock/dữ liệu cũ,
-không tự gọi gateway. Công cụ GUI phải thật sự khả dụng, chỉ đúng process test
-và đóng sạch; không dùng Computer Use cho file/code. Source render/CLI mock
-không thay click GUI frozen.
+Gate **nhật ký và review Việt bằng mock trong GUI RequestLogs** đã có evidence;
+không chạy lại chỉ để tăng số pass. **Hai lỗi footer/detail đã sửa** trong
+source và bản **LogsLayout** mới: footer có template dịch; metadata dùng
+FlowLayout xuống dòng, đủ nhãn ở sidebar mở/thu gọn1050×800. First-file đã
+kiểm GUI frozen qua journal tổng hợp; **day rollover vẫn chưa kiểm**.
+Không gọi mọi layout trong app đã hoàn thiện hoặc lấy số mock làm chất lượng.
+Không dùng source render/CLI mock thay GUI hoặc lấy mock chứng minh chất lượng.
 
 Chất lượng còn vướng **câu4**: cả ba ảnh local bỏ chữ "tháng".
 `local-bounded-crop04-07/` có crop sát detector box giữ chữ nhưng khác dấu,
@@ -151,9 +188,18 @@ Không sửa painter/kéo splitter theo suy đoán hoặc quy mọi lỗi cũ v�
 
 Scratch duy nhất **`build/ocr-pilot-20260910/`**, ngoài Git:
 
+- `ocr4-request-logs-layout-20/`: sửa footer/detail, source layout/scoped gates,
+  build/verification và native GUI LogsLayout, journal replay/preservation.
+  Một lỗi `set_value` của Computer Use do UIA cache0x80070057; refresh/focus rồi
+  type_text hoạt động. Không sửa app để né lỗi tool, không gửi lại HTTP mock.
 - `ocr4-request-logs-18/`: gates, live journal, preservation, tests/build,
   native source PNG/receipt, frozen smoke/mock. `vision-terra-03/` và
   `vision-combined-04/` giữ raw/usage/comparison/report mới;23file cũ giữ hash.
+- `ocr4-request-logs-gui-19/`: GUI RequestLogs fixture/mock, accessibility/
+  JPEG,4request/journal,review output,harness,validation/preservation receipts.
+  Một lỗi harness raw.text trong JSON dừng trước EXE/settings/server; dùng
+  typed loader rồi chạy đúng một phiên GUI. Lỗi index modal của Computer Use
+  xử lý bằng refresh/screenshot, không sửa app. Giữ cả lỗi/capture chuyển cảnh.
 - `ocr4-review-assistance-17/`: gate/EXE ReviewVI; `ocr4-exe-flow-10/` tới
   `ocr4-relocated-gui-16/`: GUI/capture/media/copy/ổC; `ocr3-contract-08/`,
   `ocr4-gui-09/`: contract/fixture/đóng gói đầu. Giữ cả các run lỗi/hủy.

@@ -1,5 +1,67 @@
 # Project Status
 
+## 2026-09-11 (Submit snapshot LogsLayout và prompt phiên tiếp theo)
+
+- User yêu cầu commit/push thay đổi đã nghiệm thu trên `codex/asr-s3-native`,
+  gồm sửa footer/detail, nguồn dịch và ba tài liệu có evidence GUI RequestLogs/
+  LogsLayout. **501c6ff** là mốc trước snapshot; lấy HEAD/tracking thực tế từ Git.
+- [Prompt phiên sau](docs/dev/ocr-next-session-prompt.md) trỏ đúng artifact
+  LogsLayout và phân biệt gate mới/cũ, first-file/day rollover, giới hạn QM,
+  chất lượng OCR và cap vision14 đã hết. Quyền submit không mở thêm phạm vi API.
+- Chỉ rà soát diff và cập nhật bàn giao; không rerun tests/build/OCR/API hoặc
+  hash model payload. Gate source/binary giữ kết quả lượt trước bên dưới;
+  artifact, settings, media, key, log và scratch không đưa vào Git.
+
+## 2026-09-11 (RequestLogs: sửa footer và nhãn chi tiết, EXE LogsLayout)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD/tracking/remote **501c6ff**; giữ ba tài
+  liệu GUI đang sửa, chưa commit/push. [Biên bản và phạm vi gate](docs/dev/ocr-request-logs-2026-09.md).
+- Footer dùng template dịch có tham số ở cả khởi tạo/cập nhật; Việt hiện
+  **Tổng N dòng**, đếm đúng kết quả lọc qua phân trang. Detail dùng FlowLayout
+  để time/stage/model/duration/input/output xuống dòng, giữ đủ nhãn khi
+  sidebar mở rộng ở1050×800. Không đổi logger/OCR/usage hoặc painter.
+- Scoped LLM/CLI offline **191 pass/0 skip/0 deselected**, **6,60 s**;
+  Ruff/Pyright **0/0**, JSON Việt sync, TS Anh/Trung hợp lệ. Thiếu lrelease
+  nên QM giữ nguyên; chưa nghiệm thu locale đó. Không rerun full suite.
+- Build **VideoCaptioner-OCR4-LogsLayout-20260911**, exit **0**, **340,906 s**,
+  **6 warning/0 error**. EXE **31.401.901 byte**, local **13:23:45**, SHA-256
+  `3cafde0d06ad335ee44c3606d95d7f730e7a310246f8746f46ca789dcff95276`.
+  Tái sử dụng bộ đã verify; payload mới **127.610 file/48.739.395.432 byte**
+  khớp SHA, 7 module khớp PYZ; media/OCR resource/JSON Việt đúng nguồn.
+- Native GUI chính EXE mới: chi tiết đủ nhãn ở sidebar mở/thu gọn, usage null
+  vẫn **—**. Footer **0→4→1→0→4** đúng; journal đầu tiên tự hiện không refresh.
+  Chỉ replay bốn entry mock cũ, **0 request HTTP mới**, không chép journal thật.
+- GUI sống **219,125 s** gồm thao tác; exit **0/0 child/0 traceback**, 44 đường
+  dẫn và journal replay giữ hash. Evidence `ocr4-request-logs-layout-20/`.
+  Lỗi `set_value` UIA cache của tool đã xử lý bằng refresh/focus/type_text.
+- **0 CPU OCR/0 vision/0 text LLM** mới; cap14 giữ nguyên. Day rollover GUI,
+  inference/media/online của gói mới, chất lượng OCR và native teardown cũ
+  chưa nghiệm thu. Sửa 1 view, 5 tệp translation và 3 tài liệu; giữ gói D/C cũ.
+
+## 2026-09-11 (GUI EXE RequestLogs: nhật ký và review Việt bằng mock)
+
+- Tiếp tục đúng `codex/asr-s3-native`, HEAD/tracking **501c6ff**. Dùng nguyên
+  EXE RequestLogs đã có; không đổi code/resource/spec, build hoặc rerun gate cũ.
+  [Biên bản nghiệm thu GUI](docs/dev/ocr-request-logs-2026-09.md).
+- Native GUI mở review/crop fixture cũ, bấm dịch Việt qua loopback: **4 request /
+  4 journal**, 2 success/1 HTTP 500/1 hủy. Một retry tường minh để kiểm hủy,
+  **0 retry tự động**; bấm lại candidate đã có dùng cache, đổi cue không lẫn draft.
+  Review lưu từ GUI khớp bytes pending đầu vào; export/handoff vẫn khóa.
+- Nhật ký GUI mở/chi tiết/lọc/refresh pass; usage mock **120+30=150** với
+  cached80/reasoning10 nằm trong input/output. Usage ba lượt còn lại thiếu,
+  UI hiện **—**; không cộng số giả vào gateway. Journal không chữ/ảnh/key/error body.
+- **Hai lỗi UI còn mở:** footer đếm dòng còn tiếng Trung; nhãn chi tiết bị
+  cắt khi thanh bên mở rộng ở 1050×800, đầy đủ khi thu gọn. Không sửa painter.
+  Mock chỉ nghiệm thu luồng, không chứng minh chất lượng dịch Việt thật.
+- EXE **exit0/0child/0job OCR**, mock server đóng, stderr không traceback.
+  Settings khôi phục bytes; **44 đường dẫn** theo dõi bảo toàn, log cũ giữ
+  prefix. Evidence mới `ocr4-request-logs-gui-19/`, ngoài Git; GUI 457,125s
+  gồm thao tác, watcher chỉ quan sát loopback trong các mẫu 50ms.
+- **0 CPU OCR/0 vision/0 text LLM gateway** mới; cap vision14 giữ nguyên.
+  Không rerun source suite/lint/typecheck/translations/build/hash payload.
+  Native teardown cũ và first-file/day rollover GUI frozen chưa nghiệm thu.
+  Chỉ sửa 3 tài liệu bàn giao; chưa commit/push sau snapshot.
+
 ## 2026-09-11 (Snapshot submit và prompt bàn giao OCR)
 
 - User yêu cầu submit/push snapshot hiện có trên `codex/asr-s3-native`, gồm

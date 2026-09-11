@@ -2586,6 +2586,7 @@
 </context>
 <context>
     <name>LLMLogsInterface</name>
+    <message><source>共 {0} 条</source><translation>共 {0} 条</translation></message>
     <message><source>Ngày:</source><translation>日期：</translation></message>
     <message><source>Cũ</source><translation>旧日志</translation></message>
     <message><source>Xóa nhật ký ngày</source><translation>清除当日日志</translation></message>

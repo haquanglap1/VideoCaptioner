@@ -16,6 +16,7 @@ from qfluentwidgets import (
     BodyLabel,
     CaptionLabel,
     ComboBox,
+    FlowLayout,
     InfoBar,
     InfoBarPosition,
     MessageBox,
@@ -53,7 +54,7 @@ def outcome_text(entry: dict) -> str:
 
 
 class LogDetailDialog(MessageBoxBase):
-    """日志详情对话框"""
+    """Display one request and its provider metadata."""
 
     def __init__(self, log_entry: Dict[str, Any], parent=None):
         super().__init__(parent)
@@ -64,7 +65,6 @@ class LogDetailDialog(MessageBoxBase):
         self.titleLabel = SubtitleLabel(self.tr("请求详情"))
         self.viewLayout.addWidget(self.titleLabel)
 
-        # 提取信息
         time_str = self.log_entry.get("time", "")
         model = self.log_entry.get("request", {}).get("model", "未知")
         duration = self.log_entry.get("duration_ms", 0) / 1000
@@ -72,12 +72,12 @@ class LogDetailDialog(MessageBoxBase):
 
         usage = log_usage(self.log_entry)
 
-        # 顶部信息栏
-        info_row = QHBoxLayout()
-        info_row.setSpacing(8)
+        # Wrap complete metadata pills when the navigation sidebar narrows the dialog.
+        info_row = FlowLayout()
+        info_row.setHorizontalSpacing(8)
+        info_row.setVerticalSpacing(6)
         info_row.setContentsMargins(0, 0, 0, 8)
 
-        # 用 PillPushButton 展示各项信息（禁用点击）
         items = [
             time_str,
             stage,
@@ -94,7 +94,6 @@ class LogDetailDialog(MessageBoxBase):
                 pill.setFixedHeight(24)
                 info_row.addWidget(pill)
 
-        info_row.addStretch()
         self.viewLayout.addLayout(info_row)
         self.usage_label = BodyLabel(
             f"{outcome_text(self.log_entry)} | Tổng: {token_text(usage.total)} | "
@@ -121,7 +120,7 @@ class LogDetailDialog(MessageBoxBase):
         self.response_edit.setPlainText(response_text)
         self.viewLayout.addWidget(self.response_edit)
 
-        # 底部按钮：替换默认按钮
+        # Replace the default actions with close and copy controls.
         self.yesButton.setText(self.tr("关闭"))
         self.cancelButton.hide()  # type: ignore
 
@@ -265,12 +264,11 @@ class LLMLogsInterface(QWidget):
         self.main_layout.addWidget(self.table)
 
     def _setup_footer(self):
-        """底部：记录数 + 提示 + 分页"""
+        """Show the filtered record count, detail hint and pagination."""
         footer = QHBoxLayout()
         footer.setSpacing(15)
 
-        # 记录数
-        self.status_label = BodyLabel(self.tr("共 0 条"))
+        self.status_label = BodyLabel(self.tr("共 {0} 条").format(0))
         footer.addWidget(self.status_label)
 
         # 双击提示
@@ -485,11 +483,11 @@ class LLMLogsInterface(QWidget):
             self.table.setItem(row, 6, item)
             self.table.setItem(row, 7, self._create_item(outcome_text(log)))
 
-        # 更新分页和统计
+        # Count all filtered records, including those on other pages.
         self.page_label.setText(f"{self.current_page + 1} / {total_pages}")
         self.prev_btn.setEnabled(self.current_page > 0)
         self.next_btn.setEnabled(self.current_page < total_pages - 1)
-        self.status_label.setText(f"共 {len(self.filtered_logs)} 条")
+        self.status_label.setText(self.tr("共 {0} 条").format(len(self.filtered_logs)))
 
     def _create_item(self, text: str, align_left: bool = False) -> QTableWidgetItem:
         """创建表格项"""

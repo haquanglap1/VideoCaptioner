@@ -1,5 +1,154 @@
 # OCR vision crop 5 và phục hồi nhật ký yêu cầu — 2026-09-11
 
+## Bổ sung mới nhất: sửa footer và layout chi tiết, EXE LogsLayout
+
+Tiếp tục đúng checkout ASR-S3, nhánh `codex/asr-s3-native`; HEAD, tracking và
+remote trực tiếp đều **501c6ff**. Giữ ba tài liệu chưa commit của lượt GUI
+trước. Phiên này chỉ sửa hai lỗi trình bày đã quan sát, không thay logger,
+OCR/review policy, runtime, model, dependency hoặc spec; chưa commit/push.
+
+Footer cũ ghép `共 <số> 条` trực tiếp khi cập nhật nên bỏ qua translator,
+dù nhãn khởi tạo có bản Việt. Nay cả khởi tạo và cập nhật dùng cùng chuỗi
+`tr("共 {0} 条").format(count)`, dịch thành **Tổng {0} dòng**. Số đếm vẫn là
+toàn bộ kết quả lọc, không chỉ số dòng trên trang đang xem.
+
+Hàng metadata chi tiết cũ dùng `QHBoxLayout`, co các pill khi sidebar mở
+rộng. Đổi sang `FlowLayout` có khoảng cách ngang/dọc rõ ràng: giữ chiều rộng
+theo nội dung và xuống dòng. Time/stage/model/duration/input/output hiện đủ
+trong trường hợp đã báo lỗi; giữ nguyên dữ liệu, JSON và semantics usage.
+Không sửa painter/crop hoặc coi mọi vấn đề layout của ứng dụng đã giải quyết.
+
+### Gate source
+
+- LLM/CLI offline: **191 pass, 0 skip, 0 deselected**, **6,60 s**, exit **0**.
+  Ruff app/tests pass; Pyright app **0 error/0 warning**. Không nâng Pyright
+  theo banner phiên bản mới. Không chạy lại full suite cho thay đổi UI hẹp này;
+  full offline **1.774 pass/5 skip/51 deselected** bên dưới là gate trước sửa layout.
+- Native source với journal tổng hợp, Segoe UI 9: footer đúng ở 0/51 dòng,
+  sang trang 2 vẫn đếm 51; lọc còn 1/0 dòng đúng. Các pill không bị co ngang,
+  không ra ngoài dialog hoặc chồng lên Request; kiểm chiều rộng parent
+  728/1000/728 và xem PNG. Đây là source render, tách biệt gate GUI frozen.
+- JSON Việt development/fallback đã sync, `sync_translations.py --check`
+  pass. TS Anh/Trung giản thể/Trung phồn thể có placeholder đúng, XML hợp lệ.
+  Máy thiếu `lrelease`; QM giữ nguyên, chưa nghiệm thu bản dịch mới của ba
+  locale đó trong binary. Không sửa QM bằng tay hoặc cài thêm toolchain.
+
+### Artifact mới và gate GUI frozen
+
+`dist/VideoCaptioner-OCR4-LogsLayout-20260911/`, nguyên gói onedir. Một spec,
+tên/workpath mới; dùng lại models/media đã verify của gói Media, không stage
+lại từ cài đặt gốc. Giữ nguyên RequestLogs/ReviewVI/Media và các gói tại C.
+
+| Gate mới | Kết quả |
+| --- | --- |
+| PyInstaller | Exit **0**, **340,906 s**, **6 warning/0 error** (js/emscripten, curl_cffi, yt_dlp_ejs, tzdata, sip, AppKit); warning dependency giữ trong log |
+| EXE | **31.401.901 byte**, local **2026-09-11 13:23:45** |
+| SHA-256 EXE | `3cafde0d06ad335ee44c3606d95d7f730e7a310246f8746f46ca789dcff95276` |
+| Payload tại đích mới | **127.610 file /48.739.395.432 byte** khớp từng size/SHA; đủ inventory cũ, không hash lại toàn bộ gói C |
+| Source/resource parity | **7 module** khớp PYZ; JSON Việt ở hai vị trí, media và resource OCR khớp; OCR nặng không vào host. Verification **121,500 s** |
+| Native GUI 1050×800 | Mở đúng EXE mới, PATH chỉ Windows/System32; sidebar mở/thu gọn đều hiện đủ sáu pill, kể cả usage null |
+| Footer và journal đầu tiên | **Tổng 0 dòng → Tổng 4 dòng** tự động khi tạo journal đầu tiên, chưa bấm refresh; lọc ID → **1**, không khớp → **0**, bỏ lọc → **4** |
+| Đóng/bảo toàn | GUI sống **219,125 s** gồm thao tác, exit **0**, **0 child** từng được thấy/còn sót, stderr không traceback; **44 đường dẫn** theo dõi giữ nguyên, journal replay cũng giữ hash |
+
+Gate GUI đọc lại **bốn entry metadata mock** của phiên `gui-19`, không khởi
+động server hoặc gửi lại request. Usage 120/30/150, cached80/reasoning10 vẫn
+là số giả lập cũ; usage thiếu vẫn hiện **—**. Không cộng bốn dòng được chép
+vào request/token mới. AppData gói mới chỉ có settings smoke không credential
+và dữ liệu test; journal/settings/artifact cũ giữ nguyên. Trước gate mới,
+40 đường dẫn dữ liệu/artifact còn khớp receipt bảo toàn của phiên trước.
+
+Watcher 50 ms không thấy kết nối mạng; không phải trace mọi kết nối/file/DLL.
+Computer Use `set_value` gặp lỗi thuộc tính UIA cache **0x80070057**; refresh
+thấy ô tìm kiếm còn trống và có focus, dùng `type_text` hoàn tất. Giữ state lỗi
+và capture chuyển cảnh; không đổi app hoặc chạy lại build/request vì lỗi tool.
+
+Evidence: `build/ocr-pilot-20260910/ocr4-request-logs-layout-20/`, ngoài Git,
+gồm log/receipt source, build/verification, native GUI PNG/accessibility,
+journal replay, process/preservation và `validation.json`. Tổng phiên
+**0 CPU OCR/0 vision/0 text LLM/0 HTTP mock request**; cap vision14 không đổi.
+
+**Đã kiểm first-file trên GUI frozen bằng journal tổng hợp; day rollover vẫn
+chưa kiểm.** Không có gate inference mới ở isolated runtime/packaged Python,
+frozen CLI, live API, video/FFmpeg workflow hoặc review Việt thật. GUI RequestLogs
+bấm dịch và OCR GUI gói C giữ evidence cũ riêng. Không chốt chất lượng OCR,
+câu 4, vision GUI, máy sạch hoặc native full-suite teardown từ sửa layout này.
+
+File sửa trong phiên: `videocaptioner/ui/view/llm_logs_interface.py`;
+`resource/translations/VideoCaptioner_vi_VN.json`, `VideoCaptioner_en_US.ts`,
+`VideoCaptioner_zh_CN.ts`, `VideoCaptioner_zh_HK.ts`;
+`videocaptioner/resources/translations/VideoCaptioner_vi_VN.json`; biên bản
+này, `status.md`, `docs/dev/ocr-next-session-prompt.md`. Giữ nội dung bàn giao
+GUI trước đó; không sửa test, spec, dependency hoặc artifact cũ.
+
+## Bổ sung: nghiệm thu GUI RequestLogs bằng mock sau snapshot 501c6ff
+
+HEAD và tracking cùng **501c6ff**, working tree sạch đầu phiên. User giao tiếp
+nghiệm thu nhật ký và review Việt trên **chính EXE RequestLogs hiện có**, dùng
+fixture/mock, giữ dữ liệu/artifact và không chạy lại gate đã qua. Không sửa
+source/resource/spec, build lại, chạy OCR scan hoặc gọi gateway. Cap vision
+**14 đã dùng hết**, không đọc key hoặc thêm attempt.
+
+Computer Use native điều khiển đúng process test của
+`dist/VideoCaptioner-OCR4-RequestLogs-20260911/`. Dùng review 3 cue/6 candidate
+và video tổng hợp cũ; mở review và xem một crop bằng FFprobe/FFmpeg trong gói,
+không chạy recognizer. Settings smoke của riêng gói được sao lưu, tạm dùng
+endpoint `127.0.0.1` và credential giả, rồi khôi phục nguyên bytes khi đóng.
+Không thay settings dev hoặc mang key thật vào artifact.
+
+| Gate GUI mới | Kết quả |
+| --- | --- |
+| Review trước dịch | 3 cue/6 issue, export/handoff khóa; mở review và crop không gửi LLM |
+| Bấm dịch | Response giả hiện cạnh raw/crop, có nhãn **AI chưa nhìn ảnh** và chỉ giữ trong phiên |
+| Cache và candidate | Bấm lại cùng candidate vẫn **1 request**; chọn cue khác hoặc cue trùng chữ nhưng khác ID ẩn bản dịch cũ |
+| Thiếu usage | Response success không có usage được báo thiếu số liệu; journal/detail hiện **—**, không 0 |
+| HTTP lỗi | Một HTTP 500, báo lỗi đã lọc, không tự retry; review và guard giữ nguyên |
+| Hủy | Bấm thử lại tường minh để tạo request mock đang chờ, rồi **Hủy tác vụ**; GUI trở lại idle, journal ghi `cancelled` |
+| Lưu review | Output mới **khớp byte-for-byte** với pending đầu vào; raw/candidate/IDs/timing/issue không đổi, bản Việt không persist |
+| Nhật ký | Menu mở được; **4 dòng mới/4 request**, gồm 2 success, 1 HTTP error, 1 cancelled; dòng mock CLI cũ vẫn có |
+| Chi tiết và lọc | Mở success có usage và success usage null không lỗi; lọc model và Làm mới giữ đúng 4 dòng |
+| Đóng và bảo toàn | EXE **exit 0**, 0 child/job OCR sót, server mock đóng, stderr không traceback; settings khôi phục, log cũ giữ nguyên prefix |
+
+Usage **giả lập** của response đầu: **120 input +30 output =150 total**,
+cached input **80**, reasoning **10** đã nằm trong input/output. Ba lượt còn
+lại không có usage; không tính tổng 4 lượt thành 150 và không cộng vào ledger
+gateway. Mock kiểm mỗi request chỉ chứa prompt chung và đúng nguyên text của
+candidate đã chọn, tối đa 1.000 completion token; không ảnh/path/câu lân cận.
+Journal chỉ có metadata/usage, không credential giả, raw OCR, bản Việt hoặc
+error body marker. Có đúng một action retry tường minh để kiểm hủy, **0 retry
+tự động**. Nội dung Việt là sentinel tổng hợp để phân biệt response trên UI,
+không phải bản dịch tham chiếu và **không nghiệm thu chất lượng dịch**.
+
+Hai lỗi trình bày được quan sát và **chưa sửa**: footer số dòng còn tiếng
+Trung (`共 4 条`); khi cửa sổ 1050×800 mở rộng thanh bên, các nhãn thời gian/
+stage/model/input/output trong chi tiết bị cắt. Thu gọn thanh bên thì nhãn
+token đầy đủ; JSON response vẫn giữ đủ số ở cả hai trạng thái. Gate chức năng
+pass trong phạm vi mock; không gọi UI đã hoàn thiện. Không sửa painter hoặc
+quy lỗi capture lịch sử về cùng nguyên nhân.
+
+Evidence ngoài Git: `build/ocr-pilot-20260910/ocr4-request-logs-gui-19/`, gồm
+harness, mock request, journal mới, accessibility/JPEG, review output và
+`validation.json`. **44 đường dẫn** bảo toàn được theo dõi; các file đang có
+giữ SHA, đường dẫn settings chưa có vẫn chưa có. Một journal cũ được giữ
+nguyên prefix, chỉ app append 4 entry mới. GUI sống **457,125 s**, gồm thời
+gian thao tác; không phải latency dịch. Watcher 50 ms chỉ thấy kết nối EXE
+với loopback, không phải trace toàn bộ network hoặc mọi file/DLL.
+
+Harness ban đầu dùng nhầm `raw.text` trong JSON và dừng trước đổi settings/
+mở EXE/server; chuyển sang loader document typed rồi chạy GUI đúng một lần.
+Computer Use một lần lỗi index modal không có trong cached state; refresh và
+tọa độ screenshot modal hoạt động. File dialog trả tên focus accessibility
+khác ô tên file có selection trên ảnh; dùng focus quan sát được. Những lỗi
+harness/tool này không phải lỗi app và không được xóa khỏi lịch sử evidence.
+
+Gate mới: GUI frozen và kiểm receipt/document/privacy/preservation **pass**.
+Không chạy lại source tests/Ruff/Pyright/translations/build/hash 49 GB;
+không inference ở isolated runtime/packaged Python, frozen CLI hoặc live API
+mới. Chưa kiểm first-file/day rollover bằng GUI frozen, dịch Việt thật, lỗi
+câu 4, vision GUI, máy sạch hoặc native full-suite teardown cũ. Chỉ cập nhật
+biên bản này, `status.md` và prompt bàn giao; chưa commit/push.
+
+## Snapshot trước: vision thật và sửa logger
+
 Tiếp tục ASR-S3 `codex/asr-s3-native`, HEAD **a528d85**, giữ toàn bộ thay đổi
 ReviewVI/media/UI trước đó. User yêu cầu test AI đọc ảnh bằng gateway/key đã
 dùng cho Terra và báo mất chức năng nhật ký. Khi được hỏi model cho lượt mới,

@@ -2603,6 +2603,7 @@ Note: When using small LLM models, it is recommended to keep the script within 1
 </context>
 <context>
     <name>LLMLogsInterface</name>
+    <message><source>共 {0} 条</source><translation>Total {0} records</translation></message>
     <message><source>Ngày:</source><translation>Date:</translation></message>
     <message><source>Cũ</source><translation>Legacy</translation></message>
     <message><source>Xóa nhật ký ngày</source><translation>Clear daily log</translation></message>
