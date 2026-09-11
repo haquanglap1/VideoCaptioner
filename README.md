@@ -120,6 +120,22 @@ quyết review thì không xuất subtitle success. Không tự sửa/điền ch
 vision. Xem [GUI, đóng gói và giới hạn](docs/dev/ocr-gui-2026-09.md),
 [contract và lệnh OCR-3](docs/dev/ocr-document-2026-09.md).
 
+Ứng viên ưu tiên chất lượng **PP-OCRv6 medium** dùng cùng CPU runtime đã ghim.
+Nếu có `models/ocr-v6-medium/` (portable) hoặc `runtime/ocr-v6-medium/`
+(source/pip), app ưu tiên bộ này; vẫn nhận bộ v5 cũ qua ô chọn runtime.
+**Kiểm tra model đã cài** hiển thị profile thực tế. Hai profile giữ version,
+model, language và dictionary theo từng stage; kết quả v6 vẫn cần review,
+không thay raw của document v5 đã lưu. [Tích hợp và nghiệm thu v6](docs/dev/ocr-v6-integration-2026-09.md).
+
+Mã nguồn có **cache bản đọc OCR** giữa các lần quét cùng nguồn/cấu hình,
+mặc định 64 MiB dữ liệu chữ (chưa gồm metadata). Trong cửa sổ OCR chọn hạn mức
+**0–512 MiB**, `0` tắt disk cache; **Dung lượng cache / Xóa cache OCR** chỉ
+quản lý các bản đọc tạm. CLI dùng `ocr --cache-mib N`, `ocr-cache status` và
+`ocr-cache clear`. Quét lại vẫn decode video, nhưng dùng lại crop đã đọc khi
+khớp SHA; cache không giữ ảnh/video, quyết định duyệt hoặc sửa raw.
+[Contract và gate cache](docs/dev/ocr-cache-2026-09.md). Bản EXE OCR6-Medium-20260911
+đã giữ chưa được cập nhật tính năng cache này.
+
 Trong review có nút **Dịch bản đọc đang chọn sang Việt**: chỉ khi bấm mới gửi
 chữ của một candidate tới LLM đang cấu hình. Bản Việt nằm cạnh chữ OCR, chỉ giữ
 trong phiên và không tự duyệt/sửa chữ; AI chưa nhìn ảnh nên bản dịch không xác

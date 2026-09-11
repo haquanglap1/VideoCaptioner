@@ -465,6 +465,8 @@ def build_parser() -> argparse.ArgumentParser:
     ocr.add_argument("--ocr-bridge", help="Explicit worker override; otherwise use the bundled bridge")
     ocr.add_argument("--profile-sha256", help="Expected profile SHA-256; otherwise use the bundled recipe")
     ocr.add_argument("--max-requests", type=int, default=1000)
+    ocr.add_argument("--cache-mib", type=int, default=64,
+                     help="Raw OCR cache quota in MiB (0 disables disk caching; default 64, max 512)")
     ocr.add_argument("--timeout", type=float, default=30)
     ocr.add_argument("--ffmpeg", default="ffmpeg")
     ocr.add_argument("--ffprobe", default="ffprobe")
@@ -484,6 +486,10 @@ def build_parser() -> argparse.ArgumentParser:
     ocr_review.add_argument("-o", "--output")
     _add_common_options(ocr_review)
     ocr_review.set_defaults(func=_run_ocr_review)
+    ocr_cache = subparsers.add_parser("ocr-cache", help="Inspect or clear cached raw OCR reads")
+    ocr_cache.add_argument("action", choices=["status", "clear"])
+    _add_common_options(ocr_cache)
+    ocr_cache.set_defaults(func=_run_ocr_cache)
     review = subparsers.add_parser("asr-review", help="Validate/resume saved ASR review locally, without uploading")
     review.add_argument("input", help="ASR review JSON")
     review.add_argument("--set-timing", action="append", metavar="TOKEN_ID:START_MS:END_MS")
@@ -663,6 +669,12 @@ def _run_ocr_review(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.ocr import review
 
     return review(args, {})
+
+
+def _run_ocr_cache(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import cache
+
+    return cache(args, {})
 
 
 def _run_asr_review(args: argparse.Namespace) -> int:

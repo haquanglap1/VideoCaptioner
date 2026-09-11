@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (
 
 from videocaptioner.core.editor.commands import CommandStack
 from videocaptioner.core.ocr.assistance import OcrVietnameseDraft, comparison_note
+from videocaptioner.core.ocr.cache import DEFAULT_CACHE_MIB, MAX_CACHE_MIB, manage_cache
 from videocaptioner.core.ocr.codec import atomic_json, atomic_text
 from videocaptioner.core.ocr.document import OcrDocument
 from videocaptioner.core.ocr.geometry import Roi
@@ -111,6 +112,18 @@ class OcrDialog(QDialog):
             row.addWidget(QLabel(label))
             row.addWidget(spin)
         self._button(row, "Dùng ROI số", self.apply_roi)
+        controls.addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Cache chữ OCR (MiB; 0 = tắt)"))
+        self.cache_mib = QSpinBox()
+        self.cache_mib.setRange(0, MAX_CACHE_MIB)
+        self.cache_mib.setValue(DEFAULT_CACHE_MIB)
+        self.cache_mib.setToolTip("Hạn mức dữ liệu bản đọc dùng chung giữa các lần quét, chưa gồm metadata. "
+                                 "Cache không giữ ảnh/video hoặc quyết định duyệt.")
+        row.addWidget(self.cache_mib)
+        self._button(row, "Dung lượng cache", self.show_cache)
+        self._button(row, "Xóa cache OCR", lambda: self.show_cache(clear=True))
+        row.addStretch(1)
         controls.addLayout(row)
         layout.addWidget(self.controls)
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -265,7 +278,20 @@ class OcrDialog(QDialog):
         root = Path(self.runtime.text()) if self.runtime.text().strip() else None
         self.status.setText("Đang kiểm tra file/model đã cài; không nạp engine…")
         self._start(OcrWorker(lambda check: inspect_installation(root, check)),
-                    lambda _: self.status.setText("Model/profile khớp SHA. Engine chỉ nạp khi bạn bấm đọc phụ đề."))
+                    lambda installation: self.status.setText(
+                        f"{installation.profile.id}: model/profile khớp SHA. Chưa hiệu chuẩn; cần review. "
+                        "Engine chỉ nạp khi bạn bấm đọc phụ đề."))
+
+    def show_cache(self, *, clear=False):
+        def show(info):
+            if clear:
+                self.status.setText(f"Đã xóa {info.entries} bản đọc trong cache OCR. "
+                                    "Review đã lưu và model được giữ nguyên.")
+            else:
+                self.status.setText(f"Cache OCR: {info.entries} bản đọc, "
+                                    f"{info.payload_bytes / (1024 * 1024):.2f} MiB dữ liệu; "
+                                    f"{info.database_bytes / (1024 * 1024):.2f} MiB gồm metadata.")
+        self._start(OcrWorker(lambda check: manage_cache(clear=clear, check=check)), show)
 
     def load_preview(self):
         if not self.source.text():
@@ -300,7 +326,7 @@ class OcrDialog(QDialog):
         try:
             task = TaskFactory.create_ocr_task(self.source.text(), self.canvas.roi,
                 Selection(self.start_ms.value(), self.end_ms.value()), self.runtime.text(),
-                expected_source_sha256=self.source_preview.source_sha256)
+                expected_source_sha256=self.source_preview.source_sha256, cache_mib=self.cache_mib.value())
             self._start(OcrThread(task), self.accept_document)
         except ValueError:
             self.status.setText("Đoạn video không hợp lệ; đầu phải nhỏ hơn cuối.")

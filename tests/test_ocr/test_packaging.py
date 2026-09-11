@@ -33,7 +33,7 @@ def test_append_ocr_preserves_existing_inventory_and_sources(tmp_path):
         append_ocr_payload(target, incoming)
 
 
-@pytest.mark.parametrize("fault", ["no-owner", "changed-hash", "escape", "collision"])
+@pytest.mark.parametrize("fault", ["no-owner", "changed-hash", "escape", "collision", "unlisted"])
 def test_append_ocr_rejects_invalid_payload_before_inventory_change(tmp_path, fault):
     target, incoming = tmp_path / "destination", tmp_path / "ocr-source"
     collection(target, "qwen", "qwen/model.bin", b"existing")
@@ -46,8 +46,21 @@ def test_append_ocr_rejects_invalid_payload_before_inventory_change(tmp_path, fa
     elif fault == "escape":
         ocr["files"]["ocr/../secret"] = next(iter(ocr["files"].values()))
         (incoming / "portable-models.json").write_text(json.dumps(ocr))
+    elif fault == "unlisted":
+        (incoming / "ocr/extra.bin").write_bytes(b"not in inventory")
     else:
         (target / "ocr").mkdir()
     with pytest.raises(ValueError):
         append_ocr_payload(target, incoming)
     assert (target / "portable-models.json").read_bytes() == before
+
+
+def test_append_candidate_keeps_existing_v5_component(tmp_path):
+    target, incoming = tmp_path / "destination", tmp_path / "candidate"
+    old = collection(target, "ocr", "ocr/profile.json", b"legacy recipe")
+    new = collection(incoming, "ocr-v6-medium", "ocr-v6-medium/profile.json", b"candidate recipe")
+    append_ocr_payload(target, incoming, component="ocr-v6-medium")
+    merged = json.loads((target / "portable-models.json").read_text())
+    assert merged["files"] == old["files"] | new["files"]
+    assert merged["components"] == ["ocr", "ocr-v6-medium"]
+    assert (target / "ocr/profile.json").read_bytes() == b"legacy recipe"

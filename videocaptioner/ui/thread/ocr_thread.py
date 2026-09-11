@@ -68,7 +68,7 @@ class OcrThread(OcrWorker):
         return run_cpu_ocr(Path(self.task.file_path), config, installation.root, installation.bridge,
                            max_requests=self.task.max_requests, check=check,
                            checkpoint=self.capture, progress=self.progress.emit,
-                           expected_source_sha256=self.task.expected_source_sha256)
+                           expected_source_sha256=self.task.expected_source_sha256, cache_mib=self.task.cache_mib)
 
     def capture(self, document: OcrDocument) -> None:
         self.partial_document = document

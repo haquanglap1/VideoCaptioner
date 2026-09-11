@@ -8,11 +8,12 @@ from pathlib import Path
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
+from videocaptioner.core.ocr.cache import cache_limit_bytes, manage_cache
 from videocaptioner.core.ocr.codec import atomic_json, atomic_text
 from videocaptioner.core.ocr.document import OcrConfig, OcrDocument
 from videocaptioner.core.ocr.geometry import Roi
 from videocaptioner.core.ocr.identity import VisualSourceIdentity, verify_visual_file
-from videocaptioner.core.ocr.installation import default_runtime, resources
+from videocaptioner.core.ocr.installation import default_runtime, inspect_installation, resources
 from videocaptioner.core.ocr.models import OcrError, Selection
 from videocaptioner.core.ocr.profile import OcrProfileSnapshot
 from videocaptioner.core.ocr.runtime import OcrRuntimeMissing
@@ -67,6 +68,7 @@ def run(args: Namespace, config: dict) -> int:
     bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / "ocr_stream_worker.py"
     try:
         _validate_suffixes(args)
+        cache_limit_bytes(args.cache_mib)
         _paths([source, bridge], [args.review, args.output, args.report], root)
         roi_values = [float(v) for v in args.roi.split(",")]
         if len(roi_values) != 4:
@@ -74,7 +76,7 @@ def run(args: Namespace, config: dict) -> int:
         if not bridge.is_file() or not (root / "profile.json").is_file():
             output.error("Installed OCR runtime/profile and explicit streaming bridge are required.")
             return EXIT.DEPENDENCY_MISSING
-        expected = args.profile_sha256 or hashlib.sha256((resources() / "profile.json").read_bytes()).hexdigest()
+        expected = args.profile_sha256 or inspect_installation(root).profile_sha256
         settings = OcrConfig(Roi(*roi_values), Selection(args.start_ms, args.end_ms), expected,
                              hashlib.sha256(bridge.read_bytes()).hexdigest(), args.language,
                              profile_snapshot=OcrProfileSnapshot.from_bytes((root / "profile.json").read_bytes(),
@@ -85,7 +87,8 @@ def run(args: Namespace, config: dict) -> int:
     try:
         document = run_cpu_ocr(source, settings, root, bridge, max_requests=args.max_requests,
                                timeout=args.timeout, ffmpeg=args.ffmpeg, ffprobe=args.ffprobe,
-                               checkpoint=lambda doc: doc.save(args.review))
+                               checkpoint=lambda doc: doc.save(args.review), cache_mib=args.cache_mib,
+                               progress=lambda _percent, message: output.info(message))
         if args.report:
             atomic_json(Path(args.report), {"schema": "ocr-report-v1", "document_id": document.id,
                                            "complete": document.complete, "metrics": document.to_dict()["metrics"],
@@ -97,6 +100,20 @@ def run(args: Namespace, config: dict) -> int:
     except (OSError, ValueError, RuntimeError):
         output.error("OCR processing failed; any saved partial review remains incomplete. No model was installed.")
         return EXIT.RUNTIME_ERROR
+
+
+def cache(args: Namespace, config: dict) -> int:
+    try:
+        info = manage_cache(clear=args.action == "clear")
+    except OcrError as exc:
+        output.error(str(exc))
+        return EXIT.RUNTIME_ERROR
+    if args.action == "clear":
+        output.info(f"Cleared {info.entries} cached OCR reads. Saved reviews and models are unchanged.")
+    else:
+        output.info(f"OCR cache: {info.entries} reads, {info.payload_bytes} payload bytes, "
+                    f"{info.database_bytes} database bytes (including SQLite metadata).")
+    return EXIT.SUCCESS
 
 
 def review(args: Namespace, config: dict) -> int:

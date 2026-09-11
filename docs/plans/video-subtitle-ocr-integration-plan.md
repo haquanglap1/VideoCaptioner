@@ -1,5 +1,24 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Tiếp tục sau dọn, 2026-09-11:** user tự dọn các bản nặng, giữ OCR6.
+[Cache disk/quota ở source](../dev/ocr-cache-2026-09.md) đã có raw JSON/checksum,
+LRU/quota 64 MiB mặc định, GUI/CLI status/clear và fallback khi disk lỗi.
+Full offline 1.817 pass/5 skip; schema/IDs/review guards giữ nguyên. **Chưa
+build cache vào EXE giữ lại**; resume decode, auto-accept/vision GUI và
+downloader vẫn mở. Các ghi chú dọn bị chặn bên dưới là lịch sử trước khi
+user tự dọn; không tiếp tục nhiệm vụ xóa model cũ.
+
+**Gate v6 cuối, 2026-09-11:** [biên bản bổ sung](../dev/ocr-final-gates-cleanup-2026-09.md)
+khép ba gate còn mở: full offline 1.794 pass/5 skip, hủy và đóng hộp thoại
+OCR đang bận trên EXE hiện có. Chỉ sửa helper test chờ Qt, không build/copy
+thêm models. Phần dọn 8 bản sao khoảng 389 GB bị tool policy chặn dù user
+đã xác nhận; chưa giải phóng phần này. Các mục mở rộng OCR giữ phạm vi riêng.
+
+**Tích hợp ứng viên 2026-09-11:** [v6 medium](../dev/ocr-v6-integration-2026-09.md)
+đã nối profile/runtime và luồng OCR, giữ metadata v5/stable IDs/review guards.
+Runtime ứng viên có thư mục riêng; các gate source, đóng gói và GUI được ghi
+riêng ở biên bản. Chưa hiệu chuẩn auto-accept; không thay kết quả chất lượng cũ.
+
 **Chất lượng/model, 2026-09-11:** [chẩn đoán v5 và so sánh v6](../dev/ocr-quality-v6-2026-09.md)
 đã xác nhận tensor vẫn có chữ bị v5 bỏ sót. V6 medium và v5-det/v6-small-rec
 giữ đủ chữ/số **23/23** crop của video, exact lần lượt **19/23,18/23**, còn

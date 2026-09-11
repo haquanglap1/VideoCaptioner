@@ -20,6 +20,13 @@ cache.disable_cache()
 
 
 @pytest.fixture(autouse=True)
+def isolated_ocr_cache(monkeypatch, tmp_path):
+    """OCR CLI/GUI tests must never populate or clear the developer's real cache."""
+    monkeypatch.setattr("videocaptioner.core.ocr.cache.cache_directory", lambda: tmp_path / "ocr-cache")
+    monkeypatch.setattr("videocaptioner.core.ocr.service.cache_directory", lambda: tmp_path / "ocr-cache")
+
+
+@pytest.fixture(autouse=True)
 def isolated_gpu_lease(monkeypatch, tmp_path):
     monkeypatch.setattr("videocaptioner.core.utils.gpu_lease.lease_path", lambda: tmp_path / "gpu.lock")
 

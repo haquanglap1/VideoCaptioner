@@ -20,6 +20,7 @@ from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_enviro
 from .consensus import validate_read
 from .decoder import stop_owned_process
 from .models import Check, EngineRead, OcrError, ReadLine, RoiFrame
+from .profile import OcrProfileSnapshot
 
 PROTOCOL = "ocr-stream-v1"
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -52,13 +53,14 @@ class CpuOcrRuntime:
 
     def __init__(self, root: Path, bridge: Path, jobs_root: Path, profile_sha256: str, *,
                  timeout: float = 30, startup_timeout: float = 60, max_requests: int = 1000,
-                 check: Check = lambda: None):
+                 check: Check = lambda: None, expected_profile: OcrProfileSnapshot | None = None):
         if (any(not math.isfinite(t) or t <= 0 for t in (timeout, startup_timeout))
                 or type(max_requests) is not int or not 1 <= max_requests <= 100000
                 or len(profile_sha256) != 64 or any(c not in "0123456789abcdef" for c in profile_sha256)):
             raise OcrError("Invalid CPU OCR runtime policy")
         self.root, self.bridge, self.jobs_root = root.resolve(), bridge.resolve(), jobs_root.resolve()
         self.profile_sha256 = profile_sha256
+        self.expected_profile = expected_profile
         self.timeout, self.startup_timeout, self.check = timeout, startup_timeout, check
         self.max_requests = max_requests
         self.process: subprocess.Popen | None = None
@@ -184,6 +186,10 @@ class CpuOcrRuntime:
                     or health.get("bridge_sha256") != self.bridge_sha256
                     or health.get("provider") != "CPUExecutionProvider"):
                 raise OcrError("CPU OCR worker identity mismatch")
+            if self.expected_profile is not None and (
+                    health.get("dictionary_sha256") != self.expected_profile.dictionary_sha256
+                    or health.get("stages") != self.expected_profile.stage_parameters):
+                raise OcrError("CPU OCR worker stage or dictionary mismatch")
             self._worker_metrics(health)
             self.state = "ready"
             return self

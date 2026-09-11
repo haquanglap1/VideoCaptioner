@@ -62,44 +62,50 @@ def make_standalone_python(target: Path, base: Path) -> None:
     copy_payload(base, target, skip_site_packages=True)
 
 
-def append_ocr_payload(target: Path, incoming: Path) -> None:
+def append_ocr_payload(target: Path, incoming: Path, *, component: str = "ocr") -> None:
     """Append a verified standalone OCR component to a newly copied owned collection.
 
     Existing ASR/TTS files and inventory entries are retained. Neither source
     collection is changed; the caller must supply a separate build destination.
     """
     target, incoming = target.resolve(), incoming.resolve()
+    if component not in ("ocr", "ocr-v6-medium"):
+        raise ValueError("Unknown OCR component")
     if target.is_relative_to(incoming) or incoming.is_relative_to(target):
         raise ValueError("OCR and destination model collections must be separate")
-    owner = target / ".portable-models-staging.json"
-    if not owner.is_file() or json.loads(owner.read_text(encoding="utf-8")).get("schema") != SCHEMA:
-        raise ValueError("Destination model collection has no valid staging owner")
+    for root in (target, incoming):
+        owner = root / ".portable-models-staging.json"
+        if not owner.is_file() or json.loads(owner.read_text(encoding="utf-8")).get("schema") != SCHEMA:
+            raise ValueError("Model collection has no valid staging owner")
     manifest_path = target / "portable-models.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     ocr = json.loads((incoming / "portable-models.json").read_text(encoding="utf-8"))
     if (manifest.get("schema") != SCHEMA or ocr.get("schema") != SCHEMA
-            or ocr.get("components") != ["ocr"] or "ocr" in manifest.get("components", [])
-            or (target / "ocr").exists()):
+            or ocr.get("components") != [component] or component in manifest.get("components", [])
+            or (target / component).exists()):
         raise ValueError("Expected one new OCR component and an existing ASR/TTS inventory")
     incoming_files = ocr["files"]
     if not incoming_files or len(incoming_files) != len({name.lower() for name in incoming_files}):
         raise ValueError("Invalid OCR inventory")
     for name, expected in incoming_files.items():
         path = Path(name)
-        if (not name.startswith("ocr/") or path.is_absolute() or ".." in path.parts
+        if (not name.startswith(component + "/") or path.is_absolute() or ".." in path.parts
                 or ":" in name or "\\" in name or name in manifest["files"]):
             raise ValueError("OCR inventory escapes its component")
         source = incoming / path
-        if (not source.resolve().is_relative_to(incoming / "ocr") or not source.is_file()
+        if (not source.resolve().is_relative_to(incoming / component) or not source.is_file()
                 or source.stat().st_size != expected["size"] or digest(source) != expected["sha256"]):
             raise ValueError("OCR payload differs from its verified inventory")
-    copy_payload(incoming / "ocr", target / "ocr")
+    actual = {p.relative_to(incoming).as_posix() for p in (incoming / component).rglob("*") if p.is_file()}
+    if actual != set(incoming_files):
+        raise ValueError("OCR component contains unlisted files")
+    copy_payload(incoming / component, target / component)
     for name, expected in incoming_files.items():
         destination = target / name
         if destination.stat().st_size != expected["size"] or digest(destination) != expected["sha256"]:
             raise ValueError("Copied OCR payload verification failed")
     manifest["files"].update(incoming_files)
-    manifest["components"].append("ocr")
+    manifest["components"].append(component)
     manifest["total_bytes"] = sum(item["size"] for item in manifest["files"].values())
     temporary = manifest_path.with_suffix(".json.ocr-tmp")
     with temporary.open("x", encoding="utf-8") as stream:

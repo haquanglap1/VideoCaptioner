@@ -6,6 +6,8 @@ installed into or substituted for the older measured pilot/portable runtime.
 
 from __future__ import annotations
 
+# pyright: reportMissingImports=false
+# Engine imports are verified in the pinned external runtime, never the Qt host.
 import argparse
 import hashlib
 import importlib.metadata
@@ -18,6 +20,53 @@ from pathlib import Path
 
 PROTOCOL = "ocr-stream-v1"
 MAX_FRAME_BYTES = 32 * 1024 * 1024
+
+# Values are pinned to RapidOCR 3.9.2. V6 recognition uses the literal "multi"
+# (it has no LangRec enum member in that release).
+LEGACY_STAGES = {"det": ("PP-OCRv5", "mobile", "ch"),
+                 "rec": ("PP-OCRv5", "server", "ch"),
+                 "cls": ("PP-OCRv4", "mobile", "ch")}
+STAGE_FIELDS = ("engine_type", "ocr_version", "model_type", "lang_type")
+
+
+def validate_stage(stage, values):
+    allowed = {LEGACY_STAGES[stage]}
+    if stage in ("det", "rec"):
+        allowed.add(("PP-OCRv6", "medium", "multi"))
+    if (set(values) != set(STAGE_FIELDS) or values["engine_type"] != "onnxruntime"
+            or (values["ocr_version"], values["model_type"], values["lang_type"]) not in allowed):
+        raise ValueError("Unsupported OCR stage recipe")
+
+
+def stage_parameters(profile):
+    """Resolve a legacy recipe or explicit stage contract without importing OCR."""
+    if profile["schema"] not in ("ocr-pilot-profile-v1", "ocr-profile-v2"):
+        raise ValueError("Unknown OCR profile schema")
+    if set(profile["models"]) != set(LEGACY_STAGES):
+        raise ValueError("Missing OCR stages")
+    result = {}
+    for stage, legacy in LEGACY_STAGES.items():
+        model = profile["models"][stage]
+        if profile["schema"] == "ocr-pilot-profile-v1":
+            if any(key in model for key in (*STAGE_FIELDS, "dictionary")):
+                raise ValueError("Explicit stages require OCR profile v2")
+            values = dict(zip(STAGE_FIELDS, ("onnxruntime", *legacy)))
+        else:
+            values = {key: model[key] for key in STAGE_FIELDS}
+            dictionary = model["dictionary"]
+            if stage == "rec":
+                if dictionary != {"source": "onnx_metadata.character", "sha256": profile["dictionary_sha256"],
+                                  "count": profile["dictionary_count"]}:
+                    raise ValueError("Recognizer dictionary contract mismatch")
+            elif dictionary is not None:
+                raise ValueError("Unexpected stage dictionary")
+        validate_stage(stage, values)
+        for key, value in values.items():
+            name = f"{stage.title()}.{key}"
+            if name in profile["params"]:
+                raise ValueError("Stage metadata must not be overridden by parameters")
+            result[name] = value
+    return result
 
 
 def digest(path):
@@ -49,6 +98,13 @@ class CpuEngine:
         if digest(root / "profile.json") != profile_sha256:
             raise ValueError("Profile mismatch")
         profile = json.loads((root / "profile.json").read_text(encoding="utf-8"))
+        stages = stage_parameters(profile)
+        if (profile["params"].get("Global.use_cls") is not False
+                or any(profile["params"].get("EngineConfig.onnxruntime.use_" + provider) is not False
+                       for provider in ("cuda", "dml", "cann", "coreml"))
+                or any(key.endswith(("model_path", "model_dir", "model_root_dir", "rec_keys_path"))
+                       for key in profile["params"])):
+            raise ValueError("Offline CPU profile policy mismatch")
         for name, version in profile["packages"].items():
             if importlib.metadata.version(name) != version:
                 raise ValueError("Package version mismatch")
@@ -66,14 +122,12 @@ class CpuEngine:
         self.psutil = psutil
         self.import_s = time.perf_counter() - imported
         params = dict(profile["params"])
-        for section, model_type, version, language in (
-            ("Det", ModelType.MOBILE, OCRVersion.PPOCRV5, LangDet.CH),
-            ("Rec", ModelType.SERVER, OCRVersion.PPOCRV5, LangRec.CH),
-            ("Cls", ModelType.MOBILE, OCRVersion.PPOCRV4, LangCls.CH),
-        ):
-            params.update({f"{section}.engine_type": EngineType.ONNXRUNTIME,
-                           f"{section}.model_type": model_type, f"{section}.ocr_version": version,
-                           f"{section}.lang_type": language,
+        for section, language_enum in (("Det", LangDet), ("Rec", LangRec), ("Cls", LangCls)):
+            language = stages[f"{section}.lang_type"]
+            params.update({f"{section}.engine_type": EngineType(stages[f"{section}.engine_type"]),
+                           f"{section}.model_type": ModelType(stages[f"{section}.model_type"]),
+                           f"{section}.ocr_version": OCRVersion(stages[f"{section}.ocr_version"]),
+                           f"{section}.lang_type": language if language == "multi" else language_enum(language),
                            f"{section}.model_path": str(root / "weights" / profile["models"][section.lower()]["file"])})
         loaded = time.perf_counter()
         self.engine = RapidOCR(params=params)
@@ -85,6 +139,7 @@ class CpuEngine:
             raise ValueError("Dictionary mismatch")
         self.profile_sha256 = profile_sha256
         self.dictionary_sha256 = profile["dictionary_sha256"]
+        self.stages = stages
         for name in self.counts:
             session = getattr(self.engine, "text_" + name).session.session
             if session.get_providers() != ["CPUExecutionProvider"]:
@@ -138,6 +193,7 @@ def main():
     engine = CpuEngine(args.root, args.profile_sha256)
     emit({"status": "ready", "protocol": PROTOCOL, "profile_sha256": args.profile_sha256,
           "bridge_sha256": digest(__file__), "dictionary_sha256": engine.dictionary_sha256,
+          "stages": engine.stages,
           "provider": "CPUExecutionProvider", "metrics": engine.metrics()})
     expected = 1
     while True:

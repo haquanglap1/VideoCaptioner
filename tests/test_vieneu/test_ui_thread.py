@@ -164,13 +164,62 @@ def _wait_for_vieneu(qapp, widget, timeout_s: float = 20.0) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         qapp.processEvents()
-        if not widget._vieneu_pending_action and not any(
-            thread.isRunning() for thread in widget._vieneu_threads
-        ):
-            qapp.processEvents()
+        # The finished slot retires ownership after result callbacks may start voices.
+        # isRunning() alone can become false while those callbacks are still queued.
+        if not widget._vieneu_pending_action and not widget._vieneu_threads:
+            for thread in widget.findChildren(VieNeuRuntimeThread):
+                assert thread.wait(1000)
             return
         time.sleep(0.05)
     raise AssertionError("VieNeu GUI threads did not settle in time")
+
+
+def test_wait_includes_voices_started_by_a_queued_start_result(qapp, tmp_path, fake_bridge, monkeypatch):
+    """Native thread completion is earlier than Qt delivery of its successor action."""
+    from threading import Event
+
+    service = make_service(tmp_path, fake_bridge)
+    release_voices = Event()
+    original_voices = service.voices
+
+    def held_voices():
+        assert release_voices.wait(10)
+        return original_voices()
+
+    monkeypatch.setattr(service, "voices", held_voices)
+    set_vieneu_service_for_tests(service)
+    widget = DubbingInterface()
+    try:
+        widget.provider_combo.setCurrentIndex(3)
+        widget.voice_combo.clear()
+        widget._start_vieneu_action("start")
+        starter = next(iter(widget._vieneu_threads))
+
+        class EventPump:
+            calls = 0
+
+            def processEvents(self):
+                self.calls += 1
+                if self.calls == 1:
+                    # Hold the queued result until the second event-pump call.
+                    assert starter.wait(7000)
+                    return
+                if self.calls >= 3:
+                    release_voices.set()
+                qapp.processEvents()
+
+        _wait_for_vieneu(EventPump(), widget)
+        assert widget.voice_combo.text() == "fake-voice"
+        assert not widget._vieneu_threads
+    finally:
+        release_voices.set()
+        for thread in widget.findChildren(VieNeuRuntimeThread):
+            assert thread.wait(10000)
+        qapp.processEvents()
+        widget.shutdown_vieneu_threads()
+        widget.close()
+        service.shutdown()
+        set_vieneu_service_for_tests(None)
 
 
 def test_gui_queues_voice_fetch_behind_running_action_and_autoloads_after_start(

@@ -37,8 +37,10 @@ def test_dialog_open_is_lazy_and_roi_drag_respects_letterbox(qapp, monkeypatch):
         raise AssertionError("opening must not start IO/model")
     monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.inspect_installation", forbidden)
     monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.preview_video", forbidden)
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.manage_cache", forbidden)
     dialog = OcrDialog()
     assert dialog.worker is None and not dialog.scan_button.isEnabled()
+    assert dialog.cache_mib.value() == 64
     assert not dialog.export_button.isEnabled()
     image = Image.new("RGB", (640, 120), "black")
     buffer = io.BytesIO()
@@ -159,3 +161,30 @@ def test_review_command_keeps_ids_and_raw_on_redo():
     assert session.document == doc
     stack.redo()
     assert session.document == reviewed and reviewed.cues[0].candidates == cue.candidates
+
+
+def test_cache_management_runs_in_worker_and_preserves_review(qapp, monkeypatch):
+    from PyQt5.QtCore import QThread
+
+    from videocaptioner.core.ocr.cache import CacheInfo
+
+    calls = []
+    def manage(*, clear, check):
+        check()
+        assert QThread.currentThread() is not qapp.thread()
+        calls.append(clear)
+        return CacheInfo(3, 900, 16384)
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.manage_cache", manage)
+    dialog = OcrDialog()
+    doc = make_document(approved=True)
+    dialog.accept_document(doc)
+    for clear in (False, True):
+        dialog.show_cache(clear=clear)
+        worker = dialog.worker
+        assert worker is not None
+        wait_worker(worker)
+        qapp.processEvents()
+        assert dialog.session.document == doc and dialog.export_button.isEnabled()
+    assert calls == [False, True]
+    assert "3" in dialog.status.text()
+    dialog.close()

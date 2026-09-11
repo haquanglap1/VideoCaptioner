@@ -25,6 +25,7 @@ class OcrTask:
     runtime_path: str = ""
     max_requests: int = 1000
     expected_source_sha256: str = ""
+    cache_mib: int = 64
 
 
 def _generate_task_id() -> str:

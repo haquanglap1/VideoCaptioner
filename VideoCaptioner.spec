@@ -67,7 +67,7 @@ hiddenimports += ["videocaptioner.core.asr.review",
                   "videocaptioner.ui.thread.worker_lifecycle"]
 hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.thread.ocr_thread",
                   "videocaptioner.core.ocr.installation", "videocaptioner.cli.commands.ocr"]
-# The external OCR bridge/profile are bundled by the package resource tree above.
+# The external OCR bridge and both legacy/v6 profiles are bundled by the resource tree above.
 # ONNX/OpenCV/NumPy stay in models/ocr/env, never inside the Qt executable.
 hiddenimports += collect_submodules("videocaptioner")
 # Native settings/probe pages load lazily; explicitly retain their frozen entry points.
@@ -145,3 +145,8 @@ if model_payload:
         from scripts.package_test_models import append_ocr_payload
 
         append_ocr_payload(target_models, Path(ocr_payload))
+    candidate_payload = os.environ.get("VC_TEST_OCR_CANDIDATE_DIR", "")
+    if candidate_payload:
+        from scripts.package_test_models import append_ocr_payload
+
+        append_ocr_payload(target_models, Path(candidate_payload), component="ocr-v6-medium")

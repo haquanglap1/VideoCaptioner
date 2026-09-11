@@ -75,6 +75,17 @@ def sample_frame():
     return RoiFrame(0, 0, Fraction(1, 1000), Fraction(0), 2, 2, b"\0" * 12)
 
 
+def test_worker_missing_stage_attestation_stops_before_inference(runtime_factory):
+    from .test_profile import recipe, snapshot
+
+    runtime = runtime_factory()
+    runtime.expected_profile = snapshot(recipe())
+    with pytest.raises(OcrError, match="stage or dictionary"):
+        runtime.start()
+    assert runtime.metrics.requests == 0
+    assert_closed(runtime)
+
+
 def assert_closed(runtime):
     assert runtime.state == "closed" and runtime.process.poll() is not None
     assert all(not reader.is_alive() for reader in runtime.readers)

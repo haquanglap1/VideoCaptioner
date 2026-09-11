@@ -23,7 +23,9 @@ def default_runtime() -> Path:
     from videocaptioner.config import ROOT_PATH, portable_models_path
 
     portable = portable_models_path()
-    return (portable / "ocr") if portable else Path(ROOT_PATH) / "runtime" / "ocr"
+    parent = portable if portable else Path(ROOT_PATH) / "runtime"
+    candidate = parent / "ocr-v6-medium"
+    return candidate if candidate.exists() else parent / "ocr"
 
 
 @dataclass(frozen=True)
@@ -42,15 +44,16 @@ def inspect_installation(root: Path | None = None, check: Check = lambda: None) 
     check()
     root = (root or default_runtime()).resolve()
     bundle = resources()
-    bridge, recipe = bundle / "ocr_stream_worker.py", bundle / "profile.json"
+    bridge = bundle / "ocr_stream_worker.py"
     python = root / "env/python.exe"
     if not python.is_file():
         python = root / ("env/Scripts/python.exe" if os.name == "nt" else "env/bin/python")
-    if not all(p.is_file() for p in (python, root / "profile.json", bridge, recipe)):
+    if not all(p.is_file() for p in (python, root / "profile.json", bridge)):
         raise OcrRuntimeMissing("Chưa có runtime OCR. Chọn thư mục OCR đã cài; ứng dụng không tự tải model.")
-    raw = recipe.read_bytes()
+    raw = (root / "profile.json").read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
-    if hashlib.sha256((root / "profile.json").read_bytes()).hexdigest() != sha:
+    if not any(p.is_file() and p.read_bytes() == raw
+               for p in (bundle / "profile.json", bundle / "profile-v6-medium.json")):
         raise OcrError("Profile OCR đã cài không khớp phiên bản của ứng dụng.")
     profile = OcrProfileSnapshot.from_bytes(raw, sha)
     models = json.loads(raw)["models"]

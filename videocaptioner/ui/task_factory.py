@@ -48,8 +48,9 @@ class TaskFactory:
     """任务工厂类，用于创建各种类型的任务"""
 
     @staticmethod
-    def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000, expected_source_sha256="") -> OcrTask:
-        return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256)
+    def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000,
+                        expected_source_sha256="", cache_mib=64) -> OcrTask:
+        return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256, cache_mib)
 
     @staticmethod
     def get_ass_style(style_name: str) -> str:

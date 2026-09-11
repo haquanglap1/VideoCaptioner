@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -88,7 +89,9 @@ def test_failed_scan_keeps_incomplete_checkpoint(make_video, text_image, ffmpeg_
     assert not list((tmp_path / "jobs").iterdir())
 
 
-def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text_image, ffmpeg_tools, tmp_path, monkeypatch):
+@pytest.mark.parametrize("explicit_sha", [True, False])
+def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text_image, ffmpeg_tools, tmp_path, monkeypatch,
+                                                              explicit_sha):
     ffmpeg, ffprobe = ffmpeg_tools
     source = make_video([text_image(""), text_image(), text_image(), text_image("")])
     root = tmp_path / "runtime"
@@ -100,6 +103,10 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
                                   "dictionary_sha256": "e" * 64, "dictionary_count": 10,
                                   "params": {"fixture": True}, "preprocessing": {"input": "fixture"}}))
     profile_sha = hashlib.sha256(profile.read_bytes()).hexdigest()
+    def inspect(selected):
+        assert selected == root
+        return SimpleNamespace(profile_sha256=profile_sha)
+    monkeypatch.setattr("videocaptioner.cli.commands.ocr.inspect_installation", inspect)
     bridge = tmp_path / "worker.py"
     bridge.write_text("# synthetic worker, never executed")
     calls = []
@@ -128,6 +135,9 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
     arguments = ["ocr", str(source), "--roi", "0,0,1,1", "--start-ms", "0", "--end-ms", "400",
                  "--ocr-runtime", str(root), "--ocr-bridge", str(bridge), "--profile-sha256", profile_sha,
                  "--ffmpeg", ffmpeg, "--ffprobe", ffprobe, "--review", str(review_path), "-o", str(output_path)]
+    if not explicit_sha:
+        index = arguments.index("--profile-sha256")
+        del arguments[index:index + 2]
     assert main(arguments) == EXIT.RUNTIME_ERROR
     assert calls and review_path.is_file() and not output_path.exists()
     before = len(calls)
@@ -156,3 +166,64 @@ def test_cli_blocks_overwriting_inputs_before_processing(tmp_path, monkeypatch):
                  "--ocr-runtime", str(tmp_path / "missing"), "--ocr-bridge", str(tmp_path / "worker.py"),
                  "--profile-sha256", "b" * 64, "--review", str(source)]) == EXIT.USAGE_ERROR
     assert source.read_text() == "preserve input"
+
+
+def test_repeat_scan_reuses_disk_raw_preserves_ids_and_requires_review(make_video, text_image, ffmpeg_tools, tmp_path):
+    ffmpeg, ffprobe = ffmpeg_tools
+    source = make_video([text_image(""), text_image(), text_image(), text_image("")])
+    raw = make_document().cues[0].candidates[0].raw
+    calls = []
+
+    def recognize(frame, check):
+        calls.append(frame.pts)
+        return raw
+
+    def scan(config, cache_mib=64):
+        return scan_video(source, config, recognize, jobs_root=tmp_path / "jobs", ffmpeg=ffmpeg,
+                          ffprobe=ffprobe, cache_root=tmp_path / "cache", cache_mib=cache_mib)
+
+    config = fixture_config(400)
+    first = scan(config)
+    before = len(calls)
+    second = scan(config)
+    assert len(calls) == before and second.metrics.fresh_calls == 0
+    assert second.metrics.cache_hits == second.metrics.candidate_crops
+    assert second.id == first.id and second.visual_source == first.visual_source
+    assert second.pending_issues == first.pending_issues
+    assert second.cues[0].id == first.cues[0].id
+    assert [c.id for c in second.cues[0].candidates] == [c.id for c in first.cues[0].candidates]
+    assert all(c.cache_hit and c.raw == raw for c in second.cues[0].candidates)
+    with pytest.raises(OcrError):
+        second.resume(second.visual_source)
+    assert scan(config, cache_mib=0).metrics.fresh_calls > 0
+    assert scan(replace(config, bridge_sha256="f" * 64)).metrics.fresh_calls > 0
+    assert not list((tmp_path / "jobs").iterdir())
+
+
+def test_retry_cancelled_scan_reuses_only_completed_reads(make_video, text_image, ffmpeg_tools, tmp_path):
+    ffmpeg, ffprobe = ffmpeg_tools
+    source = make_video([text_image(), text_image(""), text_image("学生五人"), text_image("")])
+    raw = make_document().cues[0].candidates[0].raw
+    calls, checkpoints = [], []
+    fail_second = True
+
+    def recognize(frame, check):
+        calls.append(frame.pts)
+        if fail_second and len(calls) == 2:
+            raise OcrError("synthetic cancellation")
+        return raw
+
+    def scan():
+        return scan_video(source, fixture_config(400), recognize, jobs_root=tmp_path / "jobs", ffmpeg=ffmpeg,
+                          ffprobe=ffprobe, cache_root=tmp_path / "cache", checkpoint=checkpoints.append)
+
+    with pytest.raises(OcrError, match="cancellation"):
+        scan()
+    partial = checkpoints[0]
+    assert not partial.complete and "incomplete_scan" in partial.pending_issues
+    fail_second = False
+    final = scan()
+    assert len(calls) == 3 and final.metrics.fresh_calls == 1 and final.complete
+    assert final.cues[0].id == partial.cues[0].id
+    assert final.cues[0].candidates[0].cache_hit
+    assert final.pending_issues and not list((tmp_path / "jobs").iterdir())
