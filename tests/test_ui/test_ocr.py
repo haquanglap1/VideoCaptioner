@@ -3,12 +3,14 @@ import time
 from contextvars import ContextVar
 from dataclasses import replace
 
+import pytest
 from PIL import Image
 from PyQt5.QtCore import QEventLoop, QPoint, Qt, QTimer
 from PyQt5.QtTest import QTest
 
 from tests.test_ocr.test_document import make_document
 from videocaptioner.core.editor.commands import CommandStack
+from videocaptioner.core.ocr.models import OcrError
 from videocaptioner.core.ocr.preview import OcrPreview
 from videocaptioner.core.ocr.review import OcrReviewSession, ReviewOcrCueCommand
 from videocaptioner.ui.components.ocr_dialog import OcrDialog
@@ -61,6 +63,10 @@ def test_review_requires_verified_crop_keeps_raw_and_undo(qapp):
     doc = make_document()
     dialog.accept_document(doc)
     cue = doc.cues[0]
+    assert "\n" not in dialog.candidate.currentText()
+    assert all(line in dialog.candidate.currentText() for line in cue.raw_text.splitlines())
+    assert dialog.candidate.itemData(0, Qt.ItemDataRole.ToolTipRole) == cue.raw_text
+    assert dialog.candidate.currentData() == cue.candidates[0].id
     assert not dialog.approve_button.isEnabled()
     dialog.note.setText("Known synthetic evidence")
     dialog.approve()
@@ -93,22 +99,52 @@ def test_worker_context_cancel_and_closed_dialog_ignore_late_result(qapp):
     assert seen == ["captured"] and not delivered and dialog.worker is None
 
 
-def test_failed_scan_keeps_partial_document_after_cancel(qapp):
+def test_completed_scan_reaches_100_without_accepting_review(qapp):
+    from videocaptioner.core.entities import OcrTask
+    from videocaptioner.ui.thread.ocr_thread import OcrThread
+
+    doc = make_document()
+    worker = OcrThread(OcrTask("fixture", doc.config.roi, doc.config.selection))
+    def complete(check):
+        worker.progress.emit(94, "Synthetic scan")
+        worker.capture(doc)
+        return doc
+    worker.operation = complete
+    dialog = OcrDialog()
+    dialog._start(worker, dialog.accept_document)
+    wait_worker(worker)
+    qapp.processEvents()
+    assert dialog.progress.value() == 100 and dialog.progress.maximum() == 100
+    assert dialog.session.document == doc and doc.pending_issues
+    assert not dialog.export_button.isEnabled() and not dialog.handoff_button.isEnabled()
+    assert not dialog.approve_button.isEnabled() and not dialog.cancel_button.isEnabled()
+    dialog.close()
+
+
+@pytest.mark.parametrize("cancelled", [True, False])
+@pytest.mark.parametrize("progress", [0, 94])
+def test_failed_scan_keeps_partial_document_and_incomplete_progress(qapp, cancelled, progress):
     from videocaptioner.core.entities import OcrTask
     from videocaptioner.ui.thread.ocr_thread import OcrThread
 
     doc = replace(make_document(), complete=False)
     worker = OcrThread(OcrTask("fixture", doc.config.roi, doc.config.selection))
     def partial(check):
+        worker.progress.emit(progress, "Synthetic scan")
         worker.partial_document = doc
-        worker.stop()
-        check()
+        if cancelled:
+            worker.stop()
+            check()
+        raise OcrError("Synthetic scan failure")
     worker.operation = partial
     dialog = OcrDialog()
+    dialog.progress.setValue(100)
     dialog._start(worker, lambda _: None)
     wait_worker(worker)
     qapp.processEvents()
     assert dialog.session.document == doc and not dialog.export_button.isEnabled()
+    assert dialog.progress.value() == progress and dialog.progress.maximum() == 100
+    assert not dialog.handoff_button.isEnabled() and not dialog.cancel_button.isEnabled()
     dialog.close()
 
 

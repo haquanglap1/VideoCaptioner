@@ -17,6 +17,7 @@ from pathlib import Path
 import openai
 
 from videocaptioner.core.llm.client import LLMCredentials, configure_llm_client, normalize_base_url
+from videocaptioner.core.llm.request_logger import OwnedRequestLog
 
 
 def digest(path: Path) -> str:
@@ -110,7 +111,8 @@ def execute(args) -> int:
 
     try:
         with openai.OpenAI(api_key=credentials.api_key, base_url=credentials.base_url,
-                           timeout=300, max_retries=0) as client, \
+                           timeout=300, max_retries=0,
+                           http_client=openai.DefaultHttpxClient(follow_redirects=False, trust_env=False, timeout=300)) as client, \
                 (args.output / "provider-raw.jsonl").open("x", encoding="utf-8") as provider, \
                 (args.output / "raw.jsonl").open("x", encoding="utf-8") as normalized:
             for crop in remaining:
@@ -124,16 +126,20 @@ def execute(args) -> int:
                 metrics["fresh_crops"] += 1
                 save()
                 started = time.perf_counter()
+                messages = [{"role": "user", "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {
+                        "url": "data:image/png;base64," + base64.b64encode(blob).decode("ascii"), "detail": "high"}},
+                ]}]
+                journal = OwnedRequestLog(credentials.base_url, args.model, messages,
+                                          {"max_completion_tokens": args.max_output_tokens},
+                                          log_content=False, secret=credentials.api_key)
                 try:
                     response = client.chat.completions.create(
                         model=args.model, max_completion_tokens=args.max_output_tokens,
-                        messages=[{"role": "user", "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {
-                                "url": "data:image/png;base64," + base64.b64encode(blob).decode("ascii"),
-                                "detail": "high"}},
-                        ]}],
+                        messages=messages,  # pyright: ignore[reportArgumentType]
                     )
+                    journal.finish(response, status=200)
                     wall = time.perf_counter() - started
                     usage = response.usage.model_dump(mode="json") if response.usage else None
                     provider.write(json.dumps({"id": crop["id"], "wall_s": wall,
@@ -154,6 +160,10 @@ def execute(args) -> int:
                     save()
                     print(json.dumps({"crop": crop["id"], "status": "received", "wall_s": wall}), flush=True)
                 except Exception as exc:
+                    journal.finish(status=getattr(exc, "status_code", None),
+                                   outcome="timeout" if isinstance(exc, openai.APITimeoutError)
+                                   else "http_error" if isinstance(exc, openai.APIStatusError) else "error",
+                                   error_type=type(exc).__name__)
                     metrics["errors"].append({"id": crop["id"], "type": type(exc).__name__,
                                                "http_status": getattr(exc, "status_code", None),
                                                "wall_s": time.perf_counter() - started})

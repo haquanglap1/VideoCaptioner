@@ -1,4 +1,4 @@
-"""LLM 请求日志查看界面"""
+"""Browse request journals, including failures and incomplete provider usage."""
 
 import json
 from typing import Any, Dict, List
@@ -32,6 +32,7 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 
 from videocaptioner.config import LOG_PATH
+from videocaptioner.core.llm.log_summary import log_outcome, log_usage
 from videocaptioner.core.utils.log_files import (
     LEGACY_LLM_LOG_KEY,
     available_llm_log_days,
@@ -39,6 +40,16 @@ from videocaptioner.core.utils.log_files import (
 )
 
 PAGE_SIZE = 50
+
+
+def token_text(value: int | None) -> str:
+    return str(value) if value is not None else "—"
+
+
+def outcome_text(entry: dict) -> str:
+    label = {"success": "Thành công", "http_error": "Lỗi HTTP", "timeout": "Hết thời gian chờ",
+             "cancelled": "Đã hủy", "error": "Lỗi yêu cầu", "unknown": "Chưa rõ"}.get(log_outcome(entry), "Chưa rõ")
+    return f"{label} ({entry['status']})" if entry.get("status") and log_outcome(entry) != "success" else label
 
 
 class LogDetailDialog(MessageBoxBase):
@@ -59,9 +70,7 @@ class LogDetailDialog(MessageBoxBase):
         duration = self.log_entry.get("duration_ms", 0) / 1000
         stage = self.log_entry.get("stage", "") or "-"
 
-        usage = self.log_entry.get("response", {}).get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
+        usage = log_usage(self.log_entry)
 
         # 顶部信息栏
         info_row = QHBoxLayout()
@@ -74,8 +83,8 @@ class LogDetailDialog(MessageBoxBase):
             stage,
             model,
             f"{duration:.1f}s",
-            f"input token: {prompt_tokens}",
-            f"output token: {completion_tokens}",
+            f"input token: {token_text(usage.prompt)}",
+            f"output token: {token_text(usage.completion)}",
         ]
         for text in items:
             if text:
@@ -87,6 +96,12 @@ class LogDetailDialog(MessageBoxBase):
 
         info_row.addStretch()
         self.viewLayout.addLayout(info_row)
+        self.usage_label = BodyLabel(
+            f"{outcome_text(self.log_entry)} | Tổng: {token_text(usage.total)} | "
+            f"Cached input: {token_text(usage.cached)} | Reasoning: {token_text(usage.reasoning)}. "
+            "—: dịch vụ không cung cấp số liệu; cached/reasoning là phần nằm trong input/output.")
+        self.usage_label.setWordWrap(True)
+        self.viewLayout.addWidget(self.usage_label)
 
         # Request
         self.viewLayout.addWidget(SubtitleLabel("Request"))
@@ -201,7 +216,7 @@ class LLMLogsInterface(QWidget):
 
     def _setup_table(self):
         self.table = TableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
             [
                 self.tr("时间"),
@@ -211,6 +226,7 @@ class LLMLogsInterface(QWidget):
                 self.tr("模型"),
                 self.tr("耗时"),
                 self.tr("Tokens"),
+                "Trạng thái",
             ]
         )
 
@@ -223,12 +239,14 @@ class LLMLogsInterface(QWidget):
             header.setSectionResizeMode(4, QHeaderView.Stretch)  # 模型 - 自适应
             header.setSectionResizeMode(5, QHeaderView.Fixed)
             header.setSectionResizeMode(6, QHeaderView.Fixed)
+            header.setSectionResizeMode(7, QHeaderView.Fixed)
 
         self.table.setColumnWidth(0, 130)  # 时间
         self.table.setColumnWidth(1, 100)  # 任务ID
         self.table.setColumnWidth(3, 90)  # 阶段
         self.table.setColumnWidth(5, 70)  # 耗时
         self.table.setColumnWidth(6, 70)  # Tokens
+        self.table.setColumnWidth(7, 145)
 
         v_header = self.table.verticalHeader()
         if v_header:
@@ -312,6 +330,8 @@ class LLMLogsInterface(QWidget):
 
     def _watch_selected_files(self) -> None:
         directory = str(LOG_PATH)
+        if LOG_PATH.is_dir() and directory not in self.file_watcher.directories():
+            self.file_watcher.addPath(directory)
         removable = [path for path in self.file_watcher.files() if path != directory]
         if removable:
             self.file_watcher.removePaths(removable)
@@ -324,9 +344,9 @@ class LLMLogsInterface(QWidget):
         self._load_logs()
 
     def _setup_file_watcher(self):
-        """设置文件监控，日志文件变化时自动刷新"""
+        """Watch directory creation too when the first request has not been logged yet."""
         self.file_watcher = QFileSystemWatcher(self)
-        self.file_watcher.addPath(str(LOG_PATH))
+        self.file_watcher.addPath(str(LOG_PATH if LOG_PATH.is_dir() else LOG_PATH.parent))
         self._watch_selected_files()
         self.file_watcher.fileChanged.connect(self._on_file_changed)
         self.file_watcher.directoryChanged.connect(self._on_dir_changed)
@@ -343,7 +363,9 @@ class LLMLogsInterface(QWidget):
         self._load_logs()
 
     def _on_refresh_clicked(self):
-        """手动刷新按钮点击"""
+        """Discover new daily journals before reloading the selected day."""
+        self._refresh_day_options()
+        self._watch_selected_files()
         self._load_logs()
         InfoBar.success(
             title="",
@@ -359,6 +381,8 @@ class LLMLogsInterface(QWidget):
 
         log_files = self._selected_log_files()
         if not log_files:
+            self.filtered_logs = []
+            self.current_page = 0
             self._update_table()
             return
 
@@ -452,12 +476,14 @@ class LLMLogsInterface(QWidget):
             duration = log.get("duration_ms", 0) / 1000
             self.table.setItem(row, 5, self._create_item(f"{duration:.1f}s"))
 
-            # 总 Tokens
-            usage = log.get("response", {}).get("usage") or {}
-            total_tokens = usage.get("total_tokens", 0)
-            if not total_tokens:
-                total_tokens = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
-            self.table.setItem(row, 6, self._create_item(str(total_tokens)))
+            # Unknown provider usage is distinct from a measured zero.
+            usage = log_usage(log)
+            item = self._create_item(token_text(usage.total))
+            item.setToolTip(f"Input: {token_text(usage.prompt)}; output: {token_text(usage.completion)}; "
+                            f"cached input: {token_text(usage.cached)}; reasoning: {token_text(usage.reasoning)}. "
+                            + ("Tổng do dịch vụ báo." if usage.total_reported else "Tổng chỉ tính khi đủ input và output."))
+            self.table.setItem(row, 6, item)
+            self.table.setItem(row, 7, self._create_item(outcome_text(log)))
 
         # 更新分页和统计
         self.page_label.setText(f"{self.current_page + 1} / {total_pages}")

@@ -7,6 +7,7 @@ from typing import Callable
 import openai
 
 from .client import LLMCredentials
+from .request_logger import OwnedRequestLog
 from .request_policy import validate_request_timeout
 
 
@@ -15,6 +16,7 @@ class OwnedLLMRequest:
     credentials: LLMCredentials
     timeout: int = 120
     cancelled: Callable[[], bool] = lambda: False
+    log_content: bool = True
 
     def __post_init__(self):
         validate_request_timeout(self.timeout)
@@ -39,13 +41,24 @@ class OwnedLLMRequest:
                 http_client=openai.DefaultAsyncHttpxClient(follow_redirects=False, trust_env=False, timeout=self.timeout),
             ) as client:
                 check(deadline)
+                log = OwnedRequestLog(self.credentials.base_url, model, messages, kwargs,
+                                      log_content=self.log_content, secret=self.credentials.api_key)
                 task = asyncio.create_task(client.chat.completions.create(model=model, messages=messages, **kwargs))
                 try:
                     while not task.done():
                         check(deadline)
                         await asyncio.wait({task}, timeout=0.1)
                     check(deadline)
-                    return await task
+                    response = await task
+                    log.finish(response, status=200)
+                    return response
+                except BaseException as exc:
+                    outcome = ("cancelled" if self.cancelled() or isinstance(exc, asyncio.CancelledError)
+                               else "timeout" if isinstance(exc, (TimeoutError, openai.APITimeoutError))
+                               else "http_error" if isinstance(exc, openai.APIStatusError) else "error")
+                    log.finish(status=exc.status_code if isinstance(exc, openai.APIStatusError) else None,
+                               outcome=outcome, error_type=type(exc).__name__)
+                    raise
                 finally:
                     if not task.done():
                         task.cancel()

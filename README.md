@@ -120,6 +120,16 @@ quyết review thì không xuất subtitle success. Không tự sửa/điền ch
 vision. Xem [GUI, đóng gói và giới hạn](docs/dev/ocr-gui-2026-09.md),
 [contract và lệnh OCR-3](docs/dev/ocr-document-2026-09.md).
 
+Trong review có nút **Dịch bản đọc đang chọn sang Việt**: chỉ khi bấm mới gửi
+chữ của một candidate tới LLM đang cấu hình. Bản Việt nằm cạnh chữ OCR, chỉ giữ
+trong phiên và không tự duyệt/sửa chữ; AI chưa nhìn ảnh nên bản dịch không xác
+minh được chữ bị thiếu. [Cách dùng và giới hạn](docs/dev/ocr-review-assistance-2026-09.md).
+
+**Nhật ký yêu cầu** ghi các request LLM có timeout/hủy, trạng thái và token
+dịch vụ trả về. Thiếu số liệu hiện `—`; cached/reasoning nằm trong input/output.
+OCR draft/vision chỉ ghi metadata và usage, không ảnh hoặc chữ riêng tư.
+[Phục hồi logger và lượt test vision mới](docs/dev/ocr-request-logs-2026-09.md).
+
 ## ASR qua API tương thích OpenAI
 
 Trong cài đặt Whisper API, chọn preset `VideoCaptioner API`, `Groq`, `OpenAI` hoặc `Custom`.
@@ -406,6 +416,13 @@ không giữ `pyvenv.cfg` trỏ về máy dev. Không tải/cài package hoặc 
 Truyền `VC_TEST_MODELS_DIR` trỏ tới thư mục models đã stage khi chạy spec để kèm
 payload. Giữ nguyên toàn thư mục ứng dụng khi chuyển ổ; không đưa key/settings,
 media hoặc cache job cá nhân vào gói. Xem [nghiệm thu phục hồi ASR và model portable](docs/dev/asr-recovery-2026-09.md).
+
+Để gói test tự có công cụ media, truyền thêm `VC_TEST_MEDIA_TOOLS_DIR` trỏ tới
+thư mục **FFmpeg static đã cài**, có cả `ffmpeg.exe` và `ffprobe.exe`. Spec chỉ
+bundle hai executable vào `resource/bin` bên trong `_internal`; app dùng cơ chế
+tìm tool sẵn có. Không chép toàn bộ AppData, tải công cụ hoặc thay model inventory.
+Nếu không truyền biến này, bản build vẫn cần media tools từ cài đặt/PATH phù hợp;
+FFmpeg riêng của Faster-Whisper không bảo đảm có FFprobe.
 
 Đặt tên build riêng mà không tạo thêm file spec:
 

@@ -1,7 +1,9 @@
 import json
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 
+from PyQt5.QtTest import QTest
 from PyQt5.QtWidgets import QApplication
 
 from videocaptioner.core.llm import request_logger
@@ -95,6 +97,57 @@ def test_log_interface_loads_only_selected_day(tmp_path, monkeypatch):
         assert [entry["task_id"] for entry in widget.all_logs] == ["new"]
         widget.date_combo.setCurrentIndex(widget._available_days.index("2026-08-20"))
         assert [entry["task_id"] for entry in widget.all_logs] == ["old"]
+    finally:
+        widget.close()
+        app.processEvents()
+
+
+def test_log_interface_sees_first_request_and_unknown_usage(tmp_path, monkeypatch):
+    from videocaptioner.ui.view import llm_logs_interface
+
+    app = _qt_application()
+    directory = tmp_path / "new-journal"
+    monkeypatch.setattr(llm_logs_interface, "LOG_PATH", directory)
+    monkeypatch.setattr(request_logger, "LOG_PATH", directory)
+    widget = llm_logs_interface.LLMLogsInterface()
+    try:
+        assert widget.table.rowCount() == 0
+        attempt = request_logger.OwnedRequestLog("https://example.test/v1", "synthetic-model", [], {})
+        attempt.finish(outcome="timeout", error_type="APITimeoutError")
+        for _ in range(40):
+            app.processEvents()
+            if widget.table.rowCount() == 1:
+                break
+            QTest.qWait(50)
+        assert widget.table.rowCount() == 1
+        assert widget.table.item(0, 6).text() == "—"
+        assert widget.table.item(0, 7).text() == "Hết thời gian chờ"
+        detail = llm_logs_interface.LogDetailDialog(widget.all_logs[0], widget)
+        assert "Cached input: —" in detail.usage_label.text()
+        detail.close()
+        daily_llm_log_path(directory).unlink()
+        widget._load_logs()
+        assert not widget.filtered_logs and widget.table.rowCount() == 0
+    finally:
+        widget.close()
+        app.processEvents()
+
+
+def test_log_interface_shows_zero_and_cached_tokens_without_double_count(tmp_path, monkeypatch):
+    from videocaptioner.ui.view import llm_logs_interface
+
+    app = _qt_application()
+    monkeypatch.setattr(llm_logs_interface, "LOG_PATH", tmp_path)
+    monkeypatch.setattr(request_logger, "LOG_PATH", tmp_path)
+    request_logger.OwnedRequestLog("https://example.test/v1", "synthetic-model", [], {}).finish(
+        SimpleNamespace(model_dump=lambda: {"usage": {"prompt_tokens": 100, "completion_tokens": 20,
+            "total_tokens": 120, "prompt_tokens_details": {"cached_tokens": 60},
+            "completion_tokens_details": {"reasoning_tokens": 5}}}), status=200)
+    widget = llm_logs_interface.LLMLogsInterface()
+    try:
+        assert widget.table.item(0, 6).text() == "120"
+        assert "cached input: 60" in widget.table.item(0, 6).toolTip()
+        assert widget.table.item(0, 7).text() == "Thành công"
     finally:
         widget.close()
         app.processEvents()

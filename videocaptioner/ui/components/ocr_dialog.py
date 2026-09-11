@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
 )
 
 from videocaptioner.core.editor.commands import CommandStack
+from videocaptioner.core.ocr.assistance import OcrVietnameseDraft, comparison_note
 from videocaptioner.core.ocr.codec import atomic_json, atomic_text
 from videocaptioner.core.ocr.document import OcrDocument
 from videocaptioner.core.ocr.geometry import Roi
@@ -35,7 +36,12 @@ from videocaptioner.core.ocr.preview import preview_candidate, preview_video
 from videocaptioner.core.ocr.review import OcrReviewSession, ReviewOcrCueCommand, issue_labels
 from videocaptioner.core.ocr.service import jobs_directory
 from videocaptioner.ui.task_factory import TaskFactory
-from videocaptioner.ui.thread.ocr_thread import OcrThread, OcrWorker
+from videocaptioner.ui.thread.ocr_thread import (
+    OcrDraftThread,
+    OcrThread,
+    OcrWorker,
+    capture_draft_settings,
+)
 from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
 from .ocr_region_canvas import OcrRegionCanvas
@@ -51,6 +57,8 @@ class OcrDialog(QDialog):
         self.review_path: Path | None = None
         self.source_preview = None
         self.verified_candidate_id = ""
+        self._drafts: dict[tuple[str, str], OcrVietnameseDraft] = {}
+        self._draft_configs: dict[tuple[str, str], tuple[str, str, int]] = {}
         self.stack = CommandStack()
         self.stack.add_changed_callback(self.refresh)
         self._closed = False
@@ -124,14 +132,30 @@ class OcrDialog(QDialog):
         row = QHBoxLayout()
         self.candidate = QComboBox()
         self.candidate.currentIndexChanged.connect(self.clear_candidate_evidence)
+        self.candidate.currentIndexChanged.connect(self.refresh_draft)
         row.addWidget(self.candidate, 1)
         self._button(row, "Xem crop gốc", self.load_crop)
         self._button(row, "Xem video tại đầu câu", self.preview_cue_start)
         review.addLayout(row)
         self.readings = QPlainTextEdit()
         self.readings.setReadOnly(True)
-        self.readings.setMaximumHeight(90)
-        review.addWidget(self.readings)
+        self.readings.setMaximumHeight(120)
+        self.draft_text = QPlainTextEdit()
+        self.draft_text.setReadOnly(True)
+        self.draft_text.setMaximumHeight(120)
+        self.draft_text.setPlaceholderText("Bản Việt tham khảo từ chữ OCR. AI chưa nhìn ảnh nên không xác minh chữ đúng/sai. "
+                                          "Bản tham khảo chỉ giữ trong phiên này.")
+        row = QHBoxLayout()
+        row.addWidget(self.readings)
+        row.addWidget(self.draft_text)
+        review.addLayout(row)
+        row = QHBoxLayout()
+        self.draft_button = self._button(row, "Dịch bản đọc đang chọn sang Việt", self.translate_current_draft)
+        draft_notice = QLabel("Chỉ gửi chữ của bản đọc đang chọn tới LLM trong Cài đặt khi bấm nút; "
+                              "bản dịch không duyệt hay sửa chữ OCR.")
+        draft_notice.setWordWrap(True)
+        row.addWidget(draft_notice, 1)
+        review.addLayout(row)
         self.note = QLineEdit()
         self.note.setPlaceholderText("Lý do/bằng chứng cho quyết định duyệt; không tự duyệt khi chưa chắc chữ")
         review.addWidget(self.note)
@@ -181,6 +205,7 @@ class OcrDialog(QDialog):
         self.worker = retain_worker(worker)
         self.refresh_enabled()
         self.progress.setRange(0, 0)
+        self.progress.setValue(0)
         connect_current(self, "worker", worker, worker.result_ready, accept)
         connect_current(self, "worker", worker, worker.failed, self.status.setText)
         connect_current(self, "worker", worker, worker.progress, self.show_progress)
@@ -195,6 +220,9 @@ class OcrDialog(QDialog):
                 self.status.setText("Đã hủy. Phần review đã có được giữ; chưa phải kết quả hoàn chỉnh.")
             elif worker.error_message:
                 self.status.setText(worker.error_message + " Review đã có được giữ lại.")
+            else:
+                # Completion belongs to this operation; review approval stays separate.
+                self.progress.setValue(100)
             self.refresh_enabled()
         worker.finished.connect(finished)
         worker.start()
@@ -215,6 +243,9 @@ class OcrDialog(QDialog):
         self.export_button.setEnabled(accepted)
         self.handoff_button.setEnabled(accepted)
         self.approve_button.setEnabled(bool(self.verified_candidate_id))
+        cue = self.current_cue()
+        self.draft_button.setEnabled(bool(not busy and cue and self.candidate.currentData()
+                                          and cue.candidate(self.candidate.currentData()).raw.text.strip()))
 
     def choose_source(self):
         path, _ = QFileDialog.getOpenFileName(self, "Chọn video nguồn", "", "Video (*)")
@@ -329,10 +360,70 @@ class OcrDialog(QDialog):
         cue = self.current_cue()
         if cue:
             for index, candidate in enumerate(cue.candidates, 1):
-                self.candidate.addItem(f"Ảnh {index} — {candidate.raw.text}", candidate.id)
+                label = " / ".join(candidate.raw.text.splitlines())
+                self.candidate.addItem(f"Ảnh {index} — {label}", candidate.id)
+                self.candidate.setItemData(index - 1, candidate.raw.text, Qt.ItemDataRole.ToolTipRole)
             self.cue_start.setValue(cue.start_ms)
             self.cue_end.setValue(cue.end_ms)
-            self.readings.setPlainText("Gốc: " + cue.raw_text + "\nHiện tại: " + cue.text + "\n" + issue_labels(cue))
+            self.readings.setPlainText("Gốc: " + cue.raw_text + "\nHiện tại: " + cue.text + "\n"
+                                       + comparison_note(cue) + "\n" + issue_labels(cue))
+        self.refresh_draft()
+
+    def refresh_draft(self, *_):
+        if not hasattr(self, "draft_text"):
+            return
+        cue = self.current_cue()
+        candidate_id = self.candidate.currentData()
+        if hasattr(self, "draft_button"):
+            self.draft_button.setEnabled(bool(not self.worker and cue and candidate_id
+                                              and cue.candidate(candidate_id).raw.text.strip()))
+        draft = self._drafts.get((self.session.document.id, candidate_id)) if self.session and candidate_id else None
+        if cue and draft and cue.candidate(candidate_id).raw.text == draft.source_text:
+            text = f"Bản Việt tham khảo ({draft.model}) — AI chưa nhìn ảnh:\n{draft.translation_vi}"
+            if draft.uncertainties_vi:
+                text += "\nAI lưu ý (chưa xác minh): " + " / ".join(draft.uncertainties_vi)
+            text += "\nKhông dùng bản dịch làm bằng chứng duyệt. Chỉ giữ trong phiên này."
+            self.draft_text.setPlainText(text)
+        else:
+            self.draft_text.clear()
+
+    def translate_current_draft(self):
+        cue = self.current_cue()
+        candidate_id = self.candidate.currentData()
+        if self.worker or not self.session or not cue or not candidate_id:
+            return
+        document, candidate = self.session.document, cue.candidate(candidate_id)
+        try:
+            settings = capture_draft_settings()
+        except (KeyError, ValueError, OcrError):
+            self.status.setText("Kiểm tra cấu hình dịch vụ LLM, model, API key và thời gian chờ trong Cài đặt.")
+            return
+        key = (document.id, candidate.id)
+        config = (settings.credentials.base_url, settings.model, settings.timeout)
+        if (key in self._drafts and self._drafts[key].source_text == candidate.raw.text
+                and self._draft_configs.get(key) == config):
+            self.refresh_draft()
+            self.status.setText("Dùng bản Việt tham khảo đã có trong phiên; không gửi lại yêu cầu.")
+            return
+
+        def accept(draft):
+            if not self.session or self.session.document.id != document.id:
+                return
+            # Bound private text held in RAM; the OCR document and saved review stay untouched.
+            if key not in self._drafts and len(self._drafts) >= 64:
+                oldest = next(iter(self._drafts))
+                del self._drafts[oldest]
+                self._draft_configs.pop(oldest, None)
+            self._drafts[key] = draft
+            self._draft_configs[key] = config
+            self.refresh_draft()
+            usage = (f"Token dịch vụ báo: {draft.prompt_tokens} vào / {draft.completion_tokens} ra."
+                     if draft.prompt_tokens is not None and draft.completion_tokens is not None
+                     else "Dịch vụ không cung cấp đủ số liệu token.")
+            self.status.setText("Đã nhận bản Việt tham khảo từ chữ OCR; chưa kiểm chứng ảnh. " + usage)
+
+        self.status.setText("Đang dịch một bản đọc sang Việt; không gửi ảnh/video hoặc tự duyệt phụ đề…")
+        self._start(OcrDraftThread(document, candidate, settings), accept)
 
     def clear_candidate_evidence(self, *_):
         self.verified_candidate_id = ""
@@ -439,6 +530,8 @@ class OcrDialog(QDialog):
 
     def shutdown(self, *_):
         self._closed = True
+        self._drafts.clear()
+        self._draft_configs.clear()
         if self.worker:
             retire_worker(self.worker)
             self.worker = None

@@ -34,6 +34,16 @@ datas = [
     ("runtime\\alignment", "runtime\\alignment"),
 ]
 binaries = []
+# Optional installed static FFmpeg pair; config.py already discovers resource/bin.
+# Keep media tools outside the model inventory and never copy user AppData wholesale.
+media_tools = os.environ.get("VC_TEST_MEDIA_TOOLS_DIR", "")
+if media_tools:
+    media_root = Path(media_tools).resolve()
+    media_files = [media_root / name for name in ("ffmpeg.exe", "ffprobe.exe")]
+    if not all(path.is_file() for path in media_files):
+        raise ValueError("VC_TEST_MEDIA_TOOLS_DIR must contain both ffmpeg.exe and ffprobe.exe")
+    datas += [(str(path), "resource/bin") for path in media_files]
+
 hiddenimports = []
 hiddenimports += ["videocaptioner.core.dubbing.scheduling", "videocaptioner.core.dubbing.review",
                   "videocaptioner.ui.components.dubbing_review_dialog",

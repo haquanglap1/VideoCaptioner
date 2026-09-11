@@ -1,5 +1,12 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Tiếp tục 2026-09-11:** [bản Việt tham khảo trong review](../dev/ocr-review-assistance-2026-09.md)
+thêm action dịch text của một candidate và đối chiếu các bản đọc bằng tiếng Việt.
+Bản dịch chưa nhìn ảnh, chỉ giữ trong phiên, không thay raw/duyệt và chưa sửa
+lỗi cùng bỏ sót chữ. Chưa tích hợp GPU/vision GUI hoặc tăng budget; các số đo
+chất lượng pilot giữ nguyên. [GUI gói ổ C](../dev/ocr-relocation-2026-09.md)
+đã có evidence trước lượt này; các snapshot còn thiếu gate đó bên dưới là lịch sử.
+
 **Tiếp tục OCR-4, 2026-09-10:** đã thêm [GUI OCR local, crop review và bundle runtime](../dev/ocr-gui-2026-09.md).
 Có chọn video/selection/ROI, worker hủy được, preview đúng crop/PTS/hash, review có
 undo/redo và handoff bảng phụ đề; runtime dùng bộ đã cài. Chưa có downloader,

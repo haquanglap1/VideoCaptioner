@@ -8,7 +8,11 @@ from typing import Callable
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.core.entities import OcrTask
-from videocaptioner.core.ocr.document import OcrDocument
+from videocaptioner.core.llm.client import LLMCredentials
+from videocaptioner.core.llm.context import generate_task_id, set_task_context
+from videocaptioner.core.llm.services import fill_default_api_key, llm_service_preset
+from videocaptioner.core.ocr.assistance import OcrDraftSettings, translate_draft
+from videocaptioner.core.ocr.document import OcrCandidate, OcrDocument
 from videocaptioner.core.ocr.installation import inspect_installation
 from videocaptioner.core.ocr.models import Check, OcrError
 from videocaptioner.core.ocr.service import run_cpu_ocr
@@ -68,3 +72,24 @@ class OcrThread(OcrWorker):
 
     def capture(self, document: OcrDocument) -> None:
         self.partial_document = document
+
+
+def capture_draft_settings() -> OcrDraftSettings:
+    """Read the selected LLM only after an explicit translation action."""
+    from videocaptioner.ui.common.config import cfg
+
+    service = cfg.llm_service.value
+    prefix = llm_service_preset(service).config_attr
+    return OcrDraftSettings(
+        LLMCredentials(fill_default_api_key(service, getattr(cfg, prefix + "_api_key").value),
+                       getattr(cfg, prefix + "_api_base").value),
+        getattr(cfg, prefix + "_model").value, cfg.llm_request_timeout.value,
+    )
+
+
+class OcrDraftThread(OcrWorker):
+    def __init__(self, document: OcrDocument, candidate: OcrCandidate, settings: OcrDraftSettings):
+        def draft(check):
+            set_task_context(generate_task_id(), "", "ocr-review-translate")
+            return translate_draft(document, candidate, settings, check=check)
+        super().__init__(draft)

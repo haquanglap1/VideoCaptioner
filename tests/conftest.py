@@ -25,6 +25,12 @@ def isolated_gpu_lease(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def isolated_llm_request_logs(monkeypatch, tmp_path):
+    """Mock provider requests must never append to the developer's real request journal."""
+    monkeypatch.setattr("videocaptioner.core.llm.request_logger.LOG_PATH", tmp_path / "llm-logs")
+
+
+@pytest.fixture(autouse=True)
 def isolated_asr_review(monkeypatch, tmp_path):
     monkeypatch.setattr("videocaptioner.core.asr.review.review_directory", lambda: tmp_path / "asr-review")
 

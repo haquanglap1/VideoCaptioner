@@ -1,5 +1,221 @@
 # Project Status
 
+## 2026-09-11 (Snapshot submit và prompt bàn giao OCR)
+
+- User yêu cầu submit/push snapshot hiện có trên `codex/asr-s3-native`, gồm
+  fix progress/candidate, media bundle, review Việt, phục hồi logger và các
+  test/biên bản đã nghiệm thu. Mốc trước snapshot là **a528d85**; lấy HEAD và
+  tracking thực tế từ Git. Các câu "chưa commit/push" dưới đây là lịch sử.
+- [Prompt phiên sau](docs/dev/ocr-next-session-prompt.md) đã được hợp nhất
+  theo artifact **RequestLogs-20260911** và trạng thái mới nhất; cap vision
+  **14 đã dùng hết**, không lặp retry crop5. Giữ giới hạn source/frozen/GUI/API.
+- Lượt submit chỉ rà soát snapshot và tài liệu; không chạy thêm test/build/
+  OCR/API hoặc hash lại payload. Gate mới nhất vẫn **1.774 pass/5 skip/51 deselected**,
+  Ruff/Pyright/translations pass; EXE và mock logging ghi riêng trong biên bản.
+  Model/media/raw/key/log/evidence nằm ngoài Git, mọi artifact cũ được giữ lại.
+
+## 2026-09-11 (Vision crop 5 đã nhận; phục hồi nhật ký LLM)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD **a528d85**, giữ diff cũ; chưa commit/push.
+  User chọn rõ gpt-5.6-terra và retry crop 5, thêm đúng 1 request qua gateway/key
+  đã chỉ định. [Biên bản mới](docs/dev/ocr-request-logs-2026-09.md).
+- Lượt `vision-terra-03/`: **1 request/1 response**, HTTP 200, **15,607 s**,
+  crop 5 đủ chữ/exact với tham chiếu agent chưa native-confirmed. Usage
+  **8.890 input +43 output =8.933 token**; cached input **7.488**, reasoning
+  không cung cấp. Không retry tự động, không đọc lại video/model CPU.
+- Tổng pilot **14 attempts/13 response/1 timeout cũ**, cap 14 đã hết. Usage
+  13 response **46.980 +651 =47.631 token**, cached input 34.368; usage timeout/
+  toàn đủ 14 attempts/cost vẫn null. `vision-combined-04/`: local 10/13 exact,
+  12/13 đủ chữ-số; vision 9/13 exact, 13/13 đủ chữ-số; không chốt engine thắng/thua.
+- Mục nhật ký vẫn có; nguyên nhân mất bản ghi là `OwnedLLMRequest` bỏ qua logger
+  đồng bộ cũ. Đã nối log terminal riêng, đúng context/request/response, cả lỗi/
+  timeout/hủy. OCR draft/vision chỉ metadata/usage; không key/chữ/ảnh trong journal.
+- UI thêm Trạng thái/cached/reasoning, usage thiếu hiện **—**, xử lý `null`,
+  tự thấy log đầu tiên và refresh file/ngày mới. Root test cô lập LOG_PATH.
+  Native source xem được chính journal HTTP 200/8933 token và detail usage.
+- Scoped **343 pass/14 deselected**, full offline **1.774 pass/5 skip/51 deselected**,
+  158,31 s, exit 0. Ruff/Pyright 0/0/translations pass. Gate frozen mới ghi
+  trong biên bản; source pass không thay workflow GUI/online của artifact.
+- Evidence `ocr4-request-logs-18/`, 23 file pilot theo dõi giữ hash. Một lỗi
+  preflight prompt CRLF dừng trước key/API; dùng nguồn LF khớp hash. Không đổi
+  raw/plan/receipt cũ, model/engine/GPU, gói C hoặc native teardown cũ.
+- Artifact mới **VideoCaptioner-OCR4-RequestLogs-20260911**, build exit **0**,
+  309,985 s, 6 warning/0 error. EXE **31.401.858 byte**, local **11:59:16**,
+  SHA `045f2e3fdb7c011e450e76cd2a2d87af9da0217da96e3564696c97d5dcdce598`.
+  127.610 file model/48.739.395.432 byte khớp SHA; 7 module khớp PYZ.
+  GUI startup 3,109 s/sống30s/exit0/0child. Frozen CLI qua loopback mock:
+  exit0, một request/một journal, output/usage giả lập đúng; không API thêm.
+  Chưa gateway thật hoặc click log viewer trong GUI frozen. Giữ log lỗi
+  harness đoán hai request, đã kiểm receipt đúng contract mà không rerun request.
+
+## 2026-09-11 (OCR: bản Việt tham khảo theo candidate, EXE ReviewVI)
+
+- Nhánh `codex/asr-s3-native`, HEAD **a528d85**; user giao tiếp tục plan.
+  Thêm bản Việt tham khảo trong review và mô tả khác biệt giữa các lần đọc.
+  [Hành vi, gate và giới hạn](docs/dev/ocr-review-assistance-2026-09.md).
+- Chỉ nút dịch gửi text của một candidate tới LLM đang cấu hình; không gửi
+  ảnh/video/path/câu lân cận. Một request/action, retry 0, timeout cấu hình
+  hiện có, tối đa 1.000 completion token. JSON sai/thiếu/cắt bị từ chối;
+  request hủy được, kết quả muộn không cập nhật dialog đã đóng.
+- Bản Việt được ghi rõ **AI chưa nhìn ảnh**, cache RAM tối đa 64 candidate,
+  chưa lưu trong review JSON. Raw/IDs/timing/duyệt không đổi, export/handoff
+  vẫn khóa khi còn issue. Chưa sửa lỗi câu 4 hoặc thêm GPU/vision GUI.
+- Scoped **274 pass /21 skip** (thiếu FFmpeg trên PATH ở lượt đó); full offline
+  với FFmpeg/Qt offscreen **1.763 pass /5 skip /51 deselected**, 262,07 s,
+  exit 0. Ruff/Pyright 0/0, translations in sync. Native source render với
+  response tổng hợp thấy đủ crop/raw/bản Việt, 1120×904, exit 0/0 worker.
+- Build **VideoCaptioner-OCR4-ReviewVI-20260911**, PyInstaller exit **0**,
+  316,219 s, 6 warning/0 error; EXE **31.395.029 byte**, local **10:23:36**,
+  SHA `ca1860a65cca66c9c9a331644300eb2b454ab29a9bb3588f734079b343518289`.
+  Tái sử dụng models/media; **127.610 file /48.739.395.432 byte** khớp SHA ở
+  đích mới, ba module khớp PYZ, dependency OCR nặng không vào host.
+- GUI frozen mới chỉ startup/close: cửa sổ **3,078 s**, sống 30 s, exit **0**,
+  0 child/traceback, settings giữ hash, PATH chỉ Windows/System32. Chưa workflow
+  review/dịch GUI frozen hoặc API/chất lượng bản Việt thật; không nâng gate cũ.
+- Evidence `ocr4-review-assistance-17/` trong scratch OCR; **0 CPU OCR /0 vision /
+  0 text LLM thật**. Giữ source/spec/test/artifact trước đó; chưa commit/push.
+  Bộ C cũ vẫn giữ nguyên, chưa mang tính năng ReviewVI. Native teardown, lỗi
+  thiếu chữ, hiệu chuẩn và phần mở rộng còn mở; cap vision không tăng.
+
+## 2026-09-11 (OCR-4: scan/runtime-check/crop GUI từ gói ổ C)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD/tracking/remote **a528d85**; dùng nguyên
+  gói C `Temp/vco911/VideoCaptioner-OCR4-Media-20260911/`. Giữ source/test/spec,
+  chỉ thêm validation/tài liệu, chưa commit/push. [Biên bản mới nhất](docs/dev/ocr-relocation-2026-09.md).
+- Native GUI, PATH chỉ Windows/System32, input/output/cwd tại C: tự kiểm
+  runtime/profile SHA; một scan fixture 1,9 s cho **13 frame /3 cue /6 candidates**,
+  **3/3 câu hai dòng exact**, **2 request/2 response**, 2 detector/4 recognizer/
+  0 classifier, 4 cache hit; job **2,391 s**, inference **0,210 s**.
+- Progress scan **100%**, candidate một hàng; **6 issue vẫn review**, export/
+  handoff khóa. Ba crop GUI đúng PTS/SHA; lưu review mới rồi mở lại. Toàn document
+  ngoài metrics khớp pending cũ, giữ raw/IDs/source/config/timing/issue.
+- Ảnh hiển thị qua tool có lúc đen/thiếu phần chữ, nhưng PNG capture gốc chứa
+  đủ hai dòng: vùng chữ câu đầu/ba khớp bytes preview; câu hai chỉ khác ký tự
+  đã đổi. Không kéo splitter hoặc sửa painter, chưa chốt nguyên nhân mọi lỗi cũ.
+  Harness so toàn canvas ban đầu fail; so đúng vùng chữ sau diagnostic pass,
+  giữ lỗi/số đo trong evidence, không chạy scan lại.
+- Watcher thấy Python/bridge/model root/job-dir OCR và hai media tools đều từ
+  gói C. GUI đóng **exit 0**, 0 child/job sót, không traceback; **24 tệp** được
+  theo dõi giữ hash. GUI lifetime 481,906 s gồm thao tác, không phải OCR latency.
+- Evidence `ocr4-relocated-gui-16/` trong scratch OCR cũ; **0 vision request**.
+  Không rerun build/suite/API/model khác hoặc tăng cap. Chưa máy sạch/trace mọi
+  file-DLL; review Việt/chất lượng video riêng, native teardown và mở rộng còn mở.
+  Export/handoff/cancel/undo-redo GUI ổ D giữ evidence cũ, không đo lại ở C.
+
+## 2026-09-11 (OCR-4: gói media/model đã chuyển sang ổ C)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD **a528d85** khớp tracking/remote trực tiếp;
+  giữ các thay đổi có sẵn, chỉ thêm validation/tài liệu, chưa commit/push.
+  [Biên bản và giới hạn](docs/dev/ocr-relocation-2026-09.md).
+- Sao chép payload hiện có sang `Temp/vco911/VideoCaptioner-OCR4-Media-20260911/`
+  ở ổ C; giữ mọi artifact cũ, kể cả `Temp/vcm910/`. Không build/stage lại từ
+  cài đặt gốc hoặc tải model. Không mang AppData/work-dir cũ; settings test mới.
+- **129.628 file /49.321.971.851 byte**; model/runtime **127.610 file /
+  48.739.395.432 byte** khớp mọi SHA, đủ tám component. Payload còn lại và tập
+  đường dẫn đích khớp; không symlink/junction. Robocopy exit **1** thành công,
+  0 failed/mismatch; EXE giữ SHA `5bee44fd3277a9fb8c8239f51d28684a3d99e4b01024ed470825ca6727873d80`.
+- PATH chỉ Windows/System32, input/output/cwd ở C: frozen pending review exit
+  **5** đúng guard, reviewed exit **0**, document/output khớp. Watcher xác nhận
+  FFprobe từ gói C; hai media tools `-version` exit 0. `local-asr status` thấy
+  Qwen/aligner/Community-1, không health/inference mới.
+- Python OCR **3.12.13** và bốn thư viện import từ gói C; **0 network/ONNX
+  session attempt**. Source preview core dùng cặp media C: **3/3 crop tổng hợp
+  khớp SHA**, không phải GUI crop gate. GUI native đúng EXE hiện sau **1,203 s**,
+  sống 30 s, đóng exit **0**, 0 child/traceback. Settings/input được theo dõi giữ hash.
+- Evidence `ocr4-relocation-15/` trong scratch OCR cũ; **0 CPU/vision request**.
+  Không chạy lại offline suite/build/model/API. Chưa máy sạch, scan/runtime-check/
+  crop review GUI ở C hoặc inference từng runtime; review Việt, lỗi thiếu chữ,
+  native teardown và các phần mở rộng vẫn mở. Gate GUI flow ở D là evidence cũ.
+
+## 2026-09-11 (OCR-4: EXE kèm FFmpeg/FFprobe và hai fix UI)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD/tracking `a528d85`; giữ source/test/tài liệu
+  đang có, chưa commit/push. [Biên bản và gate](docs/dev/ocr-media-bundle-2026-09.md).
+- EXE cũ: mở review tổng hợp, cả ba crop hiện rõ ngay sau load, không kéo
+  splitter; đóng exit 0/0 child. Thiếu FFprobe trong gói được đối chứng: review
+  đã duyệt vẫn fail khi PATH bỏ tools dev. Không kết luận đã sửa crop đen cũ.
+- Spec thêm `VC_TEST_MEDIA_TOOLS_DIR` cho cặp static FFmpeg/FFprobe đã cài,
+  bundle vào `_internal/resource/bin` qua locator hiện có. Không đổi config/
+  painter/engine/model inventory. README thêm hướng dẫn.
+- Build mới **VideoCaptioner-OCR4-Media-20260911**, exit **0**, **508,094 s**,
+  6 warning PyInstaller/0 error và 9 dòng warning Python. EXE **31.385.758 byte**,
+  local **00:44:04**, SHA `5bee44fd3277a9fb8c8239f51d28684a3d99e4b01024ed470825ca6727873d80`.
+  Dùng lại models cũ: **127.610 file /48.739.395.432 byte**, mọi hash đích pass.
+  Cặp media/source modules/resources khớp, dependency OCR nặng không vào host.
+- PATH chỉ có Windows/System32: frozen review pending exit 5 đúng guard,
+  reviewed exit 0/JSON khớp. GUI mở review/crop rõ, progress 100%, candidate một
+  dòng, sáu issue vẫn review. Watcher thấy cả hai media tools từ gói mới; GUI
+  sống 162,500 s, đóng exit 0/0 child, không traceback; settings/fixture giữ hash.
+- Evidence `ocr4-exe-capture-13/` và `ocr4-media-bundle-14/` dưới scratch OCR
+  cũ; **0 CPU/vision request**. Không rerun full offline/scan/model/API; syntax
+  spec và diff check pass. Gate chuyển toàn gói khác ổ/máy sạch, workflow model/
+  online mới, chất lượng/review Việt và native teardown cũ còn mở.
+
+## 2026-09-10 (OCR-4: xác nhận capture sai cửa sổ, recovery native source)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD `a528d85` khớp remote trực tiếp; giữ nguyên
+  source progress/combo và các thay đổi có sẵn. Chỉ thêm evidence/tài liệu,
+  chưa commit/push/build. [Biên bản](docs/dev/ocr-capture-diagnostic-2026-09.md).
+- Native source phát lại PNG tổng hợp cũ, có nhãn magenta `7319` để đối chiếu
+  đích. Capture đầu trả ảnh ngoài cửa sổ OCR; chọn/kích hoạt lại đúng cửa sổ
+  thành công, capture sau có đúng nhãn và crop hai dòng hiện rõ. Không kéo
+  splitter hoặc sửa painter; chưa kết luận nguyên nhân mọi lần crop đen EXE.
+- Harness đóng exit 0, 0 worker, cả PID launcher/Python đã hết; settings và PNG
+  giữ SHA. Sáu issue vẫn review, export khóa. 0 CPU/vision request, không decode
+  hoặc verify nguồn lại. Evidence `build/ocr-pilot-20260910/ocr4-capture-diagnostic-12/`.
+- Không chạy lại gate code/build. Native EXE/crop đen và teardown cũ còn mở;
+  gói khác ổ/tự đủ FFprobe/review hỗ trợ Việt chưa được nghiệm thu mới.
+
+## 2026-09-10 (OCR-4: sửa progress/combo và test video thật được user chọn)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD `a528d85` khớp remote trực tiếp; giữ các
+  tài liệu có sẵn. Source sửa nhỏ, chưa commit/push/build lại. [Biên bản mới](docs/dev/ocr-ui-fixes-2026-09.md).
+- Scan thành công đưa progress lên 100%, vẫn giữ review/export guard; cancel/
+  lỗi giữ phần incomplete. Nhãn candidate một hàng dùng dấu phân cách dòng,
+  tooltip giữ raw; không đổi model/profile/metadata hoặc painter.
+- GUI scoped **9 pass**, OCR/GUI/CLI **271 pass**; full offline Qt offscreen
+  **1.739 pass /5 skip /51 deselected**, 163,38 s, exit 0. Ruff/Pyright 0/0/
+  translations pass. Lượt regression trước sửa có 2 fail và crash teardown
+  `0xC0000005`; giữ lỗi teardown cũ mở, không suy đã fix từ lượt sau pass.
+- User cho test một trong hai video: đã quét toàn clip 111,333 s qua source
+  OcrDialog/OcrThread offscreen, chưa chạy bài giảng. **23 cue /3.340 frame /
+  69 candidates**, 68 request/68 response, 68 detector/68 recognizer/0 classifier;
+  job **27,969 s**, inference **14,051 s**. Worker cuối 94% → GUI 100%, vẫn 23 issue
+  cần review, khóa export/handoff. Crop sau 60 s verify SHA pass, 0 worker còn lại.
+- 13 cue đầu trùng raw pilot cũ, 10/13 exact với tham chiếu agent chưa native-
+  confirmed; câu 4 vẫn thiếu chữ “tháng”. Không chấm độ đúng toàn bộ 23 cue.
+- Capture trả ảnh không khớp cửa sổ đích, recovery báo không có screenshot target;
+  user dừng Computer Use bằng Escape. PNG cũ mang tên “black” thực tế chứa chữ;
+  chưa xác định nguyên nhân crop đen của EXE, không sửa painter suy đoán.
+- Evidence `build/ocr-pilot-20260910/ocr4-ui-fixes-11/`; video giữ SHA, crop pilot
+  gốc 13/13 khớp. 0 vision request, không tăng cap; chưa có binary chứa hai fix,
+  gate native visual/gói khác ổ/tự đủ FFprobe/review hỗ trợ Việt vẫn mở.
+
+## 2026-09-10 (OCR-4: flow GUI từ EXE hiện có, hiển thị còn mở)
+
+- Worktree ASR-S3, HEAD `a528d85` sạch/khớp tracking origin lúc đầu. Dùng nguyên
+  `VideoCaptioner-OCR4-20260910`; không sửa code/resource, build, commit/push,
+  đổi dependency/model hoặc gọi vision. [Biên bản mới](docs/dev/ocr-exe-flow-2026-09.md).
+- GUI EXE: chọn video/selection/ROI, tự tìm và kiểm runtime, CPU **3/3 câu hai
+  dòng exact**, crop/review/undo/redo/save-reopen/export/handoff bảng phụ đề →
+  editor/save-reopen project đã đi qua. JSON/SRT/IDs/raw/source/config/timing/
+  metadata đối chiếu pass; normal editor save không ASS, không tự dịch/TTS.
+- Scan ngắn 13 frame /3 track /6 candidates, **2 fresh/4 cache**, 2 request/
+  2 response, 2 detector/4 recognizer/0 classifier; job **1,859 s**, inference
+  **0,181 s**. Chỉ fixture tổng hợp, không nâng chất lượng video riêng.
+- GUI hủy giữ **complete=false**, 589 track, khóa xuất, lưu review được và hết
+  process con; scan này thêm 2 request/2 response. Gate đóng khi bận: click và
+  capture **303 ms**, hết child theo mẫu đo sau **1.550 ms**. Hai lượt thử đóng
+  không persist metrics; tổng CPU cả phiên **null**, không suy từ lượt có receipt.
+- Main EXE đóng **exit 0**, không traceback/child sót; settings và fixture gốc
+  giữ SHA, **13/13 crop gốc** khớp manifest. Evidence ở
+  `build/ocr-pilot-20260910/ocr4-exe-flow-10/`.
+- Visual gate còn mở: crop đôi lúc đen qua Computer Use rồi hiện khi repaint
+  (chưa tách app/capture); scan hoàn tất còn 94%; candidate nhiều dòng bị cắt
+  trong combo. Không gọi toàn bộ GUI/OCR hoàn tất. Chưa chuyển cả gói khác ổ;
+  FFprobe dùng bộ đã cài dev qua PATH. Không chạy lại gate offline/build chỉ để
+  có số pass mới; 0 vision request, cap cũ/crop 5 vẫn giữ nguyên.
+
 ## 2026-09-10 (submit/push OCR-3/4 và prompt phiên sau)
 
 - User yêu cầu submit/push snapshot OCR đã nghiệm thu và prompt bàn giao.
