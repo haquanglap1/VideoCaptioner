@@ -1,5 +1,116 @@
 # Project Status
 
+## 2026-09-11 (Submit snapshot v6/cache và prompt phiên sau)
+
+- User yêu cầu submit/push nhánh `codex/asr-s3-native` và chuẩn bị prompt
+  phiên tiếp theo. Commit **d6d613c** chốt 30 file code/test/biên bản tích hợp
+  v6, cache OCR và fix helper test VieNeu; baseline trước snapshot là **f274af2**.
+- [Prompt hiện hành](docs/dev/ocr-next-session-prompt.md) dùng trạng thái đã
+  commit, giữ kết quả 1.817 offline pass/5 skip và cold/warm worker v6 thật.
+  Gate gần nhất còn thiếu là cache trong binary/native; EXE giữ lại chưa
+  có cache, cần dùng bộ model sẵn có và tránh tạo thêm bản sao 49 GB.
+- Lượt submit chỉ rà diff, tập file, remote và cập nhật tài liệu; không
+  chạy lại suite/OCR/API/build/download hoặc thay artifact. Snapshot gồm
+  source/test/docs, không chứa model, AppData, media hay evidence riêng.
+- Quyền submit/push áp dụng snapshot hiện tại, không tăng cap vision14
+  hoặc cấp quyền commit/push cho thay đổi của phiên kế tiếp. Đọc HEAD và
+  tracking thực tế từ Git sau commit bàn giao, không checkout về baseline.
+
+## 2026-09-11 (Sau dọn thủ công: cache OCR có hạn mức ở source)
+
+- User xác nhận tự xóa các thư mục nặng, giữ OCR6-Medium-20260911 rồi yêu cầu
+  tiếp tục plan. Agent không xóa hoặc quy inventory cũ thành byte đã thu hồi;
+  các ghi chú tool chặn dọn bên dưới là lịch sử.
+- [Cache OCR](docs/dev/ocr-cache-2026-09.md) lưu raw JSON/checksum trong SQLite,
+  key theo nguồn/config/profile/crop, mặc định 64 MiB payload + metadata,
+  0–512 MiB, tối đa 4.096 entry. LRU/auto-vacuum, fallback RAM khi disk lỗi;
+  vẫn cần review, giữ schema/IDs, không cache quyết định duyệt.
+- GUI có quota/status/clear qua worker; CLI `--cache-mib` và
+  `ocr-cache status|clear`. Test cô lập trên video tổng hợp: quét lại 0 fresh
+  calls; quét bị hủy chỉ cache response hoàn tất, giữ review chưa hoàn chỉnh.
+- Full offline: **1.817 pass /0 fail /5 skip /51 deselected**, 180,99 s.
+  Ruff pass; Pyright 0/0; translations in sync. Layout source offscreen
+  1120×900 đã xem, không coi là native/binary gate mới.
+- Worker v6 thật trên fixture cũ: cold 2 request/2 response/2 det/4 rec,
+  warm 0 request/0 inference/6 cache hit; cùng IDs/raw, 6 issue/export khóa.
+  Cache 1.024 byte payload/20.480 byte database; jobs rỗng, 7 file giữ hash.
+  Dùng runtime gói hiện có và source app; không phải cache trong binary.
+- Giữ nguyên EXE OCR6: **cache mới chưa có trong EXE**. Không build/copy model,
+  API, tải/cài dependency hoặc commit/push. Decode resume, auto-accept,
+  vision GUI và downloader vẫn còn mở. File của lượt này liệt kê trong biên
+  bản cache; giữ nguyên các sửa đổi v6 chưa commit trước đó.
+
+## 2026-09-11 (Bàn giao ưu tiên giải phóng dung lượng)
+
+- User nhắc giải phóng dung lượng và yêu cầu prompt phiên tiếp theo. Viết lại
+  [prompt hiện hành](docs/dev/ocr-next-session-prompt.md) theo trạng thái mới:
+  v6 đã tích hợp và đủ ba gate còn thiếu; ưu tiên dọn đúng 8 bản sao models
+  khoảng 389,12 GB đã được user xác nhận.
+- Mang đầy đủ lịch sử hai lần auto-review chặn `blocked by policy`, kể cả
+  sau xác nhận cụ thể. Chưa có model nào bị xóa; đổi phiên không tự gỡ chặn,
+  không chỉ dẫn né chặn bằng tool/shell/script khác. Giữ gói OCR6 mới nhất
+  và toàn bộ dữ liệu user; dẫn tới plan/evidence và inventory gzip đã gom.
+- Lượt bàn giao chỉ cập nhật prompt/status, đọc Git và dung lượng trống;
+  không thử lại lệnh đã bị chặn, không OCR/API/test/build/download hoặc commit/push.
+
+## 2026-09-11 (Khép gate OCR v6; kiểm kê 389 GB bản sao bị chặn xóa)
+
+- User yêu cầu tiếp tục các gate và dọn file do agent tạo. Giữ ASR-S3,
+  HEAD `f274af2`, mọi thay đổi v6 chưa commit. [Biên bản](docs/dev/ocr-final-gates-cleanup-2026-09.md).
+- Tái hiện xác định race helper test VieNeu: native thread đã dừng nhưng Qt
+  chưa giao result/finished; helper xử lý callback tạo Voices rồi trả về sớm.
+  Sửa chờ tập thread được retire và `wait()`, không đổi app. Regression fail
+  trước sửa; 8/8 test liên quan pass sau sửa. Full offline **1.794 pass,
+  0 fail, 5 skip, 51 deselected**, 168,85 s; Ruff pass.
+- Native EXE v6 hiện có qua cancel và đóng hộp thoại OCR khi đang bận. Fixture
+  tổng hợp cũ được stream-copy lặp (63,57 MB) để không kết thúc trước click.
+  Cancel giữ `complete=false`, 2 request/2 response, 2 det/4 rec/0 cls; export
+  khóa, 0 child/jobs rỗng. Phiên GUI exit 0 sau 410,235 s, không traceback,
+  78 đường dẫn giữ hash. Không dùng gate này làm benchmark chất lượng mới.
+- Kiểm kê **8 bản sao models ~389,12 GB** (6 gói cũ ở D, 2 bản thử Temp ở C),
+  inventory nằm trong bộ OCR6 mới đã verify. Giữ latest/AppData/work-dir/media.
+  Tool chặn lệnh xóa trước thực thi; user xác nhận cụ thể cả 8 bản, tool vẫn
+  chặn `blocked by policy`. **Chưa xóa/thực thu dung lượng model**; không né
+  chặn bằng công cụ khác. Danh sách ở `ocr-final-gates-cleanup-23/cleanup-review.md`.
+- Không build/copy thêm bộ models, không tải/nâng dependency hoặc gọi API.
+  Chỉ gom metadata backup mới tạo 195,46 MB còn 12,69 MB. Chưa commit/push.
+
+## 2026-09-11 (Tích hợp ứng viên OCR v6 medium)
+
+- Đúng ASR-S3, baseline HEAD/tracking/origin **f274af2**. Thêm profile v2
+  mô tả version/model/language/dictionary từng stage; worker đọc metadata,
+  kiểm CPU/package/weights/dictionary và handshake. Giữ recipe v5 cũ,
+  snapshot/schema/IDs/raw/review/export guards; không hiệu chuẩn auto-accept.
+- Discovery ưu tiên `ocr-v6-medium` khi có, vẫn chọn v5 tường minh được;
+  GUI kiểm model hiện profile. CLI lấy SHA từ bộ đã chọn thay SHA v5 cố định.
+  [Chi tiết code, đóng gói và gate](docs/dev/ocr-v6-integration-2026-09.md).
+- Bộ candidate riêng **4.473 file/448.200.738 byte**, lấy environment CPU đã
+  verify +2weights medium đã có. Builder giữ owner/inventory/SHA, thêm component
+  vào output mới của một spec; không stage lại ASR/TTS hoặc sửa gói cũ.
+- Source fixture cũ **13frame/3cue/6candidate**, **2request/2response/2det/4rec/0cls**,
+  3/3câu hai dòng exact; **6issue** còn review, export khóa, save/load và source
+  identity giữ đúng. Job3,218s; host không import OCR nặng, jobs dọn sạch.
+- Gate62test gần và164scoped pass; full offline **1791pass/1fail/5skip/51deselected**.
+  Fail danh sách giọng VieNeu; riêng file7/7pass, chưa xác định nguyên nhân.
+  CLI/service sau sửa155pass; Ruff/Pyright0/0, translations in sync.
+- Giữ evidence harness gọi nhầm hàm sau source inference; kiểm file đã lưu,
+  không rerun OCR. Build đầu dừng trước artifact để sửa call site CLI;
+  binary cuối có gate riêng, không suy từ source. Evidence `ocr-v6-integration-22/`.
+- **EXE OCR6-Medium-20260911**: buildexit0, log517,169s,6warning/0error;
+  **31.413.410byte**,15:45:47,SHA`211ef75b…bae165`. Inventory đích mới
+  **132.083file/49.187.596.170byte** khớp SHA,7module khớpPYZ; bộ cũ giữ nguyên.
+  Python trong gói đọc crop medium, startupv5 không inference; CLI tự chọnv6,
+  fixture3/3exact,6issue/exportkhóa/exit5 đúng contract.
+- Native GUI tự tìmv6, chọnROI/scan/crop/save-reopen đã qua:3/3câu fixtureexact,
+  job2,234s,6issue và guard giữ nguyên. App sống630,954s/exit0/0child/0traceback,
+  jobs rỗng,212path giữhash. Lần thử hủy xong trước click nên **chưa xác nhận
+  cancelGUIv6**, chưaclose-while-busy; không lặp lấy pass.
+- Tổng gate thật **9request/9response,9det/18rec/0cls**;209path đầu/cuối bảo toàn.
+  Giữ lỗi hậu kiểm build đọc manifest lặp, lỗi harness vị trí`--config`/đoán
+  exit6 và lỗi UIA/file-dialog; xử lý bằng verification/tool đúng, không rerunOCR.
+- **0 API mới,0download,0dependency change**, không lặp23crop/ma trận chất lượng;
+  cap vision14 giữ nguyên. Chưa commit/push.
+
 ## 2026-09-11 (Submit tài liệu chất lượng v6 và prompt tích hợp)
 
 - User yêu cầu commit/push snapshot tài liệu trên `codex/asr-s3-native`, gồm
