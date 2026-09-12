@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import time
@@ -37,6 +38,51 @@ def test_vfr_pts_nonzero_origin_and_selection_hold(make_video, text_image, ffmpe
     measured = decoder.metrics.process_wall_s
     decoder.close()
     assert decoder.metrics.process_wall_s == measured
+
+
+@pytest.mark.parametrize("offset", [0, 5])
+@pytest.mark.parametrize("vfr", [False, True])
+def test_seek_replays_exact_source_pts_and_spans(make_video, text_image, ffmpeg_tools, offset, vfr):
+    ffmpeg, ffprobe = ffmpeg_tools
+    source = make_video([text_image(str(i)) for i in range(30)], vfr=vfr, offset=offset)
+    info = probe_video(source, ffprobe)
+    selection = Selection(50, 2800)
+    with RoiDecoder(source, info, Roi(0, 0, 1, 1), ffmpeg=ffmpeg) as full:
+        expected = list(full.spans(selection))
+    anchor = expected[12]
+    with RoiDecoder(source, info, Roi(0, 0, 1, 1), ffmpeg=ffmpeg,
+                    seek_pts=anchor.frame.pts) as resumed:
+        actual = list(resumed.spans(selection, start_ms=anchor.start_ms))
+    def values(spans):
+        return [(s.frame.pts, hashlib.sha256(s.frame.rgb).hexdigest(), s.start_ms, s.end_ms, s.clipped_start,
+                 s.clipped_end, s.uncertain_end) for s in spans]
+    assert values(actual) == values(expected[12:])
+    assert resumed.metrics.frames < full.metrics.frames
+    assert resumed.process.poll() is not None and all(not t.is_alive() for t in resumed.readers)
+
+
+@pytest.mark.parametrize("offset", [0, 5])
+def test_seek_preserves_fractional_pts_with_interframe_codec(
+        make_video, text_image, ffmpeg_tools, tmp_path, offset):
+    ffmpeg, ffprobe = ffmpeg_tools
+    original = make_video([text_image(str(i)) for i in range(60)], offset=offset, frame_rate="30000/1001")
+    source = tmp_path / "interframe.mov"
+    subprocess.run([ffmpeg, "-v", "error", "-nostdin", "-n", "-copyts", "-i", str(original),
+                    "-c:v", "libx264", "-g", "12", "-bf", "3", "-threads", "1", "-fps_mode", "passthrough", str(source)],
+                   env=child_environment(), creationflags=_NO_WINDOW, check=True, timeout=30,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    info = probe_video(source, ffprobe)
+    with RoiDecoder(source, info, Roi(0, 0, 1, 1), ffmpeg=ffmpeg) as full:
+        expected = list(full.spans(Selection(10, 1800)))
+    anchor = expected[39]
+    assert anchor.start_ms.denominator != 1
+    with RoiDecoder(source, info, Roi(0, 0, 1, 1), ffmpeg=ffmpeg, seek_pts=anchor.frame.pts) as resumed:
+        actual = list(resumed.spans(Selection(10, 1800), start_ms=anchor.start_ms))
+    def values(spans):
+        return [(s.frame.pts, hashlib.sha256(s.frame.rgb).hexdigest(), s.start_ms, s.end_ms,
+                 s.clipped_start, s.clipped_end, s.uncertain_end) for s in spans]
+    assert values(actual) == values(expected[39:])
+    assert resumed.metrics.frames < full.metrics.frames
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])

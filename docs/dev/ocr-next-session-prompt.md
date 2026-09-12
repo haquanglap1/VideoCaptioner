@@ -1,93 +1,58 @@
-# Prompt phiên tiếp theo — cache OCR ở source; giữ bộ OCR6 hiện có
+# Prompt phiên tiếp theo — cache và resume OCR đã qua các gate đã giao
 
-Tiếp tục trong worktree **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**.
-Tìm bằng `git worktree list`, không làm ở checkout master. Snapshot code,
-tests và biên bản v6/cache đã commit **d6d613c** (`feat(ocr): integrate v6
-medium and bounded persistent cache`); prompt/status thuộc commit bàn giao
-tiếp theo. **f274af2** là baseline trước snapshot, không phải HEAD cần quay về.
-Lấy HEAD/tracking/origin thật từ Git; không reset, merge master hoặc bỏ thay
-đổi mới nếu có. User đã yêu cầu submit/push snapshot này; quyền đó không tự
-cấp commit/push/tag/release cho thay đổi của phiên tiếp theo.
+Tiếp tục worktree VideoCaptioner-ASR-S3, nhánh codex/asr-s3-native. Tìm bằng
+`git worktree list`; đọc HEAD/tracking/Git status thật. User đã yêu cầu submit
+snapshot cache/resume; tài liệu này nằm trong cùng commit snapshot đó.
+`cb92305` là baseline trước snapshot, không phải HEAD cần quay về. Giữ mọi
+diff mới nếu có; không reset/merge. Quyền commit/push của lượt submit không
+tự cấp commit/push/tag/release hoặc thêm API cho công việc phiên sau.
 
-## Trạng thái mới nhất
+Đọc AGENTS.md, README.md, mục mới nhất status.md và:
+- docs/dev/ocr-resume-2026-09.md
+- docs/dev/ocr-cache-binary-2026-09.md
+- docs/plans/video-subtitle-ocr-integration-plan.md
 
-User đã tự xóa các thư mục nặng, giữ **VideoCaptioner-OCR6-Medium-20260911**,
-sau đó nói **“xoá hết rồi, làm tiếp theo plan”**. Nhiệm vụ dọn không còn mở.
-Hai lần tool chặn xóa trước đó vẫn được ghi trong biên bản cũ; agent không
-thực hiện việc xóa hoặc báo số byte thu hồi thay user.
+Cache và resume đã có ở source/CLI/GUI/binary. Resume giữ checkpoint v1,
+ID/raw/review; đọc kiểm cue cuối bằng PTS/crop SHA, rồi nối phần thiếu.
+Fixture dài:2.842cue khớp bản full;6.314frame thay12.316frame, giữ1.386cue cũ.
+Review còn mở vẫn khóa export, OCR pending CLI exit5. Full offline cuối
+1.839pass/5skip/51deselected; Ruff/Pyright0/0, translations sync. Hai lượt
+chuẩn trước AV ở teardown; cleanup widget trong test mới đã thêm, full cuối
+exit0, giữ log chẩn đoán; không dùng kết quả đó làm pass dịch vụ online.
 
-Đã triển khai cache disk/quota ở source: raw EngineRead JSON/checksum,
-key theo nguồn/config/profile/crop. Mặc định 64 MiB payload + metadata SQLite,
-0–512 MiB, tối đa 4.096 entry, LRU/auto-vacuum. `0` tắt disk cache; lỗi disk/
-lock dùng RAM/CPU và thông báo. GUI có quota/status/clear qua worker; CLI
-`--cache-mib`, `ocr-cache status|clear`. Cache không giữ ảnh/video, credential,
-bản dịch/quyết định duyệt; không tự duyệt hoặc sửa schema/ID.
+User từng nhấn Escape ở smoke sau cài, rồi yêu cầu TIẾP TỤC. Gate đó nay
+**đã pass**: EXE trực tiếp trong dist, ô runtime trống tự tìm v6 medium/khớp
+SHA; mở màn OCR/resume rồi đóng GUI exit0 sau79,953s, không traceback/child.
+Không inference/API; AppData được backup trước chạy,5cache khôi phục từ
+backup thực,15hash theo dõi khớp. Evidence mới:
+`build/ocr-pilot-20260910/ocr-resume-installed-27/`.
+Không coi các dòng “smoke còn thiếu” trong mục lịch sử là trạng thái hiện tại.
 
-## Đọc trước khi sửa
+Giữ nguyên gói dist/VideoCaptioner-OCR6-Medium-20260911 và models/AppData/work-dir.
+EXE31.430.444byte,2026-09-12 11:52:25+07, SHA-256:
+34a1e970fcb643b3435ef09b09f73df9fc26ee8831c8b70e1101e643284338f1.
+Build trước exit0/6warning/0error; chỉ app được cập nhật, không copy49GB.
+Bản cache trước SHAcef53f77…c87ef2 ở evidence26/rollback-app; app trước cache
+vẫn ở evidence25. `ocr-resume-26/Update-App.ps1 -Action Rollback` trả riêng
+EXE/_internal khi app đã đóng; nhánh Rollback chưa chạy. Giữ các backup.
 
-1. AGENTS.md, README.md, phần mới nhất status.md; kiểm Git status/HEAD/upstream.
-2. `docs/dev/ocr-cache-2026-09.md` và `docs/plans/video-subtitle-ocr-integration-plan.md`.
-3. Khi liên quan runtime/binary: `docs/dev/ocr-v6-integration-2026-09.md` và
-   `docs/dev/ocr-final-gates-cleanup-2026-09.md`. Gate v6 cũ đã khép, nhưng
-   không chứng minh cache mới trong binary.
+Junction models evidence25 từng bị auto-review chặn gỡ vẫn giữ; không thử
+công cụ/shell khác để né chặn. Evidence26/27 không tạo junction mới. Git còn
+untracked ffcachePuSHPB, chưa xóa hoặc đưa vào commit.
 
-## Gate cache đã chạy
+0API mới; cap vision14 đã hết. Không đọc Api.txt, gọi vision/dịch/TTS, tải model,
+uv sync/cài/nâng dependency/global/Python3.13. Host ../VideoCaptioner/.venv/Scripts/python.exe
+3.12.13; Pyright --venvpath ../VideoCaptioner. Dùng runtime v6 hiện có, worker
+Python -I -B. Một VideoCaptioner.spec; không đè nguyên gói bằng --noconfirm
+hoặc chép thêm49GB. Giữ .env/cookies/Api.txt/media/raw/evidence/log/settings.
+Mọi smoke trên dữ liệu thật phải backup trước, vì mở GUI cũng có thể đổi cache.
+Test cô lập settings/cache/credentials/logger, QThread.wait(), child_environment
+và contextvars helpers hiện có.
 
-- Full offline FFmpeg + Qt offscreen: **1.817 pass /0 fail /5 skip /
-  51 deselected**, 180,99 s. Skip 4 TTS cần key/service, 1 QtMultimedia.
-- Ruff app/tests pass; Pyright app 0/0; translations in sync.
-- Test video tổng hợp/recognizer giả: giữ IDs/raw/nguồn/review, scope/quota/
-  LRU/reclaim/lock/disk-full/corrupt/clear/cancel/concurrent jobs và worker GUI.
-- **Worker v6 thật trên fixture tổng hợp cũ:** cold 13 frame/3 cue/6 candidate,
-  2 request/2 response, 2 det/4 rec/0 cls; warm 0 request/0 inference, 6 cache
-  hit. Cùng ID/raw, giữ 6 issue và export khóa. Hai entry: payload 1.024 byte,
-  database 20.480 byte. Job 3,812 s và 1,828 s; không là benchmark corpus.
-  Worker vẫn startup/kiểm profile ở lần warm. Jobs rỗng; 7 file theo dõi giữ
-  hash (EXE, fixture, profile, bridge, 3 weights). Harness thêm `-B` cho child
-  Python để không sinh bytecode trong runtime giữ lại; không sửa bridge.
-- Layout source offscreen 1120×900 đã xem với Noto Sans SC trong repo. Ảnh
-  đầu thiếu glyph do font hệ thống được giữ riêng. Evidence ngoài Git:
-  `build/ocr-pilot-20260910/ocr-cache-24/`, receipt thật ở `real-worker/receipt.json`.
-- **Chưa build EXE có cache.** Không coi source pass là binary đã được cập nhật.
-
-## Artifact phải giữ
-
-`dist/VideoCaptioner-OCR6-Medium-20260911/`, nguyên thư mục gồm `models/`,
-`_internal/`, AppData và work-dir. EXE 31.413.410 byte, local 2026-09-11
-15:45:47, SHA-256:
-`211ef75bbc7999f36ab13f357a892f4f88fe9385651deedb31c15aee32bae165`.
-
-Artifact v6 đã qua PyInstaller exit0/6warning/0error, inventory 132.083 file/
-49.187.596.170 byte đã verify, CLI/GUI fixture 3/3 câu, cancel và close khi bận,
-giữ review/export guards, không process con. **Đây là binary trước cache.**
-Không ghi đè cả thư mục bằng PyInstaller --noconfirm hoặc chép thêm bộ 49 GB.
-
-## Bước tiếp và giới hạn
-
-- Gate còn thiếu gần nhất là **cache trong binary và GUI native**. Khi user
-  giao tiếp tục phần này, chuẩn bị phương án build/cập nhật riêng phần app
-  với khả năng quay lại bản cũ, dùng bộ model/runtime đã verify hiện có.
-  Giữ AppData/work-dir/media/log; không dùng `--noconfirm` lên nguyên gói
-  giữ lại hoặc nhân bản 49 GB. Dùng một `VideoCaptioner.spec`, nghiệm thu
-  cold/warm cache, status/clear, review/export guards và worker lifecycle
-  từ đúng artifact; báo source/binary/native gate riêng.
-- Cache vẫn snapshot/probe/decode/tracking lại selection; **chưa phải resume
-  tại mốc bị hủy**. Resume decode, hiệu chuẩn/auto-accept, vision GUI,
-  downloader/update và nghiệm thu corpus rộng còn mở trong plan.
-- **0 API mới được cấp; cap vision14 đã hết.** Không đọc Api.txt, gọi vision,
-  dịch/TTS hoặc tải model khác. Không cài/nâng dependency, uv sync,
-  Python3.13/global install. Host `../VideoCaptioner/.venv/Scripts/python.exe`
-  (3.12.13); Pyright `--venvpath ../VideoCaptioner`.
-- RapidOCR3.9.2/ONNX Runtime CPU1.29.0 đã có; OCR nặng ngoài Qt. V6 medium/multi
-  pin model/dictionary từng stage, vẫn đọc v5 tường minh. Chất lượng cũ 23/23
-  đủ chữ-số, 19/23 exact; tham chiếu agent chưa native-confirmed, không là
-  auto-accept hoặc chất lượng toàn sản phẩm.
-- Giữ `.env`, cookies, Api.txt, AppData, work-dir, media, raw/evidence và log.
-  Giữ weights/evidence `ocr-quality-21/`; không thay raw cũ bằng raw v6.
-- Test cô lập settings/CLI config/OPENAI/request logger/OCR cache; QThread
-  phải `wait()` trước khi object rời scope. Dùng `child_environment()` và
-  contextvars helper hiện có. OCR pending CLI **exit5**, không phải exit6.
-- Không chạy lại full suite/build/crop sweep đã qua chỉ để có số mới; chạy
-  thêm theo thay đổi hoặc gate còn thiếu. Bàn giao kiểm Git status, liệt kê
-  đúng file mới/gate/skip và giữ các thay đổi chưa commit. Không gọi toàn bộ
-  roadmap OCR hoàn tất.
+Resume vẫn snapshot/hash toàn nguồn và đọc lại một cue tại điểm nối; không
+tự lưu khi process crash/kill. GUI phải Hủy → Lưu review trước khi đóng.
+Bước tiếp cần theo phần user giao: hiệu chuẩn/giảm review, vision GUI,
+downloader/update, checkpoint tự động và corpus rộng còn mở. Không tự cấp
+thêm API hoặc dùng tham chiếu agent làm nhãn chuẩn/auto-accept. Không chạy lại
+full suite/build/crop sweep đã qua chỉ để có số mới. Không gọi toàn roadmap
+OCR hoàn tất; bàn giao đúng file sửa, gate và giới hạn thực tế.

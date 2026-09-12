@@ -1,5 +1,82 @@
 # Project Status
 
+## 2026-09-12 (Submit snapshot cache/resume đã nghiệm thu)
+
+- User yêu cầu commit/push các thay đổi cache/resume trên `codex/asr-s3-native`.
+  Baseline trước snapshot là `cb92305`; đọc HEAD và tracking thực tế sau commit.
+  Snapshot gồm 25 file source/test/spec/tài liệu, giữ các biên bản và giới hạn
+  nghiệm thu; không đưa EXE, models, AppData, media hoặc evidence riêng vào Git.
+- Giữ kết quả đã chạy: full offline1.839pass/5skip/51deselected, Ruff/Pyright
+  sạch, translations sync, CLI/native resume và smoke đúng artifact pass.
+  Lượt submit chỉ rà diff, staged files và remote; không chạy lại build/suite/OCR.
+- `ffcachePuSHPB` còn ở worktree và không được stage. Prompt bàn giao được
+  cập nhật theo snapshot này; quyền submit/push không cấp thêm API/vision,
+  commit hoặc push cho công việc phát sinh ở phiên sau.
+
+## 2026-09-12 (Khép smoke resume tại vị trí cài đặt)
+
+- User yêu cầu tiếp tục sau Escape. Giữ ASR-S3/HEAD `cb92305` và toàn bộ diff
+  chưa commit; chỉ nghiệm thu gate còn thiếu, không build/test suite/OCR lại.
+- EXE trong `dist/VideoCaptioner-OCR6-Medium-20260911/`, SHA34a1e970…4338f1,
+  tự tìm v6 medium khi ô runtime để trống; kiểm model/profile khớp SHA.
+  Cache/resume hiển thị đúng, resume/export khóa khi chưa có document.
+- Native smoke **79,953s**, đóng GUI exit0, không traceback, không child;
+  watcher50ms không thấy kết nối. Backup AppData trước chạy; khôi phục5cache
+  từ backup thực, **15hash theo dõi khớp**, không process app còn lại.
+- [Biên bản resume](docs/dev/ocr-resume-2026-09.md); evidence mới
+  `build/ocr-pilot-20260910/ocr-resume-installed-27/`. Gate resume đã khép.
+  Lượt này chỉ sửa status, biên bản resume, plan và prompt tiếp theo. Không
+  API/download/install/commit/push; không đổi code hoặc artifact. Các phần
+  auto-accept/vision GUI/downloader/corpus vẫn chưa được nghiệm thu.
+
+## 2026-09-12 (Resume OCR; user dừng bước smoke cuối bằng Escape)
+
+- [Resume](docs/dev/ocr-resume-2026-09.md): giữ checkpoint `ocr-document-v1`,
+  kiểm lại cue cuối bằng PTS/crop SHA rồi nối phần thiếu, không OCR lại cue
+  đã giữ. CLI `ocr-resume`, GUI **Tiếp tục quét**; source/config mismatch dừng.
+- Full cuối **1.839pass/5skip/51deselected**,190,04s exit0; Ruff/Pyright0/0,
+  translations sync. Hai lượt chuẩn trước gặp AV ở teardown; thêm cleanup
+  widget tường minh trong test GUI mới, giữ log chẩn đoán và không sửa app để che lỗi.
+- Binary dài full12.316frame → resume6.314frame;2.842cue khớp ID/raw/timing,
+  giữ1.386cue cũ. Native staging resume/save pass, export khóa, exit0/0child.
+- Build một spec, app590file/529.736.862byte, exit0/6warning/0error.
+  Đã cập nhật riêng EXE/`_internal` trong gói OCR6 hiện có, không copy models.
+  EXE31.430.444byte,11:52:25+07,SHA`34a1e970fcb643b3435ef09b09f73df9fc26ee8831c8b70e1101e643284338f1`.
+- User nhấn Escape dừng Computer Use ở bước smoke sau cài. Dừng UI, terminate
+  đúng process smoke, khôi phục5cache từ backup AppData thực.4.970hash khớp,
+  app mới/quay lui khớp inventory,0process sót. **Smoke tại dist chưa nghiệm thu**.
+- Evidence `build/ocr-pilot-20260910/ocr-resume-26/`, app trước tại `rollback-app/`.
+  Giữ mọi diff trước; chưa commit/push. File untracked `ffcachePuSHPB` còn giữ.
+  Không API/download/install. Auto-accept/vision GUI/downloader/corpus vẫn mở.
+
+## 2026-09-12 (Cache OCR trong binary/native; cập nhật riêng app OCR6)
+
+- ASR-S3 `codex/asr-s3-native`, HEAD/tracking **cb92305** giữ nguyên; không
+  commit/push. [Biên bản và quay lui](docs/dev/ocr-cache-binary-2026-09.md).
+- Worker thêm `-B` cùng `-I`, regression process thật fail trước/pass sau:
+  import không còn sinh `.pyc` vào runtime. 203 test riêng biệt liên quan
+  runtime/cache/service/GUI/CLI pass; Ruff pass, Pyright0/0, translations sync.
+  Không chạy lại full offline; không API/model/download/dependency mới.
+- PyInstaller một spec, staging mới, chỉ app **590file/529.730.769byte**,
+  exit0/6warning/0error,251,562s. EXE **31.424.351byte**,02:41:04+07,
+  SHA `cef53f77b8ae00cc7ecece96e6a9d5cbc4043b45e10aeadcf2ac952f68c87ef2`.
+- CLI và GUI fixture cũ: cold2request/2det/4rec, warm0request/0inference/6hit;
+  cùng IDs/raw/nguồn,6issue/export khóa, status/clear2→0. GUI cancel giữ
+  complete=false; close khi đang xử lý pass, exit0,0child/jobs rỗng.
+- Đã thay **chỉ EXE/`_internal`** tại `dist/VideoCaptioner-OCR6-Medium-20260911/`;
+  models/AppData/work-dir giữ lại. App cũ nằm trong `rollback-app/` dưới
+  evidence, SHA EXE cũ211ef75b…bae165, cả hai app khớp inventory590file.
+  Smoke chính dist55,578s exit0, thấy control cache,0process sót.
+- Hậu kiểm phát hiện smoke mở lại5diskcache rỗng làm đổi bytes. Khôi phục
+  đúng byte bằng bản scratch do thư viện hiện có tạo, chỉ dùng khi khớp SHA
+  baseline; giữ bản sau smoke/journal. Cuối phiên **4.970hash khớp**, không
+  có file runtime mới. Không hash lại toàn models49GB hoặc suy benchmark corpus.
+- Evidence `build/ocr-pilot-20260910/ocr-cache-binary-25/`; junction models
+  tạm còn vì auto-review chặn gỡ link (`blocked by policy`), không thử cách
+  khác. Link không là bản sao models; gói dist chạy độc lập với staging.
+- Gate cache binary/native hoàn tất; decode resume, auto-accept, vision GUI,
+  downloader/update và corpus rộng còn mở. Không gọi toàn roadmap hoàn tất.
+
 ## 2026-09-11 (Submit snapshot v6/cache và prompt phiên sau)
 
 - User yêu cầu submit/push nhánh `codex/asr-s3-native` và chuẩn bị prompt

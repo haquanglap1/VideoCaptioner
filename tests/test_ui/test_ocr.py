@@ -2,10 +2,12 @@ import io
 import time
 from contextvars import ContextVar
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
-from PyQt5.QtCore import QEventLoop, QPoint, Qt, QTimer
+from PyQt5 import sip
+from PyQt5.QtCore import QCoreApplication, QEvent, QEventLoop, QPoint, Qt, QTimer
 from PyQt5.QtTest import QTest
 
 from tests.test_ocr.test_document import make_document
@@ -40,6 +42,7 @@ def test_dialog_open_is_lazy_and_roi_drag_respects_letterbox(qapp, monkeypatch):
     monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.manage_cache", forbidden)
     dialog = OcrDialog()
     assert dialog.worker is None and not dialog.scan_button.isEnabled()
+    assert not dialog.resume_button.isEnabled()
     assert dialog.cache_mib.value() == 64
     assert not dialog.export_button.isEnabled()
     image = Image.new("RGB", (640, 120), "black")
@@ -58,6 +61,61 @@ def test_dialog_open_is_lazy_and_roi_drag_respects_letterbox(qapp, monkeypatch):
     assert roi is not None and .09 < roi.x < .11 and .78 < roi.width < .82
     assert dialog.scan_button.isEnabled()
     dialog.close()
+
+
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_open_checkpoint_resume_uses_saved_settings_and_keeps_review(qapp, tmp_path, monkeypatch, mismatch):
+    from PyQt5.QtCore import QThread
+
+    document = replace(make_document(), complete=False)
+    checkpoint = tmp_path / "saved.json"
+    document.save(checkpoint)
+    original = checkpoint.read_bytes()
+    calls = []
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.QFileDialog.getOpenFileName",
+                        lambda *_: (str(checkpoint), "JSON"))
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.verify_visual_file", lambda *_a, **_k: None)
+    installed = replace(document.config, bridge_sha256="f" * 64) if mismatch else document.config
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.inspect_installation",
+                        lambda *_: SimpleNamespace(config=lambda *_: installed, root=tmp_path, bridge=tmp_path / "bridge.py"))
+
+    def scan(source, config, _root, _bridge, **options):
+        assert QThread.currentThread() is not qapp.thread()
+        assert config == document.config and options["resume_document"] == document
+        assert options["expected_source_sha256"] == document.visual_source.snapshot_sha256
+        assert options["cache_mib"] == 0
+        calls.append(True)
+        completed = replace(document, complete=True)
+        options["checkpoint"](completed)
+        return completed
+
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.run_cpu_ocr", scan)
+    dialog = OcrDialog(source="synthetic.mov")
+    dialog.load_review()
+    wait_worker(dialog.worker)
+    qapp.processEvents()
+    assert dialog.resume_button.isEnabled() and dialog.session.document == document
+    dialog.start_ms.setValue(99)
+    dialog.end_ms.setValue(99999)
+    dialog.roi_values[0].setValue(.2)
+    dialog.cache_mib.setValue(0)
+    dialog.resume_scan()
+    worker = dialog.worker
+    assert worker.task.resume_document == document and not dialog.resume_button.isEnabled()
+    wait_worker(worker)
+    qapp.processEvents()
+    if mismatch:
+        assert not calls and dialog.session.document == document and dialog.resume_button.isEnabled()
+        assert "không khớp checkpoint" in dialog.status.text()
+    else:
+        assert calls == [True] and dialog.session.document.complete
+        assert dialog.session.document.cues == document.cues and not dialog.resume_button.isEnabled()
+    assert not dialog.export_button.isEnabled() and checkpoint.read_bytes() == original
+    dialog.close()
+    # Signal closures retain this hidden dialog after close(); release Qt children before qapp teardown.
+    dialog.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert sip.isdeleted(dialog)
 
 
 def test_review_requires_verified_crop_keeps_raw_and_undo(qapp):

@@ -36,7 +36,7 @@ def make_video(tmp_path, ffmpeg_tools):
     ffmpeg, _ = ffmpeg_tools
     count = 0
 
-    def make(images, *, vfr=False, offset=0, sar="1/1", rotation=0):
+    def make(images, *, vfr=False, offset=0, sar="1/1", rotation=0, frame_rate="10"):
         nonlocal count
         count += 1
         folder = tmp_path / str(count)
@@ -47,7 +47,7 @@ def make_video(tmp_path, ffmpeg_tools):
         expression = "(N+floor(N/2))/(10*TB)" if vfr else "PTS"
         filters = f"setpts={expression}+{offset}/TB,setsar={sar}"
         video = folder / "fixture.mov"
-        subprocess.run([ffmpeg, "-v", "error", "-nostdin", "-n", "-framerate", "10", "-i",
+        subprocess.run([ffmpeg, "-v", "error", "-nostdin", "-n", "-framerate", frame_rate, "-i",
                         str(folder / "frame-%03d.png"), "-vf", filters, "-fps_mode", "passthrough",
                         "-c:v", "png", "-threads", "1", "-pix_fmt", "rgb24", str(video)],
                        env=child_environment(), creationflags=_NO_WINDOW, check=True, timeout=30,

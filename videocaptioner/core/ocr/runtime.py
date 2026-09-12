@@ -171,7 +171,7 @@ class CpuOcrRuntime:
             self.started = time.monotonic()
             self.state = "starting"
             self.process = subprocess.Popen(
-                [str(python), "-I", str(self.bridge), "--root", str(self.root), "--job-dir", str(self.directory),
+                [str(python), "-I", "-B", str(self.bridge), "--root", str(self.root), "--job-dir", str(self.directory),
                  "--profile-sha256", self.profile_sha256], stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=child_environment(),
                 creationflags=_NO_WINDOW, start_new_session=os.name != "nt",

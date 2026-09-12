@@ -29,6 +29,11 @@ p=argparse.ArgumentParser()
 p.add_argument('--root',type=Path); p.add_argument('--job-dir',type=Path); p.add_argument('--profile-sha256')
 a=p.parse_args()
 mode=(a.root/'mode.txt').read_text()
+if mode=='no-bytecode':
+ import importlib.util
+ spec=importlib.util.spec_from_file_location('probe',a.root/'probe.py')
+ module=importlib.util.module_from_spec(spec)
+ spec.loader.exec_module(module)
 metrics={'network_attempts':0,'inference_calls':{'det':0,'rec':0,'cls':0}}
 def emit(x): print(json.dumps(x),flush=True)
 if mode=='startup-stall': time.sleep(20)
@@ -84,6 +89,15 @@ def test_worker_missing_stage_attestation_stops_before_inference(runtime_factory
         runtime.start()
     assert runtime.metrics.requests == 0
     assert_closed(runtime)
+
+
+def test_worker_imports_leave_installed_runtime_unchanged(runtime_factory):
+    runtime = runtime_factory("no-bytecode")
+    (runtime.root / "probe.py").write_text("VALUE = 1\n", encoding="utf-8")
+    with runtime:
+        assert runtime(sample_frame()).text == "fixture"
+    assert_closed(runtime)
+    assert not list(runtime.root.rglob("*.pyc"))
 
 
 def assert_closed(runtime):

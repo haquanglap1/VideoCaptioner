@@ -1,5 +1,10 @@
 # Cache bản đọc OCR có hạn mức — 2026-09-11
 
+**Bổ sung 2026-09-12:** [cache đã qua gate EXE và GUI native](ocr-cache-binary-2026-09.md).
+Gói OCR6 giữ lại đã được thay riêng EXE/`_internal`, có app quay lui, không
+chép models. Cold/warm/status/clear/review/cancel/close pass từ binary.
+Các dòng “chưa build” dưới đây là snapshot của lượt source ngày 2026-09-11.
+
 User đã tự dọn các thư mục nặng, giữ `VideoCaptioner-OCR6-Medium-20260911`,
 rồi yêu cầu tiếp tục plan. Lượt này triển khai cache disk/quota trong mục 7
 trên ASR-S3, giữ các thay đổi v6 chưa commit. Agent không xóa artifact/model,

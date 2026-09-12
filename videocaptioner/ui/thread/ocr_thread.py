@@ -57,18 +57,23 @@ class OcrWorker(QThread):
 class OcrThread(OcrWorker):
     def __init__(self, task: OcrTask):
         self.task = task
-        self.partial_document: OcrDocument | None = None
+        self.partial_document: OcrDocument | None = task.resume_document
         super().__init__(self.scan)
 
     def scan(self, check: Check) -> OcrDocument:
         self.progress.emit(0, "Kiểm tra runtime OCR đã cài…")
         installation = inspect_installation(Path(self.task.runtime_path) if self.task.runtime_path else None, check)
         config = installation.config(self.task.roi, self.task.selection)
+        if self.task.resume_document is not None:
+            if config != self.task.resume_document.config:
+                raise OcrError("Runtime/profile không khớp checkpoint; chọn đúng bộ OCR đã dùng trước đó.")
+            config = self.task.resume_document.config
         self.progress.emit(0, "Đang đọc phụ đề trong hình bằng CPU…")
         return run_cpu_ocr(Path(self.task.file_path), config, installation.root, installation.bridge,
                            max_requests=self.task.max_requests, check=check,
                            checkpoint=self.capture, progress=self.progress.emit,
-                           expected_source_sha256=self.task.expected_source_sha256, cache_mib=self.task.cache_mib)
+                           expected_source_sha256=self.task.expected_source_sha256, cache_mib=self.task.cache_mib,
+                           resume_document=self.task.resume_document)
 
     def capture(self, document: OcrDocument) -> None:
         self.partial_document = document

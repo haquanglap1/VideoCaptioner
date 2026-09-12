@@ -16,6 +16,7 @@ from videocaptioner.core.ocr.identity import VisualSourceIdentity, verify_visual
 from videocaptioner.core.ocr.installation import default_runtime, inspect_installation, resources
 from videocaptioner.core.ocr.models import OcrError, Selection
 from videocaptioner.core.ocr.profile import OcrProfileSnapshot
+from videocaptioner.core.ocr.resume import validate_resume
 from videocaptioner.core.ocr.runtime import OcrRuntimeMissing
 from videocaptioner.core.ocr.service import jobs_directory, run_cpu_ocr
 
@@ -84,11 +85,35 @@ def run(args: Namespace, config: dict) -> int:
     except (OSError, ValueError, TypeError):
         output.error("Invalid OCR selection, ROI, profile or output paths.")
         return EXIT.USAGE_ERROR
+    return _scan(args, source, settings, root, bridge)
+
+
+def resume_scan(args: Namespace, config: dict) -> int:
+    source, saved = Path(args.source), Path(args.input)
+    if not source.is_file() or not saved.is_file():
+        output.error("OCR checkpoint and original video are required.")
+        return EXIT.FILE_NOT_FOUND
+    root = Path(args.ocr_runtime) if args.ocr_runtime else default_runtime()
+    bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / "ocr_stream_worker.py"
+    try:
+        _validate_suffixes(args)
+        cache_limit_bytes(args.cache_mib)
+        _paths([source, saved, bridge], [args.review, args.output, args.report], root)
+        document = OcrDocument.load(saved)
+        validate_resume(document, document.config)
+    except (OSError, ValueError):
+        output.error("Invalid or completed OCR checkpoint; preserve the input and choose a separate review output.")
+        return EXIT.USAGE_ERROR
+    return _scan(args, source, document.config, root, bridge, document)
+
+
+def _scan(args: Namespace, source: Path, settings: OcrConfig, root: Path, bridge: Path,
+          resume_document: OcrDocument | None = None) -> int:
     try:
         document = run_cpu_ocr(source, settings, root, bridge, max_requests=args.max_requests,
                                timeout=args.timeout, ffmpeg=args.ffmpeg, ffprobe=args.ffprobe,
                                checkpoint=lambda doc: doc.save(args.review), cache_mib=args.cache_mib,
-                               progress=lambda _percent, message: output.info(message))
+                               progress=lambda _percent, message: output.info(message), resume_document=resume_document)
         if args.report:
             atomic_json(Path(args.report), {"schema": "ocr-report-v1", "document_id": document.id,
                                            "complete": document.complete, "metrics": document.to_dict()["metrics"],

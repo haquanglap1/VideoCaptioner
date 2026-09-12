@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Iterator, Protocol
+from typing import Callable, Iterator, Protocol
 
 from .consensus import CandidateRead, Consensus, ReadCache, choose_read
 from .decoder import RoiDecoder
@@ -82,11 +82,14 @@ class OcrPipeline:
         self.metrics.review_regions += result.needs_review
         return result
 
-    def run(self, decoder: RoiDecoder, selection: Selection) -> Iterator[RegionResult]:
+    def run(self, decoder: RoiDecoder, selection: Selection, *, start_ms: Fraction | None = None,
+            initial_issues: tuple[str, ...] = (),
+            accept_region: Callable[[TrackedRegion], bool] = lambda _: True) -> Iterator[RegionResult]:
         if self.started:
             raise OcrError("Create a new OCR pipeline for each run")
         self.started = True
-        tracker = RegionTracker()
+        tracker = RegionTracker(initial_issues=initial_issues)
+        observed_regions = 0
         begun = time.monotonic()
         original_check = decoder.check
 
@@ -97,18 +100,23 @@ class OcrPipeline:
         decoder.check = check
         try:
             with decoder:
-                for span in decoder.spans(selection):
+                spans = decoder.spans(selection) if start_ms is None else decoder.spans(selection, start_ms=start_ms)
+                for span in spans:
                     self.check()
                     self.metrics.roi_frames += 1
                     started = time.monotonic()
                     region = tracker.feed(span)
                     self.metrics.tracking_s += time.monotonic() - started
                     if region is not None:
-                        yield self._recognize(region)
+                        observed_regions += 1
+                        if accept_region(region):
+                            yield self._recognize(region)
                 region = tracker.finish()
                 if region is not None:
-                    yield self._recognize(region)
-                if not self.metrics.tracks:
+                    observed_regions += 1
+                    if accept_region(region):
+                        yield self._recognize(region)
+                if not observed_regions:
                     raise OcrError("No subtitle region detected; review the ROI/selection")
         finally:
             decoder.check = original_check

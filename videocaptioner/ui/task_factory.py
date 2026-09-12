@@ -45,12 +45,13 @@ _CJK_TARGET_LANGUAGES = {
 
 
 class TaskFactory:
-    """任务工厂类，用于创建各种类型的任务"""
+    """Create typed tasks from UI settings."""
 
     @staticmethod
     def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000,
-                        expected_source_sha256="", cache_mib=64) -> OcrTask:
-        return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256, cache_mib)
+                        expected_source_sha256="", cache_mib=64, resume_document=None) -> OcrTask:
+        return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256,
+                       cache_mib, resume_document)
 
     @staticmethod
     def get_ass_style(style_name: str) -> str:

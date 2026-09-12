@@ -1,5 +1,26 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Smoke resume cuối, 2026-09-12:** user cho tiếp tục sau Escape. EXE chạy từ
+đúng vị trí dist, tự tìm v6 medium và kiểm SHA; mở OCR/resume, đóng GUI exit0
+sau79,953s,0child/không traceback. Backup/khôi phục cache giữ15hash theo dõi.
+Không build, quét video hoặc chạy suite lại. **Gate resume đã khép**;
+[biên bản](../dev/ocr-resume-2026-09.md). Dòng gate còn thiếu dưới đây là lịch sử.
+
+**Resume 2026-09-12:** [source, CLI và GUI đã có](../dev/ocr-resume-2026-09.md).
+Giữ checkpoint v1, đọc kiểm cue ở điểm nối bằng PTS/SHA, tiếp tục phần thiếu.
+Full1.839pass/5skip; binary/native staging khớp2.842cue của bản full, dùng
+6.314frame thay12.316frame. Đã cập nhật riêng app vào gói OCR6, có quay lui.
+User dừng Computer Use bằng Escape ở bước smoke tại dist; gate đó còn thiếu.
+Không tự lưu khi crash, không mở thêm vision/API hoặc corpus.
+
+**Cache binary/native, 2026-09-12:** [gate đã khép](../dev/ocr-cache-binary-2026-09.md).
+Build riêng app, dùng lại models OCR6 hiện có; đã thay EXE/`_internal` trong
+gói giữ lại và có app quay lui. CLI/GUI cold2request → warm0request/6hit,
+status/clear, ID/raw/review/export guards, cancel và close-while-busy pass.
+203 test liên quan pass; full suite cũ không chạy lại. Worker thêm `-B` để
+không sinh bytecode vào runtime. Resume decode, auto-accept, vision GUI,
+downloader/update và corpus rộng vẫn mở. Các trạng thái trước đó là lịch sử.
+
 **Tiếp tục sau dọn, 2026-09-11:** user tự dọn các bản nặng, giữ OCR6.
 [Cache disk/quota ở source](../dev/ocr-cache-2026-09.md) đã có raw JSON/checksum,
 LRU/quota 64 MiB mặc định, GUI/CLI status/clear và fallback khi disk lỗi.

@@ -475,6 +475,21 @@ def build_parser() -> argparse.ArgumentParser:
     ocr.add_argument("-o", "--output", help="Export only if every cue passes review (.json or .srt)")
     _add_common_options(ocr)
     ocr.set_defaults(func=_run_ocr)
+    ocr_resume = subparsers.add_parser("ocr-resume", help="Continue an incomplete OCR scan using its saved settings")
+    ocr_resume.add_argument("input", help="Incomplete OCR document JSON")
+    ocr_resume.add_argument("--source", required=True, help="Original video, verified before decoding")
+    ocr_resume.add_argument("--ocr-runtime", help="Installed runtime matching the saved profile")
+    ocr_resume.add_argument("--ocr-bridge", help="Explicit worker override matching the saved bridge")
+    ocr_resume.add_argument("--max-requests", type=int, default=1000, help="Request limit for this attempt")
+    ocr_resume.add_argument("--cache-mib", type=int, default=64)
+    ocr_resume.add_argument("--timeout", type=float, default=30)
+    ocr_resume.add_argument("--ffmpeg", default="ffmpeg")
+    ocr_resume.add_argument("--ffprobe", default="ffprobe")
+    ocr_resume.add_argument("--review", required=True, metavar="JSON", help="Separate checkpoint output; preserve input")
+    ocr_resume.add_argument("--report", metavar="JSON")
+    ocr_resume.add_argument("-o", "--output", help="Export only when the completed scan passes review")
+    _add_common_options(ocr_resume)
+    ocr_resume.set_defaults(func=_run_ocr_resume)
     ocr_review = subparsers.add_parser("ocr-review", help="Verify visual source and resume OCR locally without inference")
     ocr_review.add_argument("input")
     ocr_review.add_argument("--source", required=True)
@@ -663,6 +678,12 @@ def _run_ocr(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.ocr import run
 
     return run(args, {})
+
+
+def _run_ocr_resume(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import resume_scan
+
+    return resume_scan(args, {})
 
 
 def _run_ocr_review(args: argparse.Namespace) -> int:

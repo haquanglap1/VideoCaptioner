@@ -196,6 +196,8 @@ class OcrDialog(QDialog):
         self.actions_panel = QWidget()
         row = QHBoxLayout(self.actions_panel)
         self._button(row, "Lưu review…", self.save_review)
+        self.resume_button = self._button(row, "Tiếp tục quét", self.resume_scan)
+        self.resume_button.setToolTip("Giữ các câu và quyết định review đã lưu; dùng vùng, đoạn chọn và profile của checkpoint.")
         self.export_button = self._button(row, "Xuất phụ đề đã duyệt…", self.export)
         self.handoff_button = self._button(row, "Mở bảng phụ đề / dịch…", lambda: self.export(handoff=True))
         layout.addWidget(self.actions_panel)
@@ -252,6 +254,8 @@ class OcrDialog(QDialog):
         self.actions_panel.setEnabled(not busy and self.session is not None)
         self.cancel_button.setEnabled(busy)
         self.scan_button.setEnabled(self.source_preview is not None and self.canvas.roi is not None)
+        self.resume_button.setEnabled(bool(not busy and self.source.text() and self.session
+                                           and not self.session.document.complete))
         accepted = self.session is not None and not self.session.document.pending_issues
         self.export_button.setEnabled(accepted)
         self.handoff_button.setEnabled(accepted)
@@ -330,6 +334,18 @@ class OcrDialog(QDialog):
             self._start(OcrThread(task), self.accept_document)
         except ValueError:
             self.status.setText("Đoạn video không hợp lệ; đầu phải nhỏ hơn cuối.")
+
+    def resume_scan(self):
+        if self.worker is not None or self.session is None or not self.source.text():
+            return
+        document = self.session.document
+        if document.complete:
+            return
+        task = TaskFactory.create_ocr_task(self.source.text(), document.config.roi,
+            document.config.selection, self.runtime.text(),
+            expected_source_sha256=document.visual_source.snapshot_sha256,
+            cache_mib=self.cache_mib.value(), resume_document=document)
+        self._start(OcrThread(task), self.accept_document)
 
     def accept_document(self, document):
         self.session = OcrReviewSession(document)

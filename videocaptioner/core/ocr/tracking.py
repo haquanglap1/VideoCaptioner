@@ -85,10 +85,11 @@ class _Active:
 
 
 class RegionTracker:
-    def __init__(self, *, max_hold_ms: int = 30000):
+    def __init__(self, *, max_hold_ms: int = 30000, initial_issues: tuple[str, ...] = ()):
         if type(max_hold_ms) is not int or not 100 <= max_hold_ms <= 300000:
             raise OcrError("Invalid track holding limit")
         self.max_hold_ms = max_hold_ms
+        self.initial_issues = initial_issues
         self.active: _Active | None = None
         self.previous_end: Fraction | None = None
         self.peak_candidates = 0
@@ -152,7 +153,8 @@ class RegionTracker:
 
     def _begin(self, span: FrameSpan, signature: EdgeSignature) -> None:
         self.active = _Active(span, span, signature, span.frame, span.frame, span.frame,
-                              signature.strength, signature.strength)
+                              signature.strength, signature.strength, set(self.initial_issues))
+        self.initial_issues = ()
         self.peak_candidates = max(self.peak_candidates, 1)
 
     def finish(self) -> TrackedRegion | None:

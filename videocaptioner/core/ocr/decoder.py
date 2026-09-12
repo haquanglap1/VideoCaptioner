@@ -115,11 +115,14 @@ class RoiDecoder:
     """Use as a context manager; early break, error and cancellation always close/join."""
 
     def __init__(self, source: Path, info: VideoInfo, roi: Roi, *, ffmpeg: str = "ffmpeg",
-                 check: Check = lambda: None, timeout: float = 30):
+                 check: Check = lambda: None, timeout: float = 30, seek_pts: int | None = None):
         if timeout <= 0 or not math.isfinite(timeout):
             raise OcrError("Invalid decode timeout")
         self.source, self.info, self.roi = source, info, roi
         self.ffmpeg, self.check, self.timeout = ffmpeg, check, timeout
+        if seek_pts is not None and type(seek_pts) is not int:
+            raise OcrError("Invalid OCR seek PTS")
+        self.seek_pts = seek_pts
         self.rect = roi.pixels(*info.geometry.display_size)
         if self.rect.width * self.rect.height * 3 > 32 * 1024 * 1024:
             raise OcrError("OCR ROI exceeds the frame memory limit")
@@ -225,9 +228,22 @@ class RoiDecoder:
         self.check()
         if self.process is not None or self.stop.is_set() or not self.source.is_file():
             raise OcrError("Decoder needs a local file and a fresh session")
-        graph = ",".join(self.info.geometry.filters(self.roi) + ["showinfo"])
+        filters = self.info.geometry.filters(self.roi) + ["showinfo"]
+        if self.seek_pts is not None:
+            filters.insert(0, f"select=gte(pts\\,{self.seek_pts})")
+        graph = ",".join(filters)
+        seek = []
+        if self.seek_pts is not None:
+            # Seek on the original timestamp axis; rounding up can drop the anchor frame.
+            microseconds = self.seek_pts * self.info.time_base * 1_000_000
+            microseconds = microseconds.numerator // microseconds.denominator - 1
+            if microseconds > 0:
+                seconds, remainder = divmod(microseconds, 1_000_000)
+                # With copyts, accurate_seek can trim twice on nonzero-start inputs.
+                # Decode keyframe preroll and select by integer source PTS instead.
+                seek = ["-seek_timestamp", "1", "-ss", f"{seconds}.{remainder:06d}", "-noaccurate_seek"]
         command = [self.ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info",
-                   "-copyts", "-noautorotate", "-threads", "1", "-i", str(self.source.resolve()),
+                   "-copyts", "-noautorotate", "-threads", "1", *seek, "-i", str(self.source.resolve()),
                    "-map", f"0:{self.info.stream_index}", "-an", "-sn", "-dn", "-vf", graph,
                    "-fps_mode", "passthrough", "-threads", "1", "-c:v", "rawvideo", "-pix_fmt",
                    "rgb24", "-f", "rawvideo", "pipe:1"]
@@ -276,16 +292,19 @@ class RoiDecoder:
             yield frame
             del frame
 
-    def spans(self, selection: Selection) -> Iterator[FrameSpan]:
+    def spans(self, selection: Selection, *, start_ms: Fraction | None = None) -> Iterator[FrameSpan]:
         """One-frame lookahead preserves a frame already visible at selection start.
 
-        Scan from the source origin; seeking optimizations need a separate PTS gate.
+        A resume boundary does not become a new user selection boundary.
         Unknown EOF duration is review data, never a fabricated frame-rate duration.
         """
+        lower = Fraction(selection.start_ms) if start_ms is None else start_ms
+        if not selection.start_ms <= lower < selection.end_ms:
+            raise OcrError("OCR resume boundary exceeds selection")
         previous: RoiFrame | None = None
         for frame in self:
             if previous is not None:
-                start = max(Fraction(selection.start_ms), previous.timeline_ms)
+                start = max(lower, previous.timeline_ms)
                 end = min(Fraction(selection.end_ms), frame.timeline_ms)
                 if start < end:
                     yield FrameSpan(previous, start, end, start == selection.start_ms,
@@ -294,7 +313,7 @@ class RoiDecoder:
                 return
             previous = frame
         if previous is not None and previous.timeline_ms < selection.end_ms:
-            start = max(Fraction(selection.start_ms), previous.timeline_ms)
+            start = max(lower, previous.timeline_ms)
             yield FrameSpan(previous, start, Fraction(selection.end_ms),
                             previous.timeline_ms < selection.start_ms, True, True)
 

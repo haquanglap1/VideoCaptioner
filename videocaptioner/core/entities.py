@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from videocaptioner.core.asr.asr_data import ASRData
     from videocaptioner.core.dubbing.config import DubbingConfig
     from videocaptioner.core.dubbing.review import DubbingReview
+    from videocaptioner.core.ocr.document import OcrDocument
     from videocaptioner.core.ocr.geometry import Roi
     from videocaptioner.core.ocr.models import Selection
     from videocaptioner.core.translate.types import TargetLanguage
@@ -26,6 +27,7 @@ class OcrTask:
     max_requests: int = 1000
     expected_source_sha256: str = ""
     cache_mib: int = 64
+    resume_document: Optional["OcrDocument"] = None
 
 
 def _generate_task_id() -> str:

@@ -102,7 +102,7 @@ giá trị mặc định. Cấu hình GUI là `AppData/settings.json` của bả
 base URL, model của dịch vụ LLM đang chọn, Whisper API, DeepLX endpoint và TTS lồng tiếng, nên nhập key
 một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate...) không được kế thừa.
 
-## OCR phụ đề trong hình (source)
+## OCR phụ đề trong hình
 
 Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và lưu `ocr-document-v1`
 để review; `ocr-review --source VIDEO` kiểm SHA toàn nguồn và tiếp tục tại máy.
@@ -127,14 +127,22 @@ Nếu có `models/ocr-v6-medium/` (portable) hoặc `runtime/ocr-v6-medium/`
 model, language và dictionary theo từng stage; kết quả v6 vẫn cần review,
 không thay raw của document v5 đã lưu. [Tích hợp và nghiệm thu v6](docs/dev/ocr-v6-integration-2026-09.md).
 
-Mã nguồn có **cache bản đọc OCR** giữa các lần quét cùng nguồn/cấu hình,
+Ứng dụng có **cache bản đọc OCR** giữa các lần quét cùng nguồn/cấu hình,
 mặc định 64 MiB dữ liệu chữ (chưa gồm metadata). Trong cửa sổ OCR chọn hạn mức
 **0–512 MiB**, `0` tắt disk cache; **Dung lượng cache / Xóa cache OCR** chỉ
 quản lý các bản đọc tạm. CLI dùng `ocr --cache-mib N`, `ocr-cache status` và
 `ocr-cache clear`. Quét lại vẫn decode video, nhưng dùng lại crop đã đọc khi
 khớp SHA; cache không giữ ảnh/video, quyết định duyệt hoặc sửa raw.
-[Contract và gate cache](docs/dev/ocr-cache-2026-09.md). Bản EXE OCR6-Medium-20260911
-đã giữ chưa được cập nhật tính năng cache này.
+[Contract và gate cache](docs/dev/ocr-cache-2026-09.md). Gói OCR6-Medium-20260911
+đã được cập nhật riêng phần app ngày 2026-09-12, dùng lại models hiện có;
+[gate EXE/native và cách quay lui](docs/dev/ocr-cache-binary-2026-09.md).
+
+Sau khi hủy, **Lưu review**, rồi mở lại cùng video/review và bấm **Tiếp tục quét**.
+App giữ các câu và quyết định đã lưu, kiểm lại một cue ở điểm nối rồi quét phần
+còn thiếu theo vùng/đoạn/profile của checkpoint. CLI dùng
+`ocr-resume partial.ocr.json --source video.mp4 --review continued.ocr.json`.
+Nguồn vẫn được hash toàn file; không tự lưu khi app bị kill/crash. Xem
+[contract resume và nghiệm thu](docs/dev/ocr-resume-2026-09.md).
 
 Trong review có nút **Dịch bản đọc đang chọn sang Việt**: chỉ khi bấm mới gửi
 chữ của một candidate tới LLM đang cấu hình. Bản Việt nằm cạnh chữ OCR, chỉ giữ
