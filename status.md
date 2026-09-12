@@ -1,5 +1,96 @@
 # Project Status
 
+## 2026-09-13 (Submit snapshot chất lượng OCR và prompt phiên sau)
+
+- User yêu cầu commit/push tài liệu trên `codex/asr-s3-native`. Baseline
+  code trước snapshot là **8b6bb8c**; lấy mã snapshot mới từ Git thực tế.
+  Phạm vi gồm bốn biên bản audit/fixture/CTC/width×2, plan, status và
+  [prompt phiên sau](docs/dev/ocr-next-session-prompt.md), tổng bảy file.
+- Prompt được viết lại theo kết quả cuối: dừng width×2, không lặp audit/
+  inference hoặc thay decoder thuần CTC; ưu tiên nhãn độc lập và phép đo
+  review trên các ca đang có. Giữ giới hạn API/model/artifact và các gate
+  chưa đạt; quyền submit phiên này không cấp quyền cho công việc mới.
+- Lượt submit chỉ rà diff/nội dung/link và Git, không chạy lại test/build/
+  OCR. Source/profile không đổi; evidence/raw/model/AppData và
+  `ffcachePuSHPB` nằm ngoài snapshot. Các dòng “chưa commit/push” bên dưới
+  mô tả trạng thái ở thời điểm thực hiện từng phép đo.
+
+## 2026-09-13 (Thử tensor rộng gấp đôi: không đạt, giữ app hiện tại)
+
+- User yêu cầu chạy [phép thử width×2](docs/dev/ocr-width-experiment-2026-09.md).
+  16 tensor/15 fixture có chữ, 16 rec/0 det/0 cls, 0 API; mỗi tensor một lần.
+  P02/P03 vẫn thiếu chấm; exact **10/15 → 5/15**, thêm lỗi ở
+  P01/P04/P06/P08/P11. Chữ/số/newline giữ 15/15; P16 không áp dụng.
+- Không đạt tiêu chí nên dừng hướng width×2, không sửa app/profile/decoder/
+  auto-accept hoặc thử hệ số khác. Chưa đo cải thiện nhận dạng/giảm review.
+- Measure exit1 ở assertion cuối vì một socket.bind bị chặn, sau khi đã
+  lưu đủ 16 raw/full score và 16 cặp inference begin/end thành công.
+  Chẩn đoán import class, không model session, tái hiện probe IPv6 local
+  của urllib3; log gốc không có stack. Giữ gate fail, không inference lại.
+- Prepare/score/verification/preservation exit0; greedy từ full score khớp
+  raw 16 dòng, config/dictionary khớp baseline. 240 đường dẫn giữ hash,
+  runtime 4.960 file giữ danh sách/size/mtime; evidence `ocr-width-31/`.
+- Giữ mọi diff trước, chưa commit/push; không chạy suite/build/smoke hoặc
+  mở lại cache/resume. Nhãn video độc lập và đo thao tác review còn thiếu.
+
+## 2026-09-13 (Kiểm giả thuyết greedy CTC, không inference mới)
+
+- [Phân tích top-5 đã lưu](docs/dev/ocr-ctc-audit-2026-09.md) không ủng hộ
+  thay decoder thuần CTC để sửa năm fixture sai: cận dưới tổng điểm raw đều
+  lớn hơn cận trên nhãn, có tính score thiếu và dung sai. Kết luận có điều
+  kiện theo mô hình score chuẩn hóa, không phải xác suất chữ đúng.
+- Greedy/recognizer/raw khớp 16 dòng; harness kiểm 1.092 đường đi, 110 tổng
+  điểm và 110 khoảng cận pass. Prepare/phân tích/hậu kiểm exit0; 226 đường
+  dẫn giữ hash/trạng thái, 4.960 file runtime giữ danh sách/size/mtime.
+- Evidence `ocr-ctc-audit-30/`; 0 inference/API mới, không đổi app/profile/
+  auto-accept, không chạy lại suite/build/smoke/cache/resume. Chưa đo cải
+  thiện nhận dạng hoặc giảm review; giữ mọi diff trước, chưa commit/push.
+- Đã mô tả một phép thử tensor rộng gấp đôi có cap/tiêu chí cố định, chưa
+  thực thi. Nhãn video độc lập và phép đo thao tác review vẫn còn thiếu.
+
+## 2026-09-13 (16 fixture dấu câu có nhãn; khoanh lỗi recognizer)
+
+- ASR-S3 HEAD/tracking **8b6bb8c**, giữ mọi diff trước. Đã thực hiện đúng
+  [16 fixture trong kế hoạch audit](docs/dev/ocr-punctuation-fixtures-2026-09.md):
+  nhãn/codepoint trước render; cùng font/SHA và renderer kiểm khớp6PNG cũ.
+- Medium CPU **11/16 exact, 16/16 chữ-số** gồm ảnh rỗng;2ca mất1chấm,
+  3ca đổi biểu diễn dấu. Số thập phân/hai dòng/empty đúng.16det/16rec/0cls,
+  đủ32cặp begin/end,0network attempt qua hook,0API; không OCR lại video.
+- Top-1 CTC/recognizer/raw bridge khớp cả16dòng; ảnh dòng/tensor vẫn có dấu
+  bị thiếu. Chưa chứng minh lỗi app nên không sửa source/test/profile hoặc
+  nới auto-accept; chưa đo cải thiện chất lượng hay giảm thao tác review.
+- Harness lần đầu lỗi serialize Path trước inference; giữ log và lượt sửa
+  riêng, không ảnh nào OCR hai lần. Kiểm pixel có assertion lỗi do cửa sổ
+  chạm nét chữ; giữ đủ receipt, không tính phép đếm đó thành pass.
+- Evidence `ocr-punctuation-29/`:87đường dẫn giữhash/trạng thái;4.960file
+  runtime giữ danh sách/size/mtime. Không build/smoke/full suite/gate cache/
+  resume lại; không đổi model/dependency/AppData/artifact/commit/push.
+
+## 2026-09-12 (Rà bốn sai khác medium; chưa có căn cứ sửa app)
+
+- ASR-S3 HEAD/tracking **8b6bb8c**, giữ prompt/status chưa commit. Đã làm
+  [audit chất lượng](docs/dev/ocr-quality-audit-2026-09.md) từ evidence21:
+  2 ca raw thiếu số chấm nhìn thấy, 2 ca còn bất định Unicode. Không dùng
+  tham chiếu agent làm nhãn chuẩn hoặc tính NFKC thành kết quả exact mới.
+- Crop/bbox cho thấy 6 chấm ở hai ca trả5/4; trace top-1 medium ca04 đã lưu
+  khớp raw5chấm. Chưa thấy lỗi tầng app xóa dấu; không sửa code/profile/
+  auto-accept. Chưa đo cải thiện nhận dạng hoặc giảm thao tác review.
+- Audit 23crop+6fixture cũ exit0, raw/reference/score/SHA khớp;53file giữhash,
+  trace/dictionary check exit0 (union54file). Không OCR/decode/API hoặc
+  chạy lại gate đã qua. Evidence mới `ocr-quality-audit-28/` ngoài Git.
+- Đã có gói phân xử4ca với trường nhãn để trống và kế hoạch16fixture có nhãn
+  tác giả trước render; **chưa tạo/chạy** fixture. Sáu fixture cũ thiếu các
+  dấu đang lỗi. Giữ gói OCR6/models/AppData/media/evidence, chưa commit/push.
+
+## 2026-09-12 (Prompt phiên sau sau khi push snapshot)
+
+- Snapshot **8b6bb8c** đã push tới `origin/codex/asr-s3-native`; HEAD/tracking
+  khớp khi kiểm. [Prompt phiên sau](docs/dev/ocr-next-session-prompt.md) ghi
+  đúng commit và gate cache/resume đã khép, ưu tiên rà chất lượng/giảm review
+  từ evidence hiện có. Không cấp thêm API, corpus hoặc auto-accept.
+- Lượt này chỉ cập nhật prompt và status, chưa commit/push hai thay đổi tài
+  liệu mới. Giữ `ffcachePuSHPB` ngoài Git; không test/build/OCR/download lại.
+
 ## 2026-09-12 (Submit snapshot cache/resume đã nghiệm thu)
 
 - User yêu cầu commit/push các thay đổi cache/resume trên `codex/asr-s3-native`.

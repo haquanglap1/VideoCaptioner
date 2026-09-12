@@ -1,5 +1,33 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Width×2 2026-09-13:** [đã thử theo yêu cầu user](../dev/ocr-width-experiment-2026-09.md),
+16 tensor/15 fixture có chữ, 16 rec/0 det/0 cls, 0 API. Hai ca thiếu chấm
+không được sửa; exact 10/15 → 5/15, thêm năm ca sai. P16 không áp dụng.
+Dừng hướng này, không tích hợp hoặc thử hệ số khác. Measure exit1 do assertion
+socket.bind cuối lượt; giữ đủ raw/full score, đã chẩn đoán import riêng và
+chấm output, không inference lại. Chưa có cải thiện nhận dạng hoặc giảm review.
+
+**Kiểm giả thuyết CTC 2026-09-13:** [tính từ top-5 đã lưu](../dev/ocr-ctc-audit-2026-09.md)
+cho thấy raw có cận dưới tổng điểm cao hơn cận trên nhãn ở cả năm fixture sai,
+theo giả định score chuẩn hóa/dung sai được ghi rõ. Không có cơ sở thay decoder
+thuần CTC để sửa các ca này; 0 inference/API mới, không đổi app/auto-accept.
+Đã chốt phép thử hình học đơn biến nếu tiếp tục đo; chưa thực thi hoặc đo giảm
+review. Nhãn video độc lập vẫn thiếu; không mở lại cache/resume và các sweep cũ.
+
+**Fixture dấu câu 2026-09-13:** [16 ca có nhãn tác giả đã chạy](../dev/ocr-punctuation-fixtures-2026-09.md)
+một lượt medium CPU,16det/16rec/0cls,0API.11/16exact,16/16chữ-số gồm ảnh
+rỗng;2ca thiếu1chấm,3ca đổi biểu diễn. Top-1/recognizer/raw bridge khớp cả
+16dòng; chưa có lỗi app để vá hoặc căn cứ nới auto-accept. Nhãn/PNG/SHA
+đóng băng trước inference, không đổi tham chiếu video. Chưa đo giảm review;
+trạng thái “chưa chạy16fixture” dưới đây thuộc kế hoạch trước lượt này.
+
+**Rà chất lượng 2026-09-12:** [audit medium](../dev/ocr-quality-audit-2026-09.md)
+phân bốn sai khác cũ thành hai ca thiếu số chấm nhìn thấy và hai ca chưa xác
+định Unicode nguồn. Raw/trace đã có lỗi trước tầng app; chưa có căn cứ sửa
+code hoặc nới auto-accept. Đã chuẩn bị gói phân xử local và tiêu chí16fixture
+có nhãn biết trước, chưa chạy. 23crop+6fixture cũ khớp receipt khi audit,
+không là phép đo OCR mới hoặc bằng chứng giảm review. Cache/resume vẫn đã khép.
+
 **Smoke resume cuối, 2026-09-12:** user cho tiếp tục sau Escape. EXE chạy từ
 đúng vị trí dist, tự tìm v6 medium và kiểm SHA; mở OCR/resume, đóng GUI exit0
 sau79,953s,0child/không traceback. Backup/khôi phục cache giữ15hash theo dõi.
