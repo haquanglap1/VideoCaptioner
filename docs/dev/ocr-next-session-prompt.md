@@ -1,10 +1,12 @@
-# Prompt phiên tiếp theo — OCR xuất thẳng và trường hợp video 2
+# Prompt phiên tiếp theo — OCR xuất thẳng, tách phụ đề khỏi nền video 2
 
 Tiếp tục worktree **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**.
-Tìm bằng `git worktree list`, không làm ở checkout master. User yêu cầu
-commit/push snapshot bỏ review và chuẩn bị prompt này. Đọc `git log -1`,
-`git status --short --branch` và đối chiếu `origin/codex/asr-s3-native`.
-Baseline trước snapshot là **2ed7ae1**, không phải HEAD cần quay về.
+Tìm bằng `git worktree list`, không làm ở checkout master. Snapshot bỏ
+review là **81ba84d**, HEAD/tracking khớp ở phiên chẩn đoán và phép kiểm tách lớp.
+Đọc `git log -1`, `git status --short --branch` và đối chiếu
+`origin/codex/asr-s3-native`. User đã yêu cầu commit/push bảy file tài liệu
+chẩn đoán/plan/status/prompt cùng script/test/biên bản tách lớp; lấy mã
+snapshot mới từ Git, không coi **81ba84d** là HEAD cần quay về.
 Không reset/merge hoặc bỏ thay đổi mới. Quyền submit của phiên bàn giao
 không tự cấp commit/push/tag/release hoặc API cho công việc tiếp theo.
 
@@ -27,11 +29,23 @@ thay đổi luồng sử dụng, không phải bằng chứng nhận dạng chí
 Đọc AGENTS.md, README.md, mục mới nhất status.md, sau đó:
 
 1. `docs/dev/ocr-direct-export-2026-09.md`.
-2. Phần cập nhật mới nhất của `docs/plans/video-subtitle-ocr-integration-plan.md`.
-3. Evidence local `build/ocr-pilot-20260910/ocr-direct-export-32/`:
+2. `docs/dev/ocr-video2-diagnosis-2026-09.md` và phần cập nhật mới nhất của
+   `docs/plans/video-subtitle-ocr-integration-plan.md`.
+3. Evidence gốc `build/ocr-pilot-20260910/ocr-direct-export-32/`:
    `binary-plan.json`, `binary-receipt.json`, `video-inputs.json`,
    `video-2.ocr.json`, `video-2-receipt.json`, `video-2.stdout.log` và
    `video-2.stderr.log`.
+4. Evidence chẩn đoán `build/ocr-pilot-20260910/ocr-video2-diagnosis-33/`:
+   `plan.json`, `receipt.json`, `analysis-receipt.json`, `regions.json`,
+   `frame-observations.json`, `candidate-boxes.json`, `roi/pts-*.png` và
+   `context-pts420.png`. Dùng ảnh đã decode, không chạy lại hai harness
+   chỉ để lấy số mới; chúng tạo output độc quyền, không ghi đè.
+5. `docs/dev/ocr-layer-probe-2026-09.md`, `scripts/ocr_layer_probe.py` và
+   `tests/test_ocr/test_layer_probe.py`. Evidence
+   `build/ocr-pilot-20260910/ocr-layer-probe-34/`: `plan.json`, `receipt.json`,
+   `signal-provenance.local.json`, `line-proposals.local.json`, ảnh tổng hợp
+   và `tests.log`. Phép thử đã hoàn tất với hypothesis=false, không chạy lại
+   policy 3/5 + chiều cao hoặc xem test harness pass là thuật toán đạt.
 
 Hai video do user chỉ định được ánh xạ thành video 1/2 trong
 `video-inputs.json`; lấy đường dẫn và SHA ở đó, không đoán từ tên video,
@@ -40,32 +54,47 @@ chỉ ở evidence local, không đưa vào Git hoặc gửi ra ngoài.
 
 ## Việc ưu tiên tiếp theo
 
-1. **Chẩn đoán trường hợp video 2 từ dữ liệu đã lưu trước.** Đoạn dự kiến
-   14–16 s, ROI `0.28,0.90,0.44,0.065`; mới 12 frame đã có 5 cue,
-   8 worker request/8 det/73 rec. Harness đặt trần 8 nên lần gọi thứ 9 bị
-   chặn trước gửi worker: checkpoint `complete=false`, exit5, không subtitle.
-   `fresh_calls=9` không phải 9 worker request. Giữ assertion fail/log/raw.
+1. **Chẩn đoán video 2 đã có kết quả, không bắt đầu lại.** ROI
+   `0.28,0.90,0.44,0.065` đúng x716/y1296/w1128/h94. Decode 14–16 s,
+   60 frame PTS420–479 khớp cả 7 crop SHA/PTS và 5 nhóm checkpoint.
+   Tracker tạo 18 nhóm / 28 crop khác SHA. Nền chữ/icon cuộn chồng ngay
+   vào phụ đề; tracker so cạnh toàn ROI nên tách theo nền, consensus giữ
+   cả chữ giao diện. Có đổi dòng phụ đề lớn tại PTS471; chưa đo độ chính
+   xác chữ. 8 module source/PYZ của EXE đang giữ khớp. 0 OCR/API mới.
 2. **Trần 8 là giới hạn riêng của lượt smoke**, không phải cap do user áp
    lâu dài, giới hạn engine hay mặc định CLI (1000). Không coi nó là blocker
-   cần user cấp lại quyền. Cũng không chỉ tăng số rồi gọi việc nhận dạng
-   nhiều vùng/cue rất ngắn là đã sửa: đối chiếu ROI/PTS, bbox/line và tracking
-   để biết vùng đang lấy có lẫn chữ giao diện/chuyển cảnh hoặc nhóm bị vỡ.
-   Hiện chưa xác nhận nguyên nhân; không gán lỗi model/decoder chỉ từ số rec.
-3. Nếu cần lượt local tiếp theo để kiểm giả thuyết cụ thể, chốt phạm vi,
-   điểm đo và giới hạn phù hợp trước khi chạy; dùng runtime hiện có, ưu tiên
-   checkpoint/cache và không ghi đè lượt lỗi. Không quét lại toàn hai video,
-   chạy sweep ROI/preprocessing hoặc chỉ rerun để đổi exit5 thành exit0.
-   Chạy đầy đủ video khi có cơ sở về luồng/chi phí và phạm vi nhiệm vụ yêu cầu.
-4. Chỉ sửa khi có hành vi cần đổi hoặc lỗi cụ thể; đặt regression gần chỗ sửa,
-   giữ nguồn/raw/IDs/schema và phân biệt lỗi xử lý với thông tin nhận dạng.
-   Làm liên tục phần đủ thông tin, không mở lại yêu cầu review/ground truth.
-   Dịch/TTS/vision và xác nhận độ chính xác sản phẩm vẫn chưa được nghiệm thu.
+   cần user cấp lại quyền. Lượt cũ 8 request/8 det/73 rec, 12 frame/5 cue dở:
+   request 8 PTS429 đã xong nhưng nhóm 6 chưa yield; request 9 PTS430 bị chặn.
+   Checkpoint chỉ 7 candidate/62 dòng; raw thứ 8 chưa persist, không dựng lại
+   từ metric. Giữ assertion fail/log/raw. Dự báo 28 request cả đoạn / 21 còn
+   sau checkpoint chưa là số inference thực và không sửa nguyên nhân.
+3. **Phép kiểm tách lớp offline đã có kết quả chưa đạt.** Giữ fixture đã
+   dựng: dòng cố định, đổi chữ/dấu/hai dòng, fade, blank/lặp, đổi chữ một
+   frame và nền dừng. Một policy cạnh bền3/5 giao frame giữa + dòng cao≥60%
+   chỉ đạt1/9ca tracking và2/5ca dòng; mất dấu rời, còn nền dừng/box hỗn hợp.
+   PNG60frame/7candidate khớp SHA; PTS422–477 cho17đoạn tín hiệu trước/sau,
+   không phải số cue của RegionTracker. Đề xuất16/62dòng chưa là chữ đúng/đủ.
+   Không đưa policy này vào app hoặc tăng cap để lấy exit0. Giả thuyết mới
+   cần xử lý các phản ví dụ trên ở cả tracking và text chọn trước khi sửa
+   pipeline. Chưa chọn thuật toán thay thế đủ cơ sở tích hợp.
+4. Chỉ sửa theo giả thuyết cụ thể có regression; giữ raw nguyên vẹn cùng
+   provenance phần chữ chọn, IDs/schema/source/PTS và phân biệt processing
+   error với thông tin nhận dạng. Không âm thầm áp policy mới vào checkpoint
+   cũ. Không review bắt buộc hoặc đòi user cung cấp transcript để làm fixture.
+   Nếu cần inference local mới, ghi phạm vi/điểm đo/giới hạn phù hợp trước,
+   dùng runtime có sẵn và output mới. Không sweep, quét toàn hai video hay
+   resume chỉ để lấy exit0. Dịch/TTS/vision/chất lượng sản phẩm vẫn chưa pass.
 
 Nếu user giao hướng khác, theo yêu cầu mới. Không tự mở toàn roadmap,
 vision GUI, downloader/update hoặc checkpoint tự động.
 
 ## Những phần đã hoàn tất
 
+- Phép kiểm offline evidence34:19test harness mới, cùng tracking/consensus/
+  direct-export **34pass**, Ruff/Pyright0/0. Lượt đầu14pass/1fail do assertion
+  về blank cuộn sai đã sửa theo số đo, không đổi policy/tiêu chí. Giữ raw
+  nguyên byte; provenance sidecar riêng không được resume/export như OCR
+  document. **0OCR/API/model load/decode mới**, không sửa production/EXE.
 - GUI bỏ nút duyệt chữ/giờ, ô lý do và cột cần duyệt. Bảng 3 cột, **Xuất
   phụ đề** / **Mở bảng phụ đề / dịch** dùng được sau scan đầy đủ hợp lệ.
   **Chi tiết bản đọc** thu gọn; chỉnh sửa ở bảng phụ đề hoặc Video Editor.

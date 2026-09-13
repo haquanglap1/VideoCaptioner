@@ -9,6 +9,24 @@ Nhãn độc lập thuộc đánh giá chất lượng riêng, **không còn là
 tiếp tục phát triển hoặc dùng OCR**. Các yêu cầu review và khóa export bên dưới
 là lịch sử trước thay đổi này; không tự bật lại theo các snapshot cũ.
 
+**Phép kiểm tách lớp, 2026-09-13:** [đã đo offline](../dev/ocr-layer-probe-2026-09.md)
+majority cạnh 3/5 frame + chọn dòng theo chiều cao, không sweep: chỉ 1/9 ca
+tracking và 2/5 ca dòng đạt. Nền dừng vẫn lọt, dấu rời có thể bị mất; PNG
+video2 cho 17 đoạn tín hiệu trước/sau trên 56 frame giữa. Không đưa policy
+vào pipeline, không đổi checkpoint cũ. Harness/provenance riêng; 34 test
+pass, Ruff/Pyright sạch, 0 OCR/API/decode mới. Giả thuyết mới phải xử lý các
+phản ví dụ này; không chạy lại phép đo cũ hoặc tăng cap để lấy exit0.
+
+**Chẩn đoán video 2, 2026-09-13:** [replay từ evidence](../dev/ocr-video2-diagnosis-2026-09.md)
+đã khớp 7 crop/5 nhóm và 8 module source/PYZ, 0 OCR/API mới. Nền chữ/icon cuộn
+chồng vào phụ đề gây tách theo tile; consensus còn giữ cả dòng chữ nền.
+Tracking riêng đoạn 14–16 s cho 18 nhóm/28 crop khác SHA; chưa là scan OCR
+hoàn tất. Trần 8 request chỉ thuộc smoke, tăng trần không giải quyết nguyên
+nhân. Bước có cơ sở là kiểm tách lớp phụ đề bằng fixture offline và PNG
+đã lưu trước khi đổi tracking/lựa chọn dòng. Chưa có căn cứ nới ngưỡng,
+cắt ROI hoặc ghép theo text; không inference lại chỉ để lấy exit0.
+Giữ xuất thẳng và raw.
+
 **Width×2 2026-09-13:** [đã thử theo yêu cầu user](../dev/ocr-width-experiment-2026-09.md),
 16 tensor/15 fixture có chữ, 16 rec/0 det/0 cls, 0 API. Hai ca thiếu chấm
 không được sửa; exact 10/15 → 5/15, thêm năm ca sai. P16 không áp dụng.

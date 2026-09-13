@@ -1,5 +1,52 @@
 # Project Status
 
+## 2026-09-13 (Submit chẩn đoán video 2 và phép kiểm tách lớp offline)
+
+- User yêu cầu commit/push trên `codex/asr-s3-native`, baseline **81ba84d**.
+  Snapshot gồm bảy file: script/test probe, biên bản chẩn đoán video2 và
+  tách lớp, plan OCR, status và prompt bàn giao. Lấy mã commit thực từ Git.
+- Giữ kết quả policy chưa đạt và gate 34test/Ruff/Pyright của lượt trước;
+  lượt submit chỉ kiểm diff, staged files và remote. Không chạy lại inference,
+  suite/build/smoke, không đưa evidence/media/models/EXE hoặc `ffcachePuSHPB`
+  vào Git. Quyền submit không tự cấp API hoặc commit/push cho phiên sau.
+
+## 2026-09-13 (Phép kiểm tách lớp offline: policy 3/5 + chiều cao chưa đạt)
+
+- ASR-S3 HEAD/tracking **81ba84d**; [biên bản](docs/dev/ocr-layer-probe-2026-09.md).
+  Thêm `scripts/ocr_layer_probe.py` và 19 test harness, không sửa pipeline.
+  Fixture có nền chữ cuộn, đổi chữ/dấu/hai dòng, fade, blank/lặp và nền dừng.
+- Một policy cố định: cạnh bền 3/5 frame giao frame giữa + chọn dòng cao
+  ≥60% dòng lớn nhất. **1/9 ca tracking, 2/5 ca dòng đạt**; nền dừng còn lọt,
+  dấu rời/đổi chữ một frame có thể bị bỏ. Giữ phản ví dụ; chưa chọn thuật toán
+  đủ điều kiện tích hợp. Không thêm review hoặc đòi bản chữ gốc.
+- Đọc PNG evidence33: 60 SHA/7 candidate khớp; 56 frame giữa PTS422–477
+  vẫn 17 đoạn tín hiệu trước/sau. Đề xuất 16/62 dòng chỉ là hình học, chưa
+  chất lượng chữ. Sidecar giữ source/IDs/PTS/SHA/chỉ số raw; checkpoint nguyên
+  byte. Video2 vẫn dở, không tạo subtitle success hay đổi policy cũ.
+- **34 test pass**, Ruff sạch, Pyright script+app **0/0**. Lượt test đầu
+  14pass/1fail do assertion về blank cuộn sai, đã sửa theo kết quả thực;
+  không đổi thuật toán/ngưỡng. **0 OCR/API/model load/decode mới**; không full
+  suite/build/native smoke/cache/resume. Evidence34 ngoài Git, EXE/models/
+  AppData/media giữ nguyên; không commit/push, giữ `ffcachePuSHPB`.
+
+## 2026-09-13 (Chẩn đoán video 2: nền giao diện làm vỡ tracking)
+
+- ASR-S3 HEAD/tracking **81ba84d**; [biên bản](docs/dev/ocr-video2-diagnosis-2026-09.md).
+  Đọc evidence32 trước, decode đúng ROI 14–16 s một lượt không OCR: 60 frame,
+  7/7 crop SHA/PTS và 5/5 nhóm cũ khớp; 8 module source/PYZ EXE khớp.
+- Replay tracker tạo **18 nhóm / 28 crop khác SHA**. Nền chữ/icon cuộn chồng
+  lên phụ đề, kích hoạt tách theo tile; raw có cả chữ giao diện. Chỉ tăng
+  cap không sửa nhóm/chữ nền. Trần 8 chỉ thuộc smoke, không cap sản phẩm.
+- 8 response cũ nhưng checkpoint chỉ 7 candidate / 62 dòng; nhóm 6 chưa xong
+  nên raw request 8 chưa persist. PTS429 đã gửi, PTS430 bị chặn trước gửi.
+  28 request full / 21 còn lại chỉ là dự báo từ tracking, chưa inference.
+- **0 OCR/model load/API mới**, hai harness exit0/process đóng; 63 đường dẫn
+  giữ hash/trạng thái. Không sửa source/profile/raw/EXE/models/AppData,
+  không chạy lại suite/build/smoke hoặc resume để lấy exit0. Video 2 vẫn dở.
+- Cập nhật biên bản/plan/prompt cho phép kiểm tách lớp phụ đề offline;
+  giữ xuất thẳng, không đòi review/bản chữ gốc. Evidence33 ngoài Git,
+  `ffcachePuSHPB` giữ nguyên; chưa commit/push.
+
 ## 2026-09-13 (Submit snapshot OCR xuất thẳng và prompt phiên sau)
 
 - User yêu cầu commit/push trên `codex/asr-s3-native`. Snapshot gồm 20 file
