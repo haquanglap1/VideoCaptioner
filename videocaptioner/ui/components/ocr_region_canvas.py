@@ -14,6 +14,7 @@ class OcrRegionCanvas(QWidget):
         super().__init__(parent)
         self.image = QImage()
         self.roi: Roi | None = None
+        self.line_anchors: tuple[float, ...] = ()
         self.editable = True
         self.anchor: QPointF | None = None
         self.setMinimumSize(320, 160)
@@ -43,6 +44,11 @@ class OcrRegionCanvas(QWidget):
             painter.setPen(QPen(QColor("#44c8f5"), 2))
             painter.drawRect(QRectF(rect.x() + r.x * rect.width(), rect.y() + r.y * rect.height(),
                                     r.width * rect.width(), r.height * rect.height()))
+            painter.setPen(QPen(QColor("#ffc857"), 2, Qt.PenStyle.DashLine))
+            for anchor in self.line_anchors:
+                y = rect.y() + (r.y + r.height * anchor) * rect.height()
+                painter.drawLine(QPointF(rect.x() + r.x * rect.width(), y),
+                                 QPointF(rect.x() + (r.x + r.width) * rect.width(), y))
 
     def mousePressEvent(self, event):
         if self.editable and event.button() == Qt.MouseButton.LeftButton and self.image_rect().contains(event.pos()):

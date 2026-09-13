@@ -6,6 +6,7 @@ from PyQt5 import sip
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -31,6 +32,7 @@ from videocaptioner.core.ocr.document import OcrDocument
 from videocaptioner.core.ocr.geometry import Roi
 from videocaptioner.core.ocr.identity import verify_visual_file
 from videocaptioner.core.ocr.installation import inspect_installation
+from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
 from videocaptioner.core.ocr.models import OcrError, Selection
 from videocaptioner.core.ocr.preview import preview_candidate, preview_video
 from videocaptioner.core.ocr.review import OcrReviewSession, issue_labels
@@ -108,6 +110,23 @@ class OcrDialog(QDialog):
             row.addWidget(QLabel(label))
             row.addWidget(spin)
         self._button(row, "Dùng ROI số", self.apply_roi)
+        controls.addLayout(row)
+        row = QHBoxLayout()
+        self.select_lines = QCheckBox("Chỉ lấy dòng đi qua vạch chọn")
+        self.select_lines.setStyleSheet("color: #e6edf6;")
+        self.line_anchors = QLineEdit("50")
+        self.line_anchors.setMaximumWidth(110)
+        self.line_anchors.setEnabled(False)
+        self.line_anchors.setToolTip("Vị trí tính từ trên xuống trong ROI: 50 cho một dòng giữa; "
+                                    "25,75 cho hai dòng. Giữ dấu câu rời ở gần dòng đã chọn. "
+                                    "Chữ nền cùng hàng hoặc chung box vẫn có thể bị lấy lẫn.")
+        self.select_lines.toggled.connect(self.line_anchors.setEnabled)
+        self.select_lines.toggled.connect(self.update_line_anchors)
+        self.line_anchors.textChanged.connect(self.update_line_anchors)
+        row.addWidget(self.select_lines)
+        row.addWidget(QLabel("Vị trí (%)"))
+        row.addWidget(self.line_anchors)
+        row.addStretch(1)
         controls.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel("Cache chữ OCR (MiB; 0 = tắt)"))
@@ -249,7 +268,7 @@ class OcrDialog(QDialog):
         self.handoff_button.setEnabled(exportable)
         cue = self.current_cue()
         self.draft_button.setEnabled(bool(not busy and cue and self.candidate.currentData()
-                                          and cue.candidate(self.candidate.currentData()).raw.text.strip()))
+                                          and cue.candidate(self.candidate.currentData()).text.strip()))
 
     def choose_source(self):
         path, _ = QFileDialog.getOpenFileName(self, "Chọn video nguồn", "", "Video (*)")
@@ -309,16 +328,32 @@ class OcrDialog(QDialog):
         except ValueError:
             self.status.setText("ROI phải là vùng không rỗng nằm trong ảnh.")
 
+    def line_policy(self):
+        if not self.select_lines.isChecked():
+            return None
+        return LineSelectionPolicy(tuple(float(y.strip()) / 100 for y in self.line_anchors.text().split(",")))
+
+    def update_line_anchors(self, *_):
+        try:
+            policy = self.line_policy()
+            self.canvas.line_anchors = policy.anchors if policy else ()
+            self.line_anchors.setStyleSheet("")
+        except ValueError:
+            self.canvas.line_anchors = ()
+            self.line_anchors.setStyleSheet("border: 1px solid #ff7373;")
+        self.canvas.update()
+
     def scan(self):
         if self.source_preview is None or self.canvas.roi is None:
             return
         try:
             task = TaskFactory.create_ocr_task(self.source.text(), self.canvas.roi,
                 Selection(self.start_ms.value(), self.end_ms.value()), self.runtime.text(),
-                expected_source_sha256=self.source_preview.source_sha256, cache_mib=self.cache_mib.value())
+                expected_source_sha256=self.source_preview.source_sha256, cache_mib=self.cache_mib.value(),
+                line_selection=self.line_policy())
             self._start(OcrThread(task), self.accept_document)
         except ValueError:
-            self.status.setText("Đoạn video không hợp lệ; đầu phải nhỏ hơn cuối.")
+            self.status.setText("Kiểm tra đầu/cuối video và vị trí dòng: một hoặc hai số tăng dần, lớn hơn 0 và nhỏ hơn 100.")
 
     def resume_scan(self):
         if self.worker is not None or self.session is None or not self.source.text():
@@ -335,6 +370,10 @@ class OcrDialog(QDialog):
     def accept_document(self, document):
         self.session = OcrReviewSession(document)
         self.review_path = None
+        policy = document.config.line_selection
+        if policy:
+            self.line_anchors.setText(",".join(f"{y * 100:g}" for y in policy.anchors))
+        self.select_lines.setChecked(policy is not None)
         self.refresh()
 
     def load_review(self):
@@ -389,7 +428,7 @@ class OcrDialog(QDialog):
         cue = self.current_cue()
         if cue:
             for index, candidate in enumerate(cue.candidates, 1):
-                label = " / ".join(candidate.raw.text.splitlines())
+                label = " / ".join(candidate.text.splitlines())
                 self.candidate.addItem(f"Ảnh {index} — {label}", candidate.id)
                 self.candidate.setItemData(index - 1, candidate.raw.text, Qt.ItemDataRole.ToolTipRole)
             self.readings.setPlainText("Gốc: " + cue.raw_text + "\nHiện tại: " + cue.text + "\n"
@@ -403,9 +442,9 @@ class OcrDialog(QDialog):
         candidate_id = self.candidate.currentData()
         if hasattr(self, "draft_button"):
             self.draft_button.setEnabled(bool(not self.worker and cue and candidate_id
-                                              and cue.candidate(candidate_id).raw.text.strip()))
+                                              and cue.candidate(candidate_id).text.strip()))
         draft = self._drafts.get((self.session.document.id, candidate_id)) if self.session and candidate_id else None
-        if cue and draft and cue.candidate(candidate_id).raw.text == draft.source_text:
+        if cue and draft and cue.candidate(candidate_id).text == draft.source_text:
             text = f"Bản Việt tham khảo ({draft.model}) — AI chưa nhìn ảnh:\n{draft.translation_vi}"
             if draft.uncertainties_vi:
                 text += "\nAI lưu ý (chưa xác minh): " + " / ".join(draft.uncertainties_vi)
@@ -427,7 +466,7 @@ class OcrDialog(QDialog):
             return
         key = (document.id, candidate.id)
         config = (settings.credentials.base_url, settings.model, settings.timeout)
-        if (key in self._drafts and self._drafts[key].source_text == candidate.raw.text
+        if (key in self._drafts and self._drafts[key].source_text == candidate.text
                 and self._draft_configs.get(key) == config):
             self.refresh_draft()
             self.status.setText("Dùng bản Việt tham khảo đã có trong phiên; không gửi lại yêu cầu.")

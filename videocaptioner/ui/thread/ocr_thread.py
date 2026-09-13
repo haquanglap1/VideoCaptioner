@@ -1,6 +1,7 @@
 """Supervised OCR jobs; heavy work stays outside the Qt event loop."""
 
 from contextvars import copy_context
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 from typing import Callable
@@ -64,6 +65,9 @@ class OcrThread(OcrWorker):
         self.progress.emit(0, "Kiểm tra runtime OCR đã cài…")
         installation = inspect_installation(Path(self.task.runtime_path) if self.task.runtime_path else None, check)
         config = installation.config(self.task.roi, self.task.selection)
+        policy = (self.task.resume_document.config.line_selection if self.task.resume_document is not None
+                  else self.task.line_selection)
+        config = replace(config, line_selection=policy)
         if self.task.resume_document is not None:
             if config != self.task.resume_document.config:
                 raise OcrError("Runtime/profile không khớp checkpoint; chọn đúng bộ OCR đã dùng trước đó.")

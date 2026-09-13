@@ -14,6 +14,7 @@ from videocaptioner.core.ocr.document import OcrConfig, OcrDocument
 from videocaptioner.core.ocr.geometry import Roi
 from videocaptioner.core.ocr.identity import VisualSourceIdentity, verify_visual_file
 from videocaptioner.core.ocr.installation import default_runtime, inspect_installation, resources
+from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
 from videocaptioner.core.ocr.models import OcrError, Selection
 from videocaptioner.core.ocr.profile import OcrProfileSnapshot
 from videocaptioner.core.ocr.resume import validate_resume
@@ -76,6 +77,8 @@ def run(args: Namespace, config: dict) -> int:
         roi_values = [float(v) for v in args.roi.split(",")]
         if len(roi_values) != 4:
             raise OcrError("ROI needs normalized X,Y,WIDTH,HEIGHT")
+        anchors = getattr(args, "line_anchors", None)
+        line_selection = LineSelectionPolicy.parse(anchors) if anchors is not None else None
         if not bridge.is_file() or not (root / "profile.json").is_file():
             output.error("Installed OCR runtime/profile and explicit streaming bridge are required.")
             return EXIT.DEPENDENCY_MISSING
@@ -83,9 +86,9 @@ def run(args: Namespace, config: dict) -> int:
         settings = OcrConfig(Roi(*roi_values), Selection(args.start_ms, args.end_ms), expected,
                              hashlib.sha256(bridge.read_bytes()).hexdigest(), args.language,
                              profile_snapshot=OcrProfileSnapshot.from_bytes((root / "profile.json").read_bytes(),
-                                                                            expected))
+                                                                            expected), line_selection=line_selection)
     except (OSError, ValueError, TypeError):
-        output.error("Invalid OCR selection, ROI, profile or output paths.")
+        output.error("Invalid OCR selection, ROI, line anchors, profile or output paths.")
         return EXIT.USAGE_ERROR
     return _scan(args, source, settings, root, bridge)
 

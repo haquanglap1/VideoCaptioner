@@ -54,7 +54,7 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
         complete = False
         with read_cache(scope, cache_root, cache_bytes, check=check,
                         warning=lambda message: progress(0, message)) as cache:
-            pipeline = OcrPipeline(recognizer, cache, check=check)
+            pipeline = OcrPipeline(recognizer, cache, check=check, line_selection=config.line_selection)
             try:
                 if boundary:
                     position = boundary.start_ms if boundary.start_ms is not None else config.selection.start_ms

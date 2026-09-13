@@ -23,7 +23,8 @@ def encode(value: Any) -> Any:
     if isinstance(value, Fraction):
         return [value.numerator, value.denominator]
     if is_dataclass(value) and not isinstance(value, type):
-        return {f.name: encode(getattr(value, f.name)) for f in fields(value)}
+        return {f.name: encode(getattr(value, f.name)) for f in fields(value)
+                if not (f.metadata.get("omit_none") and getattr(value, f.name) is None)}
     if isinstance(value, (tuple, list)):
         return [encode(item) for item in value]
     return value
@@ -56,7 +57,9 @@ def _decode(kind: Any, value: Any) -> Any:
             raise OcrError("Invalid exact OCR time")
         return Fraction(*value)
     if is_dataclass(kind):
-        if not isinstance(value, dict) or set(value) != {f.name for f in fields(kind)}:
+        names = {f.name for f in fields(kind)}
+        optional = {f.name for f in fields(kind) if f.metadata.get("omit_none")}
+        if not isinstance(value, dict) or not names - optional <= set(value) <= names:
             raise OcrError("Missing or unknown OCR field")
         hints = get_type_hints(kind)
         return kind(**{name: _decode(hints[name], v) for name, v in value.items()})

@@ -13,6 +13,7 @@ from videocaptioner.cli.main import main
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.ocr.document import OcrDocument
 from videocaptioner.core.ocr.identity import verify_visual_file
+from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
 from videocaptioner.core.ocr.models import EngineRead, OcrError, Selection
 from videocaptioner.core.ocr.runtime import RuntimeMetrics
 from videocaptioner.core.ocr.service import scan_video
@@ -136,6 +137,8 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
     arguments = ["ocr", str(source), "--roi", "0,0,1,1", "--start-ms", "0", "--end-ms", "400",
                  "--ocr-runtime", str(root), "--ocr-bridge", str(bridge), "--profile-sha256", profile_sha,
                  "--ffmpeg", ffmpeg, "--ffprobe", ffprobe, "-o", str(output_path)]
+    if explicit_sha:
+        arguments += ["--line-anchors", "0.5"]
     if checkpoint_flag:
         arguments += [checkpoint_flag, str(review_path)]
     if not explicit_sha:
@@ -146,6 +149,7 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
     data = ASRData.from_subtitle_file(str(output_path))
     assert data.segments[0].text == raw.text
     assert data.segments[0].ocr_metadata.observations[0].selected_candidate_id is None
+    assert data.segments[0].ocr_metadata.config.line_selection == (LineSelectionPolicy() if explicit_sha else None)
     assert review_path.is_file() == bool(checkpoint_flag)
     # OCR defaults keep measured cues/text without approval or optimize/split.
     srt = tmp_path / "captions.srt"

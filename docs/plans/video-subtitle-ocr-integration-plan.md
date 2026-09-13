@@ -1,5 +1,13 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Chọn dòng trong app, 2026-09-13 (yêu cầu mới của user):** đã thêm tùy chọn
+vạch ngang trong ROI và `--line-anchors` cho scan mới. Chọn nguyên box cắt
+vạch, giữ dấu câu rời ở gần; raw và chỉ số dòng được lưu riêng. JSON cũ giữ
+ID/cấu hình, resume dùng policy đã lưu. Đây là chọn vị trí do user đặt,
+không phải nghiệm thu hai policy mask thất bại bên dưới. Tracking chưa đổi;
+nền cùng hàng/box hỗn hợp vẫn có thể lọt. 12 raw cũ chọn 22/72 dòng như mẫu,
+0 OCR/API mới. Gate source/binary và cách dùng ở `status.md` / `README.md`.
+
 **Đổi yêu cầu 2026-09-13 — bỏ review bắt buộc:** user yêu cầu quét OCR xong
 được xuất/dịch ngay, không phụ thuộc bản chữ gốc hoặc duyệt từng câu.
 [Luồng xuất thẳng](../dev/ocr-direct-export-2026-09.md) thay điều kiện khóa export
@@ -8,6 +16,17 @@ chưa hiệu chuẩn. Quét dở, thiếu chữ, sai nguồn hoặc timing khôn
 Nhãn độc lập thuộc đánh giá chất lượng riêng, **không còn là điều kiện để
 tiếp tục phát triển hoặc dùng OCR**. Các yêu cầu review và khóa export bên dưới
 là lịch sử trước thay đổi này; không tự bật lại theo các snapshot cũ.
+
+**Phép kiểm hình thức từng frame, 2026-09-13:**
+[nét sáng/bóng lệch](../dev/ocr-style-probe-2026-09.md) không đạt cả10ca
+tracking/pixel: lỗ sáng của chữ tối vẫn lọt, nét phụ đề bị cắt, fade chưa
+ổn ngay trên overlay sạch. Toàn60PNG cũ cho23đoạn tín hiệu mask, không số
+cue/requests;60SHA/7candidate khớp. Fixture box hỗn hợp chứng minh không có
+tập con dòng raw nguyên vẹn nào trả đúng target; không cắt substring để
+giả sạch chữ. Bản đọc từ ảnh dẫn xuất nếu có phải giữ raw/provenance riêng.
+36test harness/regression pass, Ruff/Pyright sạch,0OCR/API/decode mới.
+Không tích hợp hoặc chỉnh tham số thử lại policy này; chưa chọn giải pháp
+đạt cả tracking và chọn chữ. Giữ xuất thẳng, checkpoint/EXE cũ nguyên vẹn.
 
 **Phép kiểm tách lớp, 2026-09-13:** [đã đo offline](../dev/ocr-layer-probe-2026-09.md)
 majority cạnh 3/5 frame + chọn dòng theo chiều cao, không sweep: chỉ 1/9 ca

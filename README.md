@@ -104,6 +104,17 @@ một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate.
 
 ## OCR phụ đề trong hình
 
+Khi ROI có cả chữ giao diện nhỏ, bật **Chỉ lấy dòng đi qua vạch chọn** và đặt
+**Vị trí (%)** theo chiều cao ROI: `50` cho dòng ở giữa, `25,75` cho hai dòng.
+Vạch vàng trên ảnh giúp đặt vị trí. App giữ nguyên các dòng OCR cắt vạch và
+dấu câu rời nằm gần dòng đó; bảng kết quả, xuất và dịch dùng phần chữ đã chọn.
+CLI tương ứng: `ocr ... --line-anchors 0.5 -o captions.srt`.
+
+Tùy chọn mặc định tắt. JSON giữ đầy đủ raw cùng chỉ số dòng và policy đã dùng;
+resume dùng cấu hình đã lưu, không tự đổi dữ liệu cũ. Chữ nền cùng hàng/chung
+box vẫn có thể lọt; lựa chọn này không sửa chữ, bổ sung dấu thiếu hoặc ghép
+các cue bị tracking tách theo nền. Binary cũ không đọc được JSON bật tùy chọn này.
+
 Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và xuất JSON/SRT ngay
 khi quét xong, **không cần duyệt từng câu hoặc có bản chữ gốc**. Có thể lưu thêm
 `ocr-document-v1` bằng `--checkpoint` để mở lại hoặc tiếp tục khi bị hủy.

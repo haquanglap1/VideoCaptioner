@@ -460,6 +460,9 @@ def build_parser() -> argparse.ArgumentParser:
     ocr.add_argument("--start-ms", type=int, required=True)
     ocr.add_argument("--end-ms", type=int, required=True)
     ocr.add_argument("--roi", required=True, help="Normalized display X,Y,WIDTH,HEIGHT after SAR/rotation")
+    ocr.add_argument("--line-anchors", metavar="Y[,Y]",
+                     help="Select lines crossing one/two normalized ROI heights, e.g. 0.5 or 0.25,0.75; "
+                          "includes nearby detached punctuation. Omit to keep all lines.")
     ocr.add_argument("--language", choices=["zh"], default="zh")
     ocr.add_argument("--ocr-runtime", help="Installed runtime root; defaults to models/ocr beside the app")
     ocr.add_argument("--ocr-bridge", help="Explicit worker override; otherwise use the bundled bridge")

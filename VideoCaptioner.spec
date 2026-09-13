@@ -67,6 +67,7 @@ hiddenimports += ["videocaptioner.core.asr.review",
                   "videocaptioner.ui.thread.worker_lifecycle"]
 hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.thread.ocr_thread",
                   "videocaptioner.core.ocr.installation", "videocaptioner.core.ocr.resume",
+                  "videocaptioner.core.ocr.line_selection",
                   "videocaptioner.cli.commands.ocr"]
 # The external OCR bridge and both legacy/v6 profiles are bundled by the resource tree above.
 # ONNX/OpenCV/NumPy stay in models/ocr/env, never inside the Qt executable.

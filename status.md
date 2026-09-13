@@ -1,5 +1,90 @@
 # Project Status
 
+## 2026-09-13 (Chọn dòng OCR trong app/CLI theo yêu cầu user)
+
+- Thêm **Chỉ lấy dòng đi qua vạch chọn**, vị trí % trong ROI: `50` hoặc
+  hai dòng `25,75`; mặc định tắt. Vạch vàng trên ảnh. CLI `--line-anchors 0.5`.
+  Giữ nguyên box cắt vạch và dấu câu rời ở gần, theo thứ tự raw; bảng, xuất,
+  handoff và dịch tham khảo dùng chữ chọn. Không thêm bước duyệt bắt buộc.
+- Config giữ policy/vị trí, candidate giữ `selected_line_indices`; `raw_text`
+  vẫn là toàn bản đọc. Kiểm chỉ số với raw/geometry khi nạp. Hai field mới
+  được bỏ khi tắt nên JSON/ID cũ không đổi; resume dùng cấu hình đã lưu.
+  JSON bật chọn dòng cần binary mới. Không sửa checkpoint video 2 hoặc SRT mẫu.
+- Tracking **chưa đổi**; vẫn có thể tách cue theo nền. Nền cùng hàng/box hỗn
+  hợp vẫn lọt; dấu bị engine bỏ không được tự bù. Đây là lựa chọn vị trí,
+  không phải nghiệm thu tách lớp tổng quát hay scan đầy đủ video 2.
+- Evidence `ocr-line-selection-37/`: đọc lại 12 raw cũ, giữ đúng **22/72 dòng**
+  như mẫu36, **0 OCR/API/decode video 2 mới**. 192 file evidence/ffcache giữ SHA;
+  EXE trước nằm trong `rollback-app/`. Không tải/cài hoặc copy models49GB.
+- Source: **283 ca liên quan pass** (OCR/CLI/Qt; 19 ca mới). Lượt đầu 256 pass,
+  27 skip do thiếu FFmpeg trên PATH; dùng FFmpeg trong gói, chạy riêng 27 ca
+  đó đều pass. Có video tổng hợp/recognizer giả, không inference. Ruff/Pyright
+  sạch; translations in sync. Không chạy full suite hoặc hai probe thất bại.
+- Build một spec, stage app riêng: **exit0, 6 warning/0 error**, 272,687 s;
+  590 file/529.743.760 byte. 15 module source/PYZ khớp cả sửa màu checkbox cuối.
+  Binary xuất JSON/SRT 3 cue tổng hợp theo dòng chọn, metadata khớp; partial
+  exit5, không tạo SRT. Không coi đây là nghiệm thu OCR trên video riêng.
+- Đã cập nhật riêng EXE/`_internal` vào `dist/VideoCaptioner-OCR6-Medium-20260911/`.
+  EXE **31.437.342 byte**, **2026-09-13 14:47:58+07**, SHA-256
+  `81d5917de5f1f222837a12cad820855608ebd707c6f269ff53456654923351e8`.
+  `ocr-line-selection-37/Update-App.ps1 -Action Rollback` trả riêng app cũ;
+  nhánh rollback chưa chạy. Giữ backup32 và backup37.
+- GUI chính gói đã cập nhật: cửa sổ hiện, **77,5 s/exit0**, 0 child sót,
+  không traceback; watcher không thấy remote connection. Đóng lần đầu chưa
+  nhận, lần sau đóng sạch. Backup/khôi phục 5 cache, **6 file AppData khớp SHA**.
+  Chỉ smoke startup native; control mới kiểm qua Qt source và source/PYZ,
+  chưa thao tác OCR mới trên native GUI, dịch/TTS hay chạy hết video.
+- 22 file lượt này: `README.md`, `VideoCaptioner.spec`, `status.md`,
+  `docs/dev/ocr-next-session-prompt.md`, `docs/plans/video-subtitle-ocr-integration-plan.md`;
+  `videocaptioner/cli/{main.py,commands/ocr.py}`, `videocaptioner/core/entities.py`,
+  `videocaptioner/core/ocr/{line_selection,codec,consensus,document,pipeline,service,assistance}.py`,
+  `videocaptioner/ui/{task_factory.py,thread/ocr_thread.py,components/ocr_dialog.py,components/ocr_region_canvas.py}`,
+  `tests/test_ocr/{test_line_selection,test_service}.py`, `tests/test_ui/test_ocr.py`.
+  Giữ các thay đổi probe35 có từ trước. User sau đó yêu cầu commit/push:
+  snapshot gồm 22 file trên cùng `docs/dev/ocr-style-probe-2026-09.md`,
+  `scripts/ocr_style_probe.py`, `tests/test_ocr/test_style_probe.py` (25 file).
+  Lượt submit chỉ kiểm diff/staged/remote, giữ các gate đã có; evidence,
+  EXE/models/AppData và `ffcachePuSHPB` ngoài Git. Lấy mã commit thực từ Git.
+
+## 2026-09-13 (Ưu tiên đoạn phụ đề dùng được: chọn dòng từ raw video 2)
+
+- Theo hướng user yêu cầu giảm thử nghiệm, đọc đúng7candidate cũ: phụ đề
+  lớn nằm riêng trong1–3box, các dòng giao diện nhỏ có box riêng. Đối chiếu
+  thêm5PNG gốc PTS435/440/470/471/479 qua runtime medium có sẵn, mỗi ảnh
+  đúng1lượt: **5request/5det/10rec/0cls/0API**,6,563s; không decode video.
+- Evidence `ocr-line-check-36/` giữ raw mới ngay từng response. Chọn box
+  cắt trục giữa ROI (y47) chỉ cho đoạn mẫu này:22/72dòng của12ảnh. Chọn
+  nguyên bản đọc lặp lại, không sửa codepoint: PTS470 và479 tạo
+  `video2-14-16s.draft.srt`,2câu, biên15,700s từ quan sátPTS471 evidence33.
+- Đây là **bản nháp đoạn2giây**, không scan đầy đủ hoặc checkpoint resume;
+  câu đầu còn mất dấu phân cách trong raw. Quy tắc trục giữa có thể bỏ dấu
+  rời/lấy nền cùng hàng ở cảnh khác, chưa tích hợp app. Sidecar giữ source,
+  IDs/profile/crop/PTS/chỉ số dòng và toàn raw; checkpoint cũ vẫn dở/nguyên byte.
+- Worker/readers đóng;10file kiểmSHA giữ nguyên và4.960file runtime giữ
+  size/mtime. Không thêm/chạy suite test, build, GUI, dịch/TTS hoặc commit/push.
+  Chỉ bổ sung status/prompt ngắn, giữ sáu file chưa commit của evidence35.
+
+## 2026-09-13 (Phép kiểm nét sáng/bóng lệch: chưa tách được lớp phụ đề)
+
+- ASR-S3 HEAD/tracking **aef0107**; [biên bản](docs/dev/ocr-style-probe-2026-09.md).
+  Thêm script/test offline mới, không sửa app. Giả thuyết từng frame:
+  residual mở hình thái11×11, nét sáng≥248, bóng lệch(+3,+3); một policy
+  cố định, không sweep hoặc chạy lại majority3/5/chiều cao.
+- **0/10 ca tracking và 0/10 ca pixel đạt**. Lỗ sáng của chữ nền vẫn lọt,
+  nét phụ đề bị cắt; fade overlay sạch vẫn5đoạn. Box hỗn hợp không thể cho
+  đúng target bằng bất kỳ tập con dòng raw nguyên vẹn. Đây là cận khả năng
+  trên fixture tổng hợp, không selector hay benchmark OCR mới.
+- **60PNG/7candidate SHA/PTS khớp**; toàn PTS420–479 cho23đoạn tín hiệu mask,
+  không phải số cue/requests. Sidecar giữ lineage và ghi7candidate chưa có
+  bản đọc dẫn xuất, không chọn chữ/đổi raw. Checkpoint video2 vẫn dở.
+- **36test pass**, Ruff script+app/tests sạch, Pyright script+app0/0.
+  Giữ log đầu33pass/2fail do fixture dấu đơn dưới ngưỡng present; sửa fixture
+  kiểm tra và thêm regression giới hạn đó, không sửa thuật toán/tiêu chí.
+- Evidence35 ngoài Git;96file giữSHA, gồm đầu vào32/33/34,EXE,ffcachePuSHPB.
+  **0OCR/API/model load/decode mới**; không full suite/build/native/cache/
+  resume hoặc cài/tải. Không tích hợp policy thất bại, không review bắt buộc;
+  chưa có thuật toán thay thế đạt gate. Sáu file, chưa commit/push.
+
 ## 2026-09-13 (Submit chẩn đoán video 2 và phép kiểm tách lớp offline)
 
 - User yêu cầu commit/push trên `codex/asr-s3-native`, baseline **81ba84d**.

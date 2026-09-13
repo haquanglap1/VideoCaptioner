@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -11,6 +11,7 @@ from .codec import atomic_json, decode, digest, encode, read_json, sha256
 from .consensus import validate_read
 from .geometry import Roi
 from .identity import VisualSourceIdentity
+from .line_selection import LineSelectionPolicy, selected_text
 from .models import EngineRead, OcrError, Selection
 from .pipeline import RegionResult
 from .profile import OcrProfileSnapshot
@@ -33,10 +34,14 @@ class OcrConfig:
     tracking_policy: Literal["edge-tiles-ocr2-v1"] = "edge-tiles-ocr2-v1"
     consensus_policy: Literal["exact-read-uncalibrated-v1"] = "exact-read-uncalibrated-v1"
     profile_snapshot: OcrProfileSnapshot | None = None
+    # Omission preserves the serialized config and IDs of all existing documents.
+    line_selection: LineSelectionPolicy | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         sha256(self.profile_sha256)
         sha256(self.bridge_sha256)
+        if self.line_selection is not None and not isinstance(self.line_selection, LineSelectionPolicy):
+            raise OcrError("Invalid OCR line selection policy")
         if self.language != "zh":
             raise OcrError("The installed OCR profile supports the explicit zh configuration")
 
@@ -49,16 +54,22 @@ class OcrCandidate:
     raw: EngineRead
     cache_hit: bool
     crop_reference: str = ""
+    selected_line_indices: tuple[int, ...] | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         sha256(self.crop_sha256)
         validate_read(self.raw)
+        selected_text(self.raw, self.selected_line_indices)
         if not self.id.startswith("candidate-") or len(self.id) != 42 or type(self.frame_pts) is not int:
             raise OcrError("Invalid OCR candidate identity")
         if self.crop_reference:
             path = PurePosixPath(self.crop_reference)
             if path.is_absolute() or ".." in path.parts or ":" in self.crop_reference or "\\" in self.crop_reference:
                 raise OcrError("OCR crop references must be relative to the saved document")
+
+    @property
+    def text(self) -> str:
+        return selected_text(self.raw, self.selected_line_indices)
 
 
 @dataclass(frozen=True)
@@ -106,8 +117,8 @@ class OcrCue:
             raise OcrError("Raw OCR text does not match its engine read")
         if self.selected_candidate_id is not None:
             selected = self.candidate(self.selected_candidate_id)
-            if self.edited_text != selected.raw.text or not selected.raw.text.strip() or not self.text_review_note.strip():
-                raise OcrError("A review must select one complete engine read with a note")
+            if self.edited_text != selected.text or not selected.text.strip() or not self.text_review_note.strip():
+                raise OcrError("A review must select one candidate's observed text with a note")
         elif self.edited_text is not None or self.text_review_note:
             raise OcrError("Edited OCR text requires an explicit candidate selection")
         if (self.edited_start_ms is None) != (self.edited_end_ms is None):
@@ -140,11 +151,11 @@ class OcrCue:
         issues = set(self.issues)
         if not self.candidates:
             issues.add("no_engine_read")
-        if not self.text.strip() or any(not c.raw.text.strip() for c in self.candidates):
+        if not self.text.strip() or any(not c.text.strip() for c in self.candidates):
             issues.add("empty_engine_read")
         if len({c.raw.revision for c in self.candidates}) > 1:
             issues.add("model_revision_mismatch")
-        if len({c.raw.text for c in self.candidates}) > 1:
+        if len({c.text for c in self.candidates}) > 1:
             issues.add("engine_disagreement")
         if len({c.crop_sha256 for c in self.candidates}) < 2:
             issues.add("insufficient_independent_crops")
@@ -170,7 +181,9 @@ class OcrCue:
 
     @property
     def text(self) -> str:
-        return self.raw_text if self.edited_text is None else self.edited_text
+        if self.edited_text is not None:
+            return self.edited_text
+        return self.candidate(self.raw_candidate_id).text if self.raw_candidate_id else self.raw_text
 
     @property
     def start_ms(self) -> int:
@@ -181,7 +194,7 @@ class OcrCue:
         return self.measured_end_ms if self.edited_end_ms is None else self.edited_end_ms
 
     def select_candidate(self, candidate_id: str, note: str) -> OcrCue:
-        text = self.candidate(candidate_id).raw.text
+        text = self.candidate(candidate_id).text
         resolved = set(self.resolved_issues) | (set(self.all_issues) & TEXT_ISSUES)
         return replace(self, selected_candidate_id=candidate_id, edited_text=text,
                        text_review_note=note, resolved_issues=tuple(sorted(resolved)))
@@ -260,6 +273,11 @@ class OcrDocument:
                     raise OcrError("OCR candidate identity mismatch")
                 if not cue.first_pts <= candidate.frame_pts <= cue.last_pts:
                     raise OcrError("OCR candidate lies outside its observed track")
+                policy = self.config.line_selection
+                height = self.config.roi.pixels(*video.geometry.display_size).height
+                expected_indices = policy.select(candidate.raw, height) if policy else None
+                if candidate.selected_line_indices != expected_indices:
+                    raise OcrError("OCR line selection does not match its saved policy and raw boxes")
 
     @property
     def pending_issues(self) -> tuple[str, ...]:
@@ -332,14 +350,18 @@ def cue_id(document: str, start: Fraction, end: Fraction, first_pts: int, last_p
 
 def cue_from_region(document: str, region: RegionResult) -> OcrCue:
     candidates = tuple(OcrCandidate(candidate_id(document, c.frame_pts, c.crop_sha256, c.raw),
-                                     c.frame_pts, c.crop_sha256, c.raw, c.cache_hit) for c in region.reads)
+                                     c.frame_pts, c.crop_sha256, c.raw, c.cache_hit,
+                                     selected_line_indices=c.selected_line_indices) for c in region.reads)
     if region.first_pts is None or region.last_pts is None:
         raise OcrError("OCR region lacks observed boundary PTS")
     selected = region.consensus.selected_index
     if selected is not None and not 0 <= selected < len(candidates):
         raise OcrError("Invalid OCR consensus reference")
+    if selected is not None and region.consensus.text != candidates[selected].text:
+        raise OcrError("OCR consensus text does not match the selected raw lines")
     return OcrCue(cue_id(document, region.start_ms, region.end_ms, region.first_pts, region.last_pts),
                   round(region.start_ms), round(region.end_ms), region.start_ms, region.end_ms,
                   region.first_pts, region.last_pts, region.start_window_ms, region.end_window_ms,
                   candidates, candidates[selected].id if selected is not None else None,
-                  region.consensus.text, tuple(sorted(set(region.issues + region.consensus.issues))))
+                  candidates[selected].raw.text if selected is not None else "",
+                  tuple(sorted(set(region.issues + region.consensus.issues))))

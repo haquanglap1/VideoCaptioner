@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from videocaptioner.core.dubbing.review import DubbingReview
     from videocaptioner.core.ocr.document import OcrDocument
     from videocaptioner.core.ocr.geometry import Roi
+    from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
     from videocaptioner.core.ocr.models import Selection
     from videocaptioner.core.translate.types import TargetLanguage
 
@@ -28,6 +29,7 @@ class OcrTask:
     expected_source_sha256: str = ""
     cache_mib: int = 64
     resume_document: Optional["OcrDocument"] = None
+    line_selection: Optional["LineSelectionPolicy"] = None
 
 
 def _generate_task_id() -> str:

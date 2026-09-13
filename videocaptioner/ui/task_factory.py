@@ -49,9 +49,9 @@ class TaskFactory:
 
     @staticmethod
     def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000,
-                        expected_source_sha256="", cache_mib=64, resume_document=None) -> OcrTask:
+                        expected_source_sha256="", cache_mib=64, resume_document=None, line_selection=None) -> OcrTask:
         return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256,
-                       cache_mib, resume_document)
+                       cache_mib, resume_document, line_selection)
 
     @staticmethod
     def get_ass_style(style_name: str) -> str:

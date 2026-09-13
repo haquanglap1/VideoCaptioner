@@ -8,6 +8,7 @@ import math
 from collections import Counter, OrderedDict
 from dataclasses import asdict, dataclass
 
+from .line_selection import selected_text
 from .models import EngineRead, OcrError, RoiFrame
 
 
@@ -29,6 +30,16 @@ class CandidateRead:
     crop_sha256: str
     raw: EngineRead
     cache_hit: bool
+    selected_line_indices: tuple[int, ...] | None = None
+
+    @property
+    def text(self) -> str:
+        return selected_text(self.raw, self.selected_line_indices)
+
+    @property
+    def min_score(self) -> float:
+        indices = range(len(self.raw.lines)) if self.selected_line_indices is None else self.selected_line_indices
+        return min((self.raw.lines[i].score for i in indices), default=0)
 
 
 @dataclass(frozen=True)
@@ -45,11 +56,11 @@ def choose_read(candidates: tuple[CandidateRead, ...], *, calibrated_min_score: 
         return Consensus(None, "", ("no_engine_read",))
     for candidate in candidates:
         validate_read(candidate.raw)
-    texts = [item.raw.text for item in candidates]
+    texts = [item.text for item in candidates]
     counts = Counter(texts)
     # Exact codepoints and line breaks: no script conversion, interpolation or name repair.
     selected = max(range(len(candidates)), key=lambda i: (bool(texts[i].strip()), counts[texts[i]],
-                   min((line.score for line in candidates[i].raw.lines), default=0), -i))
+                   candidates[i].min_score, -i))
     issues = set()
     if not texts[selected].strip():
         issues.add("empty_engine_read")
@@ -61,7 +72,7 @@ def choose_read(candidates: tuple[CandidateRead, ...], *, calibrated_min_score: 
         issues.add("model_revision_mismatch")
     if calibrated_min_score is None:
         issues.add("uncalibrated_profile")
-    elif any(line.score < calibrated_min_score for c in candidates for line in c.raw.lines):
+    elif any(c.min_score < calibrated_min_score for c in candidates):
         issues.add("low_engine_score")
     return Consensus(selected, texts[selected], tuple(sorted(issues)))
 

@@ -48,7 +48,7 @@ class OcrVietnameseDraft:
 
 def comparison_note(cue: OcrCue) -> str:
     """Describe observed differences without guessing which reading is correct."""
-    texts = [candidate.raw.text for candidate in cue.candidates]
+    texts = [candidate.text for candidate in cue.candidates]
     images = len({candidate.crop_sha256 for candidate in cue.candidates})
     prefix = f"{len(texts)} lần đọc / {images} ảnh khác nhau. "
     if not texts or any(not text.strip() for text in texts):
@@ -80,7 +80,7 @@ def translate_draft(document: OcrDocument, candidate: OcrCandidate, settings: Oc
     check()
     if not any(candidate == item for cue in document.cues for item in cue.candidates):
         raise OcrError("Bản đọc không thuộc tài liệu OCR đang mở.")
-    text = candidate.raw.text
+    text = candidate.text
     if not text.strip() or len(text) > 4096:
         raise OcrError("Bản đọc rỗng hoặc quá dài để dịch tham khảo một câu.")
 

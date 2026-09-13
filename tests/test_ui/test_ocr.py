@@ -34,6 +34,51 @@ def wait_worker(worker):
     assert worker.wait(5000)
 
 
+def test_line_selection_ui_worker_export_and_saved_resume(qapp, tmp_path, monkeypatch):
+    from tests.test_ocr.test_line_selection import selected_document
+    from videocaptioner.ui.thread.ocr_thread import OcrThread
+
+    doc = selected_document()
+    calls = []
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.inspect_installation",
+                        lambda *_: SimpleNamespace(config=lambda *_: replace(doc.config, line_selection=None),
+                                                    root=tmp_path, bridge=tmp_path / "worker.py"))
+
+    def scan(_source, config, *_args, **options):
+        calls.append((config.line_selection, options["resume_document"]))
+        assert config == doc.config
+        return doc
+
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.run_cpu_ocr", scan)
+    dialog = OcrDialog(source="synthetic.mov")
+    dialog.source_preview = SimpleNamespace(source_sha256=doc.visual_source.snapshot_sha256)
+    dialog.canvas.roi = doc.config.roi
+    dialog.start_ms.setValue(doc.config.selection.start_ms)
+    dialog.end_ms.setValue(doc.config.selection.end_ms)
+    dialog.select_lines.setChecked(True)
+    assert dialog.canvas.line_anchors == (.5,)
+    dialog.scan()
+    worker = dialog.worker
+    assert isinstance(worker, OcrThread)
+    wait_worker(worker)
+    qapp.processEvents()
+    assert dialog.table.item(0, 2).text() == doc.cues[0].text
+    assert dialog.export_button.isEnabled() and dialog.handoff_button.isEnabled()
+    assert "Menu" not in dialog.candidate.currentText()
+    dialog.accept_document(replace(doc, complete=False))
+    dialog.select_lines.setChecked(False)
+    dialog.resume_scan()
+    wait_worker(dialog.worker)
+    qapp.processEvents()
+    assert calls[0] == (doc.config.line_selection, None)
+    assert calls[1][0] == doc.config.line_selection and not calls[1][1].complete
+    dialog.select_lines.setChecked(True)
+    dialog.line_anchors.setText("75,25")
+    dialog.scan()
+    assert len(calls) == 2 and dialog.canvas.line_anchors == ()
+    dialog.close()
+
+
 def test_dialog_open_is_lazy_and_roi_drag_respects_letterbox(qapp, monkeypatch):
     def forbidden(*_a, **_k):
         raise AssertionError("opening must not start IO/model")

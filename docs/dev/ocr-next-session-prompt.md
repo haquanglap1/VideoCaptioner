@@ -1,8 +1,37 @@
-# Prompt phiên tiếp theo — OCR xuất thẳng, tách phụ đề khỏi nền video 2
+# Prompt phiên tiếp theo — OCR xuất thẳng, chọn dòng trong app
+
+**Ưu tiên mới nhất đã thực hiện:** user chọn "Đưa cách chọn dòng vào luồng
+OCR để dùng trong app". Evidence `ocr-line-selection-37/` thêm tùy chọn
+**Chỉ lấy dòng đi qua vạch chọn**, vị trí % trong ROI (50; hai dòng 25,75),
+CLI `--line-anchors 0.5`. Mặc định tắt. Policy có tên riêng trong config;
+candidate lưu chỉ số dòng, raw_text vẫn đầy đủ, text xuất/dịch là projection.
+Giữ dấu câu nguyên box ở gần dòng đã chọn; không sửa codepoint/ghi review.
+Codec chỉ cho thiếu hai field mới khi không bật; JSON cũ/ID giữ nguyên.
+Resume dùng policy đã lưu, không tự áp vào checkpoint cũ. Tracking chưa đổi,
+nền cùng hàng/box hỗn hợp vẫn có thể lọt; không gọi đây là thuật toán tách
+lớp tổng quát. Đọc mục mới nhất `status.md` và receipt37 để biết EXE hiện tại;
+thông tin artifact/evidence36 trở xuống là lịch sử. User tiếp tục yêu cầu
+commit/push snapshot 25 file (22 file chọn dòng và 3 file probe35 còn lại).
+Lấy mã snapshot thực từ Git; các ghi chú chưa commit bên dưới là lịch sử.
+Quyền submit này không tự cấp API hoặc commit/push cho công việc tiếp theo.
+
+**Hướng mới nhất của user:** giảm viết/chạy test và biên bản, ưu tiên đoạn
+phụ đề dùng được. Evidence `ocr-line-check-36/` đã đọc7candidate cũ và OCR
+thêm đúng5PNG gốc PTS435/440/470/471/479 (5request/5det/10rec/0API); không
+chạy lại các ảnh này. Cả12mẫu có box phụ đề riêng khỏi các dòng giao diện nhỏ.
+Đã có `video2-14-16s.draft.srt` gồm2câu, text nguyên từ dòng đã chọn tại
+PTS470/479, biênPTS471 từ ảnh evidence33. Đọc `sample-provenance.local.json`,
+`sample-receipt.json` và `receipt.json` ở evidence36 trước khi tiếp tục.
+Chọn box cắt y47 chỉ là phép thử đoạn mẫu, chưa policy app: vẫn có thể bỏ
+dấu rời hoặc lấy nền cùng hàng; câu đầu còn thiếu dấu phân cách trong raw.
+Không gọi SRT mẫu là scan đầy đủ, không đổi checkpoint dở hoặc tự sửa raw.
+Lượt36 chỉ đổi status/prompt, không thêm test/app code/build/GUI/commit/push.
 
 Tiếp tục worktree **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**.
 Tìm bằng `git worktree list`, không làm ở checkout master. Snapshot bỏ
-review là **81ba84d**, HEAD/tracking khớp ở phiên chẩn đoán và phép kiểm tách lớp.
+review là **81ba84d**; snapshot chẩn đoán/probe đã submit là **aef0107**,
+HEAD/tracking khớp lúc bắt đầu phép kiểm nét sáng/bóng lệch. Các thay đổi
+evidence35 được giữ trong snapshot chọn dòng user yêu cầu submit sau đó.
 Đọc `git log -1`, `git status --short --branch` và đối chiếu
 `origin/codex/asr-s3-native`. User đã yêu cầu commit/push bảy file tài liệu
 chẩn đoán/plan/status/prompt cùng script/test/biên bản tách lớp; lấy mã
@@ -46,6 +75,12 @@ thay đổi luồng sử dụng, không phải bằng chứng nhận dạng chí
    `signal-provenance.local.json`, `line-proposals.local.json`, ảnh tổng hợp
    và `tests.log`. Phép thử đã hoàn tất với hypothesis=false, không chạy lại
    policy 3/5 + chiều cao hoặc xem test harness pass là thuật toán đạt.
+6. `docs/dev/ocr-style-probe-2026-09.md`, `scripts/ocr_style_probe.py` và
+   `tests/test_ocr/test_style_probe.py`. Evidence
+   `build/ocr-pilot-20260910/ocr-style-probe-35/`: plan/receipt/snapshot,
+   signal-provenance/line-evidence local, masks, preservation, validation
+   và tests-first/tests.log. Giả thuyết nét sáng/bóng lệch đã fail10/10ca;
+   không chạy lại, sweep ngưỡng/kernel hoặc OCR mask đang mất nét.
 
 Hai video do user chỉ định được ánh xạ thành video 1/2 trong
 `video-inputs.json`; lấy đường dẫn và SHA ở đó, không đoán từ tên video,
@@ -77,7 +112,17 @@ chỉ ở evidence local, không đưa vào Git hoặc gửi ra ngoài.
    Không đưa policy này vào app hoặc tăng cap để lấy exit0. Giả thuyết mới
    cần xử lý các phản ví dụ trên ở cả tracking và text chọn trước khi sửa
    pipeline. Chưa chọn thuật toán thay thế đủ cơ sở tích hợp.
-4. Chỉ sửa theo giả thuyết cụ thể có regression; giữ raw nguyên vẹn cùng
+4. **Phép kiểm từng frame cũng đã chưa đạt.** Một policy cố định residual
+   mở hình thái11×11 + mức sáng248 + bóng lệch(+3,+3) vẫn giữ lỗ sáng chữ
+   nền, cắt nét phụ đề:0/10tracking,0/10pixel. Fade trên overlay sạch5đoạn.
+   PNG60frame/7candidate khớp SHA; toànPTS420–479 cho23đoạn tín hiệu, không
+   số cue/request. Không đổi raw, không tạo SRT hoặc bản đọc dẫn xuất.
+   Fixture box hỗn hợp không có bất kỳ tập con dòng raw nào cho đúng target;
+   selector nguyên dòng không thể tự sửa ca này. Nếu sau này OCR ảnh dẫn
+   xuất, phải tạo raw mới cùng crop/mask/policy SHA và lineage, không gán
+   raw cũ cho ảnh mới. Chưa chọn thuật toán đạt gate; không nới ngưỡng hay
+   OCR mask chưa đạt chỉ để có kết quả. Nền cùng hình thức là control mới.
+5. Chỉ sửa theo giả thuyết cụ thể có regression; giữ raw nguyên vẹn cùng
    provenance phần chữ chọn, IDs/schema/source/PTS và phân biệt processing
    error với thông tin nhận dạng. Không âm thầm áp policy mới vào checkpoint
    cũ. Không review bắt buộc hoặc đòi user cung cấp transcript để làm fixture.
@@ -90,6 +135,11 @@ vision GUI, downloader/update hoặc checkpoint tự động.
 
 ## Những phần đã hoàn tất
 
+- Evidence35:21test mới +15tracking/consensus/direct-export **36pass**,
+  Ruff/Pyright0/0. Giữ log33pass/2fail do dấu đơn dưới ngưỡng present;
+  sửa fixture test, thêm regression giới hạn, không đổi policy/tiêu chí.
+  96file giữSHA, checkpoint nguyên byte, sidecar chưa chọn chữ.0OCR/API/
+  model load/decode mới; không sửa app/EXE hoặc commit/push.
 - Phép kiểm offline evidence34:19test harness mới, cùng tracking/consensus/
   direct-export **34pass**, Ruff/Pyright0/0. Lượt đầu14pass/1fail do assertion
   về blank cuộn sai đã sửa theo số đo, không đổi policy/tiêu chí. Giữ raw

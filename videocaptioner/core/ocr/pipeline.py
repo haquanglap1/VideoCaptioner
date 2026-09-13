@@ -9,6 +9,7 @@ from typing import Callable, Iterator, Protocol
 
 from .consensus import CandidateRead, Consensus, ReadCache, choose_read
 from .decoder import RoiDecoder
+from .line_selection import LineSelectionPolicy
 from .models import Check, EngineRead, OcrError, RoiFrame, Selection
 from .tracking import RegionTracker, TrackedRegion
 
@@ -50,8 +51,10 @@ class PipelineMetrics:
 
 
 class OcrPipeline:
-    def __init__(self, recognizer: Recognizer, cache: ReadCache, *, check: Check = lambda: None):
+    def __init__(self, recognizer: Recognizer, cache: ReadCache, *, check: Check = lambda: None,
+                 line_selection: LineSelectionPolicy | None = None):
         self.recognizer, self.cache, self.check = recognizer, cache, check
+        self.line_selection = line_selection
         self.metrics = PipelineMetrics()
         self.started = False
 
@@ -74,7 +77,8 @@ class OcrPipeline:
                 self.cache.put(key, raw)
             else:
                 self.metrics.cache_hits += 1
-            reads.append(CandidateRead(frame.pts, crop_hash, raw, hit))
+            indices = self.line_selection.select(raw, frame.height) if self.line_selection else None
+            reads.append(CandidateRead(frame.pts, crop_hash, raw, hit, indices))
         result = RegionResult(region.start_ms, region.end_ms, tuple(reads), choose_read(tuple(reads)),
                               region.issues, region.start_window_ms, region.end_window_ms,
                               region.first_pts, region.last_pts)
