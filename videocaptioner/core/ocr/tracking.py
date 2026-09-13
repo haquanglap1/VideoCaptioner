@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import cast
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from .models import FrameSpan, OcrError, RoiFrame
+from .models import FrameSpan, OcrError, RoiFrame, VisualDecision
 
 
 @dataclass(frozen=True)
@@ -110,33 +110,39 @@ class RegionTracker:
         if fade:
             issues.add("fade_or_contrast_change")
         start, end = active.start.start_ms, active.last.end_ms
-        uncertain = fade or "track_holding_limit" in issues
+        uncertain = fade or "track_holding_limit" in issues or "uncertain_boundary" in issues
         end_lower = start if uncertain else (active.last.start_ms if active.last.uncertain_end else end)
         self.active = None
         return TrackedRegion(start, end, active.first.pts, active.latest.pts,
                              tuple(frames.values()), tuple(sorted(issues)),
                              (start, end if uncertain else start), (end_lower, end))
 
-    def feed(self, span: FrameSpan) -> TrackedRegion | None:
+    def feed(self, span: FrameSpan, decision: VisualDecision | None = None) -> TrackedRegion | None:
         if span.start_ms >= span.end_ms or (self.previous_end is not None
                                             and span.start_ms != self.previous_end):
             raise OcrError("Tracking requires consecutive, nonempty frame spans")
         self.previous_end = span.end_ms
         signature = edge_signature(span.frame)
+        present = decision.present if decision else signature.present
+        if decision:
+            signature = replace(signature, strength=decision.quality)
         closed = None
         if self.active is not None:
+            if decision and decision.uncertain and not decision.changed:
+                self.active.issues.add("uncertain_boundary")
             timeout = span.start_ms - self.active.start.start_ms >= self.max_hold_ms
             if timeout:
                 self.active.issues.add("track_holding_limit")
-            if timeout or not signature.present or not same_shape(self.active.signature, signature):
+            changed = decision.changed if decision else not same_shape(self.active.signature, signature)
+            if timeout or not present or changed:
                 closed = self._finish()
-                if timeout and signature.present:
+                if timeout and present:
                     # Splitting at the memory/time policy is not a measured text transition.
                     self._begin(span, signature)
                     assert self.active is not None
                     self.active.issues.add("track_holding_limit")
                     return closed
-        if signature.present:
+        if present:
             if self.active is None:
                 self._begin(span, signature)
             else:

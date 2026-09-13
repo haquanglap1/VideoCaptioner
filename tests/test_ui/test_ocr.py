@@ -79,6 +79,50 @@ def test_line_selection_ui_worker_export_and_saved_resume(qapp, tmp_path, monkey
     dialog.close()
 
 
+def test_character_tracking_control_and_worker_bridge(qapp, tmp_path, monkeypatch):
+    import hashlib
+
+    from tests.test_ocr.test_character_tracking import character_config
+    from videocaptioner.ui.thread.ocr_thread import OcrThread
+
+    config = character_config()
+    companion = tmp_path / "ocr_tracking_worker.py"
+    companion.write_text("# synthetic companion, never executed")
+    installed = replace(config, tracking_policy="edge-tiles-ocr2-v1", line_selection=None)
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.inspect_installation",
+                        lambda *_: SimpleNamespace(config=lambda *_: installed, root=tmp_path,
+                                                    bridge=tmp_path / "ocr_stream_worker.py"))
+    calls = []
+
+    def scan(_source, actual, _root, bridge, **_options):
+        assert bridge == companion
+        assert actual.tracking_policy == "character-features-v1"
+        assert actual.bridge_sha256 == hashlib.sha256(companion.read_bytes()).hexdigest()
+        calls.append(actual)
+        return "synthetic result"
+
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.run_cpu_ocr", scan)
+    dialog = OcrDialog(source="synthetic.mov")
+    dialog.source_preview = SimpleNamespace(source_sha256="a" * 64)
+    dialog.canvas.roi = config.roi
+    dialog.start_ms.setValue(config.selection.start_ms)
+    dialog.end_ms.setValue(config.selection.end_ms)
+    workers = []
+    monkeypatch.setattr(dialog, "_start", lambda worker, _accept: workers.append(worker))
+    assert not dialog.stable_tracking.isEnabled()
+    dialog.select_lines.setChecked(True)
+    dialog.stable_tracking.setChecked(True)
+    dialog.scan()
+    assert isinstance(workers[0], OcrThread)
+    assert workers[0].scan(lambda: None) == "synthetic result"
+    assert len(calls) == 1
+    dialog.line_anchors.setText("25,75")
+    assert not dialog.stable_tracking.isEnabled() and not dialog.stable_tracking.isChecked()
+    dialog.scan()
+    assert workers[-1].task.tracking_policy == "edge-tiles-ocr2-v1"
+    dialog.close()
+
+
 def test_dialog_open_is_lazy_and_roi_drag_respects_letterbox(qapp, monkeypatch):
     def forbidden(*_a, **_k):
         raise AssertionError("opening must not start IO/model")

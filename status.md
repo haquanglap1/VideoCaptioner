@@ -1,5 +1,89 @@
 # Project Status
 
+## 2026-09-13 (Hoàn tất chế độ ổn định tracking một dòng, đã cập nhật EXE)
+
+- Thêm **Ổn định nhóm phụ đề một dòng (CPU)**, CLI
+  `--line-anchors 0.5 --tracking characters`. Worker riêng dùng model v6
+  medium đã cài: detector xác định dòng chính, encoder cục bộ so hình chữ;
+  không gộp theo chuỗi OCR, không sửa raw hoặc ghi quyết định duyệt giả.
+  Thay đổi chưa chắc được giữ dưới dạng biên bất định; có tiến độ từng frame.
+- Policy chọn dòng v2 loại box nhỏ cắt vạch, vẫn nối dấu câu rời ở gần.
+  28 raw cũ: 50 → 49 dòng chọn, chỉ bỏ `>` ở PTS431. V1 giữ nguyên khi đọc
+  checkpoint cũ. Worker cũ giữ nguyên SHA để resume dữ liệu trước thay đổi.
+- Chế độ mới giới hạn **một dòng**, cần v6 medium. Hai vạch tự tắt checkbox
+  ổn định; CLI từ chối cấu hình này trước scan. Hai dòng vẫn dùng tracking
+  cạnh cũ. Không gọi đây là tách lớp tổng quát hay nghiệm thu độ chính xác chữ.
+- Evidence `ocr-tracking-finish-39/`: 8 ca một dòng tổng hợp đạt biên đã đặt,
+  gồm đổi chữ/dấu, fade, blank/lặp và đổi chữ một frame. Ca hai dòng chưa đạt,
+  nên không đưa vào mode mới. Kiểm riêng glyph sát mép phải trên nền tối và
+  RPC xen kẽ tracking/recognize đạt. Các thử pixel, MSER, SIFT và crop đọc lại
+  không được tích hợp; giữ kết quả thất bại local. Crop thử có 3 rec, smoke
+  ảnh tổng hợp thêm 1 rec; video dùng lại raw đã lưu. **0 API mới**.
+- Source pipeline thật tự ra **2 cue: 14.000–15.700 và 15.700–16.000**.
+  Không hardcode biên vào app. 60 frame/5 candidate, 5 raw cache hit, không
+  gọi lại recognizer. Các lượt theo dõi model được đếm riêng với raw OCR.
+- **324 test liên quan pass**, sau thêm tiến độ kiểm lại 33 ca pass;
+  Ruff/Pyright sạch, translations in sync. Không chạy full suite hoặc chạy
+  lại hai probe cũ. Không cài dependency/tải model hoặc sao chép models49GB.
+- Build một spec, stage app riêng: **exit0, 6 warning/0 error**, 209,032 s;
+  591 file/529.774.282 byte. 13 module source/PYZ và hai worker data khớp,
+  NumPy/OpenCV/ONNX/Torch không vào process Qt.
+- Binary quét thật selection 14–16 s: **exit0**, 38,922 s, tự xuất JSON/SRT
+  2 cue và không có ký hiệu `>`. Seed cache từ 28 raw đã kiểm source/profile;
+  60 tracking request/60 visual batch/32 det/**0 rec**. Đây là quét selection,
+  chưa phải toàn video. Prefix partial được tạo tường minh để kiểm resume:
+  giữ nguyên cue đầu, SRT cuối khớp bản full selection, **exit0**, 34,125 s;
+  vẫn cần replay 60 frame/model tracking, nhưng **0 rec mới**. Partial-export
+  vẫn exit5 và không tạo SRT. Không giả đây là một lượt hủy GUI thực tế.
+- Đã thay riêng EXE/`_internal` trong `dist/VideoCaptioner-OCR6-Medium-20260911/`.
+  EXE **31.454.661 byte**, **2026-09-13 19:26:04+07**, SHA-256
+  `d0f4a17612a18f009c9504f97c6cf8030010dd36b9fdb32b2452a15a7e958dc7`.
+  App cũ ở `ocr-tracking-finish-39/rollback-app/`; script `Update-App.ps1`
+  giữ nhánh Rollback chưa chạy. Models và dữ liệu của user giữ nguyên.
+- Native startup/shutdown cuối **26,218 s/exit0**, 0 child sót, không traceback
+  hoặc remote connection được watcher quan sát. Lượt đầu harness chạm90s và
+  tự terminate (exit1); giữ log, khôi phục dữ liệu rồi sửa harness tự đóng
+  cửa sổ. Receipt đúng là `gui2-receipt.json` / `gui2-restoration.json`.
+  Khôi phục5cache, **6 file AppData khớp SHA**; 81 hash evidence cũ và
+  inventory4.960file runtime giữ nguyên. UI mới đã kiểm trên Qt source,
+  binary CLI chạy thật; không tuyên bố đã bấm scan từ native dialog.
+- SRT bàn giao: `ocr-tracking-finish-39/binary-video2.srt`; JSON phụ đề và
+  checkpoint nằm cạnh nó. Chữ vẫn theo raw, còn thiếu dấu phân cách ở câu
+  đầu; không sửa chữ để báo đẹp kết quả. Không chạy dịch/TTS/vision.
+- 23 file thay đổi: `README.md`, `VideoCaptioner.spec`, `status.md`,
+  `docs/dev/ocr-next-session-prompt.md`; `scripts/ocr_tracking_worker.py`
+  và bản package `videocaptioner/resources/ocr/ocr_tracking_worker.py`;
+  `videocaptioner/cli/{main.py,commands/ocr.py}`, `videocaptioner/core/entities.py`,
+  `videocaptioner/core/ocr/{document,line_selection,models,pipeline,runtime,service,tracking}.py`,
+  `videocaptioner/ui/{task_factory.py,thread/ocr_thread.py,components/ocr_dialog.py}`;
+  `tests/test_ocr/{test_character_tracking,test_line_selection,test_runtime}.py`,
+  `tests/test_ui/test_ocr.py`. Giữ các thay đổi tài liệu lượt38. User sau đó
+  yêu cầu commit/push snapshot 23 file này; lấy mã thực từ Git. Lượt submit
+  chỉ kiểm diff/index/remote, không chạy lại test/build/inference đã đạt.
+
+## 2026-09-13 (Video 2: xuất trọn selection 14–16 s với chọn dòng)
+
+- HEAD/tracking `34ff925`. Evidence `ocr-selected-segment-38/`: chạy pipeline
+  source hiện tại trên 60 PNG gốc đã lưu, đối chiếu đủ SHA/PTS và 18 nhóm
+  với decode33; hash video 2 khớp mapping. Không decode video lại.
+- Dùng lại 12 raw cũ, đọc đúng 16 PNG còn thiếu một lần bằng runtime medium:
+  **16 request/16 det/60 rec/0 cls/0 API**, 13,016 s. 28 candidate có raw đầy đủ;
+  chọn 50/132 dòng. Worker/readers đóng; 81 file theo dõi và inventory runtime
+  giữ nguyên. Raw mới persist ngay từng response, không đụng checkpoint32/36.
+- `video2-14-16s.selected.ocr.json` complete cho **selection 2 giây**, xuất
+  SRT/JSON 18 cue; JSON mở lại khớp metadata. Đây là replay ảnh đã decode,
+  không nghiệm thu scan native EXE hoặc toàn video. Tracking chưa sửa: nhiều
+  cue cực ngắn; PTS431 còn lấy ký hiệu nền `>`. Chỉ 4 cặp liền nhau có chữ
+  giống hệt, nên gộp theo chữ cũng còn 14 cue; không thực hiện phép gộp đó.
+- Bản dùng thử `video2-14-16s.readable-draft.srt`: 2 cue, chữ nguyên từ
+  PTS434/479, biên PTS471 theo quan sát33. Raw434 có các dấu phân cách mà
+  bản470 thiếu; `I/l` vẫn bất định. `draft-provenance.local.json` giữ source,
+  candidate ID/PTS/crop/chỉ số dòng; đây là bản nháp theo biên đã quan sát,
+  không giả output tracker mới hoặc ghi quyết định reviewed/accepted.
+- Chỉ sửa `status.md` và `docs/dev/ocr-next-session-prompt.md`; không đổi app,
+  EXE, chạy suite/build/GUI hoặc commit/push. Không coi tracking đã được sửa;
+  giữ đủ 28 raw để bước tiếp không nhận dạng lại các ảnh này.
+
 ## 2026-09-13 (Chọn dòng OCR trong app/CLI theo yêu cầu user)
 
 - Thêm **Chỉ lấy dòng đi qua vạch chọn**, vị trí % trong ROI: `50` hoặc

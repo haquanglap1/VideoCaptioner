@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.dubbing.config import (
@@ -49,9 +49,10 @@ class TaskFactory:
 
     @staticmethod
     def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000,
-                        expected_source_sha256="", cache_mib=64, resume_document=None, line_selection=None) -> OcrTask:
+                        expected_source_sha256="", cache_mib=64, resume_document=None, line_selection=None,
+                        tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1"] = "edge-tiles-ocr2-v1") -> OcrTask:
         return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256,
-                       cache_mib, resume_document, line_selection)
+                       cache_mib, resume_document, line_selection, tracking_policy)
 
     @staticmethod
     def get_ass_style(style_name: str) -> str:

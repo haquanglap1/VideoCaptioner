@@ -1,5 +1,42 @@
 # Prompt phiên tiếp theo — OCR xuất thẳng, chọn dòng trong app
 
+**Lượt39 đã tích hợp tracking một dòng:** bật **Chỉ lấy dòng đi qua vạch chọn**
+(50%) và **Ổn định nhóm phụ đề một dòng (CPU)**; CLI
+`--line-anchors 0.5 --tracking characters`. Đã cập nhật EXE trong gói OCR6.
+Đọc mục mới nhất `status.md`, `ocr-tracking-finish-39/binary-receipt.json`
+và `gui2-receipt.json` / `gui2-restoration.json` trước khi làm tiếp. Native
+shutdown26,218s/exit0; lần đầu harness tự terminate sau90s, log vẫn giữ.
+6file AppData khôi phục khớpSHA,81hash evidence và4.960file runtime giữ nguyên.
+Binary tự xuất2cue đúng mốc
+14.000–15.700–16.000, không `>`; không còn cần bản nháp ghép theo biên quan sát.
+Raw vẫn thiếu dấu phân cách ở câu đầu; không tự bù. Một dòng có8ca tổng hợp
+đạt, kể cả chữ đổi1frame, fade và blank/lặp. Hai dòng chưa đạt mode ổn định,
+đã chặn cấu hình đó; tracking cạnh cũ vẫn dùng được. Các mốc model chưa chắc
+giữ biên bất định, không ghi reviewed/accepted hoặc cam kết chữ đúng.
+Policy dòngv2 giữv1 cho dữ liệu cũ, worker cũ nguyên SHA. New worker/policy
+được pin trong config; không tự đổi checkpoint cũ. Binary scan và prefix-resume
+đều60visual batch/32det/0rec nhờ cache raw; không được gọi là0inference.
+Giữ toàn bộ evidence39, cả thử nghiệm không đạt. Không chạy lại các hướng đó,
+test/build/scan đã pass chỉ để lấy số mới. User đã yêu cầu commit/push snapshot
+23 file lượt39; lấy mã thực từ Git. Giới hạn0API vẫn còn; quyền submit này
+không tự áp dụng cho công việc tiếp theo. Không mở rộng sang hai video đầy đủ
+hoặc roadmap khác.
+
+**Lượt tiếp tục sau commit `34ff925`:** evidence `ocr-selected-segment-38/`
+đã replay trọn 60 PNG/18 nhóm của selection video 2 14–16 s bằng pipeline
+source và chọn dòng0.5. Dùng lại12raw, đọc16PNG còn thiếu đúng1lượt:
+16request/16det/60rec/0API,13,016s. Nay có đủ28candidate raw; không OCR lại.
+Đọc `runtime-receipt.json`, `subtitle-receipt.json`, `lineage.local.json` và
+`draft-provenance.local.json`. JSON OCR mới complete trong selection2s,
+SRT/JSON tự xuất18cue; checkpoint32 cũ vẫn dở/nguyên byte. Chưa scan cả video.
+Tracker chưa sửa, PTS431 còn ký hiệu nền `>` lọt; chỉ4cặp cue liền nhau có
+chữ giống hệt nên gộp text cũng chỉ còn14cue. Không thực hiện phép gộp này.
+Bản `video2-14-16s.readable-draft.srt` riêng có2cue, nguyên textPTS434/479,
+biênPTS471 từ quan sát33; raw434 có dấu phân cách, vẫn bất địnhLatinI/l.
+Đây không phải output tracker mới hoặc quyết định duyệt giả. Giữ EXE37.
+Lượt38 chỉ đổi status/prompt, không app/test/build/GUI/commit/push. Ưu tiên
+đoạn phụ đề dùng được; không lặp chẩn đoán/probe hoặc nới ngưỡng lấy exit0.
+
 **Ưu tiên mới nhất đã thực hiện:** user chọn "Đưa cách chọn dòng vào luồng
 OCR để dùng trong app". Evidence `ocr-line-selection-37/` thêm tùy chọn
 **Chỉ lấy dòng đi qua vạch chọn**, vị trí % trong ROI (50; hai dòng 25,75),

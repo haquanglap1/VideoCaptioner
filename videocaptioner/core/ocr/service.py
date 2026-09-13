@@ -13,7 +13,7 @@ from .consensus import CacheScope
 from .decoder import RoiDecoder, probe_video
 from .document import OcrConfig, OcrDocument, OcrMetrics, cue_from_region, document_id
 from .identity import VisualSourceIdentity
-from .models import Check, OcrError
+from .models import Check, EngineRead, OcrError, RoiFrame, VisualDecision
 from .pipeline import OcrPipeline, Recognizer
 from .profile import OcrProfileSnapshot
 from .resume import ResumeBoundary, validate_resume
@@ -32,8 +32,11 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
                checkpoint: Callable[[OcrDocument], None] = lambda _: None,
                progress: Callable[[int, str], None] = lambda *_: None,
                expected_source_sha256: str = "", cache_root: Path | None = None,
-               cache_mib: int = DEFAULT_CACHE_MIB, resume_document: OcrDocument | None = None) -> OcrDocument:
+               cache_mib: int = DEFAULT_CACHE_MIB, resume_document: OcrDocument | None = None,
+               visual_reader: Callable[[RoiFrame, EngineRead | None], VisualDecision] | None = None) -> OcrDocument:
     cache_bytes = cache_limit_bytes(cache_mib)
+    if (config.tracking_policy == "character-features-v1") != (visual_reader is not None):
+        raise OcrError("OCR tracking reader does not match its saved policy")
     boundary = None
     if resume_document is not None:
         validate_resume(resume_document, config)
@@ -54,7 +57,14 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
         complete = False
         with read_cache(scope, cache_root, cache_bytes, check=check,
                         warning=lambda message: progress(0, message)) as cache:
-            pipeline = OcrPipeline(recognizer, cache, check=check, line_selection=config.line_selection)
+            def frame_progress(end_ms):
+                if visual_reader:
+                    percent = int(100 * (end_ms - config.selection.start_ms)
+                                  / (config.selection.end_ms - config.selection.start_ms))
+                    progress(min(99, percent), f"Đang theo dõi hình chữ: {float(end_ms) / 1000:.2f}s.")
+
+            pipeline = OcrPipeline(recognizer, cache, check=check, line_selection=config.line_selection,
+                                   visual_reader=visual_reader, frame_progress=frame_progress)
             try:
                 if boundary:
                     position = boundary.start_ms if boundary.start_ms is not None else config.selection.start_ms
@@ -113,7 +123,9 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
                        ffprobe=ffprobe, check=check, checkpoint=capture, progress=progress,
                        expected_source_sha256=expected_source_sha256,
                        cache_root=cache_directory() if cache_mib else None, cache_mib=cache_mib,
-                       resume_document=resume_document)
+                       resume_document=resume_document,
+                       visual_reader=(lambda frame, raw: runtime.track(frame, config.line_selection.anchors[0], raw, check))
+                       if config.tracking_policy == "character-features-v1" and config.line_selection else None)
     finally:
         if latest is not None:
             metrics = runtime.metrics
@@ -122,7 +134,9 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
                 detector_attempts=metrics.started_inference_calls["det"],
                 recognizer_attempts=metrics.started_inference_calls["rec"],
                 classifier_attempts=metrics.started_inference_calls["cls"], worker_inference_s=metrics.inference_s,
-                worker_process_wall_s=metrics.process_wall_s))
+                worker_process_wall_s=metrics.process_wall_s,
+                tracking_requests=metrics.tracking_requests if config.tracking_policy == "character-features-v1" else None,
+                visual_batches=metrics.visual_batches if config.tracking_policy == "character-features-v1" else None))
             checkpoint(latest)
     assert latest is not None
     return latest

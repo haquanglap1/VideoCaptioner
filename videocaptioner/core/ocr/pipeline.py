@@ -10,7 +10,7 @@ from typing import Callable, Iterator, Protocol
 from .consensus import CandidateRead, Consensus, ReadCache, choose_read
 from .decoder import RoiDecoder
 from .line_selection import LineSelectionPolicy
-from .models import Check, EngineRead, OcrError, RoiFrame, Selection
+from .models import Check, EngineRead, OcrError, RoiFrame, Selection, VisualDecision
 from .tracking import RegionTracker, TrackedRegion
 
 
@@ -52,9 +52,13 @@ class PipelineMetrics:
 
 class OcrPipeline:
     def __init__(self, recognizer: Recognizer, cache: ReadCache, *, check: Check = lambda: None,
-                 line_selection: LineSelectionPolicy | None = None):
+                 line_selection: LineSelectionPolicy | None = None,
+                 visual_reader: Callable[[RoiFrame, EngineRead | None], VisualDecision] | None = None,
+                 frame_progress: Callable[[Fraction], None] = lambda _: None):
         self.recognizer, self.cache, self.check = recognizer, cache, check
         self.line_selection = line_selection
+        self.visual_reader = visual_reader
+        self.frame_progress = frame_progress
         self.metrics = PipelineMetrics()
         self.started = False
 
@@ -109,8 +113,13 @@ class OcrPipeline:
                     self.check()
                     self.metrics.roi_frames += 1
                     started = time.monotonic()
-                    region = tracker.feed(span)
+                    decision = None
+                    if self.visual_reader:
+                        key, _ = self.cache.key(span.frame)
+                        decision = self.visual_reader(span.frame, self.cache.get(key))
+                    region = tracker.feed(span, decision)
                     self.metrics.tracking_s += time.monotonic() - started
+                    self.frame_progress(span.end_ms)
                     if region is not None:
                         observed_regions += 1
                         if accept_region(region):

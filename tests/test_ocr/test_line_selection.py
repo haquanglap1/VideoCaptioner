@@ -63,6 +63,18 @@ def test_same_row_and_mixed_boxes_are_retained_as_observed_not_repaired():
     assert LineSelectionPolicy().select(raw, 100) == (0, 1)
 
 
+def test_small_ui_symbol_is_excluded_but_detached_punctuation_is_preserved():
+    raw = EngineRead((line("Target"), line(">", x=400, y=44, width=12, height=16),
+                      line("。", x=390, y=66, width=10, height=10)), "fixture")
+    assert LineSelectionPolicy().select(raw, 94) == (0, 2)
+    legacy = LineSelectionPolicy(policy="horizontal-anchors-punctuation-v1")
+    assert legacy.select(raw, 94) == (0, 1, 2)
+    second = line("Second", y=70, height=20)
+    double = EngineRead((line("First", y=5, height=40), second,
+                        line(">", x=400, y=76, width=5, height=8)), "fixture")
+    assert LineSelectionPolicy((.25, .8)).select(double, 100) == (0, 1)
+
+
 @pytest.mark.parametrize("anchors", [(), (.8, .2), (.5, .5), (float("nan"),), (0,), (1,), (True,)])
 def test_invalid_positions_are_processing_errors(anchors):
     with pytest.raises(OcrError):

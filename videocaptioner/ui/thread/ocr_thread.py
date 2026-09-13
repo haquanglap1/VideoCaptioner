@@ -1,5 +1,6 @@
 """Supervised OCR jobs; heavy work stays outside the Qt event loop."""
 
+import hashlib
 from contextvars import copy_context
 from dataclasses import replace
 from pathlib import Path
@@ -67,13 +68,18 @@ class OcrThread(OcrWorker):
         config = installation.config(self.task.roi, self.task.selection)
         policy = (self.task.resume_document.config.line_selection if self.task.resume_document is not None
                   else self.task.line_selection)
-        config = replace(config, line_selection=policy)
+        tracking = (self.task.resume_document.config.tracking_policy if self.task.resume_document is not None
+                    else self.task.tracking_policy)
+        bridge = (installation.bridge.with_name("ocr_tracking_worker.py") if tracking == "character-features-v1"
+                  else installation.bridge)
+        bridge_sha = hashlib.sha256(bridge.read_bytes()).hexdigest() if tracking == "character-features-v1" else config.bridge_sha256
+        config = replace(config, line_selection=policy, tracking_policy=tracking, bridge_sha256=bridge_sha)
         if self.task.resume_document is not None:
             if config != self.task.resume_document.config:
                 raise OcrError("Runtime/profile không khớp checkpoint; chọn đúng bộ OCR đã dùng trước đó.")
             config = self.task.resume_document.config
         self.progress.emit(0, "Đang đọc phụ đề trong hình bằng CPU…")
-        return run_cpu_ocr(Path(self.task.file_path), config, installation.root, installation.bridge,
+        return run_cpu_ocr(Path(self.task.file_path), config, installation.root, bridge,
                            max_requests=self.task.max_requests, check=check,
                            checkpoint=self.capture, progress=self.progress.emit,
                            expected_source_sha256=self.task.expected_source_sha256, cache_mib=self.task.cache_mib,

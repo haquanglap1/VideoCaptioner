@@ -19,7 +19,7 @@ from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_enviro
 
 from .consensus import validate_read
 from .decoder import stop_owned_process
-from .models import Check, EngineRead, OcrError, ReadLine, RoiFrame
+from .models import Check, EngineRead, OcrError, ReadLine, RoiFrame, VisualDecision
 from .profile import OcrProfileSnapshot
 
 PROTOCOL = "ocr-stream-v1"
@@ -33,6 +33,8 @@ class OcrRuntimeMissing(OcrError):
 @dataclass
 class RuntimeMetrics:
     requests: int = 0
+    tracking_requests: int = 0
+    visual_batches: int = 0
     completed: int = 0
     request_wall_s: float = 0
     inference_s: float = 0
@@ -150,6 +152,10 @@ class CpuOcrRuntime:
                 or not isinstance(metrics.get("inference_calls"), dict)
                 or metrics["inference_calls"].get("cls") != 0):
             raise OcrError("CPU OCR worker metrics/policy mismatch")
+        visual_batches = metrics.get("visual_batches", 0)
+        if type(visual_batches) is not int or visual_batches < 0:
+            raise OcrError("Invalid visual tracking metrics")
+        self.metrics.visual_batches = visual_batches
         self.metrics.last_worker = metrics
 
     def start(self) -> CpuOcrRuntime:
@@ -198,18 +204,60 @@ class CpuOcrRuntime:
             raise
 
     def __call__(self, frame: RoiFrame, check: Check = lambda: None) -> EngineRead:
+        payload = self._request(frame, check, "recognize")
+        try:
+            result = EngineRead(tuple(ReadLine(line["text"], line["score"],
+                                               tuple(tuple(point) for point in line["box"]))
+                                     for line in payload["lines"]), payload["revision"])
+            validate_read(result)
+            inference_s = float(payload["inference_s"])
+            if (result.revision != self.profile_sha256 or not math.isfinite(inference_s) or inference_s < 0
+                    or any(not 0 <= x <= frame.width or not 0 <= y <= frame.height
+                           for line in result.lines for x, y in line.box)):
+                raise ValueError
+        except (KeyError, TypeError, ValueError, OverflowError):
+            self.close()
+            raise OcrError("Invalid CPU OCR result") from None
+        self.metrics.inference_s += inference_s
+        self.metrics.completed += 1
+        return result
+
+    def track(self, frame: RoiFrame, anchor: float, cached: EngineRead | None = None,
+              check: Check = lambda: None) -> VisualDecision:
+        if not math.isfinite(anchor) or not 0 < anchor < 1:
+            raise OcrError("Invalid tracking line position")
+        if cached is not None:
+            validate_read(cached)
+            if cached.revision != self.profile_sha256:
+                raise OcrError("Cached tracking geometry uses a different OCR profile")
+        # Reuse geometry only when a complete cached read actually contains boxes.
+        boxes = [line.box for line in cached.lines] if cached and cached.lines else None
+        payload = self._request(frame, check, "track", {"anchor": anchor, "known_boxes": boxes})
+        try:
+            if set(payload) != {"present", "changed", "uncertain", "quality"}:
+                raise ValueError
+            return VisualDecision(**payload)
+        except (TypeError, ValueError, OverflowError):
+            self.close()
+            raise OcrError("Invalid CPU visual tracking result") from None
+
+    def _request(self, frame: RoiFrame, check: Check, operation: str, extra: dict | None = None) -> dict:
         if self.state != "ready" or self.directory is None or self.process is None or self.process.stdin is None:
             raise OcrError("CPU OCR worker is not ready")
         self.check()
         check()
-        if self.metrics.requests >= self.max_requests:
+        if ((operation == "recognize" and self.metrics.requests >= self.max_requests)
+                or (operation == "track" and self.metrics.tracking_requests >= 100000)):
             self.close()
             raise OcrError("CPU OCR request budget exhausted; review tracking before continuing")
         if len(frame.rgb) > 32 * 1024 * 1024:
             raise OcrError("CPU OCR ROI is too large")
         started = time.monotonic()
-        self.metrics.requests += 1
-        request_id = self.metrics.requests
+        if operation == "track":
+            self.metrics.tracking_requests += 1
+        else:
+            self.metrics.requests += 1
+        request_id = self.metrics.requests + self.metrics.tracking_requests
         sha256 = hashlib.sha256(frame.rgb).hexdigest()
         try:
             with (self.directory / "frame.rgb").open("wb") as stream:
@@ -217,8 +265,8 @@ class CpuOcrRuntime:
                     self.check()
                     check()
                     stream.write(frame.rgb[offset:offset + 1024 * 1024])
-            request = {"op": "recognize", "request_id": request_id, "crop_sha256": sha256,
-                       "width": frame.width, "height": frame.height}
+            request = {"op": operation, "request_id": request_id, "crop_sha256": sha256,
+                       "width": frame.width, "height": frame.height, **(extra or {})}
             # One small request after the preceding response; never stream pixels into a blocked pipe.
             self.process.stdin.write(json.dumps(request).encode() + b"\n")
             self.process.stdin.flush()
@@ -239,23 +287,10 @@ class CpuOcrRuntime:
                 if response.get("status") != "result" or response.get("crop_sha256") != sha256:
                     raise OcrError("CPU OCR result/crop mismatch")
                 self._worker_metrics(response)
-                try:
-                    payload = response["result"]
-                    result = EngineRead(tuple(ReadLine(line["text"], line["score"],
-                                                       tuple(tuple(point) for point in line["box"]))
-                                              for line in payload["lines"]), payload["revision"])
-                    validate_read(result)
-                    inference_s = float(payload["inference_s"])
-                    if (result.revision != self.profile_sha256 or not math.isfinite(inference_s) or inference_s < 0
-                            or any(not 0 <= x <= frame.width or not 0 <= y <= frame.height
-                                   for line in result.lines for x, y in line.box)):
-                        raise ValueError
-                except (KeyError, TypeError, ValueError, OverflowError):
-                    raise OcrError("Invalid CPU OCR result") from None
-                self.metrics.inference_s += inference_s
-                self.metrics.completed += 1
                 self.state = "ready"
-                return result
+                if not isinstance(response.get("result"), dict):
+                    raise OcrError("Invalid CPU OCR payload")
+                return response["result"]
         except BaseException:
             self.close()
             raise

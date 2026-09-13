@@ -115,6 +115,17 @@ resume dùng cấu hình đã lưu, không tự đổi dữ liệu cũ. Chữ n�
 box vẫn có thể lọt; lựa chọn này không sửa chữ, bổ sung dấu thiếu hoặc ghép
 các cue bị tracking tách theo nền. Binary cũ không đọc được JSON bật tùy chọn này.
 
+Với **phụ đề một dòng** trên nền chữ chuyển động, bật thêm **Ổn định nhóm phụ
+đề một dòng (CPU)**. Chế độ này dùng PP-OCRv6 medium đã cài để theo dõi hình
+chữ theo từng frame và bỏ các ký hiệu nhỏ ngoài dòng chính. CLI dùng
+`--line-anchors 0.5 --tracking characters`. CPU chạy chậm hơn; raw OCR vẫn
+đọc trên ảnh gốc. Những thay đổi hình chữ mà model còn phân vân được giữ
+trong thông tin biên bất định, không được coi là đã xác minh hoặc duyệt.
+
+Chế độ ổn định hiện hỗ trợ một vạch; hai dòng tiếp tục dùng tracking cạnh
+(`--tracking edges`, mặc định). Checkpoint giữ đúng policy/worker đã dùng;
+resume không tự chuyển mode. Worker OCR cũ được giữ để tiếp tục dữ liệu cũ.
+
 Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và xuất JSON/SRT ngay
 khi quét xong, **không cần duyệt từng câu hoặc có bản chữ gốc**. Có thể lưu thêm
 `ocr-document-v1` bằng `--checkpoint` để mở lại hoặc tiếp tục khi bị hủy.

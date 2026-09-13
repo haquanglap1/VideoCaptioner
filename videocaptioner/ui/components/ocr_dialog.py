@@ -129,6 +129,15 @@ class OcrDialog(QDialog):
         row.addStretch(1)
         controls.addLayout(row)
         row = QHBoxLayout()
+        self.stable_tracking = QCheckBox("Ổn định nhóm phụ đề một dòng (CPU)")
+        self.stable_tracking.setStyleSheet("color: #e6edf6;")
+        self.stable_tracking.setEnabled(False)
+        self.stable_tracking.setToolTip("Dùng PP-OCRv6 medium để giảm cue bị tách theo nền chuyển động. "
+                                       "Cần chọn đúng một vạch; chậm hơn và vẫn giữ thông tin biên bất định.")
+        row.addWidget(self.stable_tracking)
+        row.addStretch(1)
+        controls.addLayout(row)
+        row = QHBoxLayout()
         row.addWidget(QLabel("Cache chữ OCR (MiB; 0 = tắt)"))
         self.cache_mib = QSpinBox()
         self.cache_mib.setRange(0, MAX_CACHE_MIB)
@@ -338,9 +347,14 @@ class OcrDialog(QDialog):
             policy = self.line_policy()
             self.canvas.line_anchors = policy.anchors if policy else ()
             self.line_anchors.setStyleSheet("")
+            available = policy is not None and len(policy.anchors) == 1
         except ValueError:
             self.canvas.line_anchors = ()
             self.line_anchors.setStyleSheet("border: 1px solid #ff7373;")
+            available = False
+        self.stable_tracking.setEnabled(available)
+        if not available:
+            self.stable_tracking.setChecked(False)
         self.canvas.update()
 
     def scan(self):
@@ -350,7 +364,8 @@ class OcrDialog(QDialog):
             task = TaskFactory.create_ocr_task(self.source.text(), self.canvas.roi,
                 Selection(self.start_ms.value(), self.end_ms.value()), self.runtime.text(),
                 expected_source_sha256=self.source_preview.source_sha256, cache_mib=self.cache_mib.value(),
-                line_selection=self.line_policy())
+                line_selection=self.line_policy(),
+                tracking_policy="character-features-v1" if self.stable_tracking.isChecked() else "edge-tiles-ocr2-v1")
             self._start(OcrThread(task), self.accept_document)
         except ValueError:
             self.status.setText("Kiểm tra đầu/cuối video và vị trí dòng: một hoặc hai số tăng dần, lớn hơn 0 và nhỏ hơn 100.")
@@ -374,6 +389,7 @@ class OcrDialog(QDialog):
         if policy:
             self.line_anchors.setText(",".join(f"{y * 100:g}" for y in policy.anchors))
         self.select_lines.setChecked(policy is not None)
+        self.stable_tracking.setChecked(document.config.tracking_policy == "character-features-v1")
         self.refresh()
 
     def load_review(self):

@@ -44,8 +44,11 @@ if mode=='oversized': print('x'*1048577,flush=True); sys.exit(0)
 emit({'status':'ready','protocol':'ocr-stream-v1','profile_sha256':a.profile_sha256,
       'bridge_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
       'provider':'wrong' if mode=='identity' else 'CPUExecutionProvider','metrics':metrics})
+expected_id=1
 for line in sys.stdin:
  r=json.loads(line)
+ assert r["request_id"]==expected_id
+ expected_id+=1
  if mode=='malformed': print('not-json',flush=True); break
  if mode in ('timeout','cancel'):
   emit({'status':'inference','request_id':r['request_id'],'stage':'det',
@@ -57,6 +60,9 @@ for line in sys.stdin:
  score=2 if mode=='score' else 0.9
  result={'revision':a.profile_sha256,'inference_s':0.01,
          'lines':[{'text':'fixture','score':score,'box':[[0,0],[2,0],[2,2],[0,2]]}]}
+ if r.get('op')=='track' and mode in ('tracking','bad-tracking'):
+  result={'present':True,'changed':False,'uncertain':True,'quality':0.8 if mode=='tracking' else True}
+  metrics['visual_batches']=metrics.get('visual_batches',0)+1
  emit({'status':'result','request_id':99 if mode=='request-id' else r['request_id'],
        'crop_sha256':sha,'result':result,'metrics':metrics})
 ''', encoding="utf-8")
@@ -174,3 +180,25 @@ def test_request_budget_does_not_silently_restart_worker(runtime_factory):
             runtime(sample_frame())
     assert_closed(runtime)
     assert runtime.metrics.requests == runtime.metrics.completed == 1
+
+
+def test_tracking_rpc_has_separate_budget_and_keeps_request_order(runtime_factory):
+    runtime = runtime_factory("tracking")
+    runtime.max_requests = 1
+    with runtime:
+        first = runtime.track(sample_frame(), .5)
+        second = runtime.track(sample_frame(), .5)
+        raw = runtime(sample_frame())
+        assert first == second and first.uncertain and first.present
+        assert raw.text == "fixture"
+        assert runtime.metrics.tracking_requests == runtime.metrics.visual_batches == 2
+        assert runtime.metrics.requests == runtime.metrics.completed == 1
+    assert runtime.process.poll() is not None and not any(r.is_alive() for r in runtime.readers)
+
+
+def test_invalid_tracking_decision_closes_worker(runtime_factory):
+    runtime = runtime_factory("bad-tracking")
+    with pytest.raises(OcrError, match="visual tracking"):
+        with runtime:
+            runtime.track(sample_frame(), .5)
+    assert runtime.process.poll() is not None and not any(r.is_alive() for r in runtime.readers)

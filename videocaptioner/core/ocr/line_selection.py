@@ -13,10 +13,11 @@ from .models import EngineRead, OcrError
 @dataclass(frozen=True)
 class LineSelectionPolicy:
     anchors: tuple[float, ...] = (0.5,)
-    policy: Literal["horizontal-anchors-punctuation-v1"] = "horizontal-anchors-punctuation-v1"
+    policy: Literal["horizontal-anchors-punctuation-v1", "horizontal-anchors-punctuation-v2"] = "horizontal-anchors-punctuation-v2"
 
     def __post_init__(self) -> None:
-        if (self.policy != "horizontal-anchors-punctuation-v1" or not isinstance(self.anchors, tuple)
+        if (self.policy not in ("horizontal-anchors-punctuation-v1", "horizontal-anchors-punctuation-v2")
+                or not isinstance(self.anchors, tuple)
                 or not 1 <= len(self.anchors) <= 2
                 or any(type(y) not in (int, float) or not math.isfinite(y) or not 0 < y < 1 for y in self.anchors)
                 or tuple(sorted(set(self.anchors))) != self.anchors):
@@ -34,7 +35,12 @@ class LineSelectionPolicy:
                   max(p[0] for p in line.box), max(p[1] for p in line.box)) for line in raw.lines]
         if any(not all(math.isfinite(v) for v in b) or b[0] >= b[2] or b[1] >= b[3] for b in boxes):
             raise OcrError("Line selection needs nonempty OCR box geometry")
-        selected = {i for i, b in enumerate(boxes) if any(b[1] <= y * height <= b[3] for y in self.anchors)}
+        selected = set()
+        for anchor in self.anchors:
+            crossing = [i for i, b in enumerate(boxes) if b[1] <= anchor * height <= b[3]]
+            largest = max((boxes[i][3] - boxes[i][1] for i in crossing), default=0)
+            selected.update(i for i in crossing if self.policy == "horizontal-anchors-punctuation-v1"
+                            or boxes[i][3] - boxes[i][1] >= largest * .75)
         punctuation = {i for i, line in enumerate(raw.lines) if line.text.strip()
                        and all(c.isspace() or unicodedata.category(c).startswith("P") for c in line.text)}
         # Only attach to original text anchors; punctuation must not chain into UI rows.

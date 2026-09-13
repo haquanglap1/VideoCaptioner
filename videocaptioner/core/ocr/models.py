@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Callable
@@ -13,6 +14,20 @@ Check = Callable[[], None]
 
 class OcrError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class VisualDecision:
+    present: bool
+    changed: bool
+    uncertain: bool
+    quality: float
+
+    def __post_init__(self) -> None:
+        if (any(type(v) is not bool for v in (self.present, self.changed, self.uncertain))
+                or type(self.quality) not in (int, float)
+                or not math.isfinite(self.quality) or not 0 <= self.quality <= 1):
+            raise OcrError("Invalid visual tracking decision")
 
 
 @dataclass(frozen=True)

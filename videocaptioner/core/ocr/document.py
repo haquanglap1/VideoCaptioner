@@ -31,7 +31,7 @@ class OcrConfig:
     profile_sha256: str
     bridge_sha256: str
     language: str = "zh"
-    tracking_policy: Literal["edge-tiles-ocr2-v1"] = "edge-tiles-ocr2-v1"
+    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1"] = "edge-tiles-ocr2-v1"
     consensus_policy: Literal["exact-read-uncalibrated-v1"] = "exact-read-uncalibrated-v1"
     profile_snapshot: OcrProfileSnapshot | None = None
     # Omission preserves the serialized config and IDs of all existing documents.
@@ -44,6 +44,15 @@ class OcrConfig:
             raise OcrError("Invalid OCR line selection policy")
         if self.language != "zh":
             raise OcrError("The installed OCR profile supports the explicit zh configuration")
+        if self.tracking_policy == "character-features-v1":
+            if (self.line_selection is None or len(self.line_selection.anchors) != 1
+                    or self.line_selection.policy != "horizontal-anchors-punctuation-v2"):
+                raise OcrError("Character tracking requires exactly one selected subtitle line")
+            stages = self.profile_snapshot.stage_parameters if self.profile_snapshot else {}
+            if stages.get("Rec.ocr_version") != "PP-OCRv6" or stages.get("Rec.model_type") != "medium":
+                raise OcrError("Character tracking requires the installed PP-OCRv6 medium profile")
+        elif self.tracking_policy != "edge-tiles-ocr2-v1":
+            raise OcrError("Unknown OCR tracking policy")
 
 
 @dataclass(frozen=True)
@@ -224,6 +233,8 @@ class OcrMetrics:
     classifier_attempts: int | None = None
     worker_inference_s: float | None = None
     worker_process_wall_s: float | None = None
+    tracking_requests: int | None = field(default=None, metadata={"omit_none": True})
+    visual_batches: int | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         import math
