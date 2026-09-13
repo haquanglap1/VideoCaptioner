@@ -11,7 +11,7 @@ from .tracking import TrackedRegion
 
 def validate_resume(document: OcrDocument, config: OcrConfig) -> None:
     if document.complete:
-        raise OcrError("Bản OCR đã quét xong; tiếp tục review thay vì quét tiếp.")
+        raise OcrError("Bản OCR đã quét xong; có thể xuất phụ đề hoặc mở bảng phụ đề.")
     if document.config != config or config.profile_snapshot is None:
         raise OcrError("Tiếp tục OCR cần giữ nguyên vùng, đoạn chọn và profile đã lưu.")
 

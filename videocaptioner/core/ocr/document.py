@@ -161,6 +161,14 @@ class OcrCue:
         return tuple(i for i in self.all_issues if i not in self.resolved_issues)
 
     @property
+    def export_issues(self) -> tuple[str, ...]:
+        """Recognition/boundary uncertainty is provenance, not an approval gate."""
+        issues = set(self.pending_issues) - TEXT_ISSUES - TIMING_ISSUES
+        if self.end_ms <= self.start_ms:
+            issues.add("invalid_export_timing")
+        return tuple(sorted(issues))
+
+    @property
     def text(self) -> str:
         return self.raw_text if self.edited_text is None else self.edited_text
 
@@ -255,6 +263,13 @@ class OcrDocument:
 
     @property
     def pending_issues(self) -> tuple[str, ...]:
+        return self._collect_issues(include_advisories=True)
+
+    @property
+    def export_issues(self) -> tuple[str, ...]:
+        return self._collect_issues(include_advisories=False)
+
+    def _collect_issues(self, *, include_advisories: bool) -> tuple[str, ...]:
         issues = []
         if not self.complete:
             issues.append("incomplete_scan")
@@ -264,9 +279,12 @@ class OcrDocument:
             issues.append("no_cues")
         previous_end = self.config.selection.start_ms
         for cue in self.cues:
-            issues.extend(f"{cue.id}:{issue}" for issue in cue.pending_issues)
+            issues.extend(f"{cue.id}:{issue}" for issue in
+                          (cue.pending_issues if include_advisories else cue.export_issues))
             if cue.start_ms < previous_end or cue.end_ms <= cue.start_ms:
-                issues.append(f"{cue.id}:invalid_export_timing")
+                issue = f"{cue.id}:invalid_export_timing"
+                if issue not in issues:
+                    issues.append(issue)
             previous_end = max(previous_end, cue.end_ms)
         return tuple(issues)
 
@@ -295,8 +313,8 @@ class OcrDocument:
         from .adapters import document_to_subtitles
 
         self.visual_source.require_match(actual_source)
-        if self.pending_issues:
-            raise OcrError("OCR review is unresolved; complete source, text and timing review before export")
+        if self.export_issues:
+            raise OcrError("OCR scan is incomplete or has missing text, profile or invalid timing")
         return document_to_subtitles(self)
 
 

@@ -1,4 +1,4 @@
-"""Explicit local OCR and review/resume; no model installation or vision requests."""
+"""Local OCR, direct export and scan resume; no model installation or vision requests."""
 
 from __future__ import annotations
 
@@ -24,22 +24,22 @@ from videocaptioner.core.ocr.service import jobs_directory, run_cpu_ocr
 def _paths(inputs: list[Path], destinations: list[str | None], protected: Path | None = None) -> None:
     outputs = [Path(p).resolve() for p in destinations if p]
     if len(set(outputs)) != len(outputs):
-        raise OcrError("OCR review, subtitles and report need separate output paths")
+        raise OcrError("OCR checkpoint, subtitles and report need separate output paths")
     for path in outputs:
         if (path in [p.resolve() for p in inputs]
                 or any(path.exists() and p.exists() and path.samefile(p) for p in inputs)
                 or (protected is not None and path.is_relative_to(protected.resolve()))):
-            raise OcrError("OCR outputs must not replace source, review input or runtime files")
+            raise OcrError("OCR outputs must not replace source, checkpoint input or runtime files")
     for index, path in enumerate(outputs):
         if any(path.exists() and p.exists() and path.samefile(p) for p in outputs[:index]):
             raise OcrError("OCR outputs must not alias the same file")
 
 
 def _export(document: OcrDocument, source: VisualSourceIdentity, destination: str | None) -> int:
-    for issue in document.pending_issues:
+    for issue in document.export_issues:
         output.warn(issue)
-    if document.pending_issues:
-        output.warn("OCR review retained; no successful subtitle output was created.")
+    if document.export_issues:
+        output.warn("OCR scan is incomplete or invalid; no subtitle output was created.")
         return EXIT.RUNTIME_ERROR
     data = document.resume(source)
     if destination:
@@ -48,7 +48,7 @@ def _export(document: OcrDocument, source: VisualSourceIdentity, destination: st
             atomic_json(target, data.to_document())
         else:
             atomic_text(target, data.to_srt())
-        output.info(f"Exported {len(data)} reviewed OCR cues. JSON preserves visual provenance; SRT keeps text/time only.")
+        output.info(f"Exported {len(data)} OCR cues. JSON preserves visual provenance; SRT keeps text/time only.")
     return EXIT.SUCCESS
 
 
@@ -57,7 +57,7 @@ def _validate_suffixes(args: Namespace) -> None:
         raise OcrError("OCR export supports .json or .srt")
     for value in (getattr(args, "review", None), getattr(args, "save_review", None), getattr(args, "report", None)):
         if value and Path(value).suffix.lower() != ".json":
-            raise OcrError("OCR review/report output must use .json")
+            raise OcrError("OCR checkpoint/report output must use .json")
 
 
 def run(args: Namespace, config: dict) -> int:
@@ -69,6 +69,8 @@ def run(args: Namespace, config: dict) -> int:
     bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / "ocr_stream_worker.py"
     try:
         _validate_suffixes(args)
+        if not args.output and not args.review:
+            raise OcrError("Choose --output for subtitles or --checkpoint to save OCR data")
         cache_limit_bytes(args.cache_mib)
         _paths([source, bridge], [args.review, args.output, args.report], root)
         roi_values = [float(v) for v in args.roi.split(",")]
@@ -97,12 +99,14 @@ def resume_scan(args: Namespace, config: dict) -> int:
     bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / "ocr_stream_worker.py"
     try:
         _validate_suffixes(args)
+        if not args.output and not args.review:
+            raise OcrError("Choose --output for subtitles or --checkpoint to save OCR data")
         cache_limit_bytes(args.cache_mib)
         _paths([source, saved, bridge], [args.review, args.output, args.report], root)
         document = OcrDocument.load(saved)
         validate_resume(document, document.config)
     except (OSError, ValueError):
-        output.error("Invalid or completed OCR checkpoint; preserve the input and choose a separate review output.")
+        output.error("Invalid or completed OCR checkpoint; preserve the input and choose a separate output.")
         return EXIT.USAGE_ERROR
     return _scan(args, source, document.config, root, bridge, document)
 
@@ -112,18 +116,19 @@ def _scan(args: Namespace, source: Path, settings: OcrConfig, root: Path, bridge
     try:
         document = run_cpu_ocr(source, settings, root, bridge, max_requests=args.max_requests,
                                timeout=args.timeout, ffmpeg=args.ffmpeg, ffprobe=args.ffprobe,
-                               checkpoint=lambda doc: doc.save(args.review), cache_mib=args.cache_mib,
+                               checkpoint=lambda doc: doc.save(args.review) if args.review else None, cache_mib=args.cache_mib,
                                progress=lambda _percent, message: output.info(message), resume_document=resume_document)
         if args.report:
             atomic_json(Path(args.report), {"schema": "ocr-report-v1", "document_id": document.id,
                                            "complete": document.complete, "metrics": document.to_dict()["metrics"],
-                                           "pending_issues": list(document.pending_issues), "stage_times_overlap": True})
+                                           "pending_issues": list(document.pending_issues),
+                                           "export_issues": list(document.export_issues), "stage_times_overlap": True})
         return _export(document, document.visual_source, args.output)
     except OcrRuntimeMissing:
         output.error("OCR runtime is missing; select an already installed runtime.")
         return EXIT.DEPENDENCY_MISSING
     except (OSError, ValueError, RuntimeError):
-        output.error("OCR processing failed; any saved partial review remains incomplete. No model was installed.")
+        output.error("OCR processing failed; any saved partial checkpoint remains incomplete. No model was installed.")
         return EXIT.RUNTIME_ERROR
 
 
@@ -134,7 +139,7 @@ def cache(args: Namespace, config: dict) -> int:
         output.error(str(exc))
         return EXIT.RUNTIME_ERROR
     if args.action == "clear":
-        output.info(f"Cleared {info.entries} cached OCR reads. Saved reviews and models are unchanged.")
+        output.info(f"Cleared {info.entries} cached OCR reads. Saved OCR documents and models are unchanged.")
     else:
         output.info(f"OCR cache: {info.entries} reads, {info.payload_bytes} payload bytes, "
                     f"{info.database_bytes} database bytes (including SQLite metadata).")
@@ -143,7 +148,7 @@ def cache(args: Namespace, config: dict) -> int:
 
 def review(args: Namespace, config: dict) -> int:
     if not Path(args.input).is_file() or not Path(args.source).is_file():
-        output.error("OCR review and original video are required.")
+        output.error("Saved OCR data and original video are required.")
         return EXIT.FILE_NOT_FOUND
     try:
         _validate_suffixes(args)
@@ -172,5 +177,5 @@ def review(args: Namespace, config: dict) -> int:
             document.save(args.save_review)
         return _export(document, verified, args.output)
     except (OSError, ValueError):
-        output.error("OCR review could not be resumed; check source identity, candidate IDs and timing.")
+        output.error("Saved OCR could not be exported; check source identity, candidate IDs and timing.")
         return EXIT.RUNTIME_ERROR

@@ -1,134 +1,123 @@
-# Prompt phiên tiếp theo — OCR sau khi loại giả thuyết width×2
+# Prompt phiên tiếp theo — OCR xuất thẳng và trường hợp video 2
 
 Tiếp tục worktree **VideoCaptioner-ASR-S3**, nhánh **codex/asr-s3-native**.
-Tìm bằng `git worktree list`, không làm ở checkout master. User đã yêu cầu
-submit/push snapshot tài liệu chất lượng và chuẩn bị prompt này. Lấy commit
-thực tế bằng `git log -1`, `git status --short --branch` và đối chiếu tracking
-`origin/codex/asr-s3-native`; không reset/merge hoặc bỏ thay đổi mới.
+Tìm bằng `git worktree list`, không làm ở checkout master. User yêu cầu
+commit/push snapshot bỏ review và chuẩn bị prompt này. Đọc `git log -1`,
+`git status --short --branch` và đối chiếu `origin/codex/asr-s3-native`.
+Baseline trước snapshot là **2ed7ae1**, không phải HEAD cần quay về.
+Không reset/merge hoặc bỏ thay đổi mới. Quyền submit của phiên bàn giao
+không tự cấp commit/push/tag/release hoặc API cho công việc tiếp theo.
 
-**8b6bb8cc8582c8a81708d0ae13bc7f620ea9a993** là baseline code cache/resume
-trước snapshot tài liệu này, không phải HEAD cần quay về. Các biên bản cũ
-nói “chưa commit/push”, “chưa chạy fixture” hoặc “chưa thử width×2” mô tả
-thời điểm trước snapshot; đọc trạng thái mới nhất bên dưới. Quyền submit
-của phiên bàn giao không tự cấp commit/push/tag/release hoặc API cho việc mới.
+## Yêu cầu user đang có hiệu lực
+
+**Không cần review OCR và không cần bản chữ gốc để tiếp tục.** User đã nói
+rõ bỏ bước này: quét xong có thể xuất phụ đề hoặc mở bảng phụ đề/dịch ngay.
+Không yêu cầu user tìm SRT, chấm từng câu Trung hoặc bổ sung nhãn độc lập
+như điều kiện chặn phát triển/sử dụng. Các chỉ dẫn cũ đòi nhãn và khóa export
+vì chưa duyệt đã bị yêu cầu này thay thế.
+
+Vẫn giữ raw/candidates/PTS/IDs/source và các quyết định cũ. Không tự ghi một
+quyết định reviewed/accepted, bù chữ/dấu hoặc chuẩn hóa raw để giả chữ đúng.
+Scan dở, thiếu chữ, sai nguồn/profile hoặc timing không hợp lệ vẫn là lỗi
+xử lý; không xuất phần thiếu rồi báo toàn bộ thành công. Bỏ bước duyệt là
+thay đổi luồng sử dụng, không phải bằng chứng nhận dạng chính xác hơn.
 
 ## Đọc trước khi tiếp tục
 
-Đọc AGENTS.md, README.md, mục mới nhất status.md và các tài liệu sau theo
-thứ tự; không cần nạp lại toàn bộ lịch sử OCR:
+Đọc AGENTS.md, README.md, mục mới nhất status.md, sau đó:
 
-- docs/dev/ocr-width-experiment-2026-09.md
-- docs/dev/ocr-ctc-audit-2026-09.md
-- docs/dev/ocr-punctuation-fixtures-2026-09.md
-- docs/dev/ocr-quality-audit-2026-09.md
-- docs/plans/video-subtitle-ocr-integration-plan.md
+1. `docs/dev/ocr-direct-export-2026-09.md`.
+2. Phần cập nhật mới nhất của `docs/plans/video-subtitle-ocr-integration-plan.md`.
+3. Evidence local `build/ocr-pilot-20260910/ocr-direct-export-32/`:
+   `binary-plan.json`, `binary-receipt.json`, `video-inputs.json`,
+   `video-2.ocr.json`, `video-2-receipt.json`, `video-2.stdout.log` và
+   `video-2.stderr.log`.
 
-`ocr-quality-v6-2026-09.md` là nguồn số đo medium trên video. Chỉ đọc thêm
-`ocr-resume-2026-09.md`/`ocr-cache-binary-2026-09.md` khi cần contract hoặc
-artifact; các gate cache/resume và smoke đã khép, không mở lại.
+Hai video do user chỉ định được ánh xạ thành video 1/2 trong
+`video-inputs.json`; lấy đường dẫn và SHA ở đó, không đoán từ tên video,
+không quét toàn máy hoặc tự mở corpus khác. Nội dung/path riêng, ảnh và raw
+chỉ ở evidence local, không đưa vào Git hoặc gửi ra ngoài.
 
 ## Việc ưu tiên tiếp theo
 
-Tiếp tục chất lượng OCR và giảm gánh nặng review theo evidence hiện có.
-**Không chạy lại audit, 16 fixture, phép tính CTC hoặc width×2; không thử
-hệ số khác.** Hai hướng CTC thuần và width×2 chưa cho căn cứ vá app.
+1. **Chẩn đoán trường hợp video 2 từ dữ liệu đã lưu trước.** Đoạn dự kiến
+   14–16 s, ROI `0.28,0.90,0.44,0.065`; mới 12 frame đã có 5 cue,
+   8 worker request/8 det/73 rec. Harness đặt trần 8 nên lần gọi thứ 9 bị
+   chặn trước gửi worker: checkpoint `complete=false`, exit5, không subtitle.
+   `fresh_calls=9` không phải 9 worker request. Giữ assertion fail/log/raw.
+2. **Trần 8 là giới hạn riêng của lượt smoke**, không phải cap do user áp
+   lâu dài, giới hạn engine hay mặc định CLI (1000). Không coi nó là blocker
+   cần user cấp lại quyền. Cũng không chỉ tăng số rồi gọi việc nhận dạng
+   nhiều vùng/cue rất ngắn là đã sửa: đối chiếu ROI/PTS, bbox/line và tracking
+   để biết vùng đang lấy có lẫn chữ giao diện/chuyển cảnh hoặc nhóm bị vỡ.
+   Hiện chưa xác nhận nguyên nhân; không gán lỗi model/decoder chỉ từ số rec.
+3. Nếu cần lượt local tiếp theo để kiểm giả thuyết cụ thể, chốt phạm vi,
+   điểm đo và giới hạn phù hợp trước khi chạy; dùng runtime hiện có, ưu tiên
+   checkpoint/cache và không ghi đè lượt lỗi. Không quét lại toàn hai video,
+   chạy sweep ROI/preprocessing hoặc chỉ rerun để đổi exit5 thành exit0.
+   Chạy đầy đủ video khi có cơ sở về luồng/chi phí và phạm vi nhiệm vụ yêu cầu.
+4. Chỉ sửa khi có hành vi cần đổi hoặc lỗi cụ thể; đặt regression gần chỗ sửa,
+   giữ nguồn/raw/IDs/schema và phân biệt lỗi xử lý với thông tin nhận dạng.
+   Làm liên tục phần đủ thông tin, không mở lại yêu cầu review/ground truth.
+   Dịch/TTS/vision và xác nhận độ chính xác sản phẩm vẫn chưa được nghiệm thu.
 
-1. Tập trung phần còn thiếu: nhãn độc lập cho các cue video đang có và phép
-   đo đúng/sai quyết định, số thao tác, thời gian review. Gói phân xử bốn ca
-   nằm ở `ocr-quality-audit-28/`, trường nhãn vẫn để trống. Muốn đánh giá trên
-   23 cue phải xác nhận cả 23; không mặc định 19 ca khớp agent là ground truth.
-2. Kiểm nguồn text xác thực/nhãn độc lập mà user cung cấp trong phạm vi task.
-   Nếu chưa có, nêu chính xác dữ liệu cần bổ sung; không tự viết nhãn từ
-   output OCR hoặc đoán Unicode từ raster. Không quét toàn máy, mở corpus,
-   gửi dữ liệu cho người khác hoặc gọi vision để lấp phần thiếu.
-3. Khi có nhãn, giữ raw/reference cũ; lưu nhãn phân xử riêng cùng căn cứ,
-   mức chắc chắn và SHA/PTS nguồn. Hai ca Unicode chưa xác định phải giữ
-   trạng thái đó nếu chỉ có ảnh. Người dùng không biết tiếng Trung không
-   phải nguồn ground truth; phép đo thao tác review tách khỏi việc chấm chữ.
-4. Chỉ triển khai thay đổi app khi có lỗi cục bộ hoặc hành vi cần sửa được
-   chứng minh và tiêu chí kiểm cụ thể. Chạy regression gần phần sửa, bảo
-   toàn source/IDs/raw/candidate/review và khóa export khi pending. Không
-   coi giảm warning, tăng confidence hoặc giảm số cue review là chất lượng.
+Nếu user giao hướng khác, theo yêu cầu mới. Không tự mở toàn roadmap,
+vision GUI, downloader/update hoặc checkpoint tự động.
 
-Nếu user giao hướng khác, làm theo hướng đó trong các giới hạn hiện hành.
-Không tự triển khai toàn roadmap hoặc chỉ lặp thêm một vòng audit để lấy số mới.
+## Những phần đã hoàn tất
 
-## Kết quả chất lượng đã có
+- GUI bỏ nút duyệt chữ/giờ, ô lý do và cột cần duyệt. Bảng 3 cột, **Xuất
+  phụ đề** / **Mở bảng phụ đề / dịch** dùng được sau scan đầy đủ hợp lệ.
+  **Chi tiết bản đọc** thu gọn; chỉnh sửa ở bảng phụ đề hoặc Video Editor.
+- CLI `ocr ... -o captions.srt|json` không cần file review.
+  `--checkpoint` tùy chọn, `--review` là alias tương thích.
+  `ocr-export saved.ocr.json --source VIDEO -o captions.srt` xuất tại máy
+  không inference; `ocr-review` là alias, các tùy chọn sửa cũ vẫn dùng được.
+- `export_issues` tách lỗi chặn xuất khỏi `pending_issues` chẩn đoán.
+  Metadata subtitle/editor nhận observations chưa duyệt, giữ lineage qua
+  JSON/dịch/editor. Schema `ocr-document-v1` / `editor-project-v1` giữ nguyên.
+  Binary cũ có thể từ chối JSON chứa observations chưa duyệt.
+- Full offline **1.853 pass / 5 skip / 51 deselected**, 193,18 s, exit0;
+  Ruff/Pyright0/0, translations sync. 372 scoped pass trước full. Giữ log
+  regression trước sửa4fail/1pass và lượt assertion test cũ81pass/1fail.
+- Binary export checkpoint tổng hợp cũ3cue exit0; partial vẫn exit5.
+  Video 1 đoạn13–15s:60frame/1cue/3request/3det/3rec, JSON và SRT exit0.
+  Hai scan video tổng11request/11det/76rec/0cls/0API; video2 vẫn chưa xong.
+- Native chính EXE tại dist395,156s exit0/0child/không traceback; mở3cue cũ,
+  xuất/handoff thẳng, JSON khớp CLI. Watcher100ms không thấy remote connection.
+  Backup AppData trước mở, khôi phục5cache từ backup thực,6file khớp SHA.
+  Lỗi Computer Use element77 hai lần đã vượt qua bằng bàn phím/tọa độ mới.
 
-- **Video, evidence21:** medium 23/23 đủ chữ-số, 19/23 exact trên crop của
-  một video, theo tham chiếu agent chưa native-confirmed. Hai ca thiếu số
-  chấm nhìn thấy, hai ca khác biểu diễn Unicode chưa phân xử. Đây không phải
-  corpus hiệu chuẩn score hoặc bằng chứng chất lượng sản phẩm.
-- **Fixture, evidence29:** nhãn/codepoint/PNG/SHA đóng băng trước inference;
-  cùng font/renderer đã đối chiếu sáu PNG cũ. Medium 11/16 exact, 16/16
-  chữ-số gồm empty; hai ca mất một chấm, ba ca đổi biểu diễn. 16 det/16 rec/
-  0 cls/0 API. Top-1/recognizer/raw bridge khớp 16 dòng; chưa chứng minh lỗi
-  app. Giữ cả lỗi serializer trước inference và chẩn đoán pixel chạm nét chữ.
-- **CTC, evidence30:** tính trên top-5 đã lưu, 0 inference/API mới. Cả năm
-  fixture sai có cận dưới tổng điểm raw cao hơn cận trên nhãn, có tính score
-  thiếu/dung sai theo giả định chuẩn hóa. Không có căn cứ thay decoder tối
-  đa hóa tổng điểm CTC để chọn nhãn đúng ở các ca đó. Harness kiểm 1.092
-  đường đi, 110 tổng điểm và 110 khoảng cận pass; không hiệu chuẩn xác suất đúng.
-- **Width×2, evidence31:** đúng 16 tensor của 15 fixture có chữ, lặp pixel
-  ngang ×2, giữ model/decoder/config. 16 rec/0 det/0 cls/0 API, mỗi tensor
-  một lần; P16 không áp dụng. P02/P03 vẫn thiếu chấm; exact **10/15 → 5/15**,
-  thêm lỗi P01/P04/P06/P08/P11. Chữ/số/newline giữ 15/15. **Dừng hướng này**,
-  không tích hợp hoặc nối sweep. Không có cải thiện nhận dạng/giảm review.
+## Artifact phải giữ
 
-Width×2 measure **exit1** ở assertion cuối do một `socket.bind` bị chặn,
-sau khi đã lưu đủ 16 raw/full prediction arrays và 16 cặp begin/end thành
-công. Import class riêng không dựng model session tái hiện probe IPv6 local
-của urllib3; log gốc không có địa chỉ/stack nên không khẳng định truy ngược
-chính xác event gốc. Giữ gate fail và raw; không inference lại để lấy exit0.
-Prepare/score/verification/preservation pass. Toàn phiên width×2 ghi hai
-bind bị chặn (measure + chẩn đoán), không phải “0 socket attempt”.
+`dist/VideoCaptioner-OCR6-Medium-20260911/` đã được cập nhật riêng app;
+models/AppData/work-dir giữ nguyên. Build một spec exit0/6warning/0error,
+app590file/529.736.078byte, không copy models49GB.
 
-Evidence nằm dưới `build/ocr-pilot-20260910/`, ngoài Git:
-`ocr-quality-21/`, `ocr-quality-audit-28/`, `ocr-punctuation-29/`,
-`ocr-ctc-audit-30/`, `ocr-width-31/`. Lượt width×2 giữ SHA/trạng thái 240
-đường dẫn; runtime 4.960 file giữ danh sách/size/mtime. Không phải hash mới
-toàn payload49GB. Không đổi source/test/profile/auto-accept trong snapshot
-chất lượng; các script thí nghiệm/raw/prediction chỉ ở evidence local.
+EXE **31.429.660 byte**, **2026-09-13 02:00:19+07**, SHA-256:
+`58548169a739abcfe467c7ccc2250f522964ca2f5dbec27081d4402c2877593c`.
 
-## Artifact và các gate đã khép
-
-Cache/resume đã có ở source/CLI/GUI/binary. Checkpoint v1 giữ ID/raw/review;
-resume đọc kiểm cue cuối bằng PTS/crop SHA rồi nối phần thiếu. Fixture dài:
-2.842 cue khớp bản full, 6.314 frame thay 12.316 frame, giữ 1.386 cue cũ.
-Review còn mở khóa export; OCR pending CLI exit5. Full offline cuối:
-1.839 pass/5 skip/51 deselected, Ruff/Pyright0/0, translations sync. Giữ log
-hai lượt AV teardown và lượt full cuối exit0; không dùng làm pass online.
-
-Smoke sau cài đã pass sau khi user yêu cầu tiếp tục từ Escape: EXE trực
-tiếp trong dist tự tìm v6 medium khi ô runtime trống, kiểm SHA, mở OCR/
-resume rồi đóng GUI exit0 sau79,953s, không traceback/child. Không inference/
-API; AppData backup trước chạy, năm cache khôi phục từ backup thực, 15 hash
-khớp. Evidence `ocr-resume-installed-27/`; không nghiệm thu lại.
-
-Giữ `dist/VideoCaptioner-OCR6-Medium-20260911` và models/AppData/work-dir.
-EXE 31.430.444 byte, 2026-09-12 11:52:25+07, SHA-256:
+App trước nằm trong `ocr-direct-export-32/rollback-app/`, EXE SHA
 `34a1e970fcb643b3435ef09b09f73df9fc26ee8831c8b70e1101e643284338f1`.
-Build trước exit0/6 warning/0 error; chỉ app được cập nhật, không copy49GB.
-Bản cache trước SHAcef53f77…c87ef2 ở evidence26/rollback-app; app trước cache
-ở evidence25. `ocr-resume-26/Update-App.ps1 -Action Rollback` trả riêng EXE/
-_internal sau khi app đóng; nhánh Rollback chưa chạy. Giữ mọi backup.
+Script `ocr-direct-export-32/Update-App.ps1 -Action Rollback` trả riêng
+EXE/`_internal` khi app đã đóng; nhánh Rollback chưa chạy. Giữ mọi backup.
 
-## Giới hạn thao tác
+## Giới hạn còn hiệu lực
 
-- 0 API mới; cap vision14 đã hết. Không đọc Api.txt, gọi vision/dịch/TTS,
-  tải model, `uv sync`, cài/nâng dependency/global hoặc dùng Python3.13.
-- Host `../VideoCaptioner/.venv/Scripts/python.exe` 3.12.13;
-  Pyright `--venvpath ../VideoCaptioner`. Runtime v6 hiện có, worker `-I -B`.
-  Test cô lập settings/cache/credentials/logger; giữ `child_environment()`,
-  contextvars helpers và `QThread.wait()` hiện có.
-- Một VideoCaptioner.spec; không đè nguyên gói bằng `--noconfirm` hoặc chép
-  thêm49GB. Giữ .env/cookies/Api.txt/media/raw/evidence/log/settings. Smoke
-  trên dữ liệu thật phải backup trước, vì mở GUI cũng có thể đổi cache.
-- Junction models evidence25 từng bị auto-review chặn gỡ vẫn giữ; không
-  dùng công cụ/shell khác né chặn. Không xóa/stage `ffcachePuSHPB`.
-- Resume vẫn snapshot/hash toàn nguồn và đọc lại một cue tại điểm nối;
-  không tự lưu khi crash/kill. GUI phải Hủy → Lưu review trước khi đóng.
-- Vision GUI, downloader/update, checkpoint tự động và corpus rộng còn
-  mở, không tự triển khai trong phiên này. Không nới auto-accept hoặc dùng
-  tham chiếu agent làm nhãn chuẩn. Không chạy lại full suite/build/crop
-  sweep đã qua chỉ để có số mới. Bàn giao đúng file/gate/giới hạn thực tế.
+- **0 API mới**; cap vision14 đã hết. Không đọc Api.txt/.env/cookies, gọi
+  vision/dịch/TTS, tải model, `uv sync`, cài/nâng dependency hoặc Python3.13.
+- Host `../VideoCaptioner/.venv/Scripts/python.exe` 3.12.13; Pyright dùng
+  `--venvpath ../VideoCaptioner`. Giữ worker `-I -B`, `child_environment()`,
+  contextvars helpers, test cô lập settings/cache/logger và `QThread.wait()`.
+- Không chạy lại full suite/build/native smoke/cache/resume đã pass chỉ
+  lấy số mới. Nếu sửa code thì chạy kiểm tra tương ứng; source pass không
+  thay binary gate. Build một spec, stage riêng, không đè toàn bộ gói hoặc
+  chép lại models49GB; backup trước khi mở GUI dùng dữ liệu thật.
+- Không chạy lại audit23crop,16fixture dấu câu, CTC hoặc width×2; dừng các
+  hướng này. Kết quả chất lượng cũ và bất định Unicode giữ nguyên, không
+  biến tham chiếu agent thành nhãn chuẩn hoặc suy bỏ review là chữ đúng hơn.
+- Không xóa/stage `ffcachePuSHPB`, đụng media/raw/evidence/settings/model hoặc
+  gỡ junction evidence25 từng bị auto-review chặn bằng công cụ khác.
+- Hủy → **Lưu dữ liệu OCR** để resume; chưa tự lưu khi crash/kill.
+  Bàn giao đúng file/gate/giới hạn, không gọi toàn bộ hai video hoặc roadmap
+  hoàn tất khi chưa có bằng chứng.

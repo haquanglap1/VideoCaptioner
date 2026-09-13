@@ -46,8 +46,8 @@ def test_raw_candidates_ids_and_exact_timing_round_trip(tmp_path):
     assert loaded == document
     assert loaded.cues[0].raw_text == "学生三人\n2026年。"
     assert "uncalibrated_profile" in loaded.cues[0].pending_issues
-    with pytest.raises(OcrError, match="unresolved"):
-        loaded.resume(loaded.visual_source)
+    data = loaded.resume(loaded.visual_source)
+    assert data.segments[0].ocr_metadata.observations == document.cues
     assert "audio" not in json.dumps(loaded.to_dict())
 
 
@@ -109,8 +109,8 @@ def test_missing_empty_reads_never_become_success(texts):
 def test_timing_edit_keeps_measured_pts_clipping_and_uncertainty():
     doc = make_document(approved=True, timing_issues=("selection_clipped_start", "unknown_last_frame_duration"))
     cue = doc.cues[0]
-    with pytest.raises(OcrError):
-        doc.resume(doc.visual_source)
+    original = doc.resume(doc.visual_source)
+    assert (original.segments[0].start_time, original.segments[0].end_time) == (200, 500)
     revised = cue.review_timing(210, 480, "Explicit known fixture boundaries")
     result = doc.replace_cue(revised).resume(doc.visual_source)
     assert (result.segments[0].start_time, result.segments[0].end_time) == (210, 480)

@@ -110,7 +110,8 @@ def test_open_checkpoint_resume_uses_saved_settings_and_keeps_review(qapp, tmp_p
     else:
         assert calls == [True] and dialog.session.document.complete
         assert dialog.session.document.cues == document.cues and not dialog.resume_button.isEnabled()
-    assert not dialog.export_button.isEnabled() and checkpoint.read_bytes() == original
+    assert dialog.export_button.isEnabled() == (not mismatch)
+    assert checkpoint.read_bytes() == original
     dialog.close()
     # Signal closures retain this hidden dialog after close(); release Qt children before qapp teardown.
     dialog.deleteLater()
@@ -118,7 +119,7 @@ def test_open_checkpoint_resume_uses_saved_settings_and_keeps_review(qapp, tmp_p
     assert sip.isdeleted(dialog)
 
 
-def test_review_requires_verified_crop_keeps_raw_and_undo(qapp):
+def test_results_export_without_approval_and_details_are_optional(qapp):
     dialog = OcrDialog()
     doc = make_document()
     dialog.accept_document(doc)
@@ -127,19 +128,56 @@ def test_review_requires_verified_crop_keeps_raw_and_undo(qapp):
     assert all(line in dialog.candidate.currentText() for line in cue.raw_text.splitlines())
     assert dialog.candidate.itemData(0, Qt.ItemDataRole.ToolTipRole) == cue.raw_text
     assert dialog.candidate.currentData() == cue.candidates[0].id
-    assert not dialog.approve_button.isEnabled()
-    dialog.note.setText("Known synthetic evidence")
-    dialog.approve()
-    assert dialog.session.document == doc
-    dialog.verified_candidate_id = cue.candidates[0].id
-    dialog.approve()
-    assert not dialog.session.document.pending_issues
-    assert dialog.session.document.cues[0].raw_text == cue.raw_text
-    dialog.stack.undo()
-    assert dialog.session.document == doc and not dialog.export_button.isEnabled()
-    dialog.stack.redo()
-    assert dialog.export_button.isEnabled()
+    assert dialog.details.isHidden() and dialog.table.columnCount() == 3
+    assert not hasattr(dialog, "approve_button") and not hasattr(dialog, "note")
+    assert dialog.session.document == doc and doc.pending_issues
+    assert dialog.export_button.isEnabled() and dialog.handoff_button.isEnabled()
     dialog.close()
+
+
+@pytest.mark.parametrize("handoff", [False, True])
+@pytest.mark.parametrize("source_mismatch", [False, True])
+def test_direct_export_verifies_source_in_worker_and_preserves_raw(qapp, tmp_path, monkeypatch,
+                                                                 handoff, source_mismatch):
+    from PyQt5.QtCore import QThread
+
+    from videocaptioner.core.asr.asr_data import ASRData
+
+    doc = make_document(timing_issues=("selection_clipped_end",))
+    target = tmp_path / ("captions.json" if handoff else "captions.srt")
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.QFileDialog.getSaveFileName",
+                        lambda *_: (str(target), ""))
+
+    def verify(expected, *_args, **_options):
+        assert QThread.currentThread() is not qapp.thread()
+        assert expected == doc.visual_source
+        if source_mismatch:
+            raise OcrError("Synthetic source mismatch")
+        return expected
+
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.verify_visual_file", verify)
+    dialog = OcrDialog(source="synthetic.mov")
+    dialog.accept_document(doc)
+    delivered = []
+    dialog.subtitles_ready.connect(lambda *args: delivered.append(args))
+    dialog.export(handoff=handoff)
+    worker = dialog.worker
+    assert worker is not None and not dialog.export_button.isEnabled()
+    wait_worker(worker)
+    qapp.processEvents()
+    assert dialog.session.document == doc
+    if source_mismatch:
+        assert not target.exists() and not delivered
+        assert "source mismatch" in dialog.status.text()
+    elif handoff:
+        data = ASRData.from_subtitle_file(str(target))
+        assert data.segments[0].ocr_metadata.observations == doc.cues
+        assert delivered[0][0].to_document() == data.to_document()
+    else:
+        assert not delivered and doc.cues[0].raw_text in target.read_text(encoding="utf-8")
+    dialog.close()
+    dialog.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 def test_worker_context_cancel_and_closed_dialog_ignore_late_result(qapp):
@@ -159,7 +197,7 @@ def test_worker_context_cancel_and_closed_dialog_ignore_late_result(qapp):
     assert seen == ["captured"] and not delivered and dialog.worker is None
 
 
-def test_completed_scan_reaches_100_without_accepting_review(qapp):
+def test_completed_scan_reaches_100_and_exports_without_approval(qapp):
     from videocaptioner.core.entities import OcrTask
     from videocaptioner.ui.thread.ocr_thread import OcrThread
 
@@ -176,8 +214,8 @@ def test_completed_scan_reaches_100_without_accepting_review(qapp):
     qapp.processEvents()
     assert dialog.progress.value() == 100 and dialog.progress.maximum() == 100
     assert dialog.session.document == doc and doc.pending_issues
-    assert not dialog.export_button.isEnabled() and not dialog.handoff_button.isEnabled()
-    assert not dialog.approve_button.isEnabled() and not dialog.cancel_button.isEnabled()
+    assert dialog.export_button.isEnabled() and dialog.handoff_button.isEnabled()
+    assert not dialog.cancel_button.isEnabled()
     dialog.close()
 
 

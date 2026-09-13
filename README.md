@@ -104,28 +104,34 @@ một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate.
 
 ## OCR phụ đề trong hình
 
-Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và lưu `ocr-document-v1`
-để review; `ocr-review --source VIDEO` kiểm SHA toàn nguồn và tiếp tục tại máy.
-JSON phụ đề đã duyệt giữ raw/candidate/PTS qua dịch và Video Editor, kể cả hai
+Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và xuất JSON/SRT ngay
+khi quét xong, **không cần duyệt từng câu hoặc có bản chữ gốc**. Có thể lưu thêm
+`ocr-document-v1` bằng `--checkpoint` để mở lại hoặc tiếp tục khi bị hủy.
+`ocr-export saved.ocr.json --source VIDEO -o captions.srt` xuất dữ liệu đã lưu
+tại máy, không nhận dạng lại; tên lệnh cũ `ocr-review` vẫn dùng được.
+JSON phụ đề giữ raw/candidate/PTS qua dịch và Video Editor, kể cả hai
 dòng chữ nguồn. CLI `subtitle` với OCR mặc định giữ câu/giờ/chữ đã đo; chỉ
 `--optimize` tường minh mới bật chỉnh text LLM.
 
 Trong màn Nhận dạng, **OCR phụ đề trong hình** mở luồng chọn video/đoạn/ROI,
-chạy CPU có hủy, xem crop và lưu/mở review. Nút kiểm tra model dùng runtime đã
+chạy CPU có hủy, rồi **Xuất phụ đề** hoặc **Mở bảng phụ đề / dịch**.
+**Lưu/Mở dữ liệu OCR** giữ tiến độ quét; **Chi tiết bản đọc** là phần xem thêm,
+mặc định thu gọn. Chỉnh sửa chữ/giờ ở bảng phụ đề hoặc Video Editor khi cần.
+Nút kiểm tra model dùng runtime đã
 cài; mở cửa sổ không tự tải/nạp. CLI tự tìm bridge/profile và `models/ocr/`
 trong bộ portable, vẫn cho truyền runtime tường minh.
 
-Profile hiện chưa hiệu chuẩn: đồng thuận không tự thành accepted; chưa giải
-quyết review thì không xuất subtitle success. Không tự sửa/điền chữ hoặc gọi
-vision. Xem [GUI, đóng gói và giới hạn](docs/dev/ocr-gui-2026-09.md),
-[contract và lệnh OCR-3](docs/dev/ocr-document-2026-09.md).
+Profile hiện chưa hiệu chuẩn; thông tin nhận dạng được giữ trong metadata
+và không chặn xuất. Quét dở, thiếu chữ, sai nguồn hoặc timing không hợp lệ vẫn
+báo lỗi xử lý. Không tự sửa/điền chữ hoặc gọi vision. Xem
+[xuất thẳng và tương thích dữ liệu cũ](docs/dev/ocr-direct-export-2026-09.md).
 
 Ứng viên ưu tiên chất lượng **PP-OCRv6 medium** dùng cùng CPU runtime đã ghim.
 Nếu có `models/ocr-v6-medium/` (portable) hoặc `runtime/ocr-v6-medium/`
 (source/pip), app ưu tiên bộ này; vẫn nhận bộ v5 cũ qua ô chọn runtime.
 **Kiểm tra model đã cài** hiển thị profile thực tế. Hai profile giữ version,
-model, language và dictionary theo từng stage; kết quả v6 vẫn cần review,
-không thay raw của document v5 đã lưu. [Tích hợp và nghiệm thu v6](docs/dev/ocr-v6-integration-2026-09.md).
+model, language và dictionary theo từng stage; không thay raw của document v5
+đã lưu. [Tích hợp và nghiệm thu v6](docs/dev/ocr-v6-integration-2026-09.md).
 
 Ứng dụng có **cache bản đọc OCR** giữa các lần quét cùng nguồn/cấu hình,
 mặc định 64 MiB dữ liệu chữ (chưa gồm metadata). Trong cửa sổ OCR chọn hạn mức
@@ -137,14 +143,14 @@ khớp SHA; cache không giữ ảnh/video, quyết định duyệt hoặc sửa
 đã được cập nhật riêng phần app ngày 2026-09-12, dùng lại models hiện có;
 [gate EXE/native và cách quay lui](docs/dev/ocr-cache-binary-2026-09.md).
 
-Sau khi hủy, **Lưu review**, rồi mở lại cùng video/review và bấm **Tiếp tục quét**.
+Sau khi hủy, **Lưu dữ liệu OCR**, rồi mở lại cùng video và bấm **Tiếp tục quét**.
 App giữ các câu và quyết định đã lưu, kiểm lại một cue ở điểm nối rồi quét phần
 còn thiếu theo vùng/đoạn/profile của checkpoint. CLI dùng
-`ocr-resume partial.ocr.json --source video.mp4 --review continued.ocr.json`.
+`ocr-resume partial.ocr.json --source video.mp4 --checkpoint continued.ocr.json -o captions.srt`.
 Nguồn vẫn được hash toàn file; không tự lưu khi app bị kill/crash. Xem
 [contract resume và nghiệm thu](docs/dev/ocr-resume-2026-09.md).
 
-Trong review có nút **Dịch bản đọc đang chọn sang Việt**: chỉ khi bấm mới gửi
+Trong **Chi tiết bản đọc** có nút **Dịch bản đọc đang chọn sang Việt**: chỉ khi bấm mới gửi
 chữ của một candidate tới LLM đang cấu hình. Bản Việt nằm cạnh chữ OCR, chỉ giữ
 trong phiên và không tự duyệt/sửa chữ; AI chưa nhìn ảnh nên bản dịch không xác
 minh được chữ bị thiếu. [Cách dùng và giới hạn](docs/dev/ocr-review-assistance-2026-09.md).

@@ -28,8 +28,8 @@ class OcrMetadata:
             raise OcrError("Missing OCR profile snapshot")
         if len({c.id for c in self.observations}) != len(self.observations):
             raise OcrError("Duplicate OCR lineage")
-        if any(c.pending_issues for c in self.observations):
-            raise OcrError("Unresolved OCR belongs in a review document")
+        if any(c.export_issues for c in self.observations):
+            raise OcrError("OCR lineage contains missing text or invalid timing")
 
     def to_dict(self) -> dict:
         return encode(self)

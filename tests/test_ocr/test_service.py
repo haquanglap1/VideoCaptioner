@@ -90,8 +90,9 @@ def test_failed_scan_keeps_incomplete_checkpoint(make_video, text_image, ffmpeg_
 
 
 @pytest.mark.parametrize("explicit_sha", [True, False])
+@pytest.mark.parametrize("checkpoint_flag", ["--checkpoint", "--review", None])
 def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text_image, ffmpeg_tools, tmp_path, monkeypatch,
-                                                              explicit_sha):
+                                                              explicit_sha, checkpoint_flag):
     ffmpeg, ffprobe = ffmpeg_tools
     source = make_video([text_image(""), text_image(), text_image(), text_image("")])
     root = tmp_path / "runtime"
@@ -134,12 +135,24 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
     review_path, output_path = tmp_path / "pending.json", tmp_path / "captions.json"
     arguments = ["ocr", str(source), "--roi", "0,0,1,1", "--start-ms", "0", "--end-ms", "400",
                  "--ocr-runtime", str(root), "--ocr-bridge", str(bridge), "--profile-sha256", profile_sha,
-                 "--ffmpeg", ffmpeg, "--ffprobe", ffprobe, "--review", str(review_path), "-o", str(output_path)]
+                 "--ffmpeg", ffmpeg, "--ffprobe", ffprobe, "-o", str(output_path)]
+    if checkpoint_flag:
+        arguments += [checkpoint_flag, str(review_path)]
     if not explicit_sha:
         index = arguments.index("--profile-sha256")
         del arguments[index:index + 2]
-    assert main(arguments) == EXIT.RUNTIME_ERROR
-    assert calls and review_path.is_file() and not output_path.exists()
+    assert main(arguments) == EXIT.SUCCESS
+    assert calls and output_path.is_file()
+    data = ASRData.from_subtitle_file(str(output_path))
+    assert data.segments[0].text == raw.text
+    assert data.segments[0].ocr_metadata.observations[0].selected_candidate_id is None
+    assert review_path.is_file() == bool(checkpoint_flag)
+    # OCR defaults keep measured cues/text without approval or optimize/split.
+    srt = tmp_path / "captions.srt"
+    assert main(["subtitle", str(output_path), "-o", str(srt)]) == EXIT.SUCCESS
+    assert raw.text in srt.read_text(encoding="utf-8")
+    if not checkpoint_flag:
+        return
     before = len(calls)
     doc = OcrDocument.load(review_path)
     cue = doc.cues[0]
@@ -152,10 +165,6 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
     data = ASRData.from_subtitle_file(str(output_path))
     assert data.segments[0].text == raw.text and data.visual_source == doc.visual_source
     assert OcrDocument.load(review_path) == doc
-    # OCR defaults keep the measured cues and text, even though legacy CLI defaults optimize/split.
-    srt = tmp_path / "captions.srt"
-    assert main(["subtitle", str(output_path), "-o", str(srt)]) == EXIT.SUCCESS
-    assert raw.text in srt.read_text(encoding="utf-8")
 
 
 def test_cli_blocks_overwriting_inputs_before_processing(tmp_path, monkeypatch):
@@ -168,7 +177,7 @@ def test_cli_blocks_overwriting_inputs_before_processing(tmp_path, monkeypatch):
     assert source.read_text() == "preserve input"
 
 
-def test_repeat_scan_reuses_disk_raw_preserves_ids_and_requires_review(make_video, text_image, ffmpeg_tools, tmp_path):
+def test_repeat_scan_reuses_disk_raw_preserves_ids_and_exports(make_video, text_image, ffmpeg_tools, tmp_path):
     ffmpeg, ffprobe = ffmpeg_tools
     source = make_video([text_image(""), text_image(), text_image(), text_image("")])
     raw = make_document().cues[0].candidates[0].raw
@@ -193,8 +202,8 @@ def test_repeat_scan_reuses_disk_raw_preserves_ids_and_requires_review(make_vide
     assert second.cues[0].id == first.cues[0].id
     assert [c.id for c in second.cues[0].candidates] == [c.id for c in first.cues[0].candidates]
     assert all(c.cache_hit and c.raw == raw for c in second.cues[0].candidates)
-    with pytest.raises(OcrError):
-        second.resume(second.visual_source)
+    data = second.resume(second.visual_source)
+    assert tuple(c for segment in data.segments for c in segment.ocr_metadata.observations) == second.cues
     assert scan(config, cache_mib=0).metrics.fresh_calls > 0
     assert scan(replace(config, bridge_sha256="f" * 64)).metrics.fresh_calls > 0
     assert not list((tmp_path / "jobs").iterdir())

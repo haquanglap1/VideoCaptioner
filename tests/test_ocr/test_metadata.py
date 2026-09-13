@@ -22,7 +22,7 @@ from .test_document import make_document
 
 
 def subtitles():
-    document = make_document(approved=True)
+    document = make_document()
     return document.resume(document.visual_source)
 
 

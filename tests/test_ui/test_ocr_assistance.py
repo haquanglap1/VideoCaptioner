@@ -42,8 +42,7 @@ def test_explicit_draft_reuses_cache_but_never_accepts_or_persists(qapp, monkeyp
     assert len(calls) == 1 and "Ba học sinh" in dialog.draft_text.toPlainText()
     assert "AI chưa nhìn ảnh" in dialog.draft_text.toPlainText()
     assert dialog.session.document == doc
-    assert not dialog.export_button.isEnabled() and not dialog.handoff_button.isEnabled()
-    assert not dialog.approve_button.isEnabled()
+    assert dialog.export_button.isEnabled() and dialog.handoff_button.isEnabled()
     dialog.translate_current_draft()
     assert len(calls) == 1 and dialog.worker is None
     path = tmp_path / "review.json"

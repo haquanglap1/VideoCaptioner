@@ -1,5 +1,45 @@
 # Project Status
 
+## 2026-09-13 (Submit snapshot OCR xuất thẳng và prompt phiên sau)
+
+- User yêu cầu commit/push trên `codex/asr-s3-native`. Snapshot gồm 20 file
+  code/test/tài liệu của luồng bỏ review bắt buộc; baseline trước commit là
+  `2ed7ae1`, đọc mã snapshot mới từ Git. Không đưa EXE/model/AppData/media,
+  raw/evidence hoặc `ffcachePuSHPB` vào Git.
+- Viết lại [prompt phiên sau](docs/dev/ocr-next-session-prompt.md) theo yêu
+  cầu bỏ review, bỏ toàn bộ chỉ dẫn bàn giao cũ đòi nhãn để mở khóa công việc.
+  Ưu tiên phân tích video2 từ checkpoint/ROI/PTS/73rec đã lưu; trần8request
+  là giới hạn riêng của smoke, không phải blocker cần user cấp lại quyền.
+- Giữ gate offline1.853pass/5skip, build/native/export đã ghi trong biên bản;
+  video2 chưa hoàn tất và chưa chạy toàn hai video. Lượt submit chỉ rà diff,
+  tài liệu/link, danh sách staged và Git; không chạy lại test/build/OCR/API.
+  Quyền submit này không tự cấp commit/push hoặc API cho phiên tiếp theo.
+
+## 2026-09-13 (Bỏ review OCR bắt buộc, xuất/dịch ngay sau quét)
+
+- User yêu cầu tiếp tục với hai video hiện có và **bỏ review**. GUI bỏ nút
+  duyệt/ô bằng chứng, thu gọn chi tiết; quét xong xuất JSON/SRT hoặc mở bảng
+  phụ đề/dịch ngay. Không yêu cầu bản chữ gốc. [Biên bản](docs/dev/ocr-direct-export-2026-09.md).
+- Core tách `export_issues` khỏi thông tin nhận dạng; raw/candidate/PTS/IDs/
+  metadata và quyết định cũ giữ nguyên. Quét dở, thiếu chữ/snapshot, sai nguồn
+  hoặc timing không hợp lệ vẫn lỗi. CLI thêm `ocr-export`, giữ `ocr-review`
+  làm alias; `--checkpoint`/`--review` tùy chọn khi có output phụ đề.
+- Full offline **1.853 pass / 5 skip / 51 deselected**, 193,18s exit0;
+  Ruff/Pyright0/0 và translations sync. Regression trước sửa4fail/1pass;
+  372 test OCR/CLI/GUI pass trước full. Không đổi engine hoặc hiệu chuẩn score.
+- Build app-only một spec **exit0/6warning/0error**,590file/529.736.078byte;
+  cập nhật riêng EXE/`_internal` trong gói OCR6 giữ lại, không copy models49GB.
+  EXE31.429.660byte,02:00:19+07,SHA
+  `58548169a739abcfe467c7ccc2250f522964ca2f5dbec27081d4402c2877593c`.
+- CLI checkpoint cũ và đoạn13–15s video1 xuất thẳng pass. Đoạn14–16s video2
+  **chưa hoàn tất** do trần8request riêng của smoke; giữ raw/checkpoint dở,
+  exit5 và assertion fail, không retry. Tổng11request/11det/76rec/0cls/0API;
+  không chạy hết hai video hoặc suy benchmark chất lượng từ đoạn ngắn.
+- Native chính EXE tại dist395,156s exit0/0child/không traceback; nạp3cue cũ,
+  xuất/handoff sang bảng phụ đề không duyệt, JSON khớp CLI. Backup AppData
+  trước smoke, khôi phục5cache từ backup thực,6hash khớp. App cũ được giữ để
+  quay lui; không commit/push, không đổi media hoặc gọi dịch/TTS/vision.
+
 ## 2026-09-13 (Submit snapshot chất lượng OCR và prompt phiên sau)
 
 - User yêu cầu commit/push tài liệu trên `codex/asr-s3-native`. Baseline

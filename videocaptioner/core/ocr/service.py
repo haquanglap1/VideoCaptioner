@@ -66,7 +66,7 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
                     cues.append(cue_from_region(identifier, region))
                     percent = int(100 * (region.end_ms - config.selection.start_ms)
                                   / (config.selection.end_ms - config.selection.start_ms))
-                    progress(min(99, percent), f"Đã đọc {len(cues)} nhóm chữ; đang giữ dữ liệu review.")
+                    progress(min(99, percent), f"Đã đọc {len(cues)} nhóm chữ.")
                 check()
                 if boundary:
                     boundary.finish()

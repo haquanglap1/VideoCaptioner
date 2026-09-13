@@ -170,7 +170,7 @@ def test_cli_resumes_saved_config_and_preserves_checkpoint_input(
     full = scan_video(source, fixture_config(400), lambda *_: raw, jobs_root=tmp_path / "jobs",
                       ffmpeg=ffmpeg, ffprobe=ffprobe, cache_mib=0)
     partial = replace(full, cues=full.cues[:1], complete=False)
-    saved, result, output = tmp_path / "partial.json", tmp_path / "continued.json", tmp_path / "blocked.srt"
+    saved, result, output = tmp_path / "partial.json", tmp_path / "continued.json", tmp_path / "captions.srt"
     partial.save(saved)
     original = saved.read_bytes()
     called = []
@@ -186,8 +186,8 @@ def test_cli_resumes_saved_config_and_preserves_checkpoint_input(
     monkeypatch.setattr("videocaptioner.cli.commands.ocr.run_cpu_ocr", run)
     arguments = ["ocr-resume", str(saved), "--source", str(source), "--review", str(result),
                  "--ffmpeg", ffmpeg, "--ffprobe", ffprobe, "--cache-mib", "0", "-o", str(output)]
-    assert main(arguments) == EXIT.RUNTIME_ERROR
-    assert called == [True] and not output.exists() and saved.read_bytes() == original
+    assert main(arguments) == EXIT.SUCCESS
+    assert called == [True] and output.is_file() and saved.read_bytes() == original
     continued = OcrDocument.load(result)
     assert continued.complete and continued.cues[0] == partial.cues[0]
     assert without_hits(continued.cues) == without_hits(full.cues)

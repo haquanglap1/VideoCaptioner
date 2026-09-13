@@ -1,5 +1,14 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+**Đổi yêu cầu 2026-09-13 — bỏ review bắt buộc:** user yêu cầu quét OCR xong
+được xuất/dịch ngay, không phụ thuộc bản chữ gốc hoặc duyệt từng câu.
+[Luồng xuất thẳng](../dev/ocr-direct-export-2026-09.md) thay điều kiện khóa export
+vì bất đồng/score/biên chưa duyệt; vẫn giữ raw/candidate/PTS/IDs và metadata
+chưa hiệu chuẩn. Quét dở, thiếu chữ, sai nguồn hoặc timing không hợp lệ vẫn lỗi.
+Nhãn độc lập thuộc đánh giá chất lượng riêng, **không còn là điều kiện để
+tiếp tục phát triển hoặc dùng OCR**. Các yêu cầu review và khóa export bên dưới
+là lịch sử trước thay đổi này; không tự bật lại theo các snapshot cũ.
+
 **Width×2 2026-09-13:** [đã thử theo yêu cầu user](../dev/ocr-width-experiment-2026-09.md),
 16 tensor/15 fixture có chữ, 16 rec/0 det/0 cls, 0 API. Hai ca thiếu chấm
 không được sửa; exact 10/15 → 5/15, thêm năm ca sai. P16 không áp dụng.
