@@ -126,6 +126,10 @@ delete, drag, resize, voice settings, mute/lock và visual layer đều đi qua 
 thumbnail được tạo ở background và cache theo fingerprint media; timeline chỉ paint cue nằm trong
 viewport.
 
+Tab `Style` trong editor chỉnh font, cỡ chữ, màu, vị trí và lề cho cả project; `Apply` và `Reset style`
+có undo/redo. Mặc định dùng chữ đơn giản, không nền bo góc và không viền chữ. Style được giữ trong
+project JSON, áp dụng cho preview, Fast Preview/export và `Save as ASS`; không đổi style toàn ứng dụng.
+
 `Save project` ghi atomically `editor-project-v1` cùng một file SRT cạnh project; đường dẫn video/phụ đề
 trong JSON là relative, asset phụ như ảnh logo hoặc WAV cache giữ absolute khi nằm khác ổ đĩa, và JSON
 không chứa API key. Normal save không persist ASS. Chỉ `Save as ASS` tạo file ASS lâu

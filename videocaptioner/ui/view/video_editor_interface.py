@@ -48,6 +48,7 @@ from videocaptioner.core.editor.commands import (
     DeleteLayerCommand,
     EditCueTimingCommand,
     EditLayerCommand,
+    EditSubtitleStyleCommand,
     SplitCueCommand,
 )
 from videocaptioner.core.editor.media import cleanup_preview_files, fast_preview_range
@@ -77,6 +78,7 @@ from videocaptioner.core.editor.presenter import (
     track_state_command,
 )
 from videocaptioner.core.editor.project_store import EditorProjectStore
+from videocaptioner.core.editor.subtitle_style import EditorSubtitleStyle
 from videocaptioner.ui.components.editor import (
     EditorTimelineView,
     EditorTrackHeader,
@@ -84,6 +86,7 @@ from videocaptioner.ui.components.editor import (
     LayerInspector,
     SubtitleInspector,
 )
+from videocaptioner.ui.components.editor.subtitle_style_panel import SubtitleStylePanel
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.editor_media_thread import EditorMediaThread, EditorRenderThread
 from videocaptioner.ui.thread.editor_voice_thread import EditorVoiceThread
@@ -141,8 +144,8 @@ QTabWidget#EditorContextTabs QTabBar::tab {
     color: #8fa3ba;
     background: #0a1320;
     border: 1px solid #20344d;
-    padding: 8px 14px;
-    min-width: 74px;
+    padding: 8px 8px;
+    min-width: 48px;
 }
 QTabWidget#EditorContextTabs QTabBar::tab:selected {
     color: #e7f8f5;
@@ -288,6 +291,8 @@ class VideoEditorInterface(QWidget):
         self.layer_inspector = LayerInspector(self.context_tabs)
         self.layer_panel = self._build_layer_panel()
         self.context_tabs.addTab(self.layer_panel, self.tr("Layers"))
+        self.subtitle_style_panel = SubtitleStylePanel(self.context_tabs)
+        self.context_tabs.addTab(self.subtitle_style_panel, self.tr("Style"))
         self.horizontal_splitter.addWidget(self.preview)
         self.horizontal_splitter.addWidget(self.context_tabs)
         self.horizontal_splitter.setStretchFactor(0, 3)
@@ -394,6 +399,7 @@ class VideoEditorInterface(QWidget):
         self.preview.activeCueChanged.connect(self._on_active_cue)
         self.preview.playbackError.connect(self._show_error)
         self.inspector.applyRequested.connect(self._apply_inspector)
+        self.subtitle_style_panel.applyRequested.connect(self._apply_subtitle_style)
         self.inspector.regenerateRequested.connect(self.regenerate_voice)
         self.inspector.splitRequested.connect(self.split_cue)
         self.inspector.deleteRequested.connect(self.delete_cue)
@@ -425,7 +431,8 @@ class VideoEditorInterface(QWidget):
         if self.context_tabs.currentWidget() is self.layer_panel:
             self.delete_selected_layer()
             return
-        self.delete_cue(self.inspector.cue_id)
+        if self.context_tabs.currentWidget() is self.inspector:
+            self.delete_cue(self.inspector.cue_id)
 
     def _set_empty_state(self) -> None:
         self.status_label.setText(self.tr("Open a video and SRT to start editing"))
@@ -433,6 +440,7 @@ class VideoEditorInterface(QWidget):
         self._set_actions_enabled(False)
 
     def _set_actions_enabled(self, enabled: bool) -> None:
+        self.subtitle_style_panel.setEnabled(enabled)
         for action in (
             self.save_action,
             self.save_ass_action,
@@ -545,6 +553,7 @@ class VideoEditorInterface(QWidget):
         self._selected_layer_id = ""
         self.command_stack.clear()
         self.preview.set_project(project)
+        self.subtitle_style_panel.set_style(project.subtitle_style)
         self.timeline.set_project(project)
         self.track_header.set_project(project)
         self._refresh_layer_list()
@@ -655,6 +664,16 @@ class VideoEditorInterface(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
 
+    def _apply_subtitle_style(self, values: dict) -> None:
+        if not self.project:
+            return
+        try:
+            style = EditorSubtitleStyle.from_dict(values)
+            if style != self.project.subtitle_style:
+                self.command_stack.execute(EditSubtitleStyleCommand(self.project, style))
+        except (TypeError, ValueError) as exc:
+            self._show_error(str(exc))
+
     def add_cue(self) -> None:
         if not self.project:
             return
@@ -701,10 +720,19 @@ class VideoEditorInterface(QWidget):
     def _refresh_from_model(self) -> None:
         if not self.project:
             return
+        self.preview.exit_rendered_preview()
+        if (
+            self._render_thread is not None
+            and self._render_thread.action == "preview"
+            and self._render_thread.project.subtitle_style != self.project.subtitle_style
+        ):
+            self._signatures.pop("preview", None)
+            self.cancel_render()
         selected = self.inspector.cue_id
         self.timeline.refresh_project()
         self.track_header.set_project(self.project)
         self.preview.surface.overlay.set_state(self.project, self.project.playhead_ms)
+        self.subtitle_style_panel.set_style(self.project.subtitle_style)
         self._refresh_layer_list()
         if selected:
             try:
@@ -754,9 +782,7 @@ class VideoEditorInterface(QWidget):
         if not path:
             return
         try:
-            output = EditorProjectStore().save_as_ass(
-                self.project, path, style_str=TaskFactory.get_ass_style("default")
-            )
+            output = EditorProjectStore().save_as_ass(self.project, path)
             self._show_success(self.tr("Saved ASS explicitly: ") + output)
         except Exception as exc:
             self._show_error(str(exc))

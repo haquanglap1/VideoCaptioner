@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from uuid import uuid4
 
+from .subtitle_style import EditorSubtitleStyle
+
 EDITOR_PROJECT_SCHEMA = "editor-project-v1"
 MIN_CUE_DURATION_MS = 50
 
@@ -229,6 +231,7 @@ class EditorProject:
     cues: list[EditorCue] = field(default_factory=list)
     tracks: list[EditorTrack] = field(default_factory=list)
     layers: list[EditorLayer] = field(default_factory=list)
+    subtitle_style: EditorSubtitleStyle = field(default_factory=EditorSubtitleStyle)
     voice_settings: dict[str, Any] = field(default_factory=dict)
     playhead_ms: int = 0
     selection_start_ms: int | None = None
@@ -338,6 +341,7 @@ class EditorProject:
             "cues": [cue.to_dict() for cue in self.cues],
             "tracks": [track.to_dict() for track in self.tracks],
             "layers": [layer.to_dict() for layer in self.layers],
+            "subtitle_style": self.subtitle_style.to_dict(),
             "voice_settings": sanitize_voice_settings(self.voice_settings),
             "playhead_ms": self.playhead_ms,
             "selection_start_ms": self.selection_start_ms,
@@ -363,6 +367,7 @@ class EditorProject:
             cues=[EditorCue.from_dict(item) for item in data.get("cues", [])],
             tracks=[EditorTrack.from_dict(item) for item in data.get("tracks", [])],
             layers=[EditorLayer.from_dict(item) for item in data.get("layers", [])],
+            subtitle_style=EditorSubtitleStyle.from_dict(data.get("subtitle_style")),
             voice_settings=sanitize_voice_settings(dict(data.get("voice_settings", {}) or {})),
             playhead_ms=int(data.get("playhead_ms", 0)),
             selection_start_ms=data.get("selection_start_ms"),

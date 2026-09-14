@@ -27,11 +27,35 @@ track state và visual layers. Inspector dùng composite command để một l�
 một phần khi validation fail. Timing phải không âm, dài ít nhất 50 ms, không overlap và không vượt
 duration video. Visual layer được phép overlap nhau nên chỉ bị chặn bởi biên media; `LayerInspector`
 gom geometry, timing, opacity, visible/lock và property theo kind vào một `EditLayerCommand`. Tab
-`Layers` chứa cả nút add, danh sách và inspector nên context panel chỉ có hai tab ở width hẹp.
+`Layers` chứa cả nút add, danh sách và inspector. Context panel gồm `Cue`, `Layers` và `Style`;
+form Style cuộn dọc và các tab vẫn dùng được ở page width 700 px.
 
 Playback position cập nhật playhead, active cue, subtitle overlay và inspector trên Qt main thread.
 Timeline click cập nhật selection và seek preview. Worker chỉ emit data/error/progress; widget update
 luôn nằm trong slot của UI thread. Mọi media request có signature và slot bỏ kết quả stale.
+
+## Subtitle Style
+
+`EditorSubtitleStyle` là immutable model riêng của project, không đọc/ghi cấu hình style toàn ứng dụng.
+Project v1 cũ thiếu `subtitle_style` nhận defaults; project mới persist các trường font, màu `#RRGGBB`,
+cỡ chữ, bold, letter spacing, alignment 1–9 và lề. Validation từ chối màu, số hoặc tên font không hợp lệ
+trước mutation. `SubtitleStylePanel` phát snapshot qua `EditSubtitleStyleCommand`; Apply không đổi giá trị
+không thêm undo step, Reset cũng undo được. Đổi style khi đang render preview sẽ hủy/bỏ kết quả stale.
+
+Mặc định dùng `Noto Sans SC` có sẵn trong bundle, chữ trắng, không background/outline/shadow. Qt đăng ký
+font bundle một lần; FFmpeg nhận cùng `fontsdir`. Font, spacing và lề dùng hệ quy chiếu cao 720, chiều rộng
+theo aspect ratio thực (probe nếu model chưa có dimensions). Overlay Qt áp style trong rect video letterbox;
+đây là xem trước tương tác, font metrics/wrapping có thể khác libass. Clip Fast Preview đã burn sẽ ẩn overlay
+để không vẽ phụ đề/layer hai lần; thoát preview hoặc sửa project trả về overlay của source.
+
+Render vẫn dùng SRT tạm và `subtitles:force_style`, không tạo ASS lâu dài. Save as ASS dùng cùng model và
+reference resolution. Lưu ý libass `force_style` dùng ScaleX/Y dạng tỷ lệ (`1`), Alignment theo enum nội bộ;
+dòng `Style:` trong ASS dùng phần trăm (`100`) và numpad alignment. Hai đường được kiểm tra bằng ảnh render
+thật; xem [libass override parser](https://github.com/libass/libass/blob/master/libass/ass.c).
+
+Burn chữ đơn giản đi thẳng qua libass, không dùng pipeline PIL nền bo góc. Encoder hiện vẫn là
+`libx264 -preset veryfast -crf 20`; không mặc định chuyển NVENC chỉ dựa vào tên GPU. Cần benchmark trên
+video thật trước khi chọn encoder: chi phí decode, filter, encode và kích thước output đều ảnh hưởng.
 
 ## Timeline và media cache
 

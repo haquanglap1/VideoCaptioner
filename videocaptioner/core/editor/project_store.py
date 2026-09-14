@@ -172,6 +172,11 @@ class EditorProjectStore:
         destination = Path(ass_path).resolve()
         if destination.suffix.lower() != ".ass":
             raise ValueError("Explicit ASS export requires an .ass destination")
-        content = project_to_asr(project, display_only=True).to_ass(style_str=style_str)
+        width, height = project.subtitle_style.reference_resolution(project.width, project.height)
+        content = project_to_asr(project, display_only=True).to_ass(
+            style_str=style_str if style_str is not None else project.subtitle_style.to_ass_string(),
+            video_width=width,
+            video_height=height,
+        )
         self._atomic_write(destination, content)
         return str(destination)

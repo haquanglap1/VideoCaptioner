@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt5.QtCore import QRectF, Qt, QUrl, pyqtSignal
-from PyQt5.QtGui import QColor, QPainter, QPalette, QPen, QPixmap
+from PyQt5.QtGui import QColor, QFont, QPainter, QPalette, QPen, QPixmap
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from PyQt5.QtWidgets import QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget
@@ -14,11 +14,15 @@ from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import PushButton
 
 from videocaptioner.core.editor.models import EditorLayerKind, EditorProject
+from videocaptioner.core.editor.subtitle_style import SUBTITLE_REFERENCE_HEIGHT
+
+from .fonts import load_editor_fonts
 
 
 class EditorOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        load_editor_fonts()
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.project: EditorProject | None = None
@@ -139,25 +143,34 @@ class EditorOverlay(QWidget):
             (track for track in self.project.tracks if track.id == "track-ts1"), None
         )
         if cue and (subtitle_track is None or subtitle_track.visible):
+            style = self.project.subtitle_style
+            scale = frame.height() / SUBTITLE_REFERENCE_HEIGHT
+            vertical_margin = style.margin_bottom * scale if style.alignment not in (4, 5, 6) else 0
             subtitle_rect = QRectF(
-                frame.x() + 20,
-                frame.y() + frame.height() * 0.70,
-                max(1.0, frame.width() - 40),
-                frame.height() * 0.25,
+                frame.x() + style.margin_left * scale,
+                frame.y() + vertical_margin,
+                max(1.0, frame.width() - (style.margin_left + style.margin_right) * scale),
+                max(1.0, frame.height() - 2 * vertical_margin),
             )
-            font = painter.font()
-            font.setPixelSize(max(12, min(42, int(frame.width() // 24))))
-            font.setBold(True)
+            font = QFont(style.font_name)
+            font.setPixelSize(max(1, round(style.font_size * scale)))
+            font.setBold(style.bold)
+            font.setLetterSpacing(QFont.AbsoluteSpacing, style.spacing * scale)
             painter.setFont(font)
+            horizontal = (Qt.AlignLeft, Qt.AlignHCenter, Qt.AlignRight)[(style.alignment - 1) % 3]
+            vertical = (Qt.AlignBottom, Qt.AlignVCenter, Qt.AlignTop)[(style.alignment - 1) // 3]
+            painter.save()
+            painter.setClipRect(frame)
             self._draw_outlined_text(
                 painter,
                 subtitle_rect,
                 cue.display_text,
-                Qt.AlignHCenter | Qt.AlignBottom | Qt.TextWordWrap,
-                QColor(Qt.white),
-                QColor(Qt.black),
-                2,
+                horizontal | vertical | Qt.TextWordWrap,
+                QColor(style.primary_color),
+                QColor(style.outline_color),
+                max(1, round(style.outline_width * scale)) if style.outline_width else 0,
             )
+            painter.restore()
         painter.end()
 
 
@@ -297,6 +310,7 @@ class EditorVideoPreview(QWidget):
         self._poster_path = ""
         self._playback_started = False
         self.surface.overlay.set_state(project, 0)
+        self.surface.overlay.show()
         self.surface.overlay.set_selected_layer("")
         has_video = bool(project and project.video_path and Path(project.video_path).is_file())
         if not has_video:
@@ -337,6 +351,7 @@ class EditorVideoPreview(QWidget):
     def play_rendered_preview(self, path: str, offset_ms: int) -> None:
         """Play a rendered clip without letting its local clock rewrite project state."""
         self._rendered_offset_ms = max(0, int(offset_ms))
+        self.surface.overlay.hide()
         self.surface.show_video()
         self.player.setMedia(QMediaContent(QUrl.fromLocalFile(str(path))))
         self.player.play()
@@ -349,6 +364,7 @@ class EditorVideoPreview(QWidget):
             self._timeline_position(self.player.position()) if resume_ms is None else int(resume_ms)
         )
         self._rendered_offset_ms = None
+        self.surface.overlay.show()
         self.player.stop()
         self._playback_started = False
         # Show the poster again: a stopped QVideoWidget paints the native white surface.

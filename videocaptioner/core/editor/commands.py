@@ -8,6 +8,28 @@ from typing import Any, Callable, Protocol
 from uuid import uuid4
 
 from .models import EditorCue, EditorLayer, EditorProject
+from .subtitle_style import EditorSubtitleStyle
+
+
+@dataclass
+class EditSubtitleStyleCommand:
+    project: EditorProject
+    style: EditorSubtitleStyle
+    description: str = "Edit subtitle style"
+    _old: EditorSubtitleStyle | None = field(default=None, init=False)
+
+    def execute(self) -> None:
+        if not isinstance(self.style, EditorSubtitleStyle):
+            raise ValueError("Expected an EditorSubtitleStyle")
+        if self._old is None:
+            self._old = self.project.subtitle_style
+        self.project.subtitle_style = self.style
+        self.project.touch()
+
+    def undo(self) -> None:
+        if self._old is not None:
+            self.project.subtitle_style = self._old
+            self.project.touch()
 
 
 class EditorCommand(Protocol):

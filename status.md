@@ -1,5 +1,39 @@
 # Project Status
 
+## 2026-09-14 (Video Editor: Subtitle Style theo project, chữ đơn giản)
+
+- Trạng thái đầu task ở `ff1dd9f`: index và worktree sạch, không có 4 file staged-add được nhắc trong
+  yêu cầu. Đã đối chiếu `git status --porcelain=v2`, staged/worktree diff, index entries và worktree list;
+  không reset, restore, stage, commit hoặc push. Không thay cấu hình/dependency ngoài project.
+- Thêm `EditorSubtitleStyle` immutable + validation và `EditSubtitleStyleCommand`; persist style ngay
+  trong `editor-project-v1`, project cũ thiếu trường này nhận defaults. Panel `Style` có Apply/Reset,
+  undo/redo, giữ tên font chưa có trên máy và không thêm undo step khi Apply cùng giá trị. Delete ở tab
+  Style không xóa cue đang chọn. Form/tab dùng được ở page width 700 px.
+- Default: `Noto Sans SC` bundled, chữ trắng, không nền bo góc, outline/shadow bằng 0 theo yêu cầu.
+  Qt đăng ký font bundle một lần; overlay dùng font/màu/alignment/lề trong frame letterbox. Fast Preview
+  và export dùng SRT tạm + libass `force_style`/`fontsdir`, không tạo ASS lâu dài; Save as ASS dùng cùng
+  style và hệ tọa độ cao 720. Đã sửa khác biệt scale/alignment giữa libass overrides và ASS style lines.
+- Ẩn overlay trong rendered preview để không vẽ phụ đề/layer hai lần. Apply/undo/redo trở về source;
+  thay style trong lúc Fast Preview đang chạy sẽ hủy và bỏ kết quả cũ.
+- Validation: `.venv` Python 3.12.13 hiện có, không sync/install dependency; ruff toàn `videocaptioner/`
+  + `tests/` pass, pyright 0 errors / 0 warnings, translations in sync. Suite `test_editor/` +
+  `test_subtitle/` + `test_ui/test_subtitle_style_interface.py` + `test_cli/`: **228 passed, 2 skipped**
+  (QtMultimedia cần native backend, Bing endpoint unavailable), 37.36 s. Test mới: model/validation/
+  persistence/undo, UI/overlay/style stale result, render FFmpeg thật và đối chiếu explicit ASS.
+  Sau chỉnh layout cuối: chạy lại 35 targeted tests, **34 passed, 1 skipped** (native playback),
+  ruff/pyright/translation check tiếp tục pass.
+- Thử hiệu năng trên clip tổng hợp 10 s, 1080p30, burn chữ đơn giản, không audio: CPU
+  `libx264 veryfast CRF 20` 0.848 s / 9,064,296 byte; `h264_nvenc p4 VBR CQ 20` 1.183 s / 17,550,638 byte.
+  Đây là một mẫu cục bộ, hai quality setting không tương đương tuyệt đối; không dùng để khẳng định GPU
+  nhanh/chậm trên mọi video. Giữ encoder hiện tại, chưa có benchmark trên video thật của user.
+- Chưa build/smoke EXE, chưa nghiệm thu playback native mới hoặc UX chủ quan. Overlay Qt có thể khác
+  libass về font metrics/wrapping; Fast Preview/export là bằng chứng render. Không đổi runtime assets
+  hoặc dynamic imports; spec hiện đã bundle fonts và collect các module Python.
+- File trong phạm vi: `core/editor/{subtitle_style,models,commands,project_store,media}.py`,
+  `ui/components/editor/{fonts,subtitle_style_panel,video_preview}.py`, `ui/view/video_editor_interface.py`
+  dưới `videocaptioner/`; `tests/test_editor/test_subtitle_style{,_ui,_render}.py`; `README.md`,
+  `docs/dev/video-editor.md`, `status.md`. Index và `AppData/settings.json` giữ nguyên SHA-256.
+
 ## 2026-09-05 (Nghiệm thu VieNeu qua GUI one-app, sửa treo EXE, cập nhật model theo đề nghị, tài liệu, CI Node 24)
 
 ### Lỗi phát hiện từ log one-app trước khi nghiệm thu (mục 1)

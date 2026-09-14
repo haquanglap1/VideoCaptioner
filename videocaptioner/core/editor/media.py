@@ -355,7 +355,9 @@ def build_visual_filter_graph(
     subtitle_track = next((track for track in project.tracks if track.id == "track-ts1"), None)
     if include_subtitles and (subtitle_track is None or subtitle_track.visible):
         srt_path = _escape_filter_path(str(run_dir / "display.srt"))
-        filters.append(f"[0:v]subtitles='{srt_path}'[{current}]")
+        style = project.subtitle_style.to_force_style(frame_width, frame_height)
+        fonts = f":fontsdir='{_escape_filter_path(str(FONTS_PATH))}'" if FONTS_PATH.is_dir() else ""
+        filters.append(f"[0:v]subtitles='{srt_path}'{fonts}:force_style='{style}'[{current}]")
     else:
         filters.append(f"[0:v]null[{current}]")
 
@@ -484,7 +486,7 @@ def _render_from_project(
         raise ValueError("Editor export cannot overwrite the input video")
     _raise_if_cancelled(should_cancel)
     frame_width, frame_height = project.width, project.height
-    if project.layers and not (frame_width and frame_height):
+    if not (frame_width and frame_height):
         probed = probe_media(source)
         frame_width, frame_height = probed.width, probed.height
     with tempfile.TemporaryDirectory(prefix="vc_editor_render_") as temp_dir:
