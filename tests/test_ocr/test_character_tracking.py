@@ -98,13 +98,17 @@ def test_companion_is_bundled_and_keeps_legacy_bridge_pinned():
     assert hashlib.sha256((root / "scripts/ocr_stream_worker.py").read_bytes()).hexdigest() == BASE_WORKER_SHA256
 
 
-def test_cli_character_mode_selects_the_companion_before_scan(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode,policy,worker", [
+    ("characters", "character-features-v1", "ocr_tracking_worker.py"),
+    ("characters-v2", "character-features-v2", "ocr_tracking_worker_v2.py"),
+])
+def test_cli_character_mode_selects_the_companion_before_scan(tmp_path, monkeypatch, mode, policy, worker):
     from videocaptioner.cli import exit_codes as EXIT
     from videocaptioner.cli.main import main
 
     bundle = tmp_path / "bundle"
     bundle.mkdir()
-    companion = bundle / "ocr_tracking_worker.py"
+    companion = bundle / worker
     companion.write_text("# synthetic tracking worker")
     runtime = tmp_path / "runtime"
     runtime.mkdir()
@@ -118,11 +122,11 @@ def test_cli_character_mode_selects_the_companion_before_scan(tmp_path, monkeypa
                         lambda _a, _s, cfg, _r, bridge: captured.append((cfg, bridge)) or EXIT.SUCCESS)
     args = ["ocr", str(source), "--roi", "0,0,1,1", "--start-ms", "0", "--end-ms", "1000",
             "--ocr-runtime", str(runtime), "--profile-sha256", hashlib.sha256(profile.read_bytes()).hexdigest(),
-            "--tracking", "characters", "-o", str(tmp_path / "output.srt")]
+            "--tracking", mode, "-o", str(tmp_path / "output.srt")]
     assert main(args) == EXIT.USAGE_ERROR
     assert main([*args, "--line-anchors", "0.25,0.75"]) == EXIT.USAGE_ERROR
     assert not captured
     assert main([*args, "--line-anchors", "0.5"]) == EXIT.SUCCESS
     cfg, bridge = captured[0]
-    assert cfg.tracking_policy == "character-features-v1" and bridge == companion
+    assert cfg.tracking_policy == policy and bridge == companion
     assert cfg.bridge_sha256 == hashlib.sha256(companion.read_bytes()).hexdigest()

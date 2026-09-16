@@ -19,6 +19,7 @@ from .profile import OcrProfileSnapshot
 from .resume import ResumeBoundary, validate_resume
 from .runtime import CpuOcrRuntime
 from .source import video_snapshot
+from .tracking import CHARACTER_TRACKING_WORKERS
 
 
 def jobs_directory() -> Path:
@@ -35,7 +36,7 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
                cache_mib: int = DEFAULT_CACHE_MIB, resume_document: OcrDocument | None = None,
                visual_reader: Callable[[RoiFrame, EngineRead | None], VisualDecision] | None = None) -> OcrDocument:
     cache_bytes = cache_limit_bytes(cache_mib)
-    if (config.tracking_policy == "character-features-v1") != (visual_reader is not None):
+    if (config.tracking_policy in CHARACTER_TRACKING_WORKERS) != (visual_reader is not None):
         raise OcrError("OCR tracking reader does not match its saved policy")
     boundary = None
     if resume_document is not None:
@@ -125,7 +126,7 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
                        cache_root=cache_directory() if cache_mib else None, cache_mib=cache_mib,
                        resume_document=resume_document,
                        visual_reader=(lambda frame, raw: runtime.track(frame, config.line_selection.anchors[0], raw, check))
-                       if config.tracking_policy == "character-features-v1" and config.line_selection else None)
+                       if config.tracking_policy in CHARACTER_TRACKING_WORKERS and config.line_selection else None)
     finally:
         if latest is not None:
             metrics = runtime.metrics
@@ -135,8 +136,8 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
                 recognizer_attempts=metrics.started_inference_calls["rec"],
                 classifier_attempts=metrics.started_inference_calls["cls"], worker_inference_s=metrics.inference_s,
                 worker_process_wall_s=metrics.process_wall_s,
-                tracking_requests=metrics.tracking_requests if config.tracking_policy == "character-features-v1" else None,
-                visual_batches=metrics.visual_batches if config.tracking_policy == "character-features-v1" else None))
+                tracking_requests=metrics.tracking_requests if config.tracking_policy in CHARACTER_TRACKING_WORKERS else None,
+                visual_batches=metrics.visual_batches if config.tracking_policy in CHARACTER_TRACKING_WORKERS else None))
             checkpoint(latest)
     assert latest is not None
     return latest

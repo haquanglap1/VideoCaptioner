@@ -10,6 +10,11 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from .models import FrameSpan, OcrError, RoiFrame, VisualDecision
 
+CHARACTER_TRACKING_WORKERS = {
+    "character-features-v1": "ocr_tracking_worker.py",
+    "character-features-v2": "ocr_tracking_worker_v2.py",
+}
+
 
 @dataclass(frozen=True)
 class EdgeSignature:

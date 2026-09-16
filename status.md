@@ -1,5 +1,35 @@
 # Project Status
 
+## 2026-09-16 (Ưu tiên OCR/ASR: triển khai có giới hạn, quality gate chưa đạt)
+
+- P0 xác minh `62abaca`, index sạch, hai stash nguyên; source đúng SHA bàn giao.
+  Audit mới `.tools/ocr-asr-quality-20260916-201453/` giữ snapshot, manifests,
+  cases/coverage/run ledgers; holdout 74–94 s/140–162 s được khóa, chưa inference.
+- Thêm worker/policy OCR v2 riêng, chọn thử bằng `--tracking characters-v2`.
+  Sửa floor chiều cao ROI loại dòng 32 px; so hai frame liên tiếp cùng support
+  để giảm biên giả khi bbox đổi. V1/recognition bridge giữ nguyên byte; cache,
+  document identity và CLI/GUI resume phân biệt policy/worker. Chưa đổi mặc định.
+- Regression hình học fail trước sửa; replay 162 raw không inference giữ lại
+  hai candidate v1 loại nhầm. Final CLI D1 28,8–32,3 s: 2 cue, 6 request,
+  giữ caption 29,4–32,3 s liên tục. D2 57–63 s: 7 cue, 16 request, còn 1 empty
+  read nên exit5; còn chữ nền, split ngắn và thiếu chữ/dấu. Quality P1 chưa pass.
+- Chuẩn bị Qwen 1.7B pinned trong runtime audit riêng, không đổi environment app.
+  Đúng 3 recognition TXT trên WAV đối chứng D1–D3, 0 cache hit; D3 dùng filtered
+  dump Kim_Vocal_2 đã có. Còn khác chữ/lặp/phần cuối đáng ngờ: giữ raw/TXT,
+  không alignment, ghép timestamp Whisper, upload audio hoặc sweep model.
+- P3 dữ liệu thật: OCR D1 2 cue và Whisper baseline 33 cue giữ chữ/ms/IDs qua
+  table/handoff/undo và hai vòng editor save/reopen. D2 bị chặn xuất đúng.
+  GUI native mở app/màn nhận dạng/form OCR và đóng exit0; chưa hoàn tất thao tác
+  file/export/cancel/playback native, không nâng smoke này thành workflow pass.
+- Validation cuối: OCR/GUI **312 passed, 3 deselected**; ASR/CLI **243 passed**.
+  **3 integration test** feature model CPU thật trên synthetic glyphs pass;
+  cache/no-cache frame 30 s quyết định tương đương, 4 tracking/0 recognition mới.
+  Ruff pass; Pyright working tree 0 errors/0 warnings; translations/diff check pass.
+- Giữ guards/raw/checkpoint, không xóa cue ngắn hoặc giả review. Những candidate
+  hồi quy bị loại và giữ evidence. Whole-video/holdout inference/full offline/
+  build EXE NOT RUN vì P1/P2 chưa đạt; không dịch lại sáu câu Việt hoặc làm TTS.
+  Xem [kết quả, giới hạn và bước tiếp theo](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-16 (Clone giọng gốc, bổ sung thoại mẫu và sửa tách vocals)
 
 - User đánh giá giọng mẫu trước chưa hay, phát hiện thiếu thoại và yêu cầu

@@ -20,6 +20,7 @@ from videocaptioner.core.ocr.profile import OcrProfileSnapshot
 from videocaptioner.core.ocr.resume import validate_resume
 from videocaptioner.core.ocr.runtime import OcrRuntimeMissing
 from videocaptioner.core.ocr.service import jobs_directory, run_cpu_ocr
+from videocaptioner.core.ocr.tracking import CHARACTER_TRACKING_WORKERS
 
 
 def _paths(inputs: list[Path], destinations: list[str | None], protected: Path | None = None) -> None:
@@ -67,9 +68,11 @@ def run(args: Namespace, config: dict) -> int:
         output.error("OCR video not found.")
         return EXIT.FILE_NOT_FOUND
     root = Path(args.ocr_runtime) if args.ocr_runtime else default_runtime()
-    characters = getattr(args, "tracking", "edges") == "characters"
-    bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / (
-        "ocr_tracking_worker.py" if characters else "ocr_stream_worker.py")
+    mode = getattr(args, "tracking", "edges")
+    tracking = ("character-features-v2" if mode == "characters-v2" else
+                "character-features-v1" if mode == "characters" else "edge-tiles-ocr2-v1")
+    bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / CHARACTER_TRACKING_WORKERS.get(
+        tracking, "ocr_stream_worker.py")
     try:
         _validate_suffixes(args)
         if not args.output and not args.review:
@@ -89,7 +92,7 @@ def run(args: Namespace, config: dict) -> int:
                              hashlib.sha256(bridge.read_bytes()).hexdigest(), args.language,
                              profile_snapshot=OcrProfileSnapshot.from_bytes((root / "profile.json").read_bytes(),
                                                                             expected), line_selection=line_selection,
-                             tracking_policy="character-features-v1" if characters else "edge-tiles-ocr2-v1")
+                             tracking_policy=tracking)
     except OcrError as exc:
         output.error(str(exc))
         return EXIT.USAGE_ERROR
@@ -114,8 +117,8 @@ def resume_scan(args: Namespace, config: dict) -> int:
         _paths([source, saved, bridge], [args.review, args.output, args.report], root)
         document = OcrDocument.load(saved)
         validate_resume(document, document.config)
-        if not args.ocr_bridge and document.config.tracking_policy == "character-features-v1":
-            bridge = resources() / "ocr_tracking_worker.py"
+        if not args.ocr_bridge and document.config.tracking_policy in CHARACTER_TRACKING_WORKERS:
+            bridge = resources() / CHARACTER_TRACKING_WORKERS[document.config.tracking_policy]
             _paths([source, saved, bridge], [args.review, args.output, args.report], root)
     except (OSError, ValueError):
         output.error("Invalid or completed OCR checkpoint; preserve the input and choose a separate output.")

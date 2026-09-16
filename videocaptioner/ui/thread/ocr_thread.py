@@ -18,6 +18,7 @@ from videocaptioner.core.ocr.document import OcrCandidate, OcrDocument
 from videocaptioner.core.ocr.installation import inspect_installation
 from videocaptioner.core.ocr.models import Check, OcrError
 from videocaptioner.core.ocr.service import run_cpu_ocr
+from videocaptioner.core.ocr.tracking import CHARACTER_TRACKING_WORKERS
 
 
 class OcrWorker(QThread):
@@ -70,9 +71,9 @@ class OcrThread(OcrWorker):
                   else self.task.line_selection)
         tracking = (self.task.resume_document.config.tracking_policy if self.task.resume_document is not None
                     else self.task.tracking_policy)
-        bridge = (installation.bridge.with_name("ocr_tracking_worker.py") if tracking == "character-features-v1"
+        bridge = (installation.bridge.with_name(CHARACTER_TRACKING_WORKERS[tracking]) if tracking in CHARACTER_TRACKING_WORKERS
                   else installation.bridge)
-        bridge_sha = hashlib.sha256(bridge.read_bytes()).hexdigest() if tracking == "character-features-v1" else config.bridge_sha256
+        bridge_sha = hashlib.sha256(bridge.read_bytes()).hexdigest() if tracking in CHARACTER_TRACKING_WORKERS else config.bridge_sha256
         config = replace(config, line_selection=policy, tracking_policy=tracking, bridge_sha256=bridge_sha)
         if self.task.resume_document is not None:
             if config != self.task.resume_document.config:

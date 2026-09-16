@@ -50,7 +50,7 @@ class TaskFactory:
     @staticmethod
     def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000,
                         expected_source_sha256="", cache_mib=64, resume_document=None, line_selection=None,
-                        tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1"] = "edge-tiles-ocr2-v1") -> OcrTask:
+                        tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2"] = "edge-tiles-ocr2-v1") -> OcrTask:
         return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256,
                        cache_mib, resume_document, line_selection, tracking_policy)
 

@@ -130,6 +130,11 @@ Chế độ ổn định hiện hỗ trợ một vạch; hai dòng tiếp tục 
 (`--tracking edges`, mặc định). Checkpoint giữ đúng policy/worker đã dùng;
 resume không tự chuyển mode. Worker OCR cũ được giữ để tiếp tục dữ liệu cũ.
 
+CLI có lựa chọn thử nghiệm `--tracking characters-v2` cho dòng nhỏ trong ROI có
+nhiều khoảng đệm và bbox thay đổi theo frame. Chưa thay mặc định vì các ca chữ nền,
+caption ngắn và thiếu dấu vẫn còn lỗi; xem [kết quả quality-first](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+Checkpoint v1/v2 tiếp tục dùng đúng policy và worker đã lưu.
+
 Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và xuất JSON/SRT ngay
 khi quét xong, **không cần duyệt từng câu hoặc có bản chữ gốc**. Có thể lưu thêm
 `ocr-document-v1` bằng `--checkpoint` để mở lại hoặc tiếp tục khi bị hủy.
