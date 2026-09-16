@@ -192,7 +192,7 @@ class FasterWhisperASR(BaseASR):
             cmd.extend(["--vad_filter", "false"])
 
         # Vocal separation
-        if self.ff_mdx_kim2 and self.faster_whisper_program.startswith(
+        if self.ff_mdx_kim2 and Path(self.faster_whisper_program).stem.lower().startswith(
             "faster-whisper-xxl"
         ):
             cmd.append("--ff_mdx_kim2")

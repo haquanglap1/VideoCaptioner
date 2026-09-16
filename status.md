@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-09-16 (Clone giọng gốc, bổ sung thoại mẫu và sửa tách vocals)
+
+- User đánh giá giọng mẫu trước chưa hay, phát hiện thiếu thoại và yêu cầu
+  clone nhân vật. Kiểm lại: mẫu cũ chỉ dùng ba câu dù ASR đã có cue tiếp theo;
+  đồng thời text ASR cue đó sai. Mở rộng mẫu 107–126 s, đối chiếu 16 frame/
+  38 crop OCR và ASR riêng; có sáu lượt thoại, không gọi là đủ toàn video.
+- Cùng clip 19 s: native large-v3/CUDA/VAD cho 5 cue trên audio gốc; tách
+  vocals bằng Kim_Vocal_2 đã có rồi ASR cho 6 cue, lấy lại câu bị bỏ. Còn
+  khác biệt chữ với caption; không giả raw hoặc ground truth người nghe.
+- Clone OmniVoice từ reference vocals gốc riêng từng vai: đệ tử 3,69 s,
+  sư phụ 6,10 s. Sáu WAV mới/0 cache hit/1×, delay lớn nhất 451 ms. Video
+  19 s/sáu cue Việt sạch tag/decode pass; giống giọng/tự nhiên chờ user nghe.
+  Role mapping thủ công, chưa là pipeline diarization/voice routing tự động.
+- Sửa option vocals bị bỏ qua khi executable có đường dẫn đầy đủ: kiểm tên
+  XXL thay vì prefix toàn path; cache có/không vocals tự tách theo command.
+  Regression trước sửa 3 fail/2 pass, sau sửa ASR gần code + CLI **162 pass**;
+  Ruff/Pyright 0/0/translations/diff check pass. Không bật mặc định, không
+  đổi guard OCR hoặc checkpoint cũ. Không build/smoke GUI/EXE mới.
+- Source CLI thực trên đoạn 2,8 s xác nhận option vocals được chuyển tới
+  executable thật và xuất một cue/exit0; không chỉ kiểm command bằng mock.
+  Text clip ngắn vẫn sai/lặp, không dùng cho mẫu và không gọi quality pass.
+- Evidence ở `.tools/bv1gf-clone-20260916-174613/`; bàn giao
+  `work-dir/BV1GFbk6LEVm-cloned-20260916-174613/`. Xem [chi tiết và giới hạn](docs/dev/character-clone-vocals-2026-09.md).
+
 ## 2026-09-16 (Mẫu C/D, giữ ranh giới người nói và probe OCR/ASR ngắn)
 
 - Tiếp tục từ `7e2cb10`, working tree sạch; kiểm đúng SHA video đã có và giữ
