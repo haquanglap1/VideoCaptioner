@@ -1,7 +1,8 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
-Đã bắt đầu triển khai P0–P4 từ plan local
-`docs/plans/ocr-asr-quality-first-2026-09.md` của phiên trước.
+Đã bắt đầu triển khai P0–P4 từ
+[plan ưu tiên OCR/ASR](../plans/ocr-asr-quality-first-2026-09.md) của phiên trước.
+Tiếp tục bằng [prompt bàn giao](../plans/ocr-asr-quality-next-session-2026-09.md).
 **Nhận dạng chưa đạt nghiệm thu; chưa chuyển sang dịch/TTS.** Không dùng số cue,
 exit code hoặc output tồn tại để thay cho đánh giá chất lượng.
 
