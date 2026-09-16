@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from videocaptioner.core.asr.asr_data import ASRData
+from videocaptioner.core.asr.audio_identity import AudioIdentity
+from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
 from videocaptioner.core.entities import SubtitleLayoutEnum, SupportedSubtitleFormats
+from videocaptioner.core.ocr.identity import VisualSourceIdentity
+from videocaptioner.core.ocr.metadata import OcrMetadata, merge_ocr_metadata, merged_cue_id
+from videocaptioner.core.translate.conversation import ConversationContext
 
 SubtitleTable = Dict[str, Dict[str, Any]]
 
@@ -43,12 +48,27 @@ def merge_rows(data: SubtitleTable, rows: Sequence[int]) -> SubtitleTable:
     if first < 0 or last >= len(items):
         raise IndexError(f"rows {rows} outside table of {len(items)} items")
     span = items[first : last + 1]
+    ocr = merge_ocr_metadata([OcrMetadata.from_dict(item.get("ocr_metadata")) for item in span])
+    metadata = [ASRMetadata.from_dict(item.get("asr_metadata")) for item in span]
+    if any(not item.same_source(metadata[0]) if item is not None else metadata[0] is not None for item in metadata):
+        raise ValueError("Cannot merge different speakers or ASR sources; review required.")
     merged = {
         "start_time": span[0]["start_time"],
         "end_time": span[-1]["end_time"],
         "original_subtitle": " ".join(item["original_subtitle"] for item in span),
         "translated_subtitle": " ".join(item["translated_subtitle"] for item in span),
     }
+    if metadata[0] is not None:
+        combined = metadata[0]
+        for item in metadata[1:]:
+            if item is not None:
+                combined = combined.with_tokens_from(item)
+        merged["asr_metadata"] = combined.to_dict()
+        merged["end_time"] = max(item["end_time"] for item in span)
+    if ocr is not None:
+        merged["ocr_metadata"] = ocr.to_dict()
+        merged["cue_id"] = merged_cue_id([item.get("cue_id", "") for item in span])
+        merged["end_time"] = max(item["end_time"] for item in span)
     return renumber(items[:first] + [merged] + items[last + 1 :])
 
 
@@ -120,9 +140,17 @@ def export_subtitle(
     path: str,
     layout: SubtitleLayoutEnum,
     style: Optional[str] = None,
+    *, events: Optional[List[ASRAudioEvent]] = None, context: Optional[ConversationContext] = None,
+    audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False,
+    visual_source: Optional[VisualSourceIdentity] = None,
 ) -> None:
     """Write the table to ``path``; ``.ass`` uses ``style`` (ASS style block)."""
     asr_data = ASRData.from_json(data)
+    asr_data.events = list(events or [])
+    asr_data.conversation_context = context or ConversationContext()
+    asr_data.audio_identity = audio_identity
+    asr_data.visual_source = visual_source
+    asr_data.pending_diarization = pending_diarization
     if path.lower().endswith(".ass"):
         asr_data.to_ass(style, layout, path)
     else:
@@ -152,12 +180,18 @@ def reexport_pipeline_outputs(
     video_path: Optional[str],
     layout: SubtitleLayoutEnum,
     style: Optional[str] = None,
+    *, document: Optional[ASRData] = None,
 ) -> List[str]:
     """Re-save pipeline outputs with a new layout. Returns paths written."""
     written: List[str] = []
     for target in pipeline_reexport_targets(output_path, video_path):
         try:
-            export_subtitle(data, target, layout, style)
+            export_subtitle(data, target, layout, style,
+                            events=document.events if document else None,
+                            context=document.conversation_context if document else None,
+                            audio_identity=document.audio_identity if document else None,
+                            visual_source=document.visual_source if document else None,
+                            pending_diarization=document.pending_diarization if document else False)
         except Exception:
             continue
         written.append(target)
@@ -172,12 +206,26 @@ def task_folder(output_path: Optional[str], subtitle_path: str) -> str:
 
 
 def write_editor_handoff(
-    data: SubtitleTable, handoff_dir: Path, task_id: str, video_path: str
+    data: SubtitleTable, handoff_dir: Path, task_id: str, video_path: str,
+    *, events: Optional[List[ASRAudioEvent]] = None,
+    context: Optional[ConversationContext] = None,
+    audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False,
+    visual_source: Optional[VisualSourceIdentity] = None,
 ) -> Path:
     """Persist the current table as SRT for the Video Editor without touching
     the task's source subtitle file."""
     handoff_dir.mkdir(parents=True, exist_ok=True)
     name = task_id or Path(video_path).stem
-    target = handoff_dir / f"{name}.srt"
-    ASRData.from_json(data).to_srt(save_path=str(target))
+    asr_data = ASRData.from_json(data)
+    asr_data.events = list(events or [])
+    asr_data.conversation_context = context or ConversationContext()
+    asr_data.audio_identity = audio_identity
+    asr_data.visual_source = visual_source
+    asr_data.pending_diarization = pending_diarization
+    # JSON preserves existing IDs; legacy tables without any association can still use SRT.
+    keep_ids = any(item.get("cue_id") for item in data.values())
+    extension = "json" if (asr_data.has_metadata or asr_data.conversation_context.enabled or keep_ids
+                           or audio_identity or pending_diarization) else "srt"
+    target = handoff_dir / f"{name}.{extension}"
+    asr_data.save(str(target))
     return target

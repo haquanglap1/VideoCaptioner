@@ -1,6 +1,6 @@
 import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from videocaptioner.config import MODEL_PATH
 from videocaptioner.core.dubbing.config import (
@@ -18,17 +18,22 @@ from videocaptioner.core.entities import (
     DubbingTask,
     FullProcessTask,
     LLMServiceEnum,
+    OcrTask,
     SubtitleConfig,
+    SubtitleLayoutEnum,
     SubtitleTask,
     SynthesisConfig,
     SynthesisTask,
     TranscribeConfig,
+    TranscribeModelEnum,
     TranscribeTask,
     TranscriptAndSubtitleTask,
 )
 from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.tts.tts_data import TTSConfig
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.common.local_asr_settings import local_config
+from videocaptioner.ui.common.native_asr_settings import native_config
 
 # Ngôn ngữ đích dùng chữ Hán/kana — không được lọc CJK trước khi gọi TTS.
 _CJK_TARGET_LANGUAGES = {
@@ -40,7 +45,14 @@ _CJK_TARGET_LANGUAGES = {
 
 
 class TaskFactory:
-    """任务工厂类，用于创建各种类型的任务"""
+    """Create typed tasks from UI settings."""
+
+    @staticmethod
+    def create_ocr_task(file_path, roi, selection, runtime_path="", max_requests=1000,
+                        expected_source_sha256="", cache_mib=64, resume_document=None, line_selection=None,
+                        tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1"] = "edge-tiles-ocr2-v1") -> OcrTask:
+        return OcrTask(file_path, roi, selection, runtime_path, max_requests, expected_source_sha256,
+                       cache_mib, resume_document, line_selection, tracking_policy)
 
     @staticmethod
     def get_ass_style(style_name: str) -> str:
@@ -91,18 +103,30 @@ class TaskFactory:
             need_word_time_stamp = False
             output_path = str(Path(file_path).parent / f"{file_name}.srt")
 
+        engine = cfg.transcribe_model.value
+        language = LANGUAGES[cfg.transcribe_language.value.value]
+        if engine == TranscribeModelEnum.QWEN_LOCAL and not language:
+            # The Qwen settings page explicitly labels this Chinese-only GUI preset.
+            language = "zh"
+        if engine in (TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE, TranscribeModelEnum.QWEN_LOCAL):
+            # Native segmentation consumes sentence spans; split does not request strict word output.
+            need_word_time_stamp = False
         config = TranscribeConfig(
             transcribe_model=cfg.transcribe_model.value,
-            transcribe_language=LANGUAGES[cfg.transcribe_language.value.value],
+            transcribe_language=language,
             need_word_time_stamp=need_word_time_stamp,
             output_format=cfg.transcribe_output_format.value,
             # Whisper Cpp 配置
             whisper_model=cfg.whisper_model.value,
             # Whisper API 配置
+            native_asr=native_config(cfg),
+            local_asr=local_config(),
             whisper_api_key=cfg.whisper_api_key.value,
             whisper_api_base=cfg.whisper_api_base.value,
             whisper_api_model=cfg.whisper_api_model.value,
             whisper_api_prompt=cfg.whisper_api_prompt.value,
+            whisper_api_provider=cfg.whisper_api_provider.value,
+            whisper_api_request_profile=cfg.whisper_api_request_profile.value,
             # Faster Whisper 配置
             faster_whisper_program=cfg.faster_whisper_program.value,
             faster_whisper_model=cfg.faster_whisper_model.value,
@@ -200,6 +224,7 @@ class TaskFactory:
             need_translate=cfg.need_translate.value,
             need_optimize=cfg.need_optimize.value,
             thread_num=cfg.thread_num.value,
+            llm_request_timeout=cfg.llm_request_timeout.value,
             batch_size=cfg.batch_size.value,
             # 字幕布局、样式
             subtitle_layout=cfg.subtitle_layout.value,  # Now returns SubtitleLayoutEnum
@@ -232,6 +257,7 @@ class TaskFactory:
         subtitle_path: str,
         need_next_task: bool = False,
         task_id: Optional[str] = None,
+        input_subtitle_layout: Optional[SubtitleLayoutEnum] = None,
     ) -> SynthesisTask:
         """Create a video synthesis task."""
         output_path = str(
@@ -256,6 +282,7 @@ class TaskFactory:
             subtitle_path=subtitle_path,
             output_path=output_path,
             synthesis_config=config,
+            input_subtitle_layout=input_subtitle_layout,
             need_next_task=need_next_task,
         )
         if task_id:
@@ -323,6 +350,7 @@ class TaskFactory:
             "minimax": TTSProviderEnum.MINIMAX,
             "local_ai": TTSProviderEnum.LOCAL_AI,
             "vieneu-local": TTSProviderEnum.VIENEU_LOCAL,
+            "omnivoice-local": TTSProviderEnum.OMNIVOICE_LOCAL,
         }
         tts_provider = provider_map.get(
             cfg.dubbing_tts_provider.value, TTSProviderEnum.OPENAI
@@ -386,9 +414,14 @@ class TaskFactory:
         # đích chính là CJK — nếu không mọi câu sẽ bị xóa trắng.
         strip_cjk = cfg.target_language.value not in _CJK_TARGET_LANGUAGES
 
+        from videocaptioner.core.tts.omnivoice.config import OmniVoiceOptions
+
         return DubbingConfig(
             tts_provider=tts_provider,
             tts_config=tts_config,
+            omnivoice=OmniVoiceOptions(runtime=cfg.omnivoice_runtime.value,
+                reference_audio=cfg.omnivoice_reference_audio.value, reference_text=cfg.omnivoice_reference_text.value,
+                language=cfg.omnivoice_language.value) if tts_provider == TTSProviderEnum.OMNIVOICE_LOCAL else OmniVoiceOptions(),
             mix_mode=mix_mode,
             original_volume=cfg.dubbing_original_volume.value / 100.0,
             voice_volume=cfg.dubbing_voice_volume.value / 100.0,
@@ -397,11 +430,13 @@ class TaskFactory:
             text_source=DubbingTextSource(cfg.dubbing_text_source.value),
             timing_mode=DubbingTimingMode(cfg.dubbing_timing_mode.value),
             natural_max_speed=cfg.dubbing_natural_max_speed.value / 100.0,
+            max_start_delay_ms=cfg.dubbing_max_start_delay_ms.value,
             rewrite_enabled=cfg.dubbing_timing_rewrite.value,
             cache_enabled=cfg.dubbing_tts_cache.value,
             unresolved_policy=UnresolvedFitPolicy(cfg.dubbing_unresolved_policy.value),
             target_language=str(cfg.target_language.value.value),
             rewrite_model=rewrite_model,
+            rewrite_timeout=cfg.llm_request_timeout.value,
             rewrite_api_key=rewrite_key,
             rewrite_api_base=rewrite_base,
             strip_cjk=strip_cjk,
@@ -414,6 +449,7 @@ class TaskFactory:
         subtitle_path: str,
         task_id: Optional[str] = None,
         display_subtitle_path: Optional[str] = None,
+        cache_root: Optional[str] = None,
     ) -> DubbingTask:
         """Tạo dubbing task."""
         output_path = str(
@@ -428,6 +464,7 @@ class TaskFactory:
             display_subtitle_path=display_subtitle_path or subtitle_path,
             output_path=output_path,
             dubbing_config=dubbing_config,
+            cache_root=cache_root,
         )
         if task_id:
             task.task_id = task_id

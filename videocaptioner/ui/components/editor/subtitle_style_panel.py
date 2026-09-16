@@ -24,6 +24,7 @@ from .fonts import load_editor_fonts
 
 class SubtitleStylePanel(QScrollArea):
     applyRequested = pyqtSignal(dict)
+    presetRequested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,6 +60,14 @@ class SubtitleStylePanel(QScrollArea):
         form = QFormLayout()
         form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        self.preset_combo = QComboBox(content)
+        self.preset_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.preset_button = PushButton(self.tr("Load"), content)
+        self.preset_button.clicked.connect(
+            lambda: self.presetRequested.emit(self.preset_combo.currentText())
+        )
+        form.addRow(self.tr("Preset"), self.preset_combo)
+        form.addRow(self.preset_button)
         self.font_combo = QFontComboBox(content)
         self.font_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.font_combo.setMinimumWidth(0)
@@ -78,7 +87,7 @@ class SubtitleStylePanel(QScrollArea):
         self.spacing_spin = QDoubleSpinBox(content)
         for spin in (self.outline_width_spin, self.spacing_spin):
             spin.setRange(0, 20)
-            spin.setDecimals(1)
+            spin.setDecimals(3)
             spin.setSingleStep(0.5)
         form.addRow(self.tr("Outline width"), self.outline_width_spin)
         form.addRow(self.tr("Letter spacing"), self.spacing_spin)
@@ -109,6 +118,26 @@ class SubtitleStylePanel(QScrollArea):
             spin.setRange(0, 300)
             self.margin_spins[name] = spin
             form.addRow(label, spin)
+        self.background_check = QCheckBox(self.tr("Background box"), content)
+        form.addRow(self.background_check)
+        self.bg_color_edit = LineEdit(content)
+        self.bg_color_edit.setPlaceholderText("#RRGGBB")
+        form.addRow(self.tr("Box color"), self.bg_color_edit)
+        self.bg_opacity_spin = QDoubleSpinBox(content)
+        self.bg_opacity_spin.setRange(0, 1)
+        self.bg_opacity_spin.setDecimals(3)
+        self.bg_opacity_spin.setSingleStep(0.05)
+        form.addRow(self.tr("Box opacity"), self.bg_opacity_spin)
+        for name, label in (
+            ("corner_radius", self.tr("Corner radius")),
+            ("padding_h", self.tr("Horizontal padding")),
+            ("padding_v", self.tr("Vertical padding")),
+        ):
+            spin = QSpinBox(content)
+            spin.setRange(0, 400)
+            setattr(self, name + "_spin", spin)
+            form.addRow(label, spin)
+        self.background_check.toggled.connect(self._update_background_controls)
         layout.addLayout(form)
         self.apply_button = PrimaryPushButton(self.tr("Apply"), content)
         self.apply_button.clicked.connect(lambda: self.applyRequested.emit(self.values()))
@@ -123,6 +152,22 @@ class SubtitleStylePanel(QScrollArea):
         self.setEnabled(False)
 
     def set_style(self, style: EditorSubtitleStyle) -> None:
+        self._style = style
+        self.font_size_spin.setRange(
+            1 if style.reference_height == 0 else 8, 8000 if style.reference_height == 0 else 200
+        )
+        for spin in self.margin_spins.values():
+            spin.setRange(0, 16000 if style.reference_height == 0 else 300)
+        for spin in (self.outline_width_spin, self.spacing_spin):
+            spin.setMaximum(800 if style.reference_height == 0 else 20)
+        for name in ("corner_radius", "padding_h", "padding_v"):
+            spin = getattr(self, name + "_spin")
+            spin.setMaximum(8000 if style.reference_height == 0 else 400)
+            spin.setValue(getattr(style, name))
+        self.background_check.setChecked(style.background)
+        self.bg_color_edit.setText(style.bg_color)
+        self.bg_opacity_spin.setValue(style.bg_opacity)
+        self._update_background_controls(style.background)
         # Keep unavailable font names intact when loading a project from another machine.
         self.font_combo.setEditText(style.font_name)
         self.font_combo.lineEdit().setCursorPosition(0)
@@ -138,6 +183,7 @@ class SubtitleStylePanel(QScrollArea):
 
     def values(self) -> dict:
         return {
+            **self._style.to_dict(),
             "font_name": self.font_combo.currentText(),
             "font_size": self.font_size_spin.value(),
             "bold": self.bold_check.isChecked(),
@@ -147,4 +193,29 @@ class SubtitleStylePanel(QScrollArea):
             "spacing": self.spacing_spin.value(),
             "alignment": self.alignment_combo.currentData(),
             **{name: spin.value() for name, spin in self.margin_spins.items()},
+            "background": self.background_check.isChecked(),
+            "bg_color": self.bg_color_edit.text(),
+            "bg_opacity": self.bg_opacity_spin.value(),
+            **{
+                name: getattr(self, name + "_spin").value()
+                for name in ("corner_radius", "padding_h", "padding_v")
+            },
         }
+
+    def _update_background_controls(self, enabled: bool) -> None:
+        for widget in (
+            self.bg_color_edit,
+            self.bg_opacity_spin,
+            self.corner_radius_spin,
+            self.padding_h_spin,
+            self.padding_v_spin,
+        ):
+            widget.setEnabled(enabled)
+
+    def set_presets(self, names: list[str]) -> None:
+        current = self.preset_combo.currentText()
+        self.preset_combo.clear()
+        self.preset_combo.addItems(names)
+        if current in names:
+            self.preset_combo.setCurrentText(current)
+        self.preset_button.setEnabled(bool(names))

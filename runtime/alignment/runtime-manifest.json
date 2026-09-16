@@ -1,0 +1,14 @@
+{
+  "protocol": "alignment-v1",
+  "policy": "strict-raw-v1",
+  "python_version": "3.12",
+  "qwen_asr_version": "0.0.6",
+  "model_repository": "Qwen/Qwen3-ForcedAligner-0.6B",
+  "model_revision": "c7cbfc2048c462b0d63a45797104fc9db3ad62b7",
+  "model_license": "Apache-2.0",
+  "max_audio_ms": 300000,
+  "chunk_ms": 240000,
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attention": "sdpa"
+}

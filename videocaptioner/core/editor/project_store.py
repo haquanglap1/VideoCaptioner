@@ -77,6 +77,11 @@ class EditorProjectStore:
         project.height = int(height)
         project.fps = float(fps)
         project.cues = cues
+        project.audio_events = list(asr_data.events)
+        project.conversation_context = asr_data.conversation_context
+        project.audio_identity = asr_data.audio_identity
+        project.visual_source = asr_data.visual_source
+        project.pending_diarization = asr_data.pending_diarization
         project.validate_all_cues()
         project.is_dirty = False
         return project
@@ -172,6 +177,16 @@ class EditorProjectStore:
         destination = Path(ass_path).resolve()
         if destination.suffix.lower() != ".ass":
             raise ValueError("Explicit ASS export requires an .ass destination")
+        if style_str is None and project.subtitle_style.uses_shared_layout:
+            from .subtitle_style import build_editor_ass, frame_size
+
+            width, height = frame_size(project.width, project.height)
+            content = build_editor_ass(
+                [(cue.start_ms, cue.end_ms, cue.display_text) for cue in project.cues],
+                project.subtitle_style, width, height,
+            )
+            self._atomic_write(destination, content)
+            return str(destination)
         width, height = project.subtitle_style.reference_resolution(project.width, project.height)
         content = project_to_asr(project, display_only=True).to_ass(
             style_str=style_str if style_str is not None else project.subtitle_style.to_ass_string(),

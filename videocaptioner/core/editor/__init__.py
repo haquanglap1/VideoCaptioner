@@ -12,6 +12,7 @@ from .models import (
     TimelineIndex,
 )
 from .project_store import EditorProjectStore
+from .subtitle_style import EditorSubtitleStyle
 
 __all__ = [
     "EDITOR_PROJECT_SCHEMA",
@@ -21,6 +22,7 @@ __all__ = [
     "EditorLayerKind",
     "EditorProject",
     "EditorProjectStore",
+    "EditorSubtitleStyle",
     "EditorTrack",
     "EditorTrackKind",
     "TimelineIndex",

@@ -48,6 +48,9 @@ class DubbingReportDialog(MessageBoxBase):
             self.tr("Lần thử"),
             self.tr("Hành động"),
             self.tr("Trạng thái / cảnh báo"),
+            self.tr("Giờ đọc thực tế"),
+            self.tr("Độ trễ"),
+            self.tr("Tăng tốc thêm"),
         ]
         groups = data.get("groups", [])
         self.table = TableWidget(self)
@@ -73,6 +76,10 @@ class DubbingReportDialog(MessageBoxBase):
                 " | ".join(
                     [group.get("fit_status", ""), *group.get("warnings", [])]
                 ),
+                (f"{group['playback_start_time']:.2f}-{group['playback_end_time']:.2f}s"
+                 if group.get("playback_start_time") is not None and group.get("playback_end_time") is not None else "—"),
+                f"{float(group.get('start_delay', 0)):.2f}s",
+                f"{float(group.get('applied_speed', 1)):.2f}x",
             ]
             for column, value in enumerate(values):
                 self.table.setItem(row, column, QTableWidgetItem(str(value)))

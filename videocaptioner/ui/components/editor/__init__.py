@@ -2,6 +2,7 @@
 
 from .layer_inspector import LayerInspector
 from .subtitle_inspector import SubtitleInspector
+from .subtitle_style_panel import SubtitleStylePanel
 from .timeline_view import EditorTimelineView
 from .track_header import EditorTrackHeader
 from .video_preview import EditorVideoPreview
@@ -12,4 +13,5 @@ __all__ = [
     "EditorVideoPreview",
     "LayerInspector",
     "SubtitleInspector",
+    "SubtitleStylePanel",
 ]

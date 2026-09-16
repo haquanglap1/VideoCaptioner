@@ -21,6 +21,7 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 
 from videocaptioner.config import AUTHOR, RELEASE_URL, VERSION, YEAR
+from videocaptioner.core.asr.api_profiles import MODEL_SUGGESTIONS
 from videocaptioner.core.constant import (
     INFOBAR_DURATION_ERROR,
     INFOBAR_DURATION_SUCCESS,
@@ -32,7 +33,6 @@ from videocaptioner.core.entities import (
     TranslatorServiceEnum,
     enum_from_display,
 )
-from videocaptioner.core.llm import check_whisper_connection
 from videocaptioner.core.llm.check_llm import check_llm_connection, get_available_models
 from videocaptioner.core.llm.services import (
     LLM_SERVICE_PRESETS,
@@ -44,6 +44,8 @@ from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
 from videocaptioner.ui.components.EditComboBoxSettingCard import EditComboBoxSettingCard
 from videocaptioner.ui.components.LineEditSettingCard import LineEditSettingCard
+from videocaptioner.ui.components.WhisperProfileCards import WhisperProfileCards
+from videocaptioner.ui.thread.whisper_connection_thread import WhisperConnectionThread
 
 
 class SettingInterface(ScrollArea):
@@ -95,6 +97,10 @@ class SettingInterface(ScrollArea):
 
         # ASR service card
         self.__createASRServiceCards()
+
+        for controls in self.nativeASRCards.values():
+            for card in controls.cards:
+                self.transcribeGroup.addSettingCard(card)
 
         # LLM cards
         self.__createLLMServiceCards()
@@ -350,6 +356,10 @@ class SettingInterface(ScrollArea):
         self.fasterWhisperManagerCard.setVisible(False)
 
         # API Base URL
+        self.whisperProfileCards = WhisperProfileCards(self.transcribeGroup)
+        self.whisperProfileCards.provider.setVisible(False)
+        self.whisperProfileCards.profile.setVisible(False)
+        self.whisperProfileCards.alignment.setVisible(False)
         self.whisperApiBaseCard = LineEditSettingCard(
             cfg.whisper_api_base,
             FIF.LINK,
@@ -375,10 +385,7 @@ class SettingInterface(ScrollArea):
             FIF.ROBOT,  # type: ignore
             self.tr("Whisper 模型"),
             self.tr("选择 Whisper 模型"),
-            [
-                "whisper-1",
-                "whisper-large-v3-turbo",
-            ],
+            MODEL_SUGGESTIONS,
             self.transcribeGroup,
         )
 
@@ -390,6 +397,15 @@ class SettingInterface(ScrollArea):
             self.tr("点击测试 API 连接是否正常"),
             self.transcribeGroup,
         )
+
+        from videocaptioner.ui.components.NativeASRSettingWidget import NativeASRCards
+
+        self.nativeASRCards = {name: NativeASRCards(name, self.transcribeGroup) for name in ("soniox", "scribe")}
+        from videocaptioner.ui.components.local_asr_cards import LocalASRCards
+        self.localASRCards = LocalASRCards(self.transcribeGroup)
+        for controls in self.nativeASRCards.values():
+            for card in controls.cards:
+                card.setVisible(False)
 
         # Whisper API cards start hidden; shown only when Whisper API is selected
         self.whisperApiBaseCard.setVisible(False)
@@ -453,6 +469,16 @@ class SettingInterface(ScrollArea):
         )
 
         # Add the cards to the translation service group
+        self.requestTimeoutCard = RangeSettingCard(
+            cfg.llm_request_timeout, FIF.SPEED_HIGH,
+            self.tr("Translation request timeout (seconds)"),
+            self.tr("Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges."),
+            parent=self.translate_serviceGroup,
+        )
+        self.translate_serviceGroup.addSettingCard(self.requestTimeoutCard)
+        self.requestTimeoutCard.contentLabel.setWordWrap(True)
+        self.requestTimeoutCard.contentLabel.setFixedHeight(40)
+        self.requestTimeoutCard.setMinimumHeight(100)
         self.translate_serviceGroup.addSettingCard(self.translatorServiceCard)
         self.translate_serviceGroup.addSettingCard(self.needReflectTranslateCard)
         self.translate_serviceGroup.addSettingCard(self.deeplxEndpointCard)
@@ -510,12 +536,21 @@ class SettingInterface(ScrollArea):
 
         # Transcription cards
         self.transcribeGroup.addSettingCard(self.transcribeModelCard)
+        for card in self.localASRCards.cards:
+            self.transcribeGroup.addSettingCard(card)
         self.transcribeGroup.addSettingCard(self.fasterWhisperManagerCard)
         # Whisper API cards
+        self.transcribeGroup.addSettingCard(self.whisperProfileCards.provider)
+        self.transcribeGroup.addSettingCard(self.whisperProfileCards.profile)
+        self.transcribeGroup.addSettingCard(self.whisperProfileCards.alignment)
         self.transcribeGroup.addSettingCard(self.whisperApiBaseCard)
         self.transcribeGroup.addSettingCard(self.whisperApiKeyCard)
         self.transcribeGroup.addSettingCard(self.whisperApiModelCard)
         self.transcribeGroup.addSettingCard(self.checkWhisperConnectionCard)
+
+        for controls in self.nativeASRCards.values():
+            for card in controls.cards:
+                self.transcribeGroup.addSettingCard(card)
 
         # LLM cards
         self.llmGroup.addSettingCard(self.llmServiceCard)
@@ -822,6 +857,7 @@ class SettingInterface(ScrollArea):
 
     def __onTranslatorServiceChanged(self, service):
         openai_cards = [
+            self.requestTimeoutCard,
             self.needReflectTranslateCard,
             self.batchSizeCard,
         ]
@@ -852,6 +888,9 @@ class SettingInterface(ScrollArea):
         """Handle the transcription model changing."""
         # Whisper API cards
         whisper_api_cards = [
+            self.whisperProfileCards.provider,
+            self.whisperProfileCards.profile,
+            self.whisperProfileCards.alignment,
             self.whisperApiBaseCard,
             self.whisperApiKeyCard,
             self.whisperApiModelCard,
@@ -864,7 +903,14 @@ class SettingInterface(ScrollArea):
             current = enum_from_display(TranscribeModelEnum, model_name, self.tr)
         except ValueError:
             current = None
+        for name, controls in self.nativeASRCards.items():
+            selected = TranscribeModelEnum.SONIOX if name == "soniox" else TranscribeModelEnum.SCRIBE
+            for card in controls.cards:
+                card.setVisible(current is selected)
         is_whisper_api = current is TranscribeModelEnum.WHISPER_API
+        is_qwen = current is TranscribeModelEnum.QWEN_LOCAL
+        for card in self.localASRCards.cards:
+            card.setVisible(is_qwen or is_whisper_api and card in (self.localASRCards.diarize, self.localASRCards.manager, self.localASRCards.timeout))
         self.fasterWhisperManagerCard.setVisible(
             current is TranscribeModelEnum.FASTER_WHISPER
         )
@@ -918,7 +964,8 @@ class SettingInterface(ScrollArea):
 
         # Create and start the test thread
         self.whisper_connection_thread = WhisperConnectionThread(
-            base_url, api_key, model
+            base_url, api_key, model, cfg.whisper_api_provider.value,
+            cfg.whisper_api_request_profile.value,
         )
         self.whisper_connection_thread.finished.connect(
             self.onWhisperConnectionCheckFinished
@@ -959,29 +1006,6 @@ class SettingInterface(ScrollArea):
             duration=INFOBAR_DURATION_ERROR,
             parent=self,
         )
-
-
-class WhisperConnectionThread(QThread):
-    """Whisper API connection test thread."""
-
-    finished = pyqtSignal(bool, str)
-    error = pyqtSignal(str)
-
-    def __init__(self, base_url, api_key, model):
-        super().__init__()
-        self.base_url = base_url
-        self.api_key = api_key
-        self.model = model
-
-    def run(self):
-        """Run the connection test."""
-        try:
-            success, result = check_whisper_connection(
-                self.base_url, self.api_key, self.model
-            )
-            self.finished.emit(success, result)
-        except Exception as e:
-            self.error.emit(str(e))
 
 
 class LLMConnectionThread(QThread):

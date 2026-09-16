@@ -66,6 +66,12 @@ def _ensure_standard_streams() -> None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    # Redirected/inherited streams may already exist with a Windows ANSI codec.
+    # CLI help and diagnostics contain Unicode even before argument dispatch.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 def _prepare_cli_streams() -> None:

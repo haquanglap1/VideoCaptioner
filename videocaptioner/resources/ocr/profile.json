@@ -1,0 +1,64 @@
+{
+  "schema": "ocr-pilot-profile-v1",
+  "id": "ppocrv5-mobile-det-server-rec-cpu-v1",
+  "packages": {"rapidocr": "3.9.2", "onnxruntime": "1.29.0"},
+  "models": {
+    "det": {
+      "file": "ch_PP-OCRv5_det_mobile.onnx",
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx",
+      "sha256": "4d97c44a20d30a81aad087d6a396b08f786c4635742afc391f6621f5c6ae78ae"
+    },
+    "rec": {
+      "file": "ch_PP-OCRv5_rec_server.onnx",
+      "url": "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2/onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_server.onnx",
+      "sha256": "e09385400eaaaef34ceff54aeb7c4f0f1fe014c27fa8b9905d4709b65746562a"
+    },
+    "cls": {
+      "file": "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+      "bundled": true,
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+      "note": "RapidOCR constructs this bundled session even with classification disabled; zero classification inference calls."
+    }
+  },
+  "dictionary": "ONNX rec custom_metadata_map.character; splitlines, append space, prepend CTC blank; export and hash before inference",
+  "dictionary_count": 18383,
+  "dictionary_sha256": "02c0a0121c577dfa211f11de21084e3abd23478a77ea4fbdf71ee7a3e990a717",
+  "params": {
+    "Global.text_score": 0.0,
+    "Global.use_det": true,
+    "Global.use_rec": true,
+    "Global.use_cls": false,
+    "Global.use_preprocess_img": false,
+    "Global.use_vertical_padding": true,
+    "Global.min_height": 30,
+    "Global.width_height_ratio": 8,
+    "Global.return_word_box": false,
+    "Global.return_single_char_box": false,
+    "Global.log_level": "error",
+    "EngineConfig.onnxruntime.intra_op_num_threads": 4,
+    "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+    "EngineConfig.onnxruntime.enable_cpu_mem_arena": false,
+    "EngineConfig.onnxruntime.use_cuda": false,
+    "EngineConfig.onnxruntime.use_dml": false,
+    "EngineConfig.onnxruntime.use_cann": false,
+    "EngineConfig.onnxruntime.use_coreml": false,
+    "Det.limit_side_len": 2000,
+    "Det.limit_type": "max",
+    "Det.mean": [0.5, 0.5, 0.5],
+    "Det.std": [0.5, 0.5, 0.5],
+    "Det.thresh": 0.3,
+    "Det.box_thresh": 0.5,
+    "Det.max_candidates": 1000,
+    "Det.unclip_ratio": 1.6,
+    "Det.use_dilation": true,
+    "Det.score_mode": "fast",
+    "Rec.rec_img_shape": [3, 48, 320],
+    "Rec.rec_batch_num": 1
+  },
+  "preprocessing": {
+    "input": "Native ROI PNG, no binarization, no upscaling or answer labels; RapidOCR loads BGR.",
+    "det": "Black vertical padding per pinned RapidOCR ratio=8; max-mode chooses 960/1500/2000 by input max side; cv2 linear resize rounded to multiples of 32, CHW /255 then (x-0.5)/0.5.",
+    "rec": "Perspective crop of detector box, cv2 linear resize to height 48, dynamic width at least 320, BGR CHW /255 then (x-0.5)/0.5, zero pad; greedy CTC duplicate/blank removal.",
+    "score": "Raw engine confidence, not calibrated probability. No confidence filtering or text corrections."
+  }
+}

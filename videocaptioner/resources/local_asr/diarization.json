@@ -1,0 +1,9 @@
+{
+  "protocol": "local-asr-v1",
+  "python": "3.12",
+  "versions": {"pyannote-audio": "4.0.7", "torch": "2.9.1+cu128", "torchaudio": "2.9.1+cu128", "torchcodec": "0.8.1"},
+  "device": "cuda",
+  "dtype": "float32",
+  "whole_job_clustering": true,
+  "installation": "machine-local-venv"
+}

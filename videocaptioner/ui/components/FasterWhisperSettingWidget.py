@@ -32,7 +32,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 
-from videocaptioner.config import BIN_PATH, LEGACY_BIN_PATH, MODEL_PATH
+from videocaptioner.config import BIN_PATH, LEGACY_BIN_PATH, MODEL_PATH, portable_models_path
 from videocaptioner.core.entities import (
     FasterWhisperModelEnum,
     TranscribeLanguageEnum,
@@ -202,6 +202,9 @@ def _program_search_roots() -> list[Path]:
     legacy = Path(LEGACY_BIN_PATH)
     if legacy != roots[0]:
         roots.append(legacy)
+    portable = portable_models_path()
+    if portable:
+        roots.insert(0, portable / "tools")
     return roots
 
 
@@ -801,9 +804,9 @@ class FasterWhisperDownloadDialog(MessageBoxBase):
 
     def _open_program_folder(self):
         """Open the program folder."""
-        if os.path.exists(BIN_PATH):
-            # Open the folder with the platform's file manager
-            open_folder(str(BIN_PATH))
+        directory = next((root for root in _program_search_roots() if root.is_dir()), None)
+        if directory:
+            open_folder(str(directory))
 
     def _finish_program_installation(self):
         """Finish the program installation."""

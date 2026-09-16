@@ -16,6 +16,8 @@ from typing import Any, Dict, Optional
 
 from platformdirs import user_config_dir
 
+from videocaptioner.core.asr.api_profiles import PROVIDER_PRESETS, endpoint_identity
+from videocaptioner.core.asr.native_profiles import NATIVE_PROFILES
 from videocaptioner.core.llm.services import LLM_SERVICE_PRESETS
 
 if sys.version_info >= (3, 11):
@@ -43,8 +45,14 @@ ENV_MAP: Dict[str, str] = {
     "VIDEOCAPTIONER_LLM_API_KEY": "llm.api_key",
     "VIDEOCAPTIONER_LLM_API_BASE": "llm.api_base",
     "VIDEOCAPTIONER_LLM_MODEL": "llm.model",
+    "VIDEOCAPTIONER_LLM_REQUEST_TIMEOUT": "llm.request_timeout",
     "VIDEOCAPTIONER_WHISPER_API_KEY": "whisper_api.api_key",
     "VIDEOCAPTIONER_WHISPER_API_BASE": "whisper_api.api_base",
+    "VIDEOCAPTIONER_WHISPER_API_MODEL": "whisper_api.model",
+    "VIDEOCAPTIONER_WHISPER_API_PROVIDER": "whisper_api.provider",
+    "VIDEOCAPTIONER_WHISPER_API_REQUEST_PROFILE": "whisper_api.request_profile",
+    **{f"VIDEOCAPTIONER_{provider.upper()}_{key.upper()}": f"{provider}.{key}"
+       for provider in NATIVE_PROFILES for key in ("api_key", "api_base", "model", "diarize")},
     "VIDEOCAPTIONER_DEEPLX_ENDPOINT": "translate.deeplx_endpoint",
     "VIDEOCAPTIONER_TARGET_LANG": "translate.target_language",
 }
@@ -57,8 +65,16 @@ GUI_KEY_MAP: Dict[str, str] = {
     "WhisperAPI.WhisperApiBase": "whisper_api.api_base",
     "WhisperAPI.WhisperApiModel": "whisper_api.model",
     "WhisperAPI.WhisperApiPrompt": "whisper_api.prompt",
+    "WhisperAPI.WhisperApiProvider": "whisper_api.provider",
+    "WhisperAPI.WhisperApiRequestProfile": "whisper_api.request_profile",
+    **{f"{provider.title()}.{gui}": f"{provider}.{key}"
+       for provider in NATIVE_PROFILES for gui, key in (("ApiKey", "api_key"), ("ApiBase", "api_base"), ("Model", "model"))},
     "Translate.DeeplxEndpoint": "translate.deeplx_endpoint",
     "Dubbing.TTSProvider": "dubbing.tts_provider",
+    "OmniVoice.Runtime": "omnivoice.runtime",
+    "OmniVoice.ReferenceAudio": "omnivoice.reference_audio",
+    "OmniVoice.ReferenceText": "omnivoice.reference_text",
+    "OmniVoice.Language": "omnivoice.language",
     "Dubbing.TTSApiKey": "dubbing.tts_api_key",
     "Dubbing.TTSApiBase": "dubbing.tts_api_base",
     "Dubbing.TTSModel": "dubbing.tts_model",
@@ -73,21 +89,30 @@ GUI_LLM_SERVICE_PREFIX: Dict[str, str] = {
 }
 
 DEFAULTS: Dict[str, Any] = {
+    "local_asr": {"model": "qwen-1.7b", "diarize": False, "chunk_ms": 120000, "timeout": 180,
+                  "runtime_root": "", "diarization_root": ""},
+    **{provider: {"api_key": "", "api_base": profile.endpoint, "model": profile.model, "diarize": True}
+       for provider, profile in NATIVE_PROFILES.items()},
     "llm": {
         "api_key": "",
         "api_base": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
+        "request_timeout": 120,
     },
     "whisper_api": {
         "api_key": "",
         "api_base": "https://api.openai.com/v1",
         "model": "whisper-1",
         "prompt": "",
+        "provider": "custom",
+        "request_profile": "auto",
     },
     "transcribe": {
         "asr": "bijian",
         "language": "auto",
         "faster_whisper": {
+            "program": "",
+            "model_dir": "",
             "model": "large-v3",
             "device": "auto",
             "vad_filter": True,
@@ -110,6 +135,7 @@ DEFAULTS: Dict[str, Any] = {
         "batch_size": 20,
     },
     "translate": {
+        "conversation_context": "",
         "service": "llm",
         "target_language": "zh-Hans",
         "reflect": False,
@@ -140,6 +166,7 @@ DEFAULTS: Dict[str, Any] = {
         "timing_rewrite": True,
         "tts_cache": True,
         "unresolved_policy": "review",
+        "max_start_delay_ms": 2000,
         "mix_mode": "reduce",
         "original_volume": 0.4,
         "voice_volume": 1.0,
@@ -233,7 +260,8 @@ def load_gui_settings(path: Optional[Path] = None) -> dict:
         section = raw.get(group)
         value = section.get(name) if isinstance(section, dict) else None
         if isinstance(value, str) and value.strip():
-            _set_nested(overrides, dotted_key, value)
+            _set_nested(overrides, dotted_key, _parse_value(value, dotted_key)
+                        if dotted_key in ("soniox.diarize", "scribe.diarize") else value)
 
     llm = raw.get("LLM")
     if isinstance(llm, dict):
@@ -266,8 +294,38 @@ def load_env_overrides() -> dict:
     for env_var, dotted_key in ENV_MAP.items():
         value = os.environ.get(env_var)
         if value is not None:
-            _set_nested(overrides, dotted_key, value)
+            _set_nested(overrides, dotted_key, _parse_value(value, dotted_key)
+                        if dotted_key in ("soniox.diarize", "scribe.diarize") else value)
     return overrides
+
+
+def _merge_asr_layer(config: dict, layer: dict) -> dict:
+    """Apply preset suggestions within precedence and never inherit keys across endpoints."""
+    layer = dict(layer)
+    for name in NATIVE_PROFILES:
+        override = layer.get(name)
+        if isinstance(override, dict):
+            override = dict(override)
+            previous_native = config.get(name, DEFAULTS[name])
+            if endpoint_identity(override.get("api_base", previous_native["api_base"])) != endpoint_identity(previous_native["api_base"]):
+                override.setdefault("api_key", "")
+            layer[name] = override
+    overrides = layer.get("whisper_api", {})
+    previous = config["whisper_api"]
+    if not isinstance(overrides, dict):
+        return _deep_merge(config, layer)
+    overrides = dict(overrides)
+    provider = overrides.get("provider", previous["provider"])
+    if provider != previous["provider"] and provider in PROVIDER_PRESETS:
+        preset = PROVIDER_PRESETS[provider]
+        overrides.setdefault("api_base", preset.base_url)
+        overrides.setdefault("model", preset.models[0] if preset.models else "whisper-1")
+        overrides.setdefault("request_profile", "auto")
+        overrides.setdefault("prompt", "")
+    base = overrides.get("api_base", previous["api_base"])
+    if endpoint_identity(base) != endpoint_identity(previous["api_base"]):
+        overrides.setdefault("api_key", "")
+    return _deep_merge(config, {**layer, "whisper_api": overrides})
 
 
 def build_config(
@@ -281,16 +339,16 @@ def build_config(
     """
     config = DEFAULTS.copy()
     # Layer 0: GUI settings.json (credentials only)
-    config = _deep_merge(config, load_gui_settings(gui_settings_path))
+    config = _merge_asr_layer(config, load_gui_settings(gui_settings_path))
     # Layer 1: config file
     file_config = load_config_file(config_path)
-    config = _deep_merge(config, file_config)
+    config = _merge_asr_layer(config, file_config)
     # Layer 2: environment variables
     env_config = load_env_overrides()
-    config = _deep_merge(config, env_config)
+    config = _merge_asr_layer(config, env_config)
     # Layer 3: CLI argument overrides
     if cli_overrides:
-        config = _deep_merge(config, cli_overrides)
+        config = _merge_asr_layer(config, cli_overrides)
     return config
 
 
@@ -330,11 +388,40 @@ def _parse_value(raw: str, key: str) -> Any:
 
 def save_config_value(key: str, value: str, config_path: Optional[Path] = None) -> None:
     """Set a single value in the config file. Creates the file if it doesn't exist."""
+    if key == "llm.request_timeout":
+        from videocaptioner.core.llm.request_policy import validate_request_timeout
+
+        validate_request_timeout(value)
+    if key.startswith("local_asr."):
+        from videocaptioner.core.asr.local.profiles import LocalASRConfig
+        LocalASRConfig(**{key.split(".", 1)[1]: _parse_value(value, key)})
     path = config_path or CONFIG_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
 
     existing = load_config_file(path)
-    _set_nested(existing, key, _parse_value(value, key))
+    if key in ("soniox.api_base", "scribe.api_base"):
+        name = key.split(".", 1)[0]
+        current = _deep_merge(DEFAULTS[name], existing.get(name, {}))
+        credentials = dict(current.get("endpoint_credentials", {}))
+        credentials[endpoint_identity(current["api_base"])] = {"api_key": current["api_key"]}
+        if endpoint_identity(value) != endpoint_identity(current["api_base"]):
+            current["api_key"] = credentials.get(endpoint_identity(value), {}).get("api_key", "")
+        current["api_base"] = value
+        current["endpoint_credentials"] = credentials
+        existing[name] = current
+    elif key in ("whisper_api.provider", "whisper_api.api_base"):
+        # A sequence of `config set` commands must be as safe as one CLI override.
+        current = _deep_merge(DEFAULTS["whisper_api"], existing.get("whisper_api", {}))
+        credentials = dict(current.get("endpoint_credentials", {}))
+        credentials[endpoint_identity(current["api_base"])] = {"api_key": current["api_key"]}
+        change = {key.split(".", 1)[1]: value}
+        updated = _merge_asr_layer({"whisper_api": current}, {"whisper_api": change})["whisper_api"]
+        if endpoint_identity(updated["api_base"]) != endpoint_identity(current["api_base"]):
+            updated["api_key"] = credentials.get(endpoint_identity(updated["api_base"]), {}).get("api_key", "")
+        updated["endpoint_credentials"] = credentials
+        existing["whisper_api"] = updated
+    else:
+        _set_nested(existing, key, _parse_value(value, key))
 
     with open(path, "w", encoding="utf-8") as f:
         _write_toml(f, existing)

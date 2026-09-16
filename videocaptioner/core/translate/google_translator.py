@@ -1,4 +1,4 @@
-"""Google 翻译器"""
+"""Google translation with complete, validated batches."""
 
 import html
 import re
@@ -7,13 +7,15 @@ from typing import Callable, List, Optional
 import requests
 
 from videocaptioner.core.entities import SubtitleProcessData
-from videocaptioner.core.translate.base import BaseTranslator, logger
+from videocaptioner.core.translate.base import BaseTranslator
 from videocaptioner.core.translate.types import TargetLanguage, get_language_code
 from videocaptioner.core.utils.cache import generate_cache_key
 
 
 class GoogleTranslator(BaseTranslator):
-    """谷歌翻译器"""
+    """Translate through the existing public Google endpoint."""
+
+    require_complete_result = True
 
     def __init__(
         self,
@@ -39,39 +41,50 @@ class GoogleTranslator(BaseTranslator):
     def _translate_chunk(
         self, subtitle_chunk: List[SubtitleProcessData]
     ) -> List[SubtitleProcessData]:
-        """翻译字幕块"""
+        """Validate the entire chunk before applying any translations."""
+        if any(len(row.original_text) > 5000 for row in subtitle_chunk):
+            raise RuntimeError("Google subtitles are limited to 5000 characters in the app; split the long subtitle first.")
         target_lang = get_language_code(self.target_language, "google")
+        translations = []
 
         for data in subtitle_chunk:
+            if not self.is_running:
+                raise RuntimeError("Translation cancelled.")
             try:
-                text = data.original_text[:5000]  # google translate max length
                 response = self.session.get(
                     self.endpoint,
-                    params={"tl": target_lang, "sl": "auto", "q": text},
+                    params={"tl": target_lang, "sl": "auto", "q": data.original_text},
                     headers=self.headers,
                     timeout=self.timeout,
                 )
-
-                if response.status_code == 400:
-                    logger.warning(f"Google Translate returned 400 error {data.index}")
-                    continue
-
-                response.raise_for_status()
+            except requests.RequestException:
+                raise RuntimeError("Google translation request failed; check the connection and retry.") from None
+            try:
+                if response.status_code != 200:
+                    raise RuntimeError(f"Google translation failed (HTTP {response.status_code}).")
+                # Require a complete text container, not a prefix before unexpected markup.
                 re_result = re.findall(
-                    r'(?s)class="(?:t0|result-container)">(.*?)<', response.text
+                    r'(?s)class="(?:t0|result-container)">([^<]*)</div\s*>', response.text
                 )
-                if re_result:
-                    data.translated_text = html.unescape(re_result[0])
-                else:
-                    logger.warning(f"Cannot extract translation from Google response: {data.index}")
-            except Exception as e:
-                logger.error(f"Google translation failed {data.index}: {str(e)}")
+                if len(re_result) != 1:
+                    raise RuntimeError("Malformed Google translation response; no translations were applied.")
+                text = html.unescape(re_result[0])
+                if data.original_text.strip() and not text.strip():
+                    raise RuntimeError("Malformed Google translation response; no translations were applied.")
+                translations.append(text)
+            finally:
+                response.close()
 
+        if not self.is_running:
+            raise RuntimeError("Translation cancelled.")
+        for data, text in zip(subtitle_chunk, translations):
+            data.translated_text = text
         return subtitle_chunk
 
     def _get_cache_key(self, chunk: List[SubtitleProcessData]) -> str:
-        """生成缓存键"""
-        class_name = self.__class__.__name__
-        chunk_key = generate_cache_key(chunk)
-        lang = self.target_language.value
-        return f"{class_name}:{chunk_key}:{lang}"
+        # Older entries may contain failed responses or silently truncated input.
+        return f"{self.__class__.__name__}:validated-v2:{generate_cache_key(chunk)}:{self.target_language.value}"
+
+    def close(self):
+        super().close()
+        self.session.close()

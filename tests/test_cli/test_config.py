@@ -254,6 +254,7 @@ class TestGuiSettingsFallback:
             "api_key": "sk-cli",
             "api_base": "https://env.example/v1",
             "model": "file-model",
+            "request_timeout": 120,
         }
 
     def test_gui_fills_gaps_above_defaults(self, tmp_path):

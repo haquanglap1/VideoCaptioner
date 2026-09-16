@@ -21,6 +21,7 @@ from videocaptioner.core.dubbing.models import (
     UnresolvedFitPolicy,
 )
 from videocaptioner.core.tts import TTSConfig
+from videocaptioner.core.tts.omnivoice.config import OmniVoiceOptions
 
 
 def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
@@ -32,6 +33,13 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
     rewrite_model = str(get(config, "llm.model", ""))
     if not (rewrite_key and rewrite_base and rewrite_model):
         rewrite_model = ""
+    omni = dict(get(config, "omnivoice", {})) if provider == "omnivoice-local" else {}
+    text_file = omni.pop("reference_text_file", "")
+    if text_file:
+        omni["reference_text"] = Path(text_file).read_text(encoding="utf-8").strip()
+    voice = str(get(config, "dubbing.voice", "alloy"))
+    if provider == "omnivoice-local" and voice == "alloy":
+        voice = "auto"
     return DubbingConfig(
         enabled=True,
         tts_provider=presets.provider_from_key(provider),
@@ -39,15 +47,17 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
             model=str(get(config, "dubbing.tts_model", "tts-1")),
             api_key=str(get(config, "dubbing.tts_api_key", "")),
             base_url=str(get(config, "dubbing.tts_api_base", "https://api.openai.com/v1")),
-            voice=str(get(config, "dubbing.voice", "alloy")),
+            voice=voice,
             speed=float(get(config, "dubbing.tts_speed", 1.0)),
             sample_rate=int(get(config, "dubbing.sample_rate", 32000)),
             response_format="wav",
         ),
         tts_concurrency=int(get(config, "dubbing.tts_concurrency", 4)),
+        omnivoice=OmniVoiceOptions(**omni),
         text_source=DubbingTextSource(get(config, "dubbing.text_source", "auto")),
         timing_mode=DubbingTimingMode(get(config, "dubbing.timing_mode", "natural")),
         natural_max_speed=float(get(config, "dubbing.natural_max_speed", 1.08)),
+        max_start_delay_ms=int(get(config, "dubbing.max_start_delay_ms", 2000)),
         max_speed=float(get(config, "dubbing.legacy_max_speed", 1.5)),
         fit_ratio_limit=float(get(config, "dubbing.fit_ratio_limit", 1.05)),
         borrow_gap_ms=int(get(config, "dubbing.borrow_gap_ms", 350)),
@@ -62,6 +72,7 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
         voice_volume=float(get(config, "dubbing.voice_volume", 1.0)),
         target_language=target_language,
         rewrite_model=rewrite_model,
+        rewrite_timeout=int(get(config, "llm.request_timeout", 120)),
         rewrite_api_key=rewrite_key,
         rewrite_api_base=rewrite_base,
         report_path=report_path,
@@ -75,6 +86,7 @@ def _validate_ranges(config: DubbingConfig) -> str | None:
         (0.25 <= config.tts_config.speed <= 4.0, "--tts-speed must be between 0.25 and 4.0"),
         (config.tts_concurrency >= 1, "--tts-concurrency must be at least 1"),
         (1.0 <= config.natural_max_speed <= 1.5, "--natural-max-speed must be between 1.0 and 1.5"),
+        (0 <= config.max_start_delay_ms <= 10000, "--max-start-delay-ms must be between 0 and 10000"),
         (1.0 <= config.max_speed <= 3.0, "--legacy-max-speed must be between 1.0 and 3.0"),
         (1.0 <= config.fit_ratio_limit <= 2.0, "--fit-ratio-limit must be between 1.0 and 2.0"),
         (0 <= config.borrow_gap_ms <= 5000, "--borrow-gap-ms must be between 0 and 5000"),
@@ -111,7 +123,7 @@ def run(args: Namespace, config: dict) -> int:
     dubbing_config = build_dubbing_config(config, report_path)
     assert dubbing_config.tts_config is not None
     if (
-        dubbing_config.tts_provider != TTSProviderEnum.VIENEU_LOCAL
+        dubbing_config.tts_provider not in (TTSProviderEnum.VIENEU_LOCAL, TTSProviderEnum.OMNIVOICE_LOCAL)
         and not dubbing_config.tts_config.api_key
     ):
         output.config_missing_error(

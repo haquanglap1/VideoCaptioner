@@ -7,7 +7,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 import json_repair
 import openai
 
-from videocaptioner.core.llm import call_llm
+from videocaptioner.core.llm.client import LLMCredentials, get_llm_credentials
+from videocaptioner.core.llm.owned_request import OwnedLLMRequest
+from videocaptioner.core.llm.request_policy import validate_request_timeout
 from videocaptioner.core.prompts import get_prompt
 from videocaptioner.core.translate.base import BaseTranslator, SubtitleProcessData, logger
 from videocaptioner.core.translate.types import TargetLanguage
@@ -17,7 +19,10 @@ from videocaptioner.core.utils.cache import generate_cache_key
 class LLMTranslator(BaseTranslator):
     """LLM translator (OpenAI-compatible API)."""
 
+    require_complete_result = True
+
     MAX_STEPS = 3
+    RESPONSE_POLICY = "complete-llm-response-v1"
     # Max source characters sent when building the global context (head/middle/tail sampled beyond)
     CONTEXT_MAX_CHARS = 12000
     # Below this many cues no global context is built: a "whole-film brief" summarised
@@ -33,7 +38,11 @@ class LLMTranslator(BaseTranslator):
         custom_prompt: str,
         is_reflect: bool,
         update_callback: Optional[Callable],
+        request_timeout: int = 120,
+        credentials: Optional[LLMCredentials] = None,
     ):
+        self.request_timeout = validate_request_timeout(request_timeout)
+        self._credentials = credentials if credentials is not None else get_llm_credentials()
         super().__init__(
             thread_num=thread_num,
             batch_num=batch_num,
@@ -56,6 +65,10 @@ class LLMTranslator(BaseTranslator):
         self.source_signature = hashlib.sha256(
             "\n".join(d.original_text for d in translate_data_list).encode("utf-8")
         ).hexdigest()[:16]
+
+        if self.conversation_snapshot is not None and self.conversation_snapshot.context.enabled:
+            self.global_context = ""
+            return
 
         if len(translate_data_list) < self.CONTEXT_MIN_SEGMENTS:
             logger.debug(
@@ -92,15 +105,14 @@ class LLMTranslator(BaseTranslator):
 
         prompt = get_prompt("translate/context", target_language=self.target_language)
         try:
-            response = call_llm(
+            response = self._request(
                 messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": full_text},
                 ],
-                model=self.model,
             )
             context = response.choices[0].message.content.strip()
-            logger.debug(f"[+]已构建全局翻译上下文:\n{context}")
+            logger.debug("Global translation brief prepared")
             return context
         except Exception as e:
             logger.warning(f"构建全局上下文失败，跳过（不影响翻译）: {e}")
@@ -133,29 +145,25 @@ class LLMTranslator(BaseTranslator):
                 global_context=self.global_context,
             )
 
+        snapshot = self.conversation_snapshot
+        if snapshot is not None:
+            payload = snapshot.request_data(tuple(d.cue_id for d in subtitle_chunk))
+            payload["output_keys"] = {str(d.index): d.cue_id for d in subtitle_chunk}
+            prompt += "\n" + get_prompt("translate/conversation")
+            # JSON escapes dialogue delimiters; this block is explicitly data, never instructions.
+            prompt += "\nCONVERSATION_DATA_JSON:\n" + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
         try:
             # Agent loop: translate, validate, and ask for corrections
             result_dict = self._agent_loop(prompt, subtitle_dict)
 
-            # Reflective mode results
-            if self.is_reflect and isinstance(result_dict, dict):
-                # Log the reflection steps (initial/reflection) so rewrites can be audited;
-                # otherwise these paid-for fields would simply be discarded
-                for k, v in result_dict.items():
-                    if isinstance(v, dict) and v.get("reflection"):
-                        logger.debug(
-                            f"[reflect #{k}] initial={v.get('initial_translation')!r} "
-                            f"reflection={v.get('reflection')!r} "
-                            f"-> native={v.get('native_translation')!r}"
-                        )
-
             processed_result = self._extract_translations(result_dict)
+            if set(processed_result) != set(subtitle_dict):
+                raise ValueError("Malformed translation; every input cue requires a translation.")
 
             # Write results back into SubtitleProcessData
             for data in subtitle_chunk:
-                data.translated_text = processed_result.get(
-                    str(data.index), data.original_text
-                )
+                data.translated_text = processed_result[str(data.index)]
             return subtitle_chunk
         except openai.RateLimitError as e:
             logger.error(f"OpenAI Rate Limit Error: {str(e)}")
@@ -173,10 +181,8 @@ class LLMTranslator(BaseTranslator):
     def _extract_translations(self, result_dict: Any) -> Dict[str, str]:
         """Extract translations from the LLM result, skipping malformed entries.
 
-        Only strings are accepted (in reflective mode the nested dict's
-        ``native_translation``). Malformed entries are **left out** so the
-        caller falls back to the source text; f-stringing them would write
-        ``{'initial_translation': ...}`` verbatim into the subtitles.
+        Reflective mode extracts ``native_translation``. Malformed entries are
+        left out so the caller rejects the incomplete batch before publication.
         """
         if not isinstance(result_dict, dict):
             return {}
@@ -192,7 +198,7 @@ class LLMTranslator(BaseTranslator):
                 processed[str(key)] = text
             else:
                 logger.warning(
-                    "字幕 #%s 的译文结构不合法（%s），回退到原文",
+                    "Subtitle #%s has a malformed translation structure (%s)",
                     key,
                     type(value).__name__,
                 )
@@ -206,15 +212,14 @@ class LLMTranslator(BaseTranslator):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(subtitle_dict, ensure_ascii=False)},
         ]
-        last_response_dict = None
-        last_error = ""
         # LLM feedback loop
         for _ in range(self.MAX_STEPS):
-            response = call_llm(messages=messages, model=self.model)
+            if not self.is_running:
+                raise RuntimeError("Translation cancelled.")
+            response = self._request(messages)
             response_dict = json_repair.loads(
                 response.choices[0].message.content.strip()
             )
-            last_response_dict = response_dict
             is_valid, error_message = self._validate_llm_response(
                 response_dict, subtitle_dict
             )
@@ -222,7 +227,6 @@ class LLMTranslator(BaseTranslator):
                 # _validate_llm_response already proved this is a str->str dict.
                 return cast(Dict[str, str], response_dict)
             else:
-                last_error = error_message
                 messages.append(
                     {
                         "role": "assistant",
@@ -236,19 +240,15 @@ class LLMTranslator(BaseTranslator):
                     }
                 )
 
-        # Still invalid after all retries: return the last response and let
-        # _extract_translations filter per entry (bad ones fall back to the source).
-        # Not a dict at all: raise so the whole chunk counts as failed (BaseTranslator keeps the source).
-        if not isinstance(last_response_dict, dict):
-            raise ValueError(
-                f"LLM 返回结构在 {self.MAX_STEPS} 次重试后仍不可用: {last_error}"
-            )
-        logger.warning(
-            "LLM 返回结构在 %d 次重试后仍不完全合法（%s），逐条降级处理",
-            self.MAX_STEPS,
-            last_error,
-        )
-        return last_response_dict
+        # Reject incomplete batches before source-text fallbacks can enter the success cache.
+        if self.conversation_snapshot is not None and self.conversation_snapshot.context.enabled:
+            raise ValueError("Malformed contextual translation; review required.")
+        raise ValueError(f"Malformed translation after {self.MAX_STEPS} responses; review required.")
+
+    def _request(self, messages):
+        """Every translation request owns its socket and immutable job credentials."""
+        return OwnedLLMRequest(self._credentials, self.request_timeout, lambda: not self.is_running)(
+            messages=messages, model=self.model)
 
     def _validate_llm_response(
         self, response_dict: Any, subtitle_dict: Dict[str, str]
@@ -302,6 +302,11 @@ class LLMTranslator(BaseTranslator):
                         f"Key '{key}': missing 'native_translation' field. Found keys: {available_keys}. Must include 'native_translation'.",
                     )
 
+        for value in response_dict.values():
+            text = value.get("native_translation") if isinstance(value, dict) else value
+            if not isinstance(text, str) or not text.strip():
+                return False, "Each translation must be a nonempty string."
+
         return True, ""
 
     def _translate_chunk_single(
@@ -314,13 +319,11 @@ class LLMTranslator(BaseTranslator):
 
         for data in subtitle_chunk:
             try:
-                response = call_llm(
+                response = self._request(
                     messages=[
                         {"role": "system", "content": single_prompt},
                         {"role": "user", "content": data.original_text},
                     ],
-                    model=self.model,
-                    temperature=0.7,
                 )
                 translated_text = response.choices[0].message.content.strip()
                 data.translated_text = translated_text
@@ -338,7 +341,7 @@ class LLMTranslator(BaseTranslator):
 
         source_signature is used rather than global_context itself: the latter
         is LLM-generated and would make the cache miss on every run
-        (call_llm only memoizes for one hour).
+        (a generated brief must never determine the cache identity).
         """
         class_name = self.__class__.__name__
         chunk_key = generate_cache_key(chunk)
@@ -346,7 +349,10 @@ class LLMTranslator(BaseTranslator):
         model = self.model
         settings_sig = hashlib.md5(
             f"{self.custom_prompt}\n{self.source_signature}\n"
-            f"{bool(self.global_context)}".encode("utf-8")
+            f"{self.RESPONSE_POLICY}\n"
+            f"conversation-request-v2\n{self.conversation_snapshot.fingerprint if self.conversation_snapshot else ''}"
+            f"\n{self._credentials.base_url if self._credentials else ''}"
+            .encode("utf-8")
         ).hexdigest()[:8]
         return (
             f"{class_name}:{chunk_key}:{lang}:{model}"

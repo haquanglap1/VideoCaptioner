@@ -4,8 +4,8 @@ from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.entities import SynthesisTask
+from videocaptioner.core.subtitle.synthesis import load_synthesis_subtitles
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import add_subtitles, add_subtitles_with_style
 
@@ -52,8 +52,9 @@ class VideoSynthesisThread(QThread):
             crf = video_quality.get_crf()
             preset = video_quality.get_preset()
 
-            # Doc du lieu phu de
-            asr_data = ASRData.from_subtitle_file(subtitle_file)
+            asr_data = load_synthesis_subtitles(
+                subtitle_file, input_layout=self.task.input_subtitle_layout
+            )
 
             if config.soft_subtitle:
                 # Phu de mem: chuyen ve SRT roi nhung vao video

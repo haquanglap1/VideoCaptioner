@@ -11,8 +11,10 @@ import contextvars
 import json
 import threading
 import time
+import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -125,3 +127,67 @@ def log_llm_response(response: Any) -> None:
     }
 
     _write_log(log_entry)
+
+
+def _redact(value: Any, secret: str = "") -> Any:
+    if isinstance(value, dict):
+        return {key: "[redacted]" if key.lower() in {"api_key", "authorization", "cookie", "set-cookie"}
+                else _redact(item, secret) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact(item, secret) for item in value]
+    if isinstance(value, str):
+        if value.startswith("data:") or value.startswith(("http://", "https://")):
+            return "[media/URL omitted]"
+        return value.replace(secret, "[redacted]") if secret else value
+    return value
+
+
+class OwnedRequestLog:
+    """Pair one owned request with its terminal result, outside HTTP task contexts."""
+
+    def __init__(self, base_url: str, model: str, messages: Any, params: dict,
+                 *, log_content: bool = True, secret: str = ""):
+        self.started = time.monotonic()
+        self.time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.log_content, self.secret, self.finished = log_content, secret, False
+        parts = urlsplit(base_url)
+        self.url = urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1],
+                              parts.path.rstrip("/") + "/chat/completions", "", ""))
+        self.url = self.url.replace(secret, "[redacted]") if secret else self.url
+        ctx = get_task_context()
+        self.context = {"task_id": ctx.task_id if ctx else "", "stage": ctx.stage if ctx else "",
+                        "file_name": ctx.file_name.replace("\\", "/").rsplit("/", 1)[-1] if ctx else ""}
+        if log_content:
+            self.request = _redact({**params, "model": model, "messages": messages}, secret)
+        else:
+            summaries = []
+            for message in messages:
+                content = message.get("content", "")
+                text_chars = len(content) if isinstance(content, str) else sum(
+                    len(part.get("text", "")) for part in content if part.get("type") == "text")
+                images = sum(part.get("type") in ("image_url", "input_image") for part in content) if isinstance(content, list) else 0
+                summaries.append({"role": message.get("role", ""), "content": "[content not logged]",
+                                  "text_characters": text_chars, "images": images})
+            self.request = {"model": model, "messages": summaries,
+                            **{key: params[key] for key in ("max_tokens", "max_completion_tokens", "temperature") if key in params}}
+
+    def finish(self, response: Any = None, *, status: int | None = None, outcome: str = "success",
+               error_type: str = "") -> None:
+        if self.finished:
+            return
+        self.finished = True
+        # Logging must not turn a valid provider response into a failed application job.
+        try:
+            data = response.model_dump() if response is not None and hasattr(response, "model_dump") else {}
+            if not self.log_content:
+                data = {key: data[key] for key in ("id", "model", "usage") if key in data}
+            entry = {"time": self.time, **_redact(self.context, self.secret), "request_id": uuid.uuid4().hex,
+                     "url": self.url, "status": status, "outcome": outcome,
+                     "duration_ms": round((time.monotonic() - self.started) * 1000),
+                     "request": _redact(self.request, self.secret), "response": _redact(data, self.secret),
+                     "content_logged": self.log_content}
+            if error_type:
+                entry["error_type"] = error_type
+            _write_log(entry)
+        except Exception:
+            pass

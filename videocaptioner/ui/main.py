@@ -4,8 +4,13 @@ import os
 import platform
 import sys
 
+# Qt widgets/callbacks can outlive main() when its SystemExit frame is collected.
+# Keep QApplication alive until interpreter shutdown, as required by PyQt.
+_application = None
+
 
 def main():
+    global _application
     import traceback
 
     from PyQt5.QtCore import Qt, QTranslator
@@ -63,19 +68,19 @@ def main():
         os.environ["QT_SCALE_FACTOR"] = str(cfg.get(cfg.dpiScale))
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)  # type: ignore
 
-    app = QApplication(sys.argv)
+    _application = app = QApplication(sys.argv)
     app.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings, True)  # type: ignore
 
     # i18n
     locale = cfg.get(cfg.language).value
-    app.installTranslator(FluentTranslator(locale))
+    app.installTranslator(FluentTranslator(locale, app))
 
     if locale.name() == "vi_VN":
         # Vietnamese ships as JSON (no lrelease toolchain required).
         from videocaptioner.ui.common.json_translator import JsonTranslator
-        my_translator = JsonTranslator(TRANSLATIONS_PATH / "VideoCaptioner_vi_VN.json")
+        my_translator = JsonTranslator(TRANSLATIONS_PATH / "VideoCaptioner_vi_VN.json", app)
     else:
-        my_translator = QTranslator()
+        my_translator = QTranslator(app)
         my_translator.load(
             str(TRANSLATIONS_PATH / f"VideoCaptioner_{locale.name()}.qm")
         )

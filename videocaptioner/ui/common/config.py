@@ -140,6 +140,7 @@ class Config(QConfig):
     deeplx_endpoint = ConfigItem("Translate", "DeeplxEndpoint", "")
     batch_size = RangeConfigItem("Translate", "BatchSize", 10, RangeValidator(5, 50))
     thread_num = RangeConfigItem("Translate", "ThreadNum", 10, RangeValidator(1, 50))
+    llm_request_timeout = RangeConfigItem("Translate", "RequestTimeout", 120, RangeValidator(1, 600))
 
     # ------------------- 转录配置 -------------------
     transcribe_model = OptionsConfigItem(
@@ -216,10 +217,37 @@ class Config(QConfig):
     faster_whisper_prompt = ConfigItem("FasterWhisper", "Prompt", "")
 
     # ------------------- Whisper API 配置 -------------------
+    soniox_api_base = ConfigItem("Soniox", "ApiBase", "https://api.soniox.com/v1")
+    local_asr_model = OptionsConfigItem("LocalASR", "Model", "qwen-1.7b", OptionsValidator(["qwen-1.7b", "qwen-0.6b"]))
+    local_asr_diarize = ConfigItem("LocalASR", "Diarize", False, BoolValidator())
+    local_asr_root = ConfigItem("LocalASR", "RuntimeRoot", "")
+    local_diarization_root = ConfigItem("LocalASR", "DiarizationRoot", "")
+    local_asr_chunk = OptionsConfigItem("LocalASR", "ChunkMs", 120000, OptionsValidator([30000, 60000, 120000, 240000]))
+    local_asr_timeout = OptionsConfigItem("LocalASR", "Timeout", 180, OptionsValidator([60, 180, 300, 600, 1800, 3600]))
+    soniox_api_key = ConfigItem("Soniox", "ApiKey", "")
+    soniox_model = ConfigItem("Soniox", "Model", "stt-async-v5")
+    soniox_diarize = ConfigItem("Soniox", "Diarize", True, BoolValidator())
+    soniox_endpoint_keys = ConfigItem("Soniox", "EndpointKeys", {})
+    scribe_api_base = ConfigItem("Scribe", "ApiBase", "https://api.elevenlabs.io/v1")
+    scribe_api_key = ConfigItem("Scribe", "ApiKey", "")
+    scribe_model = ConfigItem("Scribe", "Model", "scribe_v2")
+    scribe_diarize = ConfigItem("Scribe", "Diarize", True, BoolValidator())
+    scribe_endpoint_keys = ConfigItem("Scribe", "EndpointKeys", {})
+
     whisper_api_base = ConfigItem("WhisperAPI", "WhisperApiBase", "")
     whisper_api_key = ConfigItem("WhisperAPI", "WhisperApiKey", "")
     whisper_api_model = OptionsConfigItem("WhisperAPI", "WhisperApiModel", "")
     whisper_api_prompt = ConfigItem("WhisperAPI", "WhisperApiPrompt", "")
+    whisper_api_provider = OptionsConfigItem(
+        "WhisperAPI", "WhisperApiProvider", "custom",
+        OptionsValidator(["custom", "videocaptioner", "groq", "openai"]),
+    )
+    whisper_api_request_profile = OptionsConfigItem(
+        "WhisperAPI", "WhisperApiRequestProfile", "auto",
+        OptionsValidator(["auto", "whisper", "json-text"]),
+    )
+    whisper_api_endpoint_keys = ConfigItem("WhisperAPI", "WhisperApiEndpointKeys", {})
+    whisper_api_saved_profiles = ConfigItem("WhisperAPI", "WhisperApiSavedProfiles", {})
 
     # ------------------- 字幕配置 -------------------
     need_optimize = ConfigItem("Subtitle", "NeedOptimize", False, BoolValidator())
@@ -303,8 +331,12 @@ class Config(QConfig):
     dubbing_enabled = ConfigItem("Dubbing", "Enabled", False, BoolValidator())
     dubbing_tts_provider = OptionsConfigItem(
         "Dubbing", "TTSProvider", "openai",
-        OptionsValidator(["openai", "minimax", "local_ai", "vieneu-local"]),
+        OptionsValidator(["openai", "minimax", "local_ai", "vieneu-local", "omnivoice-local"]),
     )
+    omnivoice_runtime = ConfigItem("OmniVoice", "Runtime", "")
+    omnivoice_reference_audio = ConfigItem("OmniVoice", "ReferenceAudio", "")
+    omnivoice_reference_text = ConfigItem("OmniVoice", "ReferenceText", "")
+    omnivoice_language = ConfigItem("OmniVoice", "Language", "vi")
     dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
     dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
     dubbing_tts_api_base = ConfigItem(
@@ -343,8 +375,9 @@ class Config(QConfig):
     )
     dubbing_unresolved_policy = OptionsConfigItem(
         "Dubbing", "UnresolvedPolicy", "review",
-        OptionsValidator(["review", "allow-overlap"]),
+        OptionsValidator(["review", "allow-overlap", "sequential"]),
     )
+    dubbing_max_start_delay_ms = RangeConfigItem("Dubbing", "MaxStartDelayMs", 2000, RangeValidator(0, 10000))
     dubbing_tts_sample_rate = OptionsConfigItem(
         "Dubbing", "TTSSampleRate", 32000,
         OptionsValidator([16000, 24000, 32000, 44100, 48000]),
@@ -393,3 +426,11 @@ cfg = Config()
 cfg.themeMode.value = Theme.DARK
 cfg.themeColor.value = QColor("#ff28f08b")
 qconfig.load(SETTINGS_PATH, cfg)
+
+# Bind only after loading: opening settings must not migrate or reset saved values.
+from .whisper_settings import WhisperSettings  # noqa: E402
+
+whisper_settings = WhisperSettings(cfg)
+from .native_asr_settings import NativeASRSettings  # noqa: E402
+
+native_asr_settings = [NativeASRSettings(cfg, name) for name in ("soniox", "scribe")]

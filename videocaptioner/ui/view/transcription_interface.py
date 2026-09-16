@@ -43,6 +43,7 @@ from videocaptioner.core.entities import (
     SupportedAudioFormats,
     SupportedVideoFormats,
     TranscribeModelEnum,
+    TranscribeOutputFormatEnum,
     TranscribeTask,
     VideoInfo,
 )
@@ -57,6 +58,7 @@ from videocaptioner.ui.components.TranscriptionSettingDialog import (
     TranscriptionSettingDialog,
 )
 from videocaptioner.ui.thread.video_info_thread import VideoInfoThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker
 
 DEFAULT_THUMBNAIL_PATH = RESOURCE_PATH / "assets" / "default_thumbnail.jpg"
 
@@ -341,11 +343,23 @@ class VideoInfoCard(CardWidget):
         from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 
         self.transcript_thread = TranscriptThread(self.task)
-        self.transcript_thread.finished.connect(self.on_transcript_finished)
-        self.transcript_thread.progress.connect(self.on_transcript_progress)
-        self.transcript_thread.error.connect(self.on_transcript_error)
+        worker = self.transcript_thread
+        retain_worker(worker)
+        connect_current(self, "transcript_thread", worker, worker.finished, self.on_transcript_finished)
+        connect_current(self, "transcript_thread", worker, worker.progress, self.on_transcript_progress)
+        connect_current(self, "transcript_thread", worker, worker.error, self.on_transcript_error)
+        connect_current(self, "transcript_thread", worker, worker.review_required, self.on_review_required)
         self.transcript_thread.start()
         return True
+
+    def on_review_required(self, error):
+        from videocaptioner.ui.components.asr_review_dialog import ASRReviewDialog
+
+        # Defer until failure slots have restored the progress controls.
+        self._pending_review = error.review
+        def show_review():
+            ASRReviewDialog(error.review, self.window(), review_path=error.path).exec_()
+        QTimer.singleShot(0, show_review)
 
     def _validate_transcription_runtime(self, task: TranscribeTask) -> bool:
         config = task.transcribe_config
@@ -411,9 +425,10 @@ class VideoInfoCard(CardWidget):
         )
 
     def on_transcript_finished(self, task):
-        """转录完成处理"""
+        """Report text recovery separately from a completed timed export."""
         self.start_button.setEnabled(True)
-        self.start_button.setText(self.tr("转录完成"))
+        self.start_button.setText(self.tr("Nhận dạng hoàn tất (TXT)")
+                                  if task.transcript_path and task.asr_data is None else self.tr("转录完成"))
         self.start_button.setToolTip("")
         self.progress_ring.hide()
         self.finished.emit(task)
@@ -433,10 +448,12 @@ class VideoInfoCard(CardWidget):
 
     def stop(self):
         if hasattr(self, "transcript_thread"):
-            self.transcript_thread.terminate()
+            self.transcript_thread.stop()
 
 
 class TranscriptionInterface(QWidget):
+    recognized = pyqtSignal(object)
+    ocr_ready = pyqtSignal(object, str, str)
     """转录界面类,用于显示视频信息和转录进度"""
 
     finished = pyqtSignal(str, str)
@@ -481,6 +498,9 @@ class TranscriptionInterface(QWidget):
         self.open_file_action = Action(FluentIcon.FOLDER, self.tr("打开文件"))
         self.open_file_action.triggered.connect(self._on_file_select)
         self.command_bar.addAction(self.open_file_action)
+        self.command_bar.addAction(Action(FluentIcon.EDIT, self.tr("Open ASR review"),
+                                          triggered=self.open_asr_review))
+        self.command_bar.addAction(Action(FluentIcon.PHOTO, "OCR phụ đề trong hình", triggered=self.open_ocr))
 
         self.command_bar.addSeparator()
 
@@ -518,6 +538,27 @@ class TranscriptionInterface(QWidget):
         )
 
         self.main_layout.addWidget(self.command_bar)
+
+    def open_ocr(self):
+        from videocaptioner.ui.components.ocr_dialog import OcrDialog
+
+        if self.is_processing:
+            InfoBar.warning(self.tr("Review required"), "Hoàn tất hoặc hủy ASR đang chạy trước khi mở OCR.", parent=self)
+            return
+        dialog = OcrDialog(self.window(), source=self.task.file_path if self.task and self.task.file_path else "")
+        dialog.subtitles_ready.connect(self.ocr_ready.emit)
+        dialog.exec_()
+
+    def open_asr_review(self):
+        from videocaptioner.core.asr.review import NativeReview, review_directory
+        from videocaptioner.ui.components.asr_review_dialog import ASRReviewDialog
+
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("Open ASR review"), str(review_directory()), "JSON (*.json)")
+        if path:
+            try:
+                ASRReviewDialog(NativeReview.load(path), self, review_path=Path(path)).exec_()
+            except ValueError as exc:
+                InfoBar.error(self.tr("Review required"), str(exc), parent=self)
 
     def _setup_signals(self) -> None:
         """设置信号连接"""
@@ -628,10 +669,21 @@ class TranscriptionInterface(QWidget):
             )
 
     def _on_transcript_finished(self, task: TranscribeTask):
-        """转录完成处理"""
+        """Offer the transcript without forcing the subtitle timing editor."""
         self.is_processing = False
+        if (not task.need_next_task and task.transcript_path and task.asr_data is None
+                and task.transcribe_config and task.transcribe_config.output_format is not TranscribeOutputFormatEnum.TXT):
+            InfoBar.warning(
+                self.tr("Đã lưu transcript TXT"),
+                self.tr("Lời nói đã được nhận dạng. Phụ đề chưa xuất được vì thời gian chưa hợp lệ."),
+                duration=INFOBAR_DURATION_WARNING,
+                parent=self,
+            )
         if task.need_next_task:
-            self.finished.emit(task.output_path, task.file_path)
+            if task.asr_data is not None and task.asr_data.has_metadata:
+                self.recognized.emit(task)
+            else:
+                self.finished.emit(task.output_path, task.file_path)
 
             InfoBar.success(
                 self.tr("转录完成"),

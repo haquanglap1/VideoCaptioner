@@ -295,7 +295,7 @@ class TestSubtitleThreadFullPipeline:
         config = base_config
         config.need_split = True
         config.need_translate = True
-        config.translator_service = TranslatorServiceEnum.GOOGLE
+        config.translator_service = TranslatorServiceEnum.OPENAI
         config.target_language = TargetLanguage.SIMPLIFIED_CHINESE
         config.llm_model = get_test_model()
         config.base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")

@@ -1,21 +1,26 @@
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
-from openai import OpenAI
-
-from videocaptioner.core.llm.client import normalize_base_url
-
-from ..utils.logger import setup_logger
+from .api_profiles import (
+    ASRAPIError,
+    fingerprint,
+    normalize_endpoint,
+    require_subtitle_timing,
+    resolve_profile,
+)
+from .api_transcription import (
+    build_request,
+    create_client,
+    effective_language,
+    effective_prompt,
+    parse_response,
+    submit_transcription,
+)
 from .asr_data import ASRDataSeg
 from .base import BaseASR
 
-logger = setup_logger("whisper_api")
-
 
 class WhisperAPI(BaseASR):
-    """OpenAI-compatible Whisper API implementation.
-
-    Supports any OpenAI-compatible ASR API endpoint.
-    """
+    """OpenAI-compatible ASR with explicit subtitle timing requirements."""
 
     def __init__(
         self,
@@ -27,91 +32,45 @@ class WhisperAPI(BaseASR):
         base_url: str = "",
         api_key: str = "",
         use_cache: bool = False,
+        provider: str = "custom",
+        request_profile: str = "auto",
     ):
-        """Initialize Whisper API.
-
-        Args:
-            audio_input: Path to audio file or raw audio bytes
-            whisper_model: Model name
-            need_word_time_stamp: Return word-level timestamps
-            language: Language code (default: zh)
-            prompt: Initial prompt for model
-            base_url: API base URL
-            api_key: API key
-            use_cache: Enable caching
-        """
+        self.profile = resolve_profile(whisper_model, request_profile, provider)
+        require_subtitle_timing(self.profile)
+        self.base_url = normalize_endpoint(base_url)
+        self.api_key = api_key.strip()
+        if not self.api_key:
+            raise ASRAPIError("ASR API key must be set.")
+        self.model = whisper_model.strip()
+        self.language = effective_language(language)
+        self.prompt = effective_prompt(self.language, prompt)
+        self.provider = provider
+        self.need_word_time_stamp = need_word_time_stamp
         super().__init__(audio_input, use_cache)
 
-        self.base_url = normalize_base_url(base_url)
-        self.api_key = api_key.strip()
+    def _get_audio_duration(self) -> float:
+        # This provider has no duration rate limiter; byte validation needs no FFmpeg.
+        return 0.0
 
-        if not self.base_url or not self.api_key:
-            raise ValueError("Whisper BASE_URL and API_KEY must be set")
-
-        self.model = whisper_model
-        self.language = language
-        self.prompt = prompt
-        self.need_word_time_stamp = need_word_time_stamp
-
-        self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
-
-    def _run(
-        self, callback: Optional[Callable[[int, str], None]] = None, **kwargs: Any
-    ) -> dict:
-        """Execute ASR via API."""
+    def _run(self, callback: Optional[Callable[[int, str], None]] = None, **kwargs: Any) -> dict:
         return self._submit()
 
-    def _make_segments(self, resp_data: dict) -> List[ASRDataSeg]:
-        """Convert API response to segments."""
-        if self.need_word_time_stamp and "words" in resp_data:
-            return [
-                ASRDataSeg(
-                    text=word["word"],
-                    start_time=int(float(word["start"]) * 1000),
-                    end_time=int(float(word["end"]) * 1000),
-                )
-                for word in resp_data["words"]
-            ]
-        else:
-            return [
-                ASRDataSeg(
-                    text=seg["text"].strip(),
-                    start_time=int(float(seg["start"]) * 1000),
-                    end_time=int(float(seg["end"]) * 1000),
-                )
-                for seg in resp_data["segments"]
-            ]
+    def _make_segments(self, resp_data: dict) -> list[ASRDataSeg]:
+        return parse_response(resp_data).subtitle_segments(self.need_word_time_stamp)
 
     def _get_key(self) -> str:
-        """Get cache key including model and language."""
-        return f"{self.crc32_hex}-{self.model}-{self.language}-{self.prompt}"
+        return fingerprint(
+            self.file_binary or b"", self.base_url, self.model, self.language,
+            self.prompt, self.profile, self.need_word_time_stamp, self.provider,
+        )
 
     def _submit(self) -> dict:
-        """Submit audio for transcription."""
-        try:
-            if self.language == "zh" and not self.prompt:
-                self.prompt = "你好，我们需要使用简体中文，以下是普通话的句子"
-
-            if not self.base_url:
-                raise ValueError("Whisper BASE_URL must be set")
-
-            api_kwargs: dict[str, Any] = {
-                "model": self.model,
-                "response_format": "verbose_json",
-                "file": ("audio.mp3", self.file_binary or b"", "audio/mp3"),
-                "prompt": self.prompt,
-                "timestamp_granularities": ["word", "segment"],
-            }
-            # 空字符串表示自动检测，不传 language 参数让 API 自行判断
-            if self.language:
-                api_kwargs["language"] = self.language
-
-            completion = self.client.audio.transcriptions.create(**api_kwargs)
-            if isinstance(completion, str):
-                raise ValueError(
-                    "WhisperAPI returned type error, please check your base URL."
-                )
-            return completion.to_dict()
-        except Exception:
-            logger.exception("WhisperAPI failed")
-            raise
+        request = build_request(
+            self.file_binary or b"", self.model, self.profile,
+            language=self.language, prompt=self.prompt, word_timing=self.need_word_time_stamp,
+        )
+        with create_client(self.base_url, self.api_key) as client:
+            response = submit_transcription(client, request)
+        # Validate timing before the base class persists a successful subtitle result.
+        self._make_segments(response)
+        return {k: response[k] for k in ("text", "words", "segments") if k in response}

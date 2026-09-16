@@ -52,13 +52,26 @@ def run(args: Namespace, config: dict) -> int:
         return EXIT.FILE_NOT_FOUND
 
     from videocaptioner.cli.validators import validate_subtitle_input
-    err = validate_subtitle_input(input_path)
+    err = validate_subtitle_input(input_path, allow_json=True)
     if err is not None:
         return err
+
+    from videocaptioner.core.asr.asr_data import ASRData
+
+    asr_data = getattr(args, "asr_data", None)
+    if asr_data is None:
+        try:
+            asr_data = ASRData.from_subtitle_file(str(input_path))
+        except (OSError, ValueError, TypeError, KeyError):
+            output.error("Cannot read subtitle document; review JSON schema and cue associations.")
+            return EXIT.RUNTIME_ERROR
 
     need_optimize = get(config, "subtitle.optimize", True)
     need_translate = get(config, "subtitle.translate", False)
     need_split = get(config, "subtitle.split", True)
+    if asr_data.visual_source or any(s.ocr_metadata for s in asr_data):
+        need_split = False
+        need_optimize = bool(getattr(args, "optimize", False) and not getattr(args, "no_optimize", False))
 
     # If user explicitly specified translator or target language, enable translation
     explicitly_wants_translate = getattr(args, "translator", None) or getattr(args, "target_language", None)
@@ -90,6 +103,13 @@ def run(args: Namespace, config: dict) -> int:
         output.warn("--prompt/--prompt-file only works with LLM optimizer/translator")
 
     thread_num = get(config, "subtitle.thread_num", 4)
+    from videocaptioner.core.llm.request_policy import validate_request_timeout
+
+    try:
+        request_timeout = validate_request_timeout(get(config, "llm.request_timeout", 120))
+    except ValueError as exc:
+        output.error(str(exc))
+        return EXIT.USAGE_ERROR
     batch_size = get(config, "subtitle.batch_size", 20)
     max_cjk = get(config, "subtitle.max_word_count_cjk", 18)
     max_english = get(config, "subtitle.max_word_count_english", 12)
@@ -163,14 +183,11 @@ def run(args: Namespace, config: dict) -> int:
         if needs_llm and llm_model:
             output.info(f"LLM: {llm_model} @ {llm_api_base}")
 
-    # Load subtitle data
-    from videocaptioner.core.asr.asr_data import ASRData
-    asr_data = ASRData.from_subtitle_file(str(input_path))
-
     if len(asr_data.segments) == 0 and not quiet:
         output.warn(f"Input file contains 0 subtitle segments: {input_path}")
 
     progress = None if quiet else output.ProgressLine("Processing subtitles").start()
+    components = []
     _done_count = 0
     _total_count = max(len(asr_data.segments), 1)
 
@@ -182,8 +199,20 @@ def run(args: Namespace, config: dict) -> int:
             progress.update(pct)
 
     try:
+        from videocaptioner.core.translate.conversation import load_context
+        context_path = get(config, "translate.conversation_context", "")
+        if context_path:
+            asr_data.conversation_context = load_context(context_path)
+        if asr_data.conversation_context.enabled:
+            snapshot = asr_data.context_snapshot()
+            if snapshot.review or any(c.review for c in snapshot.resolved):
+                output.warn("Conversation context has unresolved associations; review before accepting pronouns.")
+            if need_translate and translator_service != "llm":
+                output.warn("This translator preserves context but does not apply directed address rules; use LLM.")
+            if not str(output_path).lower().endswith(".json"):
+                output.warn("SRT/ASS/text cannot retain conversation context; use JSON to reopen it.")
         # 1. Split (if word-level timestamps available)
-        if need_split and asr_data.is_word_timestamp():
+        if need_split:
             if progress:
                 progress.update(5, "Splitting subtitles...")
             from videocaptioner.core.split.split import SubtitleSplitter
@@ -193,6 +222,7 @@ def run(args: Namespace, config: dict) -> int:
                 max_word_count_cjk=max_cjk,
                 max_word_count_english=max_english,
             )
+            components.append(splitter)
             asr_data = splitter.split_subtitle(asr_data)
 
         # 2. Optimize
@@ -207,8 +237,8 @@ def run(args: Namespace, config: dict) -> int:
                 custom_prompt=custom_prompt,
                 update_callback=callback,
             )
+            components.append(optimizer)
             asr_data = optimizer.optimize_subtitle(asr_data)
-            asr_data.remove_punctuation()
 
         # 3. Translate
         if need_translate:
@@ -234,9 +264,11 @@ def run(args: Namespace, config: dict) -> int:
                 custom_prompt=custom_prompt,
                 is_reflect=need_reflect,
                 update_callback=callback,
+                request_timeout=request_timeout,
+                credentials=LLMCredentials(llm_api_key, llm_api_base) if needs_llm else None,
             )
+            components.append(translator)
             asr_data = translator.translate_subtitle(asr_data)
-            asr_data.remove_punctuation()
 
         # 4. Save
         from videocaptioner.cli.validators import resolve_layout
@@ -249,6 +281,7 @@ def run(args: Namespace, config: dict) -> int:
                 layout=SubtitleLayoutEnum.ONLY_TRANSLATE,
             )
         asr_data.save(save_path=output_path, layout=layout)
+        args.asr_data = asr_data
 
         if progress:
             n = len(asr_data.segments)
@@ -266,3 +299,8 @@ def run(args: Namespace, config: dict) -> int:
             import traceback
             traceback.print_exc()
         return EXIT.RUNTIME_ERROR
+    finally:
+        for component in components:
+            close = getattr(component, "close", None)
+            if close is not None:
+                close()

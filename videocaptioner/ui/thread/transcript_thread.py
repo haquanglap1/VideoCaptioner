@@ -4,8 +4,15 @@ from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from videocaptioner.core.asr import transcribe
-from videocaptioner.core.entities import TranscribeOutputFormatEnum, TranscribeTask
+from videocaptioner.core.asr.api_transcription import TranscriptionResult
+from videocaptioner.core.asr.local.review import LocalReview
+from videocaptioner.core.asr.review import NativeReviewRequired
+from videocaptioner.core.asr.transcribe import recognize_text, transcribe
+from videocaptioner.core.entities import (
+    TranscribeModelEnum,
+    TranscribeOutputFormatEnum,
+    TranscribeTask,
+)
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import video2audio
 
@@ -16,6 +23,7 @@ class TranscriptThread(QThread):
     finished = pyqtSignal(TranscribeTask)
     progress = pyqtSignal(int, str)
     error = pyqtSignal(str)
+    review_required = pyqtSignal(object)
 
     def __init__(self, task: TranscribeTask):
         super().__init__()
@@ -24,6 +32,8 @@ class TranscriptThread(QThread):
     def run(self):
         try:
             self.task.started_at = datetime.datetime.now()
+            self.task.asr_data = None
+            self.task.transcript_path = None
             logger.info(f"\n{self.task.transcribe_config.print_config()}")
 
             self._validate_task()
@@ -35,9 +45,34 @@ class TranscriptThread(QThread):
             self._perform_transcription()
 
         except Exception as e:
-            logger.exception("转录过程中发生错误: %s", str(e))
-            self.error.emit(str(e))
+            message = str(e)
+            if isinstance(e, NativeReviewRequired):
+                recovered = self._recover_transcript(e)
+                if recovered:
+                    if not self.task.need_next_task:
+                        self.task.output_path = self.task.transcript_path
+                        self.progress.emit(100, self.tr("Nhận dạng hoàn tất; đã lưu TXT. Phụ đề cần kiểm tra thời gian."))
+                        self.finished.emit(self.task)
+                        return
+                    message = self.tr("Đã lưu transcript TXT. Pipeline phụ đề dừng vì thời gian chưa hợp lệ: ") + str(self.task.transcript_path)
+                self.review_required.emit(e)
+            logger.exception("Transcription output could not be completed: %s", message)
+            self.error.emit(message)
             self.progress.emit(100, self.tr("转录失败"))
+
+    def _recover_transcript(self, error: NativeReviewRequired) -> bool:
+        review = error.review
+        if (not isinstance(review, LocalReview) or not review.recognition_complete
+                or not self.task.output_path or self.isInterruptionRequested()
+                or QThread.currentThread().isInterruptionRequested()):
+            return False
+        try:
+            saved = TranscriptionResult(review.text).save_text(
+                Path(self.task.output_path).with_suffix(".txt"), unique=True)
+        except OSError:
+            return False
+        self.task.transcript_path = str(saved)
+        return True
 
     def _validate_task(self):
         """验证任务配置"""
@@ -107,14 +142,31 @@ class TranscriptThread(QThread):
             self.progress.emit(20, self.tr("语音转录中"))
             logger.info("开始语音转录")
 
-            # 进行转录
+            config = self.task.transcribe_config
+            if (config.transcribe_model is TranscribeModelEnum.QWEN_LOCAL
+                    and config.output_format is TranscribeOutputFormatEnum.TXT
+                    and not self.task.need_next_task):
+                result = recognize_text(temp_audio_path, config, callback=self.progress_callback)
+                if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
+                    return
+                saved = result.save_text(Path(self.task.output_path).with_suffix(".txt"))
+                self.task.output_path = self.task.transcript_path = str(saved)
+                self.progress.emit(100, self.tr("Đã lưu transcript TXT; không chạy căn thời gian hoặc gán người nói."))
+                self.finished.emit(self.task)
+                return
+
+            # Timed exports keep their subtitle validation contract.
             asr_data = transcribe(
                 temp_audio_path,
                 self.task.transcribe_config,
                 callback=self.progress_callback,
             )
 
-            # 保存字幕文件（根据配置的输出格式）
+            self.task.asr_data = asr_data
+            if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
+                return
+
+            # Save the configured subtitle formats.
             output_path = Path(self.task.output_path)
             output_format_enum = self.task.transcribe_config.output_format
             base_path = output_path.with_suffix("")
@@ -139,11 +191,25 @@ class TranscriptThread(QThread):
                 asr_data.save(save_path)
                 logger.info("%s 字幕文件已保存到: %s", fmt.upper(), save_path)
 
-            self.progress.emit(100, self.tr("转录完成"))
+            from videocaptioner.core.asr.local.sentence_fallback import fallback_cue_count
+            fallback_count = fallback_cue_count(asr_data)
+            if fallback_count:
+                self.progress.emit(100, self.tr("Đã lưu phụ đề; %s câu dùng chữ và thời gian từ Whisper dự phòng.") % fallback_count)
+            elif asr_data.pending_diarization:
+                self.progress.emit(100, self.tr("Đã lưu phụ đề; gán người nói chưa hoàn tất."))
+            else:
+                self.progress.emit(100, self.tr("转录完成"))
             self.finished.emit(self.task)
         finally:
             Path(temp_audio_path).unlink(missing_ok=True)
 
     def progress_callback(self, value, message):
+        if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
+            from videocaptioner.core.asr.alignment.contract import AlignmentError
+
+            raise AlignmentError("cancelled")
         progress = min(20 + (value * 0.8), 100)
         self.progress.emit(int(progress), message)
+
+    def stop(self):
+        self.requestInterruption()

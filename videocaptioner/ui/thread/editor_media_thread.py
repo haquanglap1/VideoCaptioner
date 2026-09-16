@@ -16,6 +16,7 @@ from videocaptioner.core.editor.media import (
     probe_media,
     render_fast_preview,
 )
+from videocaptioner.core.editor.models import EditorProject
 from videocaptioner.core.editor.project_store import EditorProjectStore
 
 
@@ -28,6 +29,18 @@ class EditorMediaThread(QThread):
         self.request_signature = request_signature
         self.action = action
         self.payload = dict(payload)
+
+    def _verify_visual_source(self, project: EditorProject) -> None:
+        if project.visual_source is None:
+            return
+        from videocaptioner.core.ocr.identity import verify_visual_file
+        from videocaptioner.core.ocr.service import jobs_directory
+
+        def check():
+            if self.isInterruptionRequested():
+                raise EditorRenderCancelled("Visual source verification cancelled")
+
+        verify_visual_file(project.visual_source, Path(project.video_path), jobs_directory(), check=check)
 
     def run(self) -> None:
         try:
@@ -46,6 +59,7 @@ class EditorMediaThread(QThread):
                 for track in project.tracks:
                     for clip in track.clips:
                         clip.end_ms = info.duration_ms
+                self._verify_visual_source(project)
                 self.completed.emit(self.request_signature, project)
             elif self.action == "load-project":
                 project = EditorProjectStore().load(str(self.payload["project_path"]))
@@ -54,6 +68,7 @@ class EditorMediaThread(QThread):
                 project.width = info.width
                 project.height = info.height
                 project.fps = info.fps
+                self._verify_visual_source(project)
                 self.completed.emit(self.request_signature, project)
             elif self.action == "waveform":
                 cache = EditorMediaCache(self.payload.get("cache_root"))

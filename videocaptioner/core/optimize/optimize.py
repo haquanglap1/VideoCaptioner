@@ -41,6 +41,7 @@ class SubtitleOptimizer:
         model: str,
         custom_prompt: str,
         update_callback: Optional[Callable] = None,
+        request: Optional[Callable] = None,
     ):
         """初始化优化器
 
@@ -57,6 +58,7 @@ class SubtitleOptimizer:
         self.model = model
         self.custom_prompt = custom_prompt
         self.update_callback = update_callback
+        self.request = request
 
         self.is_running = True
         self.executor: Optional[ThreadPoolExecutor] = None
@@ -89,15 +91,20 @@ class SubtitleOptimizer:
             }
 
             # 分批处理
-            chunks = self._split_chunks(subtitle_dict)
+            # One source cue per request prevents fuzzy alignment from moving text between speakers.
+            chunks = ([{key: text} for key, text in subtitle_dict.items()] if asr_data.has_metadata
+                      else self._split_chunks(subtitle_dict))
 
             # 并行优化
             optimized_dict = self._parallel_optimize(chunks)
 
-            # 创建新segments
+            if asr_data.has_metadata and set(optimized_dict) != set(subtitle_dict):
+                raise ValueError("Optimization changed cue association; review required.")
+
+            # Create segments without changing their source metadata.
             new_segments = self._create_segments(asr_data.segments, optimized_dict)
 
-            return ASRData(new_segments)
+            return asr_data.with_segments(new_segments)
 
         except Exception as e:
             logger.error(f"Optimization failed: {str(e)}")
@@ -220,7 +227,7 @@ class SubtitleOptimizer:
         # Agent loop
         for step in range(MAX_STEPS):
             # 调用LLM
-            response = call_llm(
+            response = (self.request or call_llm)(
                 messages=messages,
                 model=self.model,
                 temperature=0.2,
@@ -395,11 +402,7 @@ class SubtitleOptimizer:
             新的Subtitle segment列表
         """
         return [
-            ASRDataSeg(
-                text=optimized_dict.get(str(i), seg.text),
-                start_time=seg.start_time,
-                end_time=seg.end_time,
-            )
+            seg.clone(text=optimized_dict.get(str(i), seg.text))
             for i, seg in enumerate(original_segments, 1)
         ]
 
@@ -411,9 +414,19 @@ class SubtitleOptimizer:
         self.is_running = False
 
         if self.executor:
+            self._closing_executor = self.executor
             try:
                 self.executor.shutdown(wait=False, cancel_futures=True)
             except Exception:
                 pass
             finally:
                 self.executor = None
+
+    def close(self):
+        """Join owned work from the subtitle worker after cooperative cancellation."""
+        self.stop()
+        executor = getattr(self, "_closing_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+            self._closing_executor = None
+        atexit.unregister(self.stop)

@@ -19,7 +19,6 @@ from videocaptioner.core.dubbing.audio_mixer import (
 )
 from videocaptioner.core.dubbing.cache import (
     PersistentTTSCache,
-    build_tts_cache_key,
     measure_audio_duration,
 )
 from videocaptioner.core.dubbing.models import (
@@ -31,11 +30,13 @@ from videocaptioner.core.dubbing.models import (
     DubbingTimingMode,
     calculate_report_summary,
 )
-from videocaptioner.core.dubbing.planner import plan_dubbing_groups, predict_spoken_duration
+from videocaptioner.core.dubbing.planner import plan_dubbing_groups
+from videocaptioner.core.dubbing.review import DubbingReview, bind_sources, synthesis_cache_key
 from videocaptioner.core.dubbing.rewrite_service import (
     TimingRewriteService,
     request_for_group,
 )
+from videocaptioner.core.dubbing.scheduling import sequential_slots
 from videocaptioner.core.tts import TTSData, TTSDataSeg
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import get_video_info
@@ -64,36 +65,34 @@ class DubbingOrchestrator:
         output_path: str,
         config: "DubbingConfig",
         callback: Callable[[int, str], None],
+        *,
+        review: DubbingReview | None = None,
+        display_subtitle_path: str | None = None,
+        allow_config_change: bool = False,
     ) -> str:
         self._validate(video_path, subtitle_path, config)
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         report_path = self._report_path(config)
-        self.engine.last_report_path = report_path
-        self.engine.last_report = {}
+        self.engine.last_report_path = ""
+        if review is None:
+            self.engine.last_report = {}
+            self.engine.last_review = None
         work_dir = Path(tempfile.mkdtemp(prefix="vc_dub_"))
+        plan = None
         try:
             callback(5, "Đang đọc phụ đề...")
-            asr_data = self._load_dubbing_source(subtitle_path)
-            total_duration = self._video_duration(video_path, asr_data)
-            plan = self._build_dubbing_plan(
-                asr_data, subtitle_path, total_duration, config
+            prepared = self._prepare_plan(
+                video_path, subtitle_path, display_subtitle_path, config, callback
             )
+            if review is not None:
+                review.restore_into(prepared, config, allow_config_change=allow_config_change)
+            # Do not replace the retained review until every binding has passed.
+            plan = prepared
+            assert plan.resume_metadata is not None
+            total_duration = plan.resume_metadata.video_duration
             if not plan.groups:
                 raise ValueError("Phụ đề trống, không có gì để lồng tiếng")
-
-            if config.rewrite_model and config.rewrite_api_key and config.rewrite_api_base:
-                # Lazy: keeps the OpenAI SDK out of the import path of builds
-                # that never rewrite. Credentials stay out of os.environ.
-                from videocaptioner.core.llm.client import LLMCredentials, configure_llm_client
-
-                configure_llm_client(
-                    LLMCredentials(
-                        api_key=config.rewrite_api_key, base_url=config.rewrite_api_base
-                    )
-                )
-            rewrite_service = self.engine._create_rewrite_service(config)
-            if config.timing_mode == DubbingTimingMode.NATURAL:
-                self._pre_rewrite_hard_outliers(plan.groups, config, rewrite_service)
+            self._write_report(plan, "", output_created=False)
 
             callback(12, "Đang kiểm tra TTS cache...")
             cache = PersistentTTSCache(
@@ -116,7 +115,8 @@ class DubbingOrchestrator:
                     reason=self._provider_failure_reason(plan.groups),
                 )
 
-            if config.timing_mode == DubbingTimingMode.NATURAL:
+            if config.timing_mode == DubbingTimingMode.NATURAL and review is None:
+                rewrite_service = self.engine._create_rewrite_service(config, callback)
                 callback(55, "Đang xử lý các câu vượt khung...")
                 self._rewrite_outliers(
                     plan.groups,
@@ -130,7 +130,7 @@ class DubbingOrchestrator:
 
             callback(67, "Đang áp dụng chính sách timing...")
             segment_infos = self._apply_fit_policy(
-                plan.groups, config, work_dir / "adjusted"
+                plan.groups, config, work_dir / "adjusted", video_duration=total_duration
             )
             self._write_report(plan, report_path, output_created=False)
             if any(group.fit_status == DubbingFitStatus.FAILED for group in plan.groups):
@@ -172,8 +172,34 @@ class DubbingOrchestrator:
             self._write_report(plan, report_path, output_created=True)
             callback(100, "Lồng tiếng hoàn tất!")
             return output_path
+        except Exception:
+            if plan is not None:
+                for group in plan.groups:
+                    if group.fit_status in {DubbingFitStatus.PENDING, DubbingFitStatus.FAILED}:
+                        group.needs_review = True
+                # Callback cancellation and provider exceptions must keep wording,
+                # including when an explicit JSON report cannot be written.
+                self._write_report(plan, "", output_created=False)
+                if report_path:
+                    try:
+                        self._write_report(plan, report_path, output_created=False)
+                    except OSError:
+                        logger.warning("Could not save dubbing review; retained in memory")
+            raise
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _prepare_plan(
+        self, video_path: str, subtitle_path: str, display_subtitle_path: str | None,
+        config: "DubbingConfig", callback: Callable[[int, str], None],
+    ) -> DubbingPlan:
+        asr_data = self._load_dubbing_source(subtitle_path)
+        duration = self._video_duration(video_path, asr_data)
+        plan = self._build_dubbing_plan(asr_data, subtitle_path, duration, config)
+        plan.resume_metadata = bind_sources(
+            video_path, subtitle_path, display_subtitle_path, duration, config, callback
+        )
+        return plan
 
     @staticmethod
     def _validate(video_path: str, subtitle_path: str, config: "DubbingConfig") -> None:
@@ -242,17 +268,7 @@ class DubbingOrchestrator:
 
     @staticmethod
     def _cache_key(group: "DubbingGroup", config: "DubbingConfig") -> str:
-        assert config.tts_config is not None
-        return build_tts_cache_key(
-            text=group.tts_text,
-            provider=tts_provider_key(config.tts_provider),
-            api_base=config.tts_config.base_url,
-            model=config.tts_config.model,
-            voice=config.tts_config.voice or "",
-            speed=config.tts_config.speed,
-            sample_rate=config.tts_config.sample_rate,
-            runtime_identity=config.managed_tts_identity,
-        )
+        return synthesis_cache_key(group.tts_text, config)
 
     def _resolve_cache_hits(
         self,
@@ -301,12 +317,28 @@ class DubbingOrchestrator:
             ]
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        provider.synthesize(
-            tts_data,
-            str(output_dir),
-            lambda progress, message: callback(18 + int(progress * 0.32), message),
-            max_workers=config.tts_concurrency,
-        )
+        assert config.tts_config is not None
+        previous_use_cache = config.tts_config.use_cache
+        # The provider's older binary cache omits endpoint/runtime/format fields.
+        # Missing authoritative WAV entries must reach synthesis with this config.
+        config.tts_config.use_cache = False
+        try:
+            provider.synthesize(
+                tts_data,
+                str(output_dir),
+                lambda progress, message: callback(18 + int(progress * 0.32), message),
+                max_workers=config.tts_concurrency,
+            )
+        finally:
+            config.tts_config.use_cache = previous_use_cache
+            # Providers can finish some segments before a callback cancels the
+            # batch. Persist those WAVs before the temporary directory is removed.
+            self._collect_synthesis_results(unique, duplicates, tts_data, config, cache, output_dir)
+
+    def _collect_synthesis_results(
+        self, unique: list["DubbingGroup"], duplicates: dict[str, list["DubbingGroup"]],
+        tts_data: TTSData, config: "DubbingConfig", cache: PersistentTTSCache, output_dir: Path,
+    ) -> None:
         assert config.tts_config is not None
         for group, segment in zip(unique, tts_data.segments):
             group.attempt_count += 1
@@ -382,42 +414,6 @@ class DubbingOrchestrator:
                 else float("inf")
             )
 
-    @staticmethod
-    def _pre_rewrite_hard_outliers(
-        groups: list["DubbingGroup"],
-        config: "DubbingConfig",
-        service: TimingRewriteService,
-    ) -> None:
-        if not config.rewrite_enabled or not service.configured:
-            return
-        for group in groups:
-            predicted_ratio = (
-                group.predicted_duration / group.available_duration
-                if group.available_duration > 0
-                else float("inf")
-            )
-            if predicted_ratio <= 1.15:
-                continue
-            group.fit_ratio = predicted_ratio
-            request = request_for_group(
-                group,
-                source_language="",
-                target_language=config.target_language,
-                attempt_number=0,
-                custom_style_prompt=config.rewrite_style_prompt,
-            )
-            try:
-                rewritten = service.rewrite(request, rescue=False)
-            except Exception as exc:
-                group.warnings.append(f"Pre-rewrite skipped: {exc}")
-                continue
-            if rewritten and rewritten != group.tts_text:
-                group.tts_text = rewritten
-                group.predicted_duration = predict_spoken_duration(
-                    rewritten, config.target_language
-                )
-                group.action_taken = "pre_rewrite"
-
     def _rewrite_outliers(
         self,
         groups: list["DubbingGroup"],
@@ -432,6 +428,7 @@ class DubbingOrchestrator:
             return
         outliers = [group for group in groups if group.fit_ratio > config.fit_ratio_limit]
         for position, group in enumerate(outliers):
+            group_index = groups.index(group)
             for attempt in range(1, config.max_rewrite_attempts + 1):
                 snapshot = (
                     group.tts_text,
@@ -448,10 +445,13 @@ class DubbingOrchestrator:
                     target_language=config.target_language,
                     attempt_number=attempt,
                     custom_style_prompt=config.rewrite_style_prompt,
+                    previous_text=groups[group_index - 1].subtitle_text if group_index else "",
+                    next_text=groups[group_index + 1].subtitle_text if group_index + 1 < len(groups) else "",
                 )
                 try:
                     candidate = service.rewrite(request, rescue=True)
                 except Exception as exc:
+                    callback(55, "Đang kiểm tra trạng thái lồng tiếng...")
                     group.warnings.append(f"Rewrite attempt {attempt} rejected: {exc}")
                     continue
                 if not candidate:
@@ -502,10 +502,16 @@ class DubbingOrchestrator:
         groups: list["DubbingGroup"],
         config: "DubbingConfig",
         adjusted_dir: Path,
+        *,
+        video_duration: float | None = None,
     ) -> list[dict]:
         adjusted_dir.mkdir(parents=True, exist_ok=True)
         result: list[dict] = []
         natural = config.timing_mode == DubbingTimingMode.NATURAL
+        if natural and config.unresolved_policy.value == "sequential":
+            if video_duration is None:
+                raise ValueError("Sequential dubbing requires video duration")
+            return self._apply_sequential_policy(groups, config, adjusted_dir, video_duration)
         for group in groups:
             if group.fit_status == DubbingFitStatus.FAILED:
                 continue
@@ -562,12 +568,56 @@ class DubbingOrchestrator:
             result.append(self._segment_info(group))
         return result
 
+    def _apply_sequential_policy(self, groups, config, adjusted_dir, video_duration):
+        import math
+
+        provider_speed = config.tts_config.speed if config.tts_config else 1.0
+        ceiling = max(1.0, min(config.natural_max_speed, config.natural_max_speed / max(provider_speed, 0.01)))
+        gap = max(0.02, config.silence_guard_ms / 1000.0)
+        delay_limit = config.max_start_delay_ms / 1000.0
+        slots = sequential_slots(groups, video_duration=video_duration, max_speed=ceiling,
+                                 max_delay=delay_limit, gap=gap)
+        result, previous_end = [], -gap
+        for group, slot in zip(groups, slots):
+            group.needs_review = False
+            group.applied_speed = slot.speed
+            if slot.speed > 1.001:
+                output = adjusted_dir / f"{group.group_id}-sequential.wav"
+                if not adjust_audio_speed(group.audio_path, str(output), slot.speed):
+                    group.fit_status = DubbingFitStatus.FAILED
+                    group.warnings.append("Cannot render sequential speech speed adjustment")
+                    continue
+                group.audio_path = str(output)
+                group.measured_duration = measure_audio_duration(output)
+                if group.measured_duration <= 0:
+                    group.fit_status = DubbingFitStatus.FAILED
+                    group.warnings.append("Adjusted sequential audio has invalid duration")
+                    continue
+                group.action_taken = "+".join(filter(None, (group.action_taken, f"speed_adjust_{slot.speed:.3f}x")))
+                group.fit_status = DubbingFitStatus.SPEED_ADJUSTED
+            # Recompute from the actual WAV, never from the ideal duration/speed ratio.
+            group.fit_ratio = group.measured_duration / max(group.available_duration, 0.001)
+            start = math.ceil(max(group.start_time, previous_end + gap) * 1000) / 1000
+            end = start + group.measured_duration
+            group.playback_start_time, group.playback_end_time = start, end
+            group.start_delay = max(0.0, start - group.start_time)
+            if group.start_delay > delay_limit + 0.000001 or end > video_duration + 0.000001:
+                group.needs_review = True
+                group.fit_status = DubbingFitStatus.NEEDS_REVIEW
+                group.warnings.append("Sequential speech exceeds the start-delay limit or video end; shorten this passage")
+            elif group.fit_status not in (DubbingFitStatus.SPEED_ADJUSTED, DubbingFitStatus.REWRITTEN, DubbingFitStatus.CACHED):
+                group.fit_status = DubbingFitStatus.FIT
+            group.action_taken = "+".join(filter(None, (group.action_taken, f"sequential_delay_{round(group.start_delay * 1000)}ms")))
+            previous_end = end
+            result.append(self._segment_info(group))
+        return result
+
     @staticmethod
     def _segment_info(group: "DubbingGroup") -> dict:
         return {
             "audio_path": group.audio_path,
-            "start_time": group.start_time,
-            "end_time": group.subtitle_end_time,
+            "start_time": group.playback_start_time if group.playback_start_time is not None else group.start_time,
+            "end_time": group.playback_end_time if group.playback_end_time is not None else group.subtitle_end_time,
         }
 
     @staticmethod
@@ -588,7 +638,7 @@ class DubbingOrchestrator:
             f"Có {len(review)} nhóm chưa khớp thời gian. Tệ nhất {worst.group_id}: "
             f"audio {worst.measured_duration:.2f}s, khung khả dụng "
             f"{worst.available_duration:.2f}s, tỷ lệ {worst.fit_ratio:.2f}x. "
-            "Hãy rút gọn TTS text hoặc chọn Cho phép chồng lấn."
+            "Hãy rút gọn lời đọc bằng LLM hoặc điều chỉnh giới hạn tốc độ/độ trễ."
         )
 
     def _write_report(
@@ -602,6 +652,7 @@ class DubbingOrchestrator:
         report = DubbingReport(plan=plan, report_path=report_path)
         report_data = report.to_dict()
         self.engine.last_report = report_data
+        self.engine.last_review = DubbingReview.from_report(report_data) if plan.groups else None
         self.engine.last_report_path = ""
         if not report_path:
             return

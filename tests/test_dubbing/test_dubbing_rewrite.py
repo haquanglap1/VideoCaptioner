@@ -44,7 +44,7 @@ def test_valid_response_and_protected_content():
     "raw,match",
     [
         (response("Model X200 không hơn 50%, giá $20", "bad"), "group_id"),
-        ("```json\n{}\n```", "strict JSON"),
+        ("```json\n{}\n```", "schema"),
         (response(""), "empty"),
         (response("Model không nhanh hơn"), "removed"),
         (response("Model X200 nhanh hơn 50%, giá $20"), "negation"),
@@ -54,6 +54,13 @@ def test_valid_response_and_protected_content():
 def test_invalid_responses(raw, match):
     with pytest.raises(ValueError, match=match):
         validate_rewrite_response(raw, request(), rescue=True)
+
+
+def test_single_json_fence_is_unwrapped_without_accepting_commentary():
+    value = response("Model X200 không hơn 50%, giá $20")
+    assert validate_rewrite_response("```json\n" + value + "\n```", request(), rescue=True)
+    with pytest.raises(ValueError, match="strict JSON"):
+        validate_rewrite_response("Here is the answer:\n" + value, request(), rescue=True)
 
 
 def test_cache_key_is_stable_and_budget_sensitive():

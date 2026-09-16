@@ -62,6 +62,8 @@ def run(args: Namespace, config: dict) -> int:
     # they are deliberately not exported to os.environ.
 
     # Build TranscribeConfig
+    from videocaptioner.core.asr.local.profiles import LocalASRConfig
+    from videocaptioner.core.asr.native_profiles import NativeASRConfig
     from videocaptioner.core.entities import (
         FasterWhisperModelEnum,
         TranscribeConfig,
@@ -71,6 +73,9 @@ def run(args: Namespace, config: dict) -> int:
     )
 
     asr_map = {
+        "qwen-local": TranscribeModelEnum.QWEN_LOCAL,
+        "soniox": TranscribeModelEnum.SONIOX,
+        "scribe": TranscribeModelEnum.SCRIBE,
         "faster-whisper": TranscribeModelEnum.FASTER_WHISPER,
         "whisper-api": TranscribeModelEnum.WHISPER_API,
         "bijian": TranscribeModelEnum.BIJIAN,
@@ -91,12 +96,19 @@ def run(args: Namespace, config: dict) -> int:
     wcpp_model_enum = next((m for m in WhisperModelEnum if m.value == wcpp_model_str), None)
 
     transcribe_config = TranscribeConfig(
+        local_asr=LocalASRConfig(**get(config, "local_asr", {})),
         transcribe_model=asr_map.get(asr_engine),
         transcribe_language=language if language != "auto" else "",
         need_word_time_stamp=getattr(args, "word_timestamps", False),
+        native_asr=NativeASRConfig(
+            asr_engine, api_key=get(config, f"{asr_engine}.api_key", ""),
+            api_base=get(config, f"{asr_engine}.api_base", ""), model=get(config, f"{asr_engine}.model", ""),
+            diarize=get(config, f"{asr_engine}.diarize", True),
+        ) if asr_engine in ("soniox", "scribe") else None,
         # FasterWhisper options
+        faster_whisper_program=get(config, "transcribe.faster_whisper.program", "") or None,
         faster_whisper_model=fw_model_enum,
-        faster_whisper_model_dir=None,
+        faster_whisper_model_dir=get(config, "transcribe.faster_whisper.model_dir", "") or None,
         faster_whisper_device=get(config, "transcribe.faster_whisper.device", "auto"),
         faster_whisper_vad_filter=get(config, "transcribe.faster_whisper.vad_filter", True),
         faster_whisper_vad_method=vad_enum,
@@ -111,6 +123,8 @@ def run(args: Namespace, config: dict) -> int:
         whisper_api_base=get(config, "whisper_api.api_base", ""),
         whisper_api_model=get(config, "whisper_api.model", "whisper-1"),
         whisper_api_prompt=get(config, "whisper_api.prompt", ""),
+        whisper_api_provider=get(config, "whisper_api.provider", "custom"),
+        whisper_api_request_profile=get(config, "whisper_api.request_profile", "auto"),
     )
 
 
@@ -150,11 +164,40 @@ def run(args: Namespace, config: dict) -> int:
                 return EXIT.RUNTIME_ERROR
             audio_path = temp_audio.name
 
-        from videocaptioner.core.asr import transcribe
+        from videocaptioner.core.asr.transcribe import recognize_text, transcribe
+        from videocaptioner.core.translate.conversation import load_context
+        context_path = get(config, "translate.conversation_context", "")
+        context = load_context(context_path) if context_path else None
+        if asr_engine == "qwen-local" and Path(output_path).suffix.lower() == ".txt":
+            result = recognize_text(audio_path, transcribe_config, callback=callback)
+            result.save_text(output_path)
+            args.transcript_path = str(output_path)
+            if transcribe_config.local_asr.diarize:
+                output.warn("TXT contains speech text only; speaker association was not run.")
+            if context is not None:
+                output.warn("TXT cannot retain conversation context.")
+            if progress:
+                progress.finish(f"Speech recognition complete -> {output_path}")
+            if quiet:
+                print(output_path)
+            return EXIT.SUCCESS
         asr_data = transcribe(audio_path, transcribe_config, callback=callback)
+        if context is not None:
+            asr_data.conversation_context = context
+            output.warn("Context attached for review; a new ASR request does not reuse old speaker identities.")
+            if not str(output_path).lower().endswith(".json"):
+                output.warn("SRT/ASS/text cannot retain conversation context; use JSON to reopen it.")
+
+        args.asr_data = asr_data
 
         # Save output
         asr_data.save(save_path=output_path)
+        from videocaptioner.core.asr.local.sentence_fallback import fallback_cue_count
+        fallback_count = fallback_cue_count(asr_data)
+        if fallback_count:
+            output.warn(f"{fallback_count} subtitle cues use Whisper fallback text and timing; original Qwen text is retained in ASR review.")
+        if asr_data.pending_diarization:
+            output.warn("Subtitles saved; optional speaker association is still pending. Use local-diarize after preparing its model.")
 
         if progress:
             n = len(asr_data.segments)
@@ -164,6 +207,30 @@ def run(args: Namespace, config: dict) -> int:
         return EXIT.SUCCESS
 
     except Exception as e:
+        from videocaptioner.core.asr.review import NativeReviewRequired
+
+        if isinstance(e, NativeReviewRequired):
+            from videocaptioner.core.asr.api_transcription import TranscriptionResult
+            from videocaptioner.core.asr.local.review import LocalReview
+
+            if isinstance(e.review, LocalReview) and e.review.recognition_complete:
+                try:
+                    transcript = TranscriptionResult(e.review.text).save_text(
+                        Path(output_path).with_suffix(".txt"), unique=True)
+                    args.transcript_path = str(transcript)
+                    output.warn(f"Speech recognition is complete and saved: {transcript}")
+                    output.warn("The requested subtitles still need valid timing; recognition does not need to be repeated.")
+                except OSError:
+                    output.warn("Could not save a TXT copy; recognized speech remains in the local review.")
+            review_path = e.path
+            if getattr(args, "asr_review", None):
+                try:
+                    review_path = e.review.save(args.asr_review)
+                except OSError:
+                    output.error("Cannot save requested review path.")
+            if review_path:
+                output.warn(f"Recognition requires local review: {review_path}")
+                output.hint("Open ASR review in the GUI or use 'asr-review'; do not transcribe/upload again.")
         msg = output.clean_error(str(e))
         if progress:
             progress.fail(msg)

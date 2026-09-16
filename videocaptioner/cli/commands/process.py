@@ -67,9 +67,10 @@ def run(args: Namespace, config: dict) -> int:
         output.info(f"Step 1/{total_steps}: Transcribing...")
     subtitle_path = str(out_dir / f"{path.stem}.srt")
     dubbing_subtitle_path = str(out_dir / f"{path.stem}_dubbing-target.srt")
+    input_subtitle_layout = None
 
-    # Only use word timestamps if subtitle processing (split/optimize) will run
-    need_word_ts = not (no_optimize and no_translate and no_split)
+    # Translation and cue-preserving optimization can use native sentence timing.
+    need_word_ts = not no_split and not (no_optimize and no_translate)
     tr_args = Namespace(
         input=str(path), output=subtitle_path, format="srt", word_timestamps=need_word_ts,
         verbose=verbose, quiet=quiet, config=getattr(args, "config", None),
@@ -79,6 +80,7 @@ def run(args: Namespace, config: dict) -> int:
         whisper_api_key=getattr(args, "whisper_api_key", None),
         whisper_api_base=getattr(args, "whisper_api_base", None),
         whisper_model=None, whisper_prompt=None,
+        asr_review=getattr(args, "asr_review", None),
     )
     from videocaptioner.cli.commands.transcribe import run as transcribe_run
     ret = transcribe_run(tr_args, config)
@@ -93,6 +95,7 @@ def run(args: Namespace, config: dict) -> int:
         processed_path = str(out_dir / f"{path.stem}_processed.srt")
         sub_args = Namespace(
             input=subtitle_path, output=processed_path,
+            asr_data=getattr(tr_args, "asr_data", None),
             format=get(config, "output.format", "srt"),
             no_optimize=no_optimize, no_translate=no_translate, no_split=no_split,
             verbose=verbose, quiet=quiet, config=getattr(args, "config", None),
@@ -115,6 +118,9 @@ def run(args: Namespace, config: dict) -> int:
         if ret != 0:
             return ret
         subtitle_path = processed_path
+        from videocaptioner.cli.validators import resolve_layout
+
+        input_subtitle_layout = resolve_layout(get(config, "synthesize.layout", "target-above"))
     else:
         if not quiet:
             output.info(f"Step 2/{total_steps}: Skipped (optimization and translation disabled)")
@@ -160,6 +166,7 @@ def run(args: Namespace, config: dict) -> int:
             style=None, layout=getattr(args, "layout", None),
             format=None, verbose=verbose, quiet=quiet,
             config=getattr(args, "config", None),
+            input_subtitle_layout=input_subtitle_layout,
         )
         from videocaptioner.cli.commands.synthesize import run as synthesize_run
         ret = synthesize_run(syn_args, config)

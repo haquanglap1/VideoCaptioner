@@ -1128,6 +1128,9 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>测试错误</source>
         <translation>Test error</translation>
     </message>
+    <message><source>Translation request timeout (seconds)</source><translation>Translation request timeout (seconds)</translation></message>
+    <message><source>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</source><translation>Default 120. Use 300 for slow models such as gpt-5.6-terra; cancellation may still incur provider charges.</translation></message>
+    <message><source>Qwen3-ASR [Local]</source><translation>Qwen3-ASR [Local]</translation></message>
 </context>
 <context>
     <name>StyleNameDialog</name>
@@ -1318,6 +1321,30 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <location filename="../../app/view/subtitle_interface.py" line="842" />
         <source>字幕校正已取消</source>
         <translation>Subtitle correction has been canceled</translation>
+    </message>
+    <message>
+        <source>Review required</source>
+        <translation>Review required</translation>
+    </message>
+    <message>
+        <source>Cannot merge different speakers or ASR sources.</source>
+        <translation>Cannot merge different speakers or ASR sources.</translation>
+    </message>
+    <message>
+        <source>Conversation context</source>
+        <translation>Conversation context</translation>
+    </message>
+    <message>
+        <source>Undo context edit</source>
+        <translation>Undo context edit</translation>
+    </message>
+    <message>
+        <source>Redo context edit</source>
+        <translation>Redo context edit</translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation>Context or subtitles changed; stale translation discarded.</translation>
     </message>
 </context>
 <context>
@@ -1993,6 +2020,8 @@ Note: When using small LLM models, it is recommended to keep the script within 1
         <source>请拖入音频或视频文件</source>
         <translation>Please drag audio or video files here</translation>
     </message>
+    <message><source>Open ASR review</source><translation>Open ASR review</translation></message>
+    <message><source>Qwen3-ASR [Local]</source><translation>Qwen3-ASR [Local]</translation></message>
 </context>
 <context>
     <name>VideoInfoCard</name>
@@ -2574,6 +2603,7 @@ Note: When using small LLM models, it is recommended to keep the script within 1
 </context>
 <context>
     <name>LLMLogsInterface</name>
+    <message><source>共 {0} 条</source><translation>Total {0} records</translation></message>
     <message><source>Ngày:</source><translation>Date:</translation></message>
     <message><source>Cũ</source><translation>Legacy</translation></message>
     <message><source>Xóa nhật ký ngày</source><translation>Clear daily log</translation></message>
@@ -2594,6 +2624,31 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message><source>Display subtitle</source><translation>Display subtitle</translation></message>
     <message><source>TTS text</source><translation>TTS text</translation></message>
     <message><source>Visual Layers</source><translation>Visual Layers</translation></message>
+    <message>
+        <source>Open subtitles</source>
+        <translation>Open subtitles</translation>
+    </message>
+    <message>
+        <source>Subtitles with optional ASR metadata (*.srt *.json)</source>
+        <translation>Subtitles with optional ASR metadata (*.srt *.json)</translation>
+    </message>
+    <message>
+        <source>Conversation context</source>
+        <translation>Conversation context</translation>
+    </message>
+    <message>
+        <source>Translate selected cues</source>
+        <translation>Translate selected cues</translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation>Context or subtitles changed; stale translation discarded.</translation>
+    </message>
+    <message>
+        <source>Translated selected cues; review Vietnamese pronouns.</source>
+        <translation>Translated selected cues; review Vietnamese pronouns.</translation>
+    </message>
+    <message><source>Cancel translation</source><translation>Cancel translation</translation></message>
 </context>
 <context>
     <name>DubbingInterface</name>
@@ -2604,5 +2659,505 @@ Note: When using small LLM models, it is recommended to keep the script within 1
     <message><source>Open model folder</source><translation>Open model folder</translation></message>
     <message><source>Auto update</source><translation>Auto update</translation></message>
     <message><source>VieNeu Local error</source><translation>VieNeu Local error</translation></message>
+</context>
+<context>
+    <name>WhisperProfileCards</name>
+    <message>
+        <source>ASR provider</source>
+        <translation>ASR provider</translation>
+    </message>
+    <message>
+        <source>Presets keep separate endpoint keys. Chinese (zh) is recommended for Chinese speech.</source>
+        <translation>Presets keep separate endpoint keys. Chinese (zh) is recommended for Chinese speech.</translation>
+    </message>
+    <message>
+        <source>Request profile</source>
+        <translation>Request profile</translation>
+    </message>
+    <message>
+        <source>Auto (known models; otherwise Whisper)</source>
+        <translation>Auto (known models; otherwise Whisper)</translation>
+    </message>
+    <message>
+        <source>Whisper timestamps</source>
+        <translation>Whisper timestamps</translation>
+    </message>
+    <message>
+        <source>JSON text (needs alignment)</source>
+        <translation>JSON text (needs alignment)</translation>
+    </message>
+    <message>
+        <source>Word/segment timestamps requested; actual timing is checked after recognition.</source>
+        <translation>Word/segment timestamps requested; actual timing is checked after recognition.</translation>
+    </message>
+    <message>
+        <source>Recognition test available. Subtitle export needs alignment (S2), not available yet.</source>
+        <translation>Recognition test available. Subtitle export needs alignment (S2), not available yet.</translation>
+    </message>
+    <message>
+        <source>Enter a model and choose a compatible request profile. Custom aliases can use Whisper or JSON text.</source>
+        <translation>Enter a model and choose a compatible request profile. Custom aliases can use Whisper or JSON text.</translation>
+    </message>
+</context>
+<context>
+    <name>WhisperConnectionThread</name>
+    <message>
+        <source>Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified.</source>
+        <translation>Recognition request succeeded but returned no speech or timestamps; subtitle timing was not verified.</translation>
+    </message>
+    <message>
+        <source>Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet.</source>
+        <translation>Recognition succeeded without timestamps. Subtitle export needs alignment (S2), not available yet.</translation>
+    </message>
+    <message>
+        <source>Recognition succeeded with word timestamps.</source>
+        <translation>Recognition succeeded with word timestamps.</translation>
+    </message>
+    <message>
+        <source>Recognition succeeded with segment timestamps.</source>
+        <translation>Recognition succeeded with segment timestamps.</translation>
+    </message>
+    <message>
+        <source>Bundled test audio is unavailable.</source>
+        <translation>Bundled test audio is unavailable.</translation>
+    </message>
+    <message>
+        <source>ASR connection check failed. Check provider and request profile.</source>
+        <translation>ASR connection check failed. Check provider and request profile.</translation>
+    </message>
+    <message>
+        <source>ASR authentication failed. Check the API key.</source>
+        <translation>ASR authentication failed. Check the API key.</translation>
+    </message>
+    <message>
+        <source>ASR access denied. Check provider/model permissions.</source>
+        <translation>ASR access denied. Check provider/model permissions.</translation>
+    </message>
+    <message>
+        <source>ASR route or model not found. Check Base URL and model access.</source>
+        <translation>ASR route or model not found. Check Base URL and model access.</translation>
+    </message>
+    <message>
+        <source>ASR rate limit reached. Try again later.</source>
+        <translation>ASR rate limit reached. Try again later.</translation>
+    </message>
+    <message>
+        <source>Invalid ASR request. Check model and request profile.</source>
+        <translation>Invalid ASR request. Check model and request profile.</translation>
+    </message>
+    <message>
+        <source>ASR upload rejected as too large. Compress or split the audio.</source>
+        <translation>ASR upload rejected as too large. Compress or split the audio.</translation>
+    </message>
+    <message>
+        <source>ASR request timed out. Try a shorter audio clip.</source>
+        <translation>ASR request timed out. Try a shorter audio clip.</translation>
+    </message>
+    <message>
+        <source>ASR connection failed. Check network and Base URL.</source>
+        <translation>ASR connection failed. Check network and Base URL.</translation>
+    </message>
+</context>
+<context>
+    <name>WhisperProfileCards</name>
+    <message>
+        <source>Subtitle export requires Chinese (zh) and a ready alignment runtime. Unmatched timing stops for review.</source>
+        <translation>Subtitle export requires Chinese (zh) and a ready alignment runtime. Unmatched timing stops for review.</translation>
+    </message>
+    <message>
+        <source>Check alignment</source>
+        <translation>Check alignment</translation>
+    </message>
+    <message>
+        <source>Chinese alignment runtime</source>
+        <translation>Chinese alignment runtime</translation>
+    </message>
+    <message>
+        <source>Local probe only. Install the separate runtime first; no automatic download.</source>
+        <translation>Local probe only. Install the separate runtime first; no automatic download.</translation>
+    </message>
+    <message>
+        <source>Cancel alignment check</source>
+        <translation>Cancel alignment check</translation>
+    </message>
+</context>
+<context>
+    <name>AlignmentThread</name>
+    <message>
+        <source>Starting Chinese alignment runtime...</source>
+        <translation>Starting Chinese alignment runtime...</translation>
+    </message>
+    <message>
+        <source>Chinese alignment ready. Probe runtime released.</source>
+        <translation>Chinese alignment ready. Probe runtime released.</translation>
+    </message>
+    <message>
+        <source>Chinese alignment runtime failed.</source>
+        <translation>Chinese alignment runtime failed.</translation>
+    </message>
+</context>
+<context>
+    <name>WhisperConnectionThread</name>
+    <message>
+        <source>Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).</source>
+        <translation>Recognition succeeded without timestamps. Subtitle export needs a ready Chinese alignment runtime (S2).</translation>
+    </message>
+</context>
+<context>
+    <name>NativeASRCards</name>
+    <message>
+        <source>Anonymous speaker labels</source>
+        <translation>Anonymous speaker labels</translation>
+    </message>
+    <message>
+        <source>Labels belong to one request; unknown speakers remain unknown.</source>
+        <translation>Labels belong to one request; unknown speakers remain unknown.</translation>
+    </message>
+    <message>
+        <source>Check service</source>
+        <translation>Check service</translation>
+    </message>
+    <message>
+        <source>No audio upload. Cancel stops local waiting; remote recognition may continue and incur charges.</source>
+        <translation>No audio upload. Cancel stops local waiting; remote recognition may continue and incur charges.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>API Base URL</source>
+        <translation>API Base URL</translation>
+    </message>
+    <message>
+        <source>API Key</source>
+        <translation>API Key</translation>
+    </message>
+</context>
+<context>
+    <name>NativeASRProbeThread</name>
+    <message>
+        <source>Service probe passed. Recognition, timing and speakers are not tested.</source>
+        <translation>Service probe passed. Recognition, timing and speakers are not tested.</translation>
+    </message>
+    <message>
+        <source>Service probe cancelled.</source>
+        <translation>Service probe cancelled.</translation>
+    </message>
+    <message>
+        <source>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</source>
+        <translation>Service probe failed. Check endpoint, key and read permissions; ASR access is not tested.</translation>
+    </message>
+</context>
+<context>
+    <name>ConversationDialog</name>
+    <message>
+        <source>Conversation context</source>
+        <translation>Conversation context</translation>
+    </message>
+    <message>
+        <source>Characters</source>
+        <translation>Characters</translation>
+    </message>
+    <message>
+        <source>Scenes</source>
+        <translation>Scenes</translation>
+    </message>
+    <message>
+        <source>Speaker mappings</source>
+        <translation>Speaker mappings</translation>
+    </message>
+    <message>
+        <source>Speakers and listeners</source>
+        <translation>Speakers and listeners</translation>
+    </message>
+    <message>
+        <source>Directed rules</source>
+        <translation>Directed rules</translation>
+    </message>
+    <message>
+        <source>Source cues (IDs and evidence)</source>
+        <translation>Source cues (IDs and evidence)</translation>
+    </message>
+    <message>
+        <source>Review context</source>
+        <translation>Review context</translation>
+    </message>
+    <message>
+        <source>No unresolved context entries.</source>
+        <translation>No unresolved context entries.</translation>
+    </message>
+    <message>
+        <source>Unknown / document</source>
+        <translation>Unknown / document</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Remove selected</source>
+        <translation>Remove selected</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Apply</translation>
+    </message>
+    <message>
+        <source>Undo context edit</source>
+        <translation>Undo context edit</translation>
+    </message>
+    <message>
+        <source>Redo context edit</source>
+        <translation>Redo context edit</translation>
+    </message>
+    <message>
+        <source>Translate selected cues</source>
+        <translation>Translate selected cues</translation>
+    </message>
+    <message>
+        <source>Context or subtitles changed; stale translation discarded.</source>
+        <translation>Context or subtitles changed; stale translation discarded.</translation>
+    </message>
+    <message>
+        <source>Translated selected cues; review Vietnamese pronouns.</source>
+        <translation>Translated selected cues; review Vietnamese pronouns.</translation>
+    </message>
+    <message>
+        <source>id</source>
+        <translation>id</translation>
+    </message>
+    <message>
+        <source>label</source>
+        <translation>label</translation>
+    </message>
+    <message>
+        <source>speaker_id</source>
+        <translation>speaker_id</translation>
+    </message>
+    <message>
+        <source>character_id</source>
+        <translation>character_id</translation>
+    </message>
+    <message>
+        <source>scene_id</source>
+        <translation>scene_id</translation>
+    </message>
+    <message>
+        <source>cue_ids</source>
+        <translation>cue_ids</translation>
+    </message>
+    <message>
+        <source>addressee_ids</source>
+        <translation>addressee_ids</translation>
+    </message>
+    <message>
+        <source>mentioned_ids</source>
+        <translation>mentioned_ids</translation>
+    </message>
+    <message>
+        <source>mode</source>
+        <translation>mode</translation>
+    </message>
+    <message>
+        <source>self_term</source>
+        <translation>self_term</translation>
+    </message>
+    <message>
+        <source>address_term</source>
+        <translation>address_term</translation>
+    </message>
+    <message>
+        <source>source</source>
+        <translation>source</translation>
+    </message>
+    <message>
+        <source>status</source>
+        <translation>status</translation>
+    </message>
+    <message>
+        <source>evidence_cue_ids</source>
+        <translation>evidence_cue_ids</translation>
+    </message>
+    <message>
+        <source>LLM translation uses these rules; Google/Bing/DeepLX preserve data but do not apply them. Blank listener means unknown; comma-separated character IDs mean a group. Rules are speaker → listener. Cue IDs limit a turn; scene IDs limit a scene; blank scope means document. Only confirmed/locked evidence applies. Apply is an explicit user edit, including unlocking. Save JSON to retain context; SRT loses it.</source>
+        <translation>LLM translation uses these rules; Google/Bing/DeepLX preserve data but do not apply them. Blank listener means unknown; comma-separated character IDs mean a group. Rules are speaker → listener. Cue IDs limit a turn; scene IDs limit a scene; blank scope means document. Only confirmed/locked evidence applies. Apply is an explicit user edit, including unlocking. Save JSON to retain context; SRT loses it.</translation>
+    </message>
+    <message>
+        <source>user</source>
+        <translation>user</translation>
+    </message>
+    <message>
+        <source>text</source>
+        <translation>text</translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation>unknown</translation>
+    </message>
+    <message>
+        <source>proposed</source>
+        <translation>proposed</translation>
+    </message>
+    <message>
+        <source>confirmed</source>
+        <translation>confirmed</translation>
+    </message>
+    <message>
+        <source>locked</source>
+        <translation>locked</translation>
+    </message>
+    <message>
+        <source>dialogue</source>
+        <translation>dialogue</translation>
+    </message>
+    <message>
+        <source>narration</source>
+        <translation>narration</translation>
+    </message>
+    <message>
+        <source>quotation</source>
+        <translation>quotation</translation>
+    </message>
+    <message>
+        <source>Unknown speaker character</source>
+        <translation>Unknown speaker character</translation>
+    </message>
+    <message>
+        <source>Unknown addressee; do not infer from previous speaker</source>
+        <translation>Unknown addressee; do not infer from previous speaker</translation>
+    </message>
+    <message>
+        <source>Narration, quotation or unknown mode: no directed pronoun substitution</source>
+        <translation>Narration, quotation or unknown mode: no directed pronoun substitution</translation>
+    </message>
+    <message>
+        <source>Unmatched scoped speaker mapping; a new request is not the same identity.</source>
+        <translation>Unmatched scoped speaker mapping; a new request is not the same identity.</translation>
+    </message>
+    <message>
+        <source>Context refers to missing cues; reattach or review after split/import.</source>
+        <translation>Context refers to missing cues; reattach or review after split/import.</translation>
+    </message>
+    <message>
+        <source>mapping: proposal needs confirmation</source>
+        <translation>mapping: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>mapping: conflicting confirmed entries</source>
+        <translation>mapping: conflicting confirmed entries</translation>
+    </message>
+    <message>
+        <source>assignment: proposal needs confirmation</source>
+        <translation>assignment: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>assignment: conflicting confirmed entries</source>
+        <translation>assignment: conflicting confirmed entries</translation>
+    </message>
+    <message>
+        <source>rule: proposal needs confirmation</source>
+        <translation>rule: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>rule: conflicting confirmed entries</source>
+        <translation>rule: conflicting confirmed entries</translation>
+    </message>
+    <message>
+        <source>speaker: proposal needs confirmation</source>
+        <translation>speaker: proposal needs confirmation</translation>
+    </message>
+    <message>
+        <source>speaker: conflicting confirmed entries</source>
+        <translation>speaker: conflicting confirmed entries</translation>
+    </message>
+</context>
+
+
+<context>
+    <name>ASRReviewDialog</name>
+    <message><source>ASR timing review</source><translation>ASR timing review</translation></message>
+    <message><source>Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override.</source><translation>Local review: no upload. Select a token, enter measured milliseconds, then Apply. Edited timing is marked as a user override.</translation></message>
+    <message><source>Token ID</source><translation>Token ID</translation></message>
+    <message><source>Speaker</source><translation>Speaker</translation></message>
+    <message><source>Text</source><translation>Text</translation></message>
+    <message><source>Original start</source><translation>Original start</translation></message>
+    <message><source>Original end</source><translation>Original end</translation></message>
+    <message><source>Start (ms)</source><translation>Start (ms)</translation></message>
+    <message><source>End (ms)</source><translation>End (ms)</translation></message>
+    <message><source>Review / provenance</source><translation>Review / provenance</translation></message>
+    <message><source>Apply timing override</source><translation>Apply timing override</translation></message>
+    <message><source>Undo</source><translation>Undo</translation></message>
+    <message><source>Redo</source><translation>Redo</translation></message>
+    <message><source>Save review as…</source><translation>Save review as…</translation></message>
+    <message><source>Validate and export…</source><translation>Validate and export…</translation></message>
+    <message><source>Close</source><translation>Close</translation></message>
+    <message><source>Unknown</source><translation>Unknown</translation></message>
+    <message><source>Edited by user</source><translation>Edited by user</translation></message>
+    <message><source>Native</source><translation>Native</translation></message>
+    <message><source>{0} token timing issue(s). Original units: {1}. Full validation is required before export.</source><translation>{0} token timing issue(s). Original units: {1}. Full validation is required before export.</translation></message>
+    <message><source>Save ASR review</source><translation>Save ASR review</translation></message>
+    <message><source>Review saved. Reopen this JSON to continue without uploading.</source><translation>Review saved. Reopen this JSON to continue without uploading.</translation></message>
+    <message><source>Cannot save review file.</source><translation>Cannot save review file.</translation></message>
+    <message><source>Export validated subtitles</source><translation>Export validated subtitles</translation></message>
+    <message><source>Choose JSON or SRT.</source><translation>Choose JSON or SRT.</translation></message>
+    <message><source>Full result exported. JSON retains cue IDs and edited provenance; SRT does not.</source><translation>Full result exported. JSON retains cue IDs and edited provenance; SRT does not.</translation></message>
+    <message><source>Subtitle output must not replace the review file.</source><translation>Subtitle output must not replace the review file.</translation></message>
+    <message><source>Open ASR review</source><translation>Open ASR review</translation></message>
+    <message><source>Zero-duration speech token</source><translation>Zero-duration speech token</translation></message>
+    <message><source>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</source><translation>Missing, nonfinite, negative, reversed or out-of-bounds timestamp</translation></message>
+    <message><source>Aligned</source><translation>Aligned</translation></message>
+    <message><source>Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.</source><translation>Local diarization is still pending. This review exports timing only; run local-diarize with the saved JSON and original audio.</translation></message>
+    <message><source>Audio identity retained. Select the original recording to verify it locally.</source><translation>Audio identity retained. Select the original recording to verify it locally.</translation></message>
+    <message><source>No saved audio identity. This legacy review cannot verify the original recording; select the original audio yourself.</source><translation>No saved audio identity. This legacy review cannot verify the original recording; select the original audio yourself.</translation></message>
+    <message><source>Select original audio…</source><translation>Select original audio…</translation></message>
+    <message><source>Checking audio locally…</source><translation>Checking audio locally…</translation></message>
+    <message><source>Audio matches the saved recording.</source><translation>Audio matches the saved recording.</translation></message>
+    <message><source>Select matching original audio before exporting this review.</source><translation>Select matching original audio before exporting this review.</translation></message>
+    <message><source>Timing exported; local diarization is still pending. Keep JSON and select the original audio for local-diarize.</source><translation>Timing exported; local diarization is still pending. Keep JSON and select the original audio for local-diarize.</translation></message>
+</context>
+
+<context>
+    <name>LocalASRDialog</name>
+    <message><source>Local ASR models</source><translation>Local ASR models</translation></message>
+    <message><source>Recognition, alignment and diarization have separate readiness. Choose a stage, then check or install explicitly. Models run locally; no audio is uploaded by this manager.</source><translation>Recognition, alignment and diarization have separate readiness. Choose a stage, then check or install explicitly. Models run locally; no audio is uploaded by this manager.</translation></message>
+    <message><source>Not checked. Opening this dialog does not load or download models.</source><translation>Not checked. Opening this dialog does not load or download models.</translation></message>
+    <message><source>Cancel operation</source><translation>Cancel operation</translation></message>
+    <message><source>Choose installed runtime</source><translation>Choose installed runtime</translation></message>
+    <message><source>Choose parent for a new runtime folder</source><translation>Choose parent for a new runtime folder</translation></message>
+    <message><source>Cancelling; waiting for owned processes to stop...</source><translation>Cancelling; waiting for owned processes to stop...</translation></message>
+    <message><source>Hugging Face access</source><translation>Hugging Face access</translation></message>
+    <message><source>First accept Community-1 conditions on Hugging Face. Enter a read token here; it is used only for this download and is not saved.</source><translation>First accept Community-1 conditions on Hugging Face. Enter a read token here; it is used only for this download and is not saved.</translation></message>
+    <message><source>Qwen 1.7B — recognition</source><translation>Qwen 1.7B — recognition</translation></message>
+    <message><source>Qwen 0.6B — recognition</source><translation>Qwen 0.6B — recognition</translation></message>
+    <message><source>Qwen ForcedAligner — alignment</source><translation>Qwen ForcedAligner — alignment</translation></message>
+    <message><source>Community-1 — diarization</source><translation>Community-1 — diarization</translation></message>
+    <message><source>Check files</source><translation>Check files</translation></message>
+    <message><source>Probe health</source><translation>Probe health</translation></message>
+    <message><source>Install in new folder</source><translation>Install in new folder</translation></message>
+    <message><source>Choose installed folder</source><translation>Choose installed folder</translation></message>
+</context>
+<context>
+    <name>LocalASRCards</name>
+    <message><source>Qwen local recognition</source><translation>Qwen local recognition</translation></message>
+    <message><source>Chinese (zh). Model choice is explicit; no automatic fallback.</source><translation>Chinese (zh). Model choice is explicit; no automatic fallback.</translation></message>
+    <message><source>Local speaker diarization</source><translation>Local speaker diarization</translation></message>
+    <message><source>Community-1 for Qwen or Whisper API. Ambiguous speakers remain unknown for review.</source><translation>Community-1 for Qwen or Whisper API. Ambiguous speakers remain unknown for review.</translation></message>
+    <message><source>Local audio chunk</source><translation>Local audio chunk</translation></message>
+    <message><source>Local stage deadline</source><translation>Local stage deadline</translation></message>
+    <message><source>Manage models</source><translation>Manage models</translation></message>
+    <message><source>Local ASR runtimes</source><translation>Local ASR runtimes</translation></message>
+    <message><source>Explicit install, file check and health probe. Opening settings does not start a model.</source><translation>Explicit install, file check and health probe. Opening settings does not start a model.</translation></message>
+</context>
+<context>
+    <name>LocalASRSettingWidget</name>
+    <message><source>Local ASR</source><translation>Local ASR</translation></message>
+</context>
+<context>
+    <name>LocalASRThread</name>
+    <message><source>Checking local installation...</source><translation>Checking local installation...</translation></message>
+    <message><source>Loading local model...</source><translation>Loading local model...</translation></message>
+    <message><source>Health ready. Probe released; inference has not been tested.</source><translation>Health ready. Probe released; inference has not been tested.</translation></message>
+    <message><source>Installed. Health and inference have not been tested.</source><translation>Installed. Health and inference have not been tested.</translation></message>
 </context>
 </TS>

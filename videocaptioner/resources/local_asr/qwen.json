@@ -1,0 +1,12 @@
+{
+  "protocol": "local-asr-v1",
+  "python": "3.12",
+  "versions": {"qwen-asr": "0.0.6", "torch": "2.8.0+cu128", "torchaudio": "2.8.0+cu128", "transformers": "4.57.6"},
+  "device": "cuda",
+  "dtype": "bfloat16",
+  "attention": "sdpa",
+  "max_new_tokens": 8192,
+  "upstream_asr_max_seconds": 1200,
+  "max_chunk_ms": 240000,
+  "installation": "machine-local-venv"
+}

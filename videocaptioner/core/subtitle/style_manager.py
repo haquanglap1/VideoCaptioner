@@ -71,18 +71,37 @@ class SubtitleStyle:
     # Conversion helpers
     # ------------------------------------------------------------------ #
 
-    def to_ass_string(self) -> str:
-        """Render as ASS V4+ Styles section (for FFmpeg)."""
+    def to_ass_string(
+        self,
+        *,
+        alignment: int = 2,
+        margin_l: int = 10,
+        margin_r: int = 10,
+        margin_v: Optional[int] = None,
+        border_style: int = 1,
+        outline_width: Optional[float] = None,
+        box_color: Optional[str] = None,
+    ) -> str:
+        """Render as ASS V4+ Styles section (for FFmpeg).
+
+        The keyword overrides exist for callers that own placement themselves (the
+        Video Editor); their defaults reproduce the historical output unchanged.
+        ``box_color`` accepts ``#RRGGBB`` or ``#AARRGGBB`` and replaces OutlineColour,
+        which is what ``BorderStyle=3`` fills the opaque box with.
+        """
         primary = _hex_to_ass(self.primary_color)
-        outline = _hex_to_ass(self.outline_color)
+        outline = _hex_to_ass(box_color if box_color else self.outline_color)
         bold_flag = -1 if self.bold else 0
+        border = self.outline_width if outline_width is None else outline_width
+        margin_v = self.margin_bottom if margin_v is None else int(margin_v)
+        margins = f"{int(alignment)},{int(margin_l)},{int(margin_r)},{margin_v}"
 
         sec = self.secondary or SecondaryStyle(
             font_name=self.font_name,
             font_size=int(self.font_size * 0.7),
         )
         sec_color = _hex_to_ass(sec.color)
-        sec_outline = _hex_to_ass(sec.outline_color)
+        sec_outline = _hex_to_ass(box_color if box_color else sec.outline_color)
 
         header = (
             "[V4+ Styles]\n"
@@ -94,14 +113,14 @@ class SubtitleStyle:
         default_line = (
             f"Style: Default,{self.font_name},{self.font_size},"
             f"{primary},&H000000FF,{outline},&H00000000,"
-            f"{bold_flag},0,0,0,100,100,{self.spacing},0,1,"
-            f"{self.outline_width},0,2,10,10,{self.margin_bottom},1,\\q1"
+            f"{bold_flag},0,0,0,100,100,{self.spacing},0,{int(border_style)},"
+            f"{border},0,{margins},1,\\q1"
         )
         secondary_line = (
             f"Style: Secondary,{sec.font_name},{sec.font_size},"
             f"{sec_color},&H000000FF,{sec_outline},&H00000000,"
-            f"{bold_flag},0,0,0,100,100,{sec.spacing},0,1,"
-            f"{sec.outline_width},0,2,10,10,{self.margin_bottom},1,\\q1"
+            f"{bold_flag},0,0,0,100,100,{sec.spacing},0,{int(border_style)},"
+            f"{sec.outline_width if outline_width is None else border},0,{margins},1,\\q1"
         )
         return f"{header}\n{default_line}\n{secondary_line}"
 

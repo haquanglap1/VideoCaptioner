@@ -108,7 +108,8 @@ business logic mới vào view khi logic có thể nằm trong `core/` (ví dụ
   Mọi mutation đi qua `CommandStack`; normal save chỉ persist JSON + SRT, ASS chỉ qua `Save as ASS`.
   Preview và export dùng chung `build_visual_filter_graph`. Không thêm PySide6 hoặc MPV vào editor.
 - VieNeu Local pin model theo commit SHA trong suốt một dubbing job; không import VieNeu/CUDA/FastAPI
-  vào Qt process. Base build không có `runtime/vieneu/` phải disable action thay vì spam lỗi.
+  vào Qt process. Build không có runtime VieNeu (`runtime/vieneu/` hoặc `models/vieneu-runtime/`
+  của gói portable) phải disable action thay vì spam lỗi.
 
 ## Cài đặt và lệnh chuẩn (PowerShell 7)
 
@@ -146,7 +147,7 @@ Thiếu API key/service hoặc test được skip không phải là bằng chứ
 Ghi chú môi trường: nếu `uv run` fail vì `Access is denied` khi rebuild package vào `.venv`, chạy pytest
 trực tiếp bằng `.venv\Scripts\python.exe -m pytest`. Nếu test dùng `tmp_path` fail với `PermissionError`
 trên `%TEMP%\pytest-of-*`, truyền `--basetemp` tới thư mục ghi được (dùng đường dẫn ngắn, ví dụ
-`C:\Users\<user>\AppData\Local\Temp\vcpt`, vì test builder VieNeu có thể vượt MAX_PATH); đó là ACL/giới
+`.tools/pt-<run>` trong repo; Windows Temp chỉ khi fixture tự dọn, vì test builder VieNeu có thể vượt MAX_PATH); đó là ACL/giới
 hạn của máy, không phải lỗi code. Máy không có FFmpeg trên PATH sẽ fail `tests/test_asr/test_chunk*`
 (pydub) và fixture `silent_video` của dubbing integration; các suite khác tự skip.
 
@@ -159,6 +160,14 @@ uv run --frozen pyinstaller VideoCaptioner.spec --clean --noconfirm
 ```
 
 Spec build ở chế độ `onedir`: phân phối nguyên thư mục `dist/VideoCaptioner/`, không chép riêng file EXE.
+Theo yêu cầu user từ 2026-09-10, bản EXE để test phải kèm các model/runtime đã cài trong
+`models/` cạnh EXE, tự tìm được khi chuyển ổ; chỉ làm bản nhẹ nếu user yêu cầu. Dùng
+`scripts/package_test_models.py` để stage từ cài đặt đã có, rồi truyền `VC_TEST_MODELS_DIR`
+vào spec. Giữ Python/runtime riêng, không chỉ chép weights rồi để phụ thuộc đường dẫn máy dev.
+Nếu đã có bộ `models/portable-models.json` được verify và model/runtime không đổi, dùng lại
+bộ đó trực tiếp qua `VC_TEST_MODELS_DIR`; không stage lại từ đầu chỉ vì build EXE mới.
+Không tải lại model hoặc cài dependency để đóng gói; không mang key, settings, media, cache job
+và log cá nhân vào gói. Báo inventory model thực sự có/thiếu và kiểm tra đường dẫn sau di chuyển.
 Nếu cần tên riêng, không tạo thêm file spec:
 
 ```powershell
@@ -183,6 +192,10 @@ end-to-end. Không gọi task hoàn tất vượt quá bằng chứng thực t�
 
 ## Quản lý artifact và trạng thái
 
+- Mọi file phát sinh do agent (tools, backup, snapshot, cache, temp, log và output) phải nằm
+  trong thư mục dự án đang làm việc; không tạo ở ổ/thư mục khác. Ngoại lệ: Windows Temp chỉ
+  dành cho file tạm có cơ chế tự xóa. Ưu tiên thư mục riêng dưới `.tools/`; không đổi cấu hình
+  hệ thống/global để chuyển đường dẫn và không ghi vào dữ liệu thật của user khi test.
 - Giữ nguyên `.env`, cookies, `AppData/`, `work-dir/`, media đầu vào/đầu ra và log của user.
 - Không xóa hoặc ghi đè artifact khác tên chỉ để dọn build.
 - Chỉ cập nhật `status.md` khi có thay đổi bền vững về code/behavior/validation; một lần build lại không

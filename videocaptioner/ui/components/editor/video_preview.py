@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt5.QtCore import QRectF, Qt, QUrl, pyqtSignal
+from PyQt5.QtCore import QPointF, QRectF, Qt, QUrl, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPainter, QPalette, QPen, QPixmap
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
 from PyQt5.QtMultimediaWidgets import QVideoWidget
@@ -14,7 +14,14 @@ from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import PushButton
 
 from videocaptioner.core.editor.models import EditorLayerKind, EditorProject
-from videocaptioner.core.editor.subtitle_style import SUBTITLE_REFERENCE_HEIGHT
+from videocaptioner.core.editor.subtitle_style import (
+    SUBTITLE_REFERENCE_HEIGHT,
+    EditorSubtitleStyle,
+    SubtitleLayout,
+    bundled_font_files,
+    frame_size,
+    layout_subtitle,
+)
 
 from .fonts import load_editor_fonts
 
@@ -29,6 +36,7 @@ class EditorOverlay(QWidget):
         self.position_ms = 0
         self.selected_layer_id = ""
         self._pixmaps: dict[str, QPixmap] = {}
+        self._layout_cache: tuple[tuple, SubtitleLayout] | None = None
 
     def set_state(self, project: EditorProject | None, position_ms: int) -> None:
         self.project = project
@@ -54,6 +62,73 @@ class EditorOverlay(QWidget):
         if self.project and self.project.height:
             return frame.height() / float(self.project.height)
         return 1.0
+
+    def subtitle_layout(self, text: str) -> SubtitleLayout:
+        """Same geometry the burnt-in ASS uses, in video pixels."""
+        project = self.project
+        style = project.subtitle_style if project else EditorSubtitleStyle()
+        width, height = frame_size(project.width if project else 0, project.height if project else 0)
+        key = (text, style.to_dict(), width, height)
+        cached = self._layout_cache
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        layout = layout_subtitle(text, style, width, height)
+        self._layout_cache = (key, layout)
+        return layout
+
+    def _draw_subtitle(self, painter: QPainter, frame: QRectF, text: str) -> None:
+        """Draw box and text from the shared layout, scaled into the letterboxed frame."""
+        project = self.project
+        if project is None:
+            return
+        style = project.subtitle_style.scaled_for_height(project.height)
+        layout = self.subtitle_layout(text)
+        if layout.is_empty:
+            return
+        video_width, video_height = frame_size(project.width, project.height)
+        scale = frame.height() / float(video_height) if video_height else 1.0
+
+        def to_widget_x(value: float) -> float:
+            return frame.x() + value * (frame.width() / float(video_width))
+
+        def to_widget_y(value: float) -> float:
+            return frame.y() + value * scale
+
+        if style.background:
+            box_x, box_y, box_w, box_h = layout.box
+            rect = QRectF(
+                to_widget_x(box_x),
+                to_widget_y(box_y),
+                box_w * (frame.width() / float(video_width)),
+                box_h * scale,
+            )
+            color = QColor(style.bg_color)
+            color.setAlphaF(max(0.0, min(1.0, style.bg_opacity)))
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
+            radius = style.corner_radius * scale
+            painter.drawRoundedRect(rect, radius, radius)
+            painter.setBrush(Qt.NoBrush)
+
+        font = QFont(painter.font())
+        family = next((family for family, path in bundled_font_files() if path == layout.font_file), style.font_name)
+        if family:
+            font.setFamily(family)
+        font.setPixelSize(max(6, int(round(layout.font_size * scale))))
+        font.setBold(style.bold)
+        font.setLetterSpacing(QFont.AbsoluteSpacing, style.spacing * scale)
+        painter.setFont(font)
+        outline = max(0, int(round(style.outline_width * scale)))
+        fill, border = QColor(style.primary_color), QColor(style.outline_color)
+        for line in layout.lines:
+            # Draw on the computed baseline: a rect plus alignment would re-lay out the line.
+            origin = QPointF(to_widget_x(line.left), to_widget_y(line.baseline))
+            if outline > 0:
+                painter.setPen(border)
+                for dx, dy in ((-outline, 0), (outline, 0), (0, -outline), (0, outline)):
+                    painter.drawText(QPointF(origin.x() + dx, origin.y() + dy), line.text)
+            painter.setPen(fill)
+            painter.drawText(origin, line.text)
 
     @staticmethod
     def _draw_outlined_text(
@@ -142,7 +217,12 @@ class EditorOverlay(QWidget):
         subtitle_track = next(
             (track for track in self.project.tracks if track.id == "track-ts1"), None
         )
-        if cue and (subtitle_track is None or subtitle_track.visible):
+        if cue and (subtitle_track is None or subtitle_track.visible) and self.project.subtitle_style.uses_shared_layout:
+            painter.save()
+            painter.setClipRect(frame)
+            self._draw_subtitle(painter, frame, cue.display_text)
+            painter.restore()
+        elif cue and (subtitle_track is None or subtitle_track.visible):
             style = self.project.subtitle_style
             scale = frame.height() / SUBTITLE_REFERENCE_HEIGHT
             vertical_margin = style.margin_bottom * scale if style.alignment not in (4, 5, 6) else 0

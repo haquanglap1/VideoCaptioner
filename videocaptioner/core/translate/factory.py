@@ -2,6 +2,7 @@
 
 from typing import Callable, Optional
 
+from videocaptioner.core.llm.client import LLMCredentials
 from videocaptioner.core.translate.base import BaseTranslator
 from videocaptioner.core.translate.bing_translator import BingTranslator
 from videocaptioner.core.translate.deeplx_translator import DeepLXTranslator
@@ -27,6 +28,8 @@ class TranslatorFactory:
         is_reflect: bool = False,
         update_callback: Optional[Callable] = None,
         deeplx_endpoint: str = "",
+        request_timeout: int = 120,
+        credentials: Optional[LLMCredentials] = None,
     ) -> BaseTranslator:
         """Create a translator instance."""
         try:
@@ -43,6 +46,8 @@ class TranslatorFactory:
                     custom_prompt=custom_prompt,
                     is_reflect=is_reflect,
                     update_callback=update_callback,
+                    request_timeout=request_timeout,
+                    credentials=credentials,
                 )
             elif translator_type == TranslatorType.GOOGLE:
                 batch_num = 5

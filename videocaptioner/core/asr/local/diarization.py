@@ -1,0 +1,133 @@
+"""Whole-job anonymous speakers reconciled with existing timing, without changing words."""
+
+import hashlib
+import json
+from dataclasses import dataclass, replace
+
+from ..asr_data import ASRData, ASRDataSeg
+from ..metadata import ASRMetadata, SpeakerAssociation, StageProvenance
+from ..native_result import native_cues
+from .profiles import DIARIZATION_POLICY, DIARIZATION_WINDOW_MS, DIARIZATION_WINDOW_STEP_MS, MODELS
+
+
+@dataclass(frozen=True)
+class SpeakerSpan:
+    start_ms: int
+    end_ms: int
+    speaker: str
+
+
+def validate_spans(items: object, duration_ms: int) -> tuple[SpeakerSpan, ...]:
+    if not isinstance(items, list) or type(duration_ms) is not int or duration_ms <= 0:
+        raise ValueError("Invalid local diarization response.")
+    spans = []
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {"start_ms", "end_ms", "speaker"}:
+            raise ValueError("Invalid local diarization span.")
+        start, end, speaker = item["start_ms"], item["end_ms"], item["speaker"]
+        if (type(start) is not int or type(end) is not int or not 0 <= start < end <= duration_ms or
+                not isinstance(speaker, str) or not speaker or len(speaker) > 100):
+            raise ValueError("Invalid local diarization timing or speaker.")
+        spans.append(SpeakerSpan(start, end, speaker))
+    return tuple(sorted(set(spans), key=lambda s: (s.start_ms, s.end_ms, s.speaker)))
+
+
+def validate_model_spans(items: object, duration_ms: int, *, samples: int | None = None) -> tuple[SpeakerSpan, ...]:
+    """Retain predictions within the pinned model's final padded analysis window."""
+    if type(duration_ms) is not int or duration_ms <= 0:
+        raise ValueError("Invalid local diarization duration.")
+    samples = duration_ms * 16 if samples is None else samples
+    if type(samples) is not int or samples <= 0 or abs(samples - duration_ms * 16) > 8:
+        raise ValueError("Invalid canonical diarization sample count.")
+    step = DIARIZATION_WINDOW_STEP_MS * 16
+    window_end = max(DIARIZATION_WINDOW_MS, (samples + step - 1) // step * step // 16)
+    # Raw spans stay unchanged. Association below intersects them with valid source cues.
+    return validate_spans(items, window_end)
+
+
+def _coverage(intervals: list[tuple[int, int]]) -> int:
+    end, covered = -1, 0
+    for start, stop in sorted(intervals):
+        covered += max(0, stop - max(start, end))
+        end = max(end, stop)
+    return covered
+
+
+def validate_source(data: ASRData, duration_ms: int) -> None:
+    for seg in data.segments:
+        if (type(seg.start_time) is not int or type(seg.end_time) is not int or
+                not 0 <= seg.start_time < seg.end_time <= duration_ms):
+            raise ValueError("Local diarization requires valid measured cue timing; align text first.")
+        old = seg.metadata
+        if old and (old.provider in ("soniox", "scribe") or old.speaker is not None or old.diarization is not None):
+            raise ValueError("Existing diarization must be reviewed explicitly; local labels cannot replace it.")
+
+
+def associate(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int, scope: str,
+              recognition: StageProvenance) -> ASRData:
+    validate_source(data, duration_ms)
+    model = MODELS["community-1"]
+    stage = StageProvenance("pyannote", model.repository, model.revision, DIARIZATION_POLICY)
+    result = []
+    for seg in data.segments:
+        old = seg.metadata
+        by_speaker: dict[str, list[tuple[int, int]]] = {}
+        for span in spans:
+            start, end = max(seg.start_time, span.start_ms), min(seg.end_time, span.end_ms)
+            if start < end:
+                by_speaker.setdefault(span.speaker, []).append((start, end))
+        scores = {label: _coverage(parts) for label, parts in by_speaker.items()}
+        labels = tuple(sorted(scores))
+        duration = seg.end_time - seg.start_time
+        coverage = max(scores.values(), default=0) * 1_000_000 // duration
+        overlap = any(max(a, c) < min(b, d) for i, label in enumerate(labels) for other in labels[i + 1:]
+                      for a, b in by_speaker[label] for c, d in by_speaker[other])
+        # Conservative temporal confidence, not an acoustic probability: any second speaker
+        # needs review, even if one dominates. Do not erase real overlap via exclusive output.
+        status = "overlap" if overlap else "ambiguous" if len(labels) > 1 else "assigned" if coverage >= 800_000 else "unknown"
+        speaker = labels[0] if status == "assigned" else None
+        association = SpeakerAssociation(stage, scope, status, labels, coverage)
+        metadata = old or ASRMetadata(recognition.provider, scope, recognition=recognition,
+                                      timing="imported" if recognition.provider == "imported" else "native")
+        copy = seg.clone()
+        copy.metadata = replace(metadata, speaker=speaker, diarization=association)
+        result.append(copy)
+    return data.with_segments(result)
+
+
+def assemble_diarized_cues(data: ASRData, spans: tuple[SpeakerSpan, ...], duration_ms: int,
+                           scope: str, recognition: StageProvenance) -> ASRData:
+    """Assemble readable cues, then measure speaker coverage on each complete cue."""
+    validate_source(data, duration_ms)
+    # Reviewed context and translations refer to existing cue IDs and boundaries.
+    if data.conversation_context.enabled or any(s.translated_text for s in data):
+        return associate(data, spans, duration_ms, scope, recognition)
+    prepared = []
+    for seg in data:
+        copy = seg.clone()
+        if copy.metadata is None:
+            copy.metadata = ASRMetadata(recognition.provider, scope, recognition=recognition,
+                                        timing="imported" if recognition.provider == "imported" else "native")
+        prepared.append(copy)
+
+    def can_join(previous: ASRDataSeg, following: ASRDataSeg) -> bool:
+        if (previous.metadata is not None and following.metadata is not None
+                and previous.metadata.timing != following.metadata.timing
+                and "edited" not in (previous.metadata.timing, following.metadata.timing)):
+            return False
+        # Include intervening silence: a second speaker in the gap must block a join.
+        labels = {s.speaker for s in spans
+                  if s.start_ms < following.end_time and s.end_ms > previous.start_time}
+        return len(labels) <= 1
+
+    grouped = native_cues(data.with_segments(prepared), can_join=can_join)
+    return associate(grouped, spans, duration_ms, scope, recognition)
+
+
+def diarization_key(audio_hash: str, data: ASRData) -> str:
+    model = MODELS["community-1"]
+    source = [[s.cue_id, s.text, s.start_time, s.end_time, s.metadata.to_dict() if s.metadata else None]
+              for s in data.segments]
+    payload = [audio_hash, model.repository, model.revision, DIARIZATION_POLICY, "cuda-float32", source,
+               data.audio_identity.to_dict() if data.audio_identity else None, data.pending_diarization]
+    return "diarization:v2-" + hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()

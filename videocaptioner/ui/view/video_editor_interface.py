@@ -38,7 +38,7 @@ from qfluentwidgets import (
 )
 
 from videocaptioner.config import CACHE_PATH
-from videocaptioner.core.editor.adapters import update_cues_from_groups
+from videocaptioner.core.editor.adapters import project_to_asr, update_cues_from_groups
 from videocaptioner.core.editor.commands import (
     AddCueCommand,
     AddLayerCommand,
@@ -46,6 +46,8 @@ from videocaptioner.core.editor.commands import (
     CompositeCommand,
     DeleteCueCommand,
     DeleteLayerCommand,
+    EditConversationCommand,
+    EditCueTextCommand,
     EditCueTimingCommand,
     EditLayerCommand,
     EditSubtitleStyleCommand,
@@ -79,6 +81,8 @@ from videocaptioner.core.editor.presenter import (
 )
 from videocaptioner.core.editor.project_store import EditorProjectStore
 from videocaptioner.core.editor.subtitle_style import EditorSubtitleStyle
+from videocaptioner.core.editor.translation import translation_fingerprint
+from videocaptioner.ui.components.conversation_dialog import ConversationDialog
 from videocaptioner.ui.components.editor import (
     EditorTimelineView,
     EditorTrackHeader,
@@ -90,6 +94,8 @@ from videocaptioner.ui.components.editor.subtitle_style_panel import SubtitleSty
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.editor_media_thread import EditorMediaThread, EditorRenderThread
 from videocaptioner.ui.thread.editor_voice_thread import EditorVoiceThread
+from videocaptioner.ui.thread.subtitle_thread import RetranslateThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
 EDITOR_DARK_STYLE = """
 QWidget#VideoEditorInterface {
@@ -139,6 +145,9 @@ QTabWidget#EditorContextTabs::pane {
     border: 1px solid #20344d;
     border-radius: 8px;
     top: -1px;
+}
+QTabWidget#EditorContextTabs QTabBar {
+    font-size: 12px;
 }
 QTabWidget#EditorContextTabs QTabBar::tab {
     color: #8fa3ba;
@@ -251,6 +260,14 @@ class VideoEditorInterface(QWidget):
         self.exit_preview_action.setEnabled(False)
         self.exit_preview_action.setVisible(False)
         self.command_bar.addHiddenAction(self.save_ass_action)
+        self.command_bar.addHiddenAction(Action(FIF.PEOPLE, self.tr("Conversation context"),
+                                                triggered=self.edit_conversation_context))
+        self.command_bar.addHiddenAction(Action(FIF.SYNC, self.tr("Translate selected cues"),
+                                                triggered=self.translate_selected_cues))
+        self.cancel_translation_action = Action(FIF.CANCEL, self.tr("Cancel translation"),
+                                                 triggered=self.cancel_translation)
+        self.cancel_translation_action.setEnabled(False)
+        self.command_bar.addHiddenAction(self.cancel_translation_action)
         for kind, label in (
             (EditorLayerKind.BLUR, "Add Blur"),
             (EditorLayerKind.LOGO, "Add Logo"),
@@ -400,6 +417,7 @@ class VideoEditorInterface(QWidget):
         self.preview.playbackError.connect(self._show_error)
         self.inspector.applyRequested.connect(self._apply_inspector)
         self.subtitle_style_panel.applyRequested.connect(self._apply_subtitle_style)
+        self.subtitle_style_panel.presetRequested.connect(self._load_style_preset)
         self.inspector.regenerateRequested.connect(self.regenerate_voice)
         self.inspector.splitRequested.connect(self.split_cue)
         self.inspector.deleteRequested.connect(self.delete_cue)
@@ -486,9 +504,9 @@ class VideoEditorInterface(QWidget):
             return
         subtitle, _ = QFileDialog.getOpenFileName(
             self,
-            self.tr("Open SRT"),
+            self.tr("Open subtitles"),
             str(Path(path).parent),
-            self.tr("SubRip Subtitle (*.srt)"),
+            self.tr("Subtitles with optional ASR metadata (*.srt *.json)"),
         )
         if subtitle:
             self.open_in_editor(path, subtitle)
@@ -516,6 +534,7 @@ class VideoEditorInterface(QWidget):
         thread.start()
 
     def _retain_thread(self, thread) -> None:
+        retain_worker(thread)
         self._threads.add(thread)
         thread.finished.connect(lambda current=thread: self._threads.discard(current))
 
@@ -554,6 +573,7 @@ class VideoEditorInterface(QWidget):
         self.command_stack.clear()
         self.preview.set_project(project)
         self.subtitle_style_panel.set_style(project.subtitle_style)
+        self._refresh_style_presets()
         self.timeline.set_project(project)
         self.track_header.set_project(project)
         self._refresh_layer_list()
@@ -672,6 +692,26 @@ class VideoEditorInterface(QWidget):
             if style != self.project.subtitle_style:
                 self.command_stack.execute(EditSubtitleStyleCommand(self.project, style))
         except (TypeError, ValueError) as exc:
+            self._show_error(str(exc))
+
+    def _refresh_style_presets(self) -> None:
+        from videocaptioner.config import SUBTITLE_STYLE_PATH
+
+        self.subtitle_style_panel.set_presets(sorted(path.stem for path in SUBTITLE_STYLE_PATH.glob("*.json")))
+
+    def _load_style_preset(self, name: str) -> None:
+        """Loading fills the form; Apply still makes the single undoable mutation."""
+        if not self.project or not name:
+            return
+        from videocaptioner.core.subtitle.style_manager import load_style
+
+        try:
+            preset = load_style(name)
+            if preset is None:
+                raise ValueError(self.tr("Subtitle style preset not found: ") + name)
+            self.subtitle_style_panel.set_style(EditorSubtitleStyle.from_preset(preset))
+            self.status_label.setText(self.tr("Preset loaded — press Apply to use it"))
+        except (OSError, TypeError, ValueError) as exc:
             self._show_error(str(exc))
 
     def add_cue(self) -> None:
@@ -1048,18 +1088,71 @@ class VideoEditorInterface(QWidget):
         self.layer_list.setCurrentRow(selected_row)
         self.layer_list.blockSignals(False)
 
+    def edit_conversation_context(self) -> None:
+        if self.project is None:
+            return
+        document = project_to_asr(self.project)
+        dialog = ConversationDialog(document.conversation_context, document.context_snapshot().cues, self)
+        if dialog.exec_():
+            self.command_stack.execute(EditConversationCommand(self.project, dialog.context))
+
+    def translate_selected_cues(self) -> None:
+        if self.project is None or (getattr(self, "_translation_worker", None)
+                                    and self._translation_worker.isRunning()):
+            return
+        project = self.project
+        document = project_to_asr(project)
+        start, end = project.selection_start_ms, project.selection_end_ms
+        ids = {c.id for c in project.cues if start is not None and end is not None
+               and c.start_ms < end and c.end_ms > start}
+        if not ids and self.inspector.cue_id:
+            ids.add(self.inspector.cue_id)
+        selected = {k: v for k, v in document.to_json().items() if v["cue_id"] in ids}
+        if not selected:
+            return
+        config = TaskFactory.create_subtitle_task(file_path=project.subtitle_path).subtitle_config
+        if config is None:
+            return
+        version = translation_fingerprint(project, ids)
+        worker = RetranslateThread(selected, config, context_data=document)
+        self._translation_worker = worker
+        retain_worker(worker)
+        self.cancel_translation_action.setEnabled(True)
+
+        def apply_result(result):
+            self.cancel_translation_action.setEnabled(False)
+            if self.project is not project or version != translation_fingerprint(project, ids):
+                self._show_error(self.tr("Context or subtitles changed; stale translation discarded."))
+                return
+            self.command_stack.execute(CompositeCommand(
+                [EditCueTextCommand(project, selected[key]["cue_id"], "display_text", text)
+                 for key, text in result.items()], "Translate selected cues"))
+            self._show_success(self.tr("Translated selected cues; review Vietnamese pronouns."))
+
+        connect_current(self, "_translation_worker", worker, worker.finished, apply_result)
+        def show_error(error):
+            self.cancel_translation_action.setEnabled(False)
+            self._show_error(error)
+        connect_current(self, "_translation_worker", worker, worker.error, show_error)
+        worker.start()
+
+    def cancel_translation(self):
+        worker = getattr(self, "_translation_worker", None)
+        if worker is not None and worker.isRunning():
+            retire_worker(worker)
+        self.cancel_translation_action.setEnabled(False)
+
     def shutdown(self) -> None:
         """Stop playback and workers; also runs on app quit, where closeEvent never fires."""
+        worker = getattr(self, "_translation_worker", None)
+        if worker is not None and worker.isRunning():
+            retire_worker(worker)
         self.preview.player.stop()
         for thread in tuple(self._threads):
             if not thread.isRunning():
                 continue
-            cancel = getattr(thread, "cancel", None)
-            if callable(cancel):
-                cancel()
-            else:
-                thread.requestInterruption()
-            thread.wait(5000)
+            retire_worker(thread)
+        self._signatures.clear()
         self._threads.clear()
         self._render_thread = None
 

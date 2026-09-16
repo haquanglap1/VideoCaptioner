@@ -48,10 +48,23 @@ theo aspect ratio thực (probe nếu model chưa có dimensions). Overlay Qt á
 đây là xem trước tương tác, font metrics/wrapping có thể khác libass. Clip Fast Preview đã burn sẽ ẩn overlay
 để không vẽ phụ đề/layer hai lần; thoát preview hoặc sửa project trả về overlay của source.
 
-Render vẫn dùng SRT tạm và `subtitles:force_style`, không tạo ASS lâu dài. Save as ASS dùng cùng model và
+Render chữ đơn giản vẫn dùng SRT tạm và `subtitles:force_style`, không tạo ASS lâu dài. Save as ASS dùng cùng model và
 reference resolution. Lưu ý libass `force_style` dùng ScaleX/Y dạng tỷ lệ (`1`), Alignment theo enum nội bộ;
 dòng `Style:` trong ASS dùng phần trăm (`100`) và numpad alignment. Hai đường được kiểm tra bằng ảnh render
 thật; xem [libass override parser](https://github.com/libass/libass/blob/master/libass/ass.c).
+
+Panel có thêm preset và hộp nền tùy chọn: màu, độ đục, bo góc, đệm ngang/dọc. Nạp preset chỉ điền form;
+Apply mới thay project qua undo/redo. Reset đưa về chữ đơn giản. Khi bật nền, `layout_subtitle()` tính
+cùng hình học cho overlay Qt và ASS tạm của preview/export, bao gồm letter spacing; `build_editor_ass()`
+vẽ nền bằng ASS vector và ghim text theo vị trí. Save as ASS giữ cùng nền bo góc và hình học này. Normal
+save vẫn chỉ tạo JSON + SRT; temp ASS được dọn cùng run directory. Không đổi encoder hoặc tùy chọn hủy render.
+
+Project từ bản style cũ có `align_h`/`align_v` hoặc `margin_l`/`margin_r`/`margin_v` được chuyển sang các
+trường hiện tại, giữ số đo pixel bằng `reference_height=0`, `layout_mode=shared`. Project hiện tại và preset
+mới giữ mốc 720; thiếu `subtitle_style` vẫn nhận default chữ đơn giản. Metadata được persist trong schema
+v1 để save/reopen không scale lần hai. Unknown field khi load vẫn được bỏ qua để tương thích phía trước;
+mutation từ command luôn validate. Font bundle được đo theo em và quy đổi theo OS/2 trước khi ghi Fontsize
+ASS để hộp nền không lệch glyph; font thiếu trong chế độ shared dùng fallback bundle ở cả Qt và FFmpeg.
 
 Burn chữ đơn giản đi thẳng qua libass, không dùng pipeline PIL nền bo góc. Encoder hiện vẫn là
 `libx264 -preset veryfast -crf 20`; không mặc định chuyển NVENC chỉ dựa vào tên GPU. Cần benchmark trên

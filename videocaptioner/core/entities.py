@@ -4,9 +4,33 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, Optional
 
+from videocaptioner.core.asr.local.profiles import LocalASRConfig
+from videocaptioner.core.asr.metadata import ASRMetadata
+from videocaptioner.core.asr.native_profiles import NativeASRConfig
+
 if TYPE_CHECKING:
+    from videocaptioner.core.asr.asr_data import ASRData
     from videocaptioner.core.dubbing.config import DubbingConfig
+    from videocaptioner.core.dubbing.review import DubbingReview
+    from videocaptioner.core.ocr.document import OcrDocument
+    from videocaptioner.core.ocr.geometry import Roi
+    from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
+    from videocaptioner.core.ocr.models import Selection
     from videocaptioner.core.translate.types import TargetLanguage
+
+
+@dataclass(frozen=True)
+class OcrTask:
+    file_path: str
+    roi: "Roi"
+    selection: "Selection"
+    runtime_path: str = ""
+    max_requests: int = 1000
+    expected_source_sha256: str = ""
+    cache_mib: int = 64
+    resume_document: Optional["OcrDocument"] = None
+    line_selection: Optional["LineSelectionPolicy"] = None
+    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1"] = "edge-tiles-ocr2-v1"
 
 
 def _generate_task_id() -> str:
@@ -22,6 +46,8 @@ class SubtitleProcessData:
     original_text: str
     translated_text: str = ""
     optimized_text: str = ""
+    asr_metadata: Optional[ASRMetadata] = None
+    cue_id: str = ""
 
 
 class SupportedAudioFormats(Enum):
@@ -99,6 +125,7 @@ class TranscribeOutputFormatEnum(Enum):
     ASS = "ASS"
     VTT = "VTT"
     TXT = "TXT"
+    JSON = "JSON"
     ALL = "All"
 
 
@@ -122,6 +149,9 @@ class TranscribeModelEnum(Enum):
     WHISPER_API = "Whisper [API] ✨"
     FASTER_WHISPER = "FasterWhisper ✨"
     WHISPER_CPP = "WhisperCpp"
+    SONIOX = "Soniox v5 [API]"
+    SCRIBE = "ElevenLabs Scribe v2 [API]"
+    QWEN_LOCAL = "Qwen3-ASR [Local]"
 
 
 class TranslatorServiceEnum(Enum):
@@ -480,6 +510,8 @@ def _get_all_languages_except_auto() -> list[TranscribeLanguageEnum]:
 
 
 ASR_LANGUAGE_CAPABILITIES: dict[TranscribeModelEnum, ASRLanguageCapability] = {
+    TranscribeModelEnum.SONIOX: ASRLanguageCapability([TranscribeLanguageEnum.CHINESE], True),
+    TranscribeModelEnum.SCRIBE: ASRLanguageCapability([TranscribeLanguageEnum.CHINESE], True),
     TranscribeModelEnum.BIJIAN: ASRLanguageCapability(
         supported_languages=[
             TranscribeLanguageEnum.CHINESE,
@@ -574,6 +606,10 @@ class TranscribeConfig:
     faster_whisper_ff_mdx_kim2: bool = False
     faster_whisper_one_word: bool = True
     faster_whisper_prompt: Optional[str] = None
+    whisper_api_provider: str = "custom"
+    whisper_api_request_profile: str = "auto"
+    native_asr: Optional[NativeASRConfig] = None
+    local_asr: LocalASRConfig = field(default_factory=LocalASRConfig)
 
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""
@@ -594,11 +630,7 @@ class TranscribeConfig:
         )
 
         if self.transcribe_model == TranscribeModelEnum.WHISPER_API:
-            lines.append(f"API Base: {self.whisper_api_base}")
-            lines.append(f"API Key: {self._mask_key(self.whisper_api_key)}")
-            lines.append(f"API Model: {self.whisper_api_model}")
-            if self.whisper_api_prompt:
-                lines.append(f"Prompt: {self.whisper_api_prompt[:30]}...")
+            lines.append("OpenAI-compatible ASR (endpoint, key and prompt omitted)")
 
         elif self.transcribe_model == TranscribeModelEnum.FASTER_WHISPER:
             lines.append(
@@ -646,6 +678,13 @@ class SubtitleConfig:
     target_language: Optional["TargetLanguage"] = None
     subtitle_style: Optional[str] = None
     custom_prompt_text: Optional[str] = None
+
+    llm_request_timeout: int = 120
+
+    def __post_init__(self) -> None:
+        from videocaptioner.core.llm.request_policy import validate_request_timeout
+
+        self.llm_request_timeout = validate_request_timeout(self.llm_request_timeout)
 
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""
@@ -743,6 +782,9 @@ class TranscribeTask:
     selected_audio_track_index: int = 0
 
     transcribe_config: Optional[TranscribeConfig] = None
+    asr_data: Optional["ASRData"] = field(default=None, repr=False)
+    # Separate from timed subtitle output, including recovery after alignment failure.
+    transcript_path: Optional[str] = None
 
 
 @dataclass
@@ -770,6 +812,7 @@ class SubtitleTask:
     need_next_task: bool = True
 
     subtitle_config: Optional[SubtitleConfig] = None
+    asr_data: Optional["ASRData"] = field(default=None, repr=False)
 
 
 @dataclass
@@ -794,6 +837,9 @@ class SynthesisTask:
     need_next_task: bool = False
 
     synthesis_config: Optional[SynthesisConfig] = None
+
+    # Producer-supplied layout of a display SRT; None means a raw input.
+    input_subtitle_layout: Optional[SubtitleLayoutEnum] = None
 
 
 @dataclass
@@ -820,6 +866,10 @@ class DubbingTask:
     need_next_task: bool = False
 
     dubbing_config: Optional["DubbingConfig"] = None
+
+    dubbing_review: Optional["DubbingReview"] = None
+    # Explicit GUI selection; never restored from a review document.
+    cache_root: Optional[str] = None
 
 
 @dataclass

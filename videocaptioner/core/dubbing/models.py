@@ -28,6 +28,7 @@ class DubbingTimingMode(_StringEnum):
 class UnresolvedFitPolicy(_StringEnum):
     REVIEW = "review"
     ALLOW_OVERLAP = "allow-overlap"
+    SEQUENTIAL = "sequential"
 
 
 class DubbingFitStatus(_StringEnum):
@@ -100,6 +101,31 @@ class DubbingGroup:
     cache_key: str = ""
     audio_path: str = ""
     warnings: list[str] = field(default_factory=list)
+    playback_start_time: float | None = None
+    playback_end_time: float | None = None
+    start_delay: float = 0.0
+    applied_speed: float = 1.0
+    original_tts_text: str = ""
+
+
+@dataclass
+class DubbingSourceFingerprint:
+    """Content binding, without a machine-specific path."""
+
+    name: str
+    size: int
+    sha256: str
+
+
+@dataclass
+class DubbingResumeMetadata:
+    media: DubbingSourceFingerprint
+    subtitle: DubbingSourceFingerprint
+    video_duration: float
+    settings_sha256: str
+    display_subtitle: DubbingSourceFingerprint | None = None
+    schema_version: str = "dubbing-resume-v1"
+    provenance: str = "captured-at-run"
 
 
 @dataclass
@@ -115,6 +141,7 @@ class DubbingPlan:
     provider_identity: dict[str, Any] = field(default_factory=dict)
     summary: dict[str, Any] = field(default_factory=dict)
     schema_version: str = "dubbing-plan-v1"
+    resume_metadata: DubbingResumeMetadata | None = None
 
     def __post_init__(self) -> None:
         self.source_path = Path(self.source_path).name
@@ -194,4 +221,6 @@ def calculate_report_summary(groups: Iterable[DubbingGroup], output_created: boo
         "p95_fit_ratio": round(ratios[p95_index], 4) if ratios else 0.0,
         "total_tts_attempts": sum(group.attempt_count for group in items),
         "output_created": output_created,
+        "shifted_groups": sum(group.start_delay > 0.001 for group in items),
+        "max_start_delay_ms": round(max((group.start_delay for group in items), default=0.0) * 1000),
     }

@@ -71,9 +71,15 @@ LOG_PATH = APPDATA_PATH / "logs"
 LLM_LOG_FILE = LOG_PATH / "llm_requests.jsonl"
 SETTINGS_PATH = APPDATA_PATH / "settings.json"
 CACHE_PATH = APPDATA_PATH / "cache"
-MODEL_PATH = APPDATA_PATH / "models"
+def portable_models_path(app_root: Path | None = None) -> Path | None:
+    """A packaged model collection follows the executable when its folder moves."""
+    directory = Path(app_root or ROOT_PATH) / "models"
+    return directory if (directory / "portable-models.json").is_file() else None
 
-FASTER_WHISPER_PATH = BIN_PATH / "Faster-Whisper-XXL"
+
+MODEL_PATH = portable_models_path() or APPDATA_PATH / "models"
+
+FASTER_WHISPER_PATH = ((MODEL_PATH / "tools") if portable_models_path() else BIN_PATH) / "Faster-Whisper-XXL"
 LEGACY_FASTER_WHISPER_PATH = LEGACY_BIN_PATH / "Faster-Whisper-XXL"
 
 # Logging

@@ -27,6 +27,9 @@ from videocaptioner.core.utils.subprocess_helper import child_environment
 from .adapters import project_to_tts_asr
 from .models import EditorLayer, EditorLayerKind, EditorProject
 from .project_store import EditorProjectStore
+from .subtitle_style import build_editor_ass, frame_size
+
+EDITOR_SUBTITLE_FILE = "display.ass"
 
 if TYPE_CHECKING:
     from videocaptioner.core.dubbing.config import DubbingConfig
@@ -354,10 +357,14 @@ def build_visual_filter_graph(
     current = "v0"
     subtitle_track = next((track for track in project.tracks if track.id == "track-ts1"), None)
     if include_subtitles and (subtitle_track is None or subtitle_track.visible):
-        srt_path = _escape_filter_path(str(run_dir / "display.srt"))
-        style = project.subtitle_style.to_force_style(frame_width, frame_height)
         fonts = f":fontsdir='{_escape_filter_path(str(FONTS_PATH))}'" if FONTS_PATH.is_dir() else ""
-        filters.append(f"[0:v]subtitles='{srt_path}'{fonts}:force_style='{style}'[{current}]")
+        if project.subtitle_style.uses_shared_layout:
+            path = _escape_filter_path(str(run_dir / EDITOR_SUBTITLE_FILE))
+            filters.append(f"[0:v]subtitles='{path}'{fonts}[{current}]")
+        else:
+            path = _escape_filter_path(str(run_dir / "display.srt"))
+            style = project.subtitle_style.to_force_style(frame_width, frame_height)
+            filters.append(f"[0:v]subtitles='{path}'{fonts}:force_style='{style}'[{current}]")
     else:
         filters.append(f"[0:v]null[{current}]")
 
@@ -462,6 +469,26 @@ def _shifted_display_srt(project: EditorProject, start_ms: int, end_ms: int) -> 
     return ASRData(segments).to_srt()
 
 
+def write_editor_subtitle(
+    project: EditorProject, run_dir: Path, start_ms: int, end_ms: int,
+    *, frame_width: int = 0, frame_height: int = 0,
+) -> Path:
+    """Keep plain SRT rendering; shared layout writes positioned ASS only in the run directory."""
+    if project.subtitle_style.uses_shared_layout:
+        width, height = frame_size(frame_width or project.width, frame_height or project.height)
+        events = [
+            (max(0, cue.start_ms - start_ms), min(end_ms, cue.end_ms) - start_ms, cue.display_text)
+            for cue in project.cues if cue.start_ms < end_ms and cue.end_ms > start_ms
+        ]
+        target = run_dir / EDITOR_SUBTITLE_FILE
+        content = build_editor_ass(events, project.subtitle_style, width, height)
+    else:
+        target = run_dir / "display.srt"
+        content = _shifted_display_srt(project, start_ms, end_ms)
+    EditorProjectStore._atomic_write(target, content)
+    return target
+
+
 def _render_from_project(
     project: EditorProject,
     output_path: str | Path,
@@ -491,9 +518,9 @@ def _render_from_project(
         frame_width, frame_height = probed.width, probed.height
     with tempfile.TemporaryDirectory(prefix="vc_editor_render_") as temp_dir:
         run_dir = Path(temp_dir)
-        EditorProjectStore._atomic_write(
-            run_dir / "display.srt",
-            _shifted_display_srt(project, start_ms, end_ms),
+        write_editor_subtitle(
+            project, run_dir, start_ms, end_ms,
+            frame_width=frame_width, frame_height=frame_height,
         )
         extra_inputs, graph, output_label = build_visual_filter_graph(
             project,

@@ -40,6 +40,7 @@ from videocaptioner.core.constant import (
     INFOBAR_DURATION_SUCCESS,
     INFOBAR_DURATION_WARNING,
 )
+from videocaptioner.core.editor.commands import CommandStack, EditConversationCommand
 from videocaptioner.core.entities import (
     OutputSubtitleFormatEnum,
     SubtitleLayoutEnum,
@@ -47,13 +48,16 @@ from videocaptioner.core.entities import (
 )
 from videocaptioner.core.subtitle import editing, get_subtitle_style
 from videocaptioner.core.translate.types import TargetLanguage
+from videocaptioner.core.utils.cache import generate_cache_key
 from videocaptioner.core.utils.platform_utils import open_folder, reveal_in_explorer
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
+from videocaptioner.ui.components.conversation_dialog import ConversationDialog
 from videocaptioner.ui.components.SearchReplaceDialog import SearchReplaceDialog
 from videocaptioner.ui.components.SubtitleSettingDialog import SubtitleSettingDialog
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.subtitle_thread import RetranslateThread, SubtitleThread
+from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
 
 class SubtitleTableModel(QAbstractTableModel):
@@ -197,6 +201,11 @@ class SubtitleInterface(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
+        self._context_data = ASRData([])
+        self._context_stack = CommandStack()
+        application = QApplication.instance()
+        if application is not None:
+            application.aboutToQuit.connect(self._shutdown_context_workers)
         self.setAcceptDrops(True)
         self.task: Optional[SubtitleTask] = None
         self.subtitle_path: Optional[str] = None
@@ -330,6 +339,12 @@ class SubtitleInterface(QWidget):
             FIF.DOCUMENT, self.tr("Prompt"), triggered=self.show_prompt_dialog
         )
         self.command_bar.addAction(self.prompt_button)
+        self.command_bar.addHiddenAction(Action(FIF.PEOPLE, self.tr("Conversation context"),
+                                                triggered=self.edit_conversation_context))
+        self.command_bar.addHiddenAction(Action(FIF.LEFT_ARROW, self.tr("Undo context edit"),
+                                                triggered=self._context_stack.undo))
+        self.command_bar.addHiddenAction(Action(FIF.RIGHT_ARROW, self.tr("Redo context edit"),
+                                                triggered=self._context_stack.redo))
 
         # Search/replace button (batch-fix repeated translation mistakes)
         self.command_bar.addAction(
@@ -514,7 +529,10 @@ class SubtitleInterface(QWidget):
         if not self.task:
             return
         original_subtitle_save_path = Path(str(self.task.subtitle_path))
-        asr_data = ASRData.from_subtitle_file(str(original_subtitle_save_path))
+        asr_data = task.asr_data if task.asr_data is not None else ASRData.from_subtitle_file(str(original_subtitle_save_path))
+        task.asr_data = asr_data
+        self._context_data = asr_data
+        self._context_stack.clear()
         self.model._data = asr_data.to_json()
         self.model.layoutChanged.emit()
         self.status_label.setText(self.tr("已加载文件"))
@@ -536,26 +554,38 @@ class SubtitleInterface(QWidget):
         self.cancel_button.show()
 
         if need_create_task:
-            # Write the current table back to the source file so merges/deletes/edits survive
+            current = self.current_context_document()
+            # JSON handoffs must remain JSON when rerunning edits.
             if self.model._data:
-                ASRData.from_json(self.model._data).to_srt(save_path=self.subtitle_path)
+                if Path(self.subtitle_path).suffix.lower() == ".json":
+                    current.save(self.subtitle_path)
+                else:
+                    current.to_srt(save_path=self.subtitle_path)
             self.task = TaskFactory.create_subtitle_task(file_path=self.subtitle_path)
+            self.task.asr_data = current
         if not self.task:
             self.start_button.setEnabled(True)
             self.cancel_button.hide()
             return
+        if self.task.asr_data is not None and self.task.asr_data.visual_source and self.task.subtitle_config:
+            self.task.subtitle_config.need_split = False
+            self.task.subtitle_config.need_optimize = False
         self.subtitle_optimization_thread = SubtitleThread(self.task)
-        self.subtitle_optimization_thread.finished.connect(
-            self.on_subtitle_optimization_finished
-        )
-        self.subtitle_optimization_thread.progress.connect(
-            self.on_subtitle_optimization_progress
-        )
-        self.subtitle_optimization_thread.update.connect(self.update_data)
-        self.subtitle_optimization_thread.update_all.connect(self.update_all)
-        self.subtitle_optimization_thread.error.connect(
-            self.on_subtitle_optimization_error
-        )
+        worker = self.subtitle_optimization_thread
+        retain_worker(worker)
+        source = self._context_data
+        version = generate_cache_key(self.current_context_document().to_document())
+        def accept_result(video_path, output_path):
+            if (self._context_data is not source
+                    or version != generate_cache_key(self.current_context_document().to_document())):
+                self.on_subtitle_optimization_error(self.tr("Context or subtitles changed; stale translation discarded."))
+                return
+            if worker.task.asr_data is not None:
+                self.update_all(worker.task.asr_data.to_json())
+            self.on_subtitle_optimization_finished(video_path, output_path)
+        connect_current(self, "subtitle_optimization_thread", worker, worker.finished, accept_result)
+        connect_current(self, "subtitle_optimization_thread", worker, worker.progress, self.on_subtitle_optimization_progress)
+        connect_current(self, "subtitle_optimization_thread", worker, worker.error, self.on_subtitle_optimization_error)
         self.subtitle_optimization_thread.set_custom_prompt_text(
             self.custom_prompt_text
         )
@@ -574,6 +604,8 @@ class SubtitleInterface(QWidget):
     def on_subtitle_optimization_finished(
         self, video_path: str, output_path: str
     ) -> None:
+        if self.task and self.task.asr_data is not None:
+            self._context_data = self.task.asr_data
         self.start_button.setEnabled(True)
         self.cancel_button.hide()
         self.progress_bar.setValue(100)
@@ -663,6 +695,11 @@ class SubtitleInterface(QWidget):
                 file_path,
                 cfg.subtitle_layout.value,
                 style=self._current_ass_style(),
+                events=self._context_data.events,
+                context=self._context_data.conversation_context,
+                audio_identity=self._context_data.audio_identity,
+                visual_source=self._context_data.visual_source,
+                pending_diarization=self._context_data.pending_diarization,
             )
             InfoBar.success(
                 self.tr("保存成功"),
@@ -697,6 +734,8 @@ class SubtitleInterface(QWidget):
     def load_subtitle_file(self, file_path: str) -> None:
         self.subtitle_path = file_path
         asr_data = ASRData.from_subtitle_file(file_path)
+        self._context_data = asr_data
+        self._context_stack.clear()
         self.model._data = asr_data.to_json()
         self.model.layoutChanged.emit()
         self.status_label.setText(self.tr("已加载文件"))
@@ -726,9 +765,15 @@ class SubtitleInterface(QWidget):
         event.accept()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if hasattr(self, "subtitle_optimization_thread"):
-            self.subtitle_optimization_thread.stop()  # type: ignore
+        self._shutdown_context_workers()
         super().closeEvent(event)
+
+    def _shutdown_context_workers(self) -> None:
+        # Navigation pages do not receive closeEvent when the application quits.
+        for name in ("_retranslate_thread", "subtitle_optimization_thread"):
+            worker = getattr(self, name, None)
+            if worker is not None and worker.isRunning():
+                retire_worker(worker)
 
     def show_subtitle_settings(self) -> None:
         dialog = SubtitleSettingDialog(self.window())
@@ -773,7 +818,12 @@ class SubtitleInterface(QWidget):
         if not rows or len(rows) < 2:
             return
         self.subtitle_table.clearSelection()
-        self.model.update_all(editing.merge_rows(self.model._data, rows))
+        try:
+            self.model.update_all(editing.merge_rows(self.model._data, rows))
+        except ValueError:
+            InfoBar.warning(self.tr("Review required"), self.tr("Cannot merge different speakers or ASR sources."),
+                            duration=4000, parent=self)
+            return
         InfoBar.success(
             self.tr("合并成功"),
             self.tr("已成功合并选中的字幕行"),
@@ -818,14 +868,44 @@ class SubtitleInterface(QWidget):
         self.progress_bar.reset()
 
         file_name = Path(self.subtitle_path).name if self.subtitle_path else ""
-        self._retranslate_thread = RetranslateThread(selected_data, config, file_name)
-        self._retranslate_thread.finished.connect(self._on_retranslate_finished)
-        self._retranslate_thread.progress.connect(self.on_subtitle_optimization_progress)
-        self._retranslate_thread.error.connect(self._on_retranslate_error)
+        document = self.current_context_document()
+        self._retranslate_version = generate_cache_key(document.to_document())
+        self._retranslate_source = self._context_data
+        self._retranslate_thread = RetranslateThread(selected_data, config, file_name, context_data=document)
+        worker = self._retranslate_thread
+        retain_worker(worker)
+        connect_current(self, "_retranslate_thread", worker, worker.finished, self._on_retranslate_finished)
+        connect_current(self, "_retranslate_thread", worker, worker.progress, self.on_subtitle_optimization_progress)
+        connect_current(self, "_retranslate_thread", worker, worker.error, self._on_retranslate_error)
+        self.cancel_button.show()
         self._retranslate_thread.start()
+
+    def current_context_document(self) -> ASRData:
+        data = ASRData.from_json(self.model._data)
+        data.events = list(self._context_data.events)
+        data.conversation_context = self._context_data.conversation_context
+        data.audio_identity = self._context_data.audio_identity
+        data.visual_source = self._context_data.visual_source
+        data.pending_diarization = self._context_data.pending_diarization
+        return data
+
+    def edit_conversation_context(self) -> None:
+        if not self.model._data:
+            return
+        if hasattr(self, "subtitle_optimization_thread") and self.subtitle_optimization_thread.isRunning():
+            return
+        document = self.current_context_document()
+        dialog = ConversationDialog(document.conversation_context, document.context_snapshot().cues, self)
+        if dialog.exec_():
+            self._context_stack.execute(EditConversationCommand(self._context_data, dialog.context))
 
     def _on_retranslate_finished(self, result: dict) -> None:
         self.start_button.setEnabled(True)
+        self.cancel_button.hide()
+        if (self._retranslate_source is not self._context_data
+                or self._retranslate_version != generate_cache_key(self.current_context_document().to_document())):
+            self._on_retranslate_error(self.tr("Context or subtitles changed; stale translation discarded."))
+            return
         self.model.update_data(result)
         self.progress_bar.setValue(100)
         self.status_label.setText(self.tr("重新翻译完成"))
@@ -837,6 +917,7 @@ class SubtitleInterface(QWidget):
         )
 
     def _on_retranslate_error(self, error: str) -> None:
+        self.cancel_button.hide()
         self.start_button.setEnabled(True)
         self.progress_bar.error()
         self.status_label.setText(self.tr("重新翻译失败"))
@@ -867,19 +948,14 @@ class SubtitleInterface(QWidget):
 
     def cancel_optimization(self) -> None:
         """Cancel the running optimization."""
-        if hasattr(self, "subtitle_optimization_thread"):
-            self.subtitle_optimization_thread.stop()  # type: ignore
-            self.start_button.setEnabled(True)
-            self.cancel_button.hide()
-            self.progress_bar.resume()  # Back to the normal state
-            self.progress_bar.setValue(0)
-            self.status_label.setText(self.tr("已取消校正"))
-            InfoBar.warning(
-                self.tr("已取消"),
-                self.tr("字幕校正已取消"),
-                duration=INFOBAR_DURATION_WARNING,
-                parent=self,
-            )
+        self._shutdown_context_workers()
+        self.start_button.setEnabled(True)
+        self.cancel_button.hide()
+        self.progress_bar.resume()
+        self.progress_bar.setValue(0)
+        self.status_label.setText(self.tr("已取消校正"))
+        InfoBar.warning(self.tr("已取消"), self.tr("字幕校正已取消"),
+                        duration=INFOBAR_DURATION_WARNING, parent=self)
 
     def on_target_language_changed(self, language: str) -> None:
         """Target language changed from the signal bus."""
@@ -913,13 +989,16 @@ class SubtitleInterface(QWidget):
         # re-export so a later layout change reaches the on-disk files.
         if not (self.task and self.model._data):
             return
-        editing.reexport_pipeline_outputs(
+        written = editing.reexport_pipeline_outputs(
             self.model._data,
             self.task.output_path,
             self.task.video_path,
             layout,
             style=self._current_ass_style(),
+            document=self._context_data,
         )
+        if self.task.subtitle_config and self.task.output_path and Path(self.task.output_path) in map(Path, written):
+            self.task.subtitle_config.subtitle_layout = layout
 
     def on_open_in_video_editor(self) -> None:
         """Hand off the current editable table without mutating its source SRT."""
@@ -939,6 +1018,11 @@ class SubtitleInterface(QWidget):
                 CACHE_PATH / "editor_handoff",
                 str(getattr(self.task, "task_id", "") or ""),
                 video_path,
+                events=self._context_data.events,
+                context=self._context_data.conversation_context,
+                audio_identity=self._context_data.audio_identity,
+                visual_source=self._context_data.visual_source,
+                pending_diarization=self._context_data.pending_diarization,
             )
         except Exception as exc:
             InfoBar.error(

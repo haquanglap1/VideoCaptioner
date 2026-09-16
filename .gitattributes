@@ -1,0 +1,4 @@
+videocaptioner/resources/omnivoice/requirements.lock text eol=lf
+# OCR checkpoints pin the legacy worker's exact LF bytes across checkouts.
+scripts/ocr_stream_worker.py text eol=lf
+videocaptioner/resources/ocr/ocr_stream_worker.py text eol=lf

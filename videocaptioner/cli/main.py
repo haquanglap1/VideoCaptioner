@@ -33,6 +33,8 @@ def _add_llm_options(parser: argparse.ArgumentParser) -> None:
 
 def _add_output_options(parser: argparse.ArgumentParser) -> None:
     """Add output-related options."""
+    parser.add_argument("--conversation-context", metavar="JSON",
+                        help="Load saved S4 context from editor/ASR JSON (SRT cannot retain it)")
     group = parser.add_argument_group("Output options")
     group.add_argument("-o", "--output", metavar="PATH", help="Output file or directory path")
     group.add_argument(
@@ -83,8 +85,12 @@ def _add_common_options(parser: argparse.ArgumentParser) -> None:
 def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Dubbing options")
     group.add_argument(
-        "--tts-provider", choices=["openai", "minimax", "local-ai", "vieneu-local"]
+        "--tts-provider", choices=["openai", "minimax", "local-ai", "vieneu-local", "omnivoice-local"]
     )
+    group.add_argument("--omnivoice-runtime", metavar="DIRECTORY")
+    group.add_argument("--omnivoice-reference-audio", metavar="FILE")
+    group.add_argument("--omnivoice-reference-text-file", metavar="FILE")
+    group.add_argument("--omnivoice-language", metavar="CODE")
     group.add_argument("--tts-api-key", metavar="KEY")
     group.add_argument("--tts-api-base", metavar="URL")
     group.add_argument("--tts-model", metavar="NAME")
@@ -100,11 +106,36 @@ def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--max-rewrite-attempts", type=int, metavar="N")
     group.add_argument("--no-timing-rewrite", action="store_true")
     group.add_argument("--no-tts-cache", action="store_true")
-    group.add_argument("--unresolved", choices=["review", "allow-overlap"])
+    group.add_argument("--unresolved", choices=["review", "allow-overlap", "sequential"])
+    group.add_argument("--max-start-delay-ms", type=int, metavar="MS")
     group.add_argument("--mix-mode", choices=["keep", "reduce", "mute"])
     group.add_argument("--original-volume", type=float, metavar="LEVEL")
     group.add_argument("--voice-volume", type=float, metavar="LEVEL")
     group.add_argument("--report", metavar="PATH")
+
+
+def _add_native_asr_options(parser: argparse.ArgumentParser) -> None:
+    local = parser.add_argument_group("Local Qwen and hybrid diarization")
+    local.add_argument("--qwen-model", choices=["qwen-1.7b", "qwen-0.6b"])
+    local.add_argument("--local-diarize", action=argparse.BooleanOptionalAction, default=None)
+    local.add_argument("--qwen-runtime", metavar="DIRECTORY")
+    local.add_argument("--diarization-runtime", metavar="DIRECTORY")
+    local.add_argument("--local-chunk-ms", type=int)
+    local.add_argument("--local-timeout", type=int)
+    group = parser.add_argument_group("Native Chinese ASR (Soniox / ElevenLabs)")
+    group.add_argument("--asr-review", metavar="JSON", help="Save rejected native recognition for local timing review")
+    for provider in ("soniox", "scribe"):
+        group.add_argument(f"--{provider}-api-key", metavar="KEY")
+        group.add_argument(f"--{provider}-api-base", metavar="URL")
+        group.add_argument(f"--{provider}-model", metavar="MODEL")
+        group.add_argument(f"--{provider}-diarize", action=argparse.BooleanOptionalAction, default=None)
+
+
+def _add_faster_whisper_options(group) -> None:
+    group.add_argument("--fw-program", metavar="EXE", help="Existing Faster-Whisper executable")
+    group.add_argument("--fw-model-dir", metavar="DIR", help="Directory containing installed Faster-Whisper models")
+    group.add_argument("--fw-model", metavar="NAME", help="Faster-Whisper model (default: large-v3)")
+    group.add_argument("--fw-device", choices=["auto", "cpu", "cuda"], help="Faster-Whisper device")
 
 
 def _build_transcribe_parser(subparsers) -> None:
@@ -120,7 +151,7 @@ def _build_transcribe_parser(subparsers) -> None:
     asr = p.add_argument_group("ASR options")
     asr.add_argument(
         "--asr",
-        choices=["bijian", "jianying", "whisper-api", "whisper-cpp"],
+        choices=["bijian", "jianying", "faster-whisper", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
         help="ASR engine (default: bijian). "
              "bijian/jianying: free, no setup, Chinese & English only. "
              "For other languages use whisper-api or whisper-cpp",
@@ -129,6 +160,10 @@ def _build_transcribe_parser(subparsers) -> None:
                      help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
     asr.add_argument("--word-timestamps", action="store_true",
                      help="Include word-level timestamps (for subtitle splitting)")
+    asr.add_argument("--whisper-provider", choices=["custom", "videocaptioner", "groq", "openai"],
+                     help="ASR provider preset (preserves explicit base/model overrides)")
+    asr.add_argument("--whisper-request-profile", choices=["auto", "whisper", "json-text"],
+                     help="Request contract; JSON text requires alignment before subtitle export")
     asr.add_argument("--whisper-api-key", metavar="KEY",
                      help="Whisper API key (for --asr whisper-api)")
     asr.add_argument("--whisper-api-base", metavar="URL",
@@ -137,13 +172,15 @@ def _build_transcribe_parser(subparsers) -> None:
     asr.add_argument("--whisper-model", metavar="NAME",
                      help="Model name for whisper-api (default: whisper-1) "
                           "or whisper-cpp (default: large-v2)")
+    _add_faster_whisper_options(asr)
 
     # Advanced options (configurable via 'config set', hidden from --help)
-    for arg in ["--fw-model", "--fw-device", "--fw-vad-method", "--fw-prompt", "--whisper-prompt"]:
+    for arg in ["--fw-vad-method", "--fw-prompt", "--whisper-prompt"]:
         p.add_argument(arg, help=argparse.SUPPRESS)
     p.add_argument("--fw-vad-threshold", type=float, help=argparse.SUPPRESS)
     p.add_argument("--fw-voice-extraction", action="store_true", help=argparse.SUPPRESS)
 
+    _add_native_asr_options(p)
     p.set_defaults(func=_run_transcribe)
 
 
@@ -171,11 +208,14 @@ def _build_subtitle_parser(subparsers) -> None:
     llm.add_argument("--api-base", metavar="URL",
                      help="LLM API base URL (or set OPENAI_BASE_URL env var)")
     llm.add_argument("--model", metavar="NAME", help="LLM model name (e.g. gpt-4o-mini)")
+    llm.add_argument("--llm-timeout", type=int, metavar="SECONDS",
+                     help="Translation request deadline, 1–600 seconds (default: 120)")
 
     _add_output_options(p)
 
     proc = p.add_argument_group("Processing options")
     proc.add_argument("--no-optimize", action="store_true", help="Skip LLM subtitle optimization")
+    proc.add_argument("--optimize", action="store_true", help="Explicitly enable LLM text editing for OCR input")
     proc.add_argument("--no-translate", action="store_true", help="Skip translation")
     proc.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
 
@@ -287,10 +327,13 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--no-split", action="store_true", help="Skip subtitle re-segmentation")
     pipe.add_argument("--no-synthesize", action="store_true", help="Skip video synthesis (output subtitles only)")
 
-    pipe.add_argument("--asr", choices=["bijian", "jianying", "whisper-api", "whisper-cpp"],
+    pipe.add_argument("--asr", choices=["bijian", "jianying", "faster-whisper", "whisper-api", "whisper-cpp", "soniox", "scribe", "qwen-local"],
                       help="ASR engine (default: bijian)")
+    _add_faster_whisper_options(pipe)
     pipe.add_argument("--language", metavar="CODE",
                       help="Source language as ISO 639-1 code, or 'auto' (default: auto)")
+    pipe.add_argument("--whisper-provider", choices=["custom", "videocaptioner", "groq", "openai"])
+    pipe.add_argument("--whisper-request-profile", choices=["auto", "whisper", "json-text"])
     pipe.add_argument("--whisper-api-key", metavar="KEY", help="Whisper API key (for --asr whisper-api)")
     pipe.add_argument("--translator", choices=["llm", "bing", "google"],
                       help="Translation service (default: llm). bing and google are free")
@@ -303,6 +346,8 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--prompt", metavar="TEXT", help="Custom prompt for LLM optimization/translation")
     pipe.add_argument("--thread-num", type=int, metavar="N", help="Concurrent threads (default: 4)")
     pipe.add_argument("--batch-size", type=int, metavar="N", help="Batch size (default: 20)")
+    pipe.add_argument("--llm-timeout", type=int, metavar="SECONDS",
+                      help="Translation request deadline, 1–600 seconds (default: 120)")
     pipe.add_argument("--dub", action="store_true", help="Add Natural/Legacy dubbing before synthesis")
     # Hidden options
     p.add_argument("--prompt-file", metavar="FILE", help=argparse.SUPPRESS)
@@ -312,6 +357,7 @@ def _build_process_parser(subparsers) -> None:
     _add_style_options(p)
     _add_dubbing_options(p)
 
+    _add_native_asr_options(p)
     p.set_defaults(func=_run_process)
 
 
@@ -392,9 +438,89 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=_get_version())
 
     subparsers = parser.add_subparsers(dest="command", metavar="command")
+    diarize = subparsers.add_parser("local-diarize", help="Add local speakers to existing timed subtitles without another ASR upload")
+    diarize.add_argument("input", help="Existing timed subtitle JSON or SRT")
+    diarize.add_argument("--audio", required=True)
+    diarize.add_argument("-o", "--output", required=True)
+    diarize.add_argument("--runtime")
+    diarize.add_argument("--timeout", type=int, default=180)
+    diarize.set_defaults(func=_run_local_diarize)
+    local = subparsers.add_parser("local-asr", help="Install/status/probe isolated S5 runtimes explicitly")
+    local.add_argument("action", choices=["status", "probe", "install"])
+    local.add_argument("--models", nargs="+", default=["qwen-1.7b", "aligner", "community-1"],
+                       choices=["qwen-1.7b", "qwen-0.6b", "aligner", "community-1"])
+    local.add_argument("--root", type=Path, help="Installed runtime root, or new install destination")
+    local.add_argument("--timeout", type=int, default=180)
+    local.set_defaults(func=_run_local_asr)
 
     _build_transcribe_parser(subparsers)
     _build_subtitle_parser(subparsers)
+    ocr = subparsers.add_parser("ocr", help="Read a fixed video subtitle ROI with an installed CPU OCR runtime")
+    ocr.add_argument("input")
+    ocr.add_argument("--start-ms", type=int, required=True)
+    ocr.add_argument("--end-ms", type=int, required=True)
+    ocr.add_argument("--roi", required=True, help="Normalized display X,Y,WIDTH,HEIGHT after SAR/rotation")
+    ocr.add_argument("--line-anchors", metavar="Y[,Y]",
+                     help="Select lines crossing one/two normalized ROI heights, e.g. 0.5 or 0.25,0.75; "
+                          "includes nearby detached punctuation. Omit to keep all lines.")
+    ocr.add_argument("--tracking", choices=["edges", "characters"], default="edges",
+                     help="Character tracking stabilizes one selected line using PP-OCRv6 medium (slower CPU mode)")
+    ocr.add_argument("--language", choices=["zh"], default="zh")
+    ocr.add_argument("--ocr-runtime", help="Installed runtime root; defaults to models/ocr beside the app")
+    ocr.add_argument("--ocr-bridge", help="Explicit worker override; otherwise use the bundled bridge")
+    ocr.add_argument("--profile-sha256", help="Expected profile SHA-256; otherwise use the bundled recipe")
+    ocr.add_argument("--max-requests", type=int, default=1000)
+    ocr.add_argument("--cache-mib", type=int, default=64,
+                     help="Raw OCR cache quota in MiB (0 disables disk caching; default 64, max 512)")
+    ocr.add_argument("--timeout", type=float, default=30)
+    ocr.add_argument("--ffmpeg", default="ffmpeg")
+    ocr.add_argument("--ffprobe", default="ffprobe")
+    ocr.add_argument("--checkpoint", "--review", dest="review", metavar="JSON",
+                     help="Optionally save raw OCR data for reopening or continuing an interrupted scan")
+    ocr.add_argument("--report", metavar="JSON")
+    ocr.add_argument("-o", "--output", help="Export completed OCR directly (.json or .srt)")
+    _add_common_options(ocr)
+    ocr.set_defaults(func=_run_ocr)
+    ocr_resume = subparsers.add_parser("ocr-resume", help="Continue an incomplete OCR scan using its saved settings")
+    ocr_resume.add_argument("input", help="Incomplete OCR document JSON")
+    ocr_resume.add_argument("--source", required=True, help="Original video, verified before decoding")
+    ocr_resume.add_argument("--ocr-runtime", help="Installed runtime matching the saved profile")
+    ocr_resume.add_argument("--ocr-bridge", help="Explicit worker override matching the saved bridge")
+    ocr_resume.add_argument("--max-requests", type=int, default=1000, help="Request limit for this attempt")
+    ocr_resume.add_argument("--cache-mib", type=int, default=64)
+    ocr_resume.add_argument("--timeout", type=float, default=30)
+    ocr_resume.add_argument("--ffmpeg", default="ffmpeg")
+    ocr_resume.add_argument("--ffprobe", default="ffprobe")
+    ocr_resume.add_argument("--checkpoint", "--review", dest="review", metavar="JSON",
+                            help="Optional separate checkpoint output; preserve input")
+    ocr_resume.add_argument("--report", metavar="JSON")
+    ocr_resume.add_argument("-o", "--output", help="Export the completed scan directly")
+    _add_common_options(ocr_resume)
+    ocr_resume.set_defaults(func=_run_ocr_resume)
+    ocr_review = subparsers.add_parser("ocr-export", aliases=["ocr-review"],
+                                      help="Export saved OCR locally after verifying the original video; no inference")
+    ocr_review.add_argument("input")
+    ocr_review.add_argument("--source", required=True)
+    ocr_review.add_argument("--ffprobe", default="ffprobe")
+    ocr_review.add_argument("--select-candidate", action="append", metavar="CUE_ID:CANDIDATE_ID")
+    ocr_review.add_argument("--set-timing", action="append", metavar="CUE_ID:START_MS:END_MS")
+    ocr_review.add_argument("--note", help="Reason/evidence for explicit review decisions")
+    ocr_review.add_argument("--save-review", metavar="JSON")
+    ocr_review.add_argument("-o", "--output")
+    _add_common_options(ocr_review)
+    ocr_review.set_defaults(func=_run_ocr_review)
+    ocr_cache = subparsers.add_parser("ocr-cache", help="Inspect or clear cached raw OCR reads")
+    ocr_cache.add_argument("action", choices=["status", "clear"])
+    _add_common_options(ocr_cache)
+    ocr_cache.set_defaults(func=_run_ocr_cache)
+    review = subparsers.add_parser("asr-review", help="Validate/resume saved ASR review locally, without uploading")
+    review.add_argument("input", help="ASR review JSON")
+    review.add_argument("--set-timing", action="append", metavar="TOKEN_ID:START_MS:END_MS")
+    review.add_argument("--save-review", metavar="JSON", help="Save explicit timing overrides with the original tokens")
+    review.add_argument("--audio", metavar="FILE", help="Verify the original recording locally before review/export")
+    review.add_argument("-o", "--output", metavar="PATH", help="Export complete validated subtitles (.json or .srt)")
+    _add_common_options(review)
+    review.set_defaults(func=_run_asr_review)
     _build_synthesize_parser(subparsers)
     _build_dub_parser(subparsers)
     _build_process_parser(subparsers)
@@ -431,17 +557,29 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("llm.api_key", getattr(args, "api_key", None))
     _set("llm.api_base", getattr(args, "api_base", None))
     _set("llm.model", getattr(args, "model", None))
+    _set("llm.request_timeout", getattr(args, "llm_timeout", None))
 
     # Whisper API
     _set("whisper_api.api_key", getattr(args, "whisper_api_key", None))
     _set("whisper_api.api_base", getattr(args, "whisper_api_base", None))
     _set("whisper_api.model", getattr(args, "whisper_model", None))
+    for provider in ("soniox", "scribe"):
+        for key in ("api_key", "api_base", "model", "diarize"):
+            _set(f"{provider}.{key}", getattr(args, f"{provider}_{key}", None))
+    _set("whisper_api.provider", getattr(args, "whisper_provider", None))
+    _set("whisper_api.request_profile", getattr(args, "whisper_request_profile", None))
 
     # Transcribe
+    for key, argument in (("model", "qwen_model"), ("diarize", "local_diarize"),
+                          ("runtime_root", "qwen_runtime"), ("diarization_root", "diarization_runtime"),
+                          ("chunk_ms", "local_chunk_ms"), ("timeout", "local_timeout")):
+        _set(f"local_asr.{key}", getattr(args, argument, None))
     _set("transcribe.asr", getattr(args, "asr", None))
     _set("transcribe.language", getattr(args, "language", None))
 
     # FasterWhisper
+    _set("transcribe.faster_whisper.program", getattr(args, "fw_program", None))
+    _set("transcribe.faster_whisper.model_dir", getattr(args, "fw_model_dir", None))
     _set("transcribe.faster_whisper.model", getattr(args, "fw_model", None))
     _set("transcribe.faster_whisper.device", getattr(args, "fw_device", None))
     _set("transcribe.faster_whisper.vad_method", getattr(args, "fw_vad_method", None))
@@ -468,6 +606,7 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     # Translate
     _set("translate.service", getattr(args, "translator", None))
     _set("translate.target_language", getattr(args, "target_language", None))
+    _set("translate.conversation_context", getattr(args, "conversation_context", None))
     if getattr(args, "reflect", False):
         _set("translate.reflect", True)
 
@@ -489,6 +628,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("dubbing.tts_speed", getattr(args, "tts_speed", None))
     _set("dubbing.tts_concurrency", getattr(args, "tts_concurrency", None))
     _set("dubbing.text_source", getattr(args, "text_source", None))
+    for option in ("runtime", "reference_audio", "reference_text_file", "language"):
+        _set("omnivoice." + option, getattr(args, "omnivoice_" + option, None))
     _set("dubbing.timing_mode", getattr(args, "timing_mode", None))
     _set("dubbing.natural_max_speed", getattr(args, "natural_max_speed", None))
     _set("dubbing.legacy_max_speed", getattr(args, "legacy_max_speed", None))
@@ -500,6 +641,7 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     if getattr(args, "no_tts_cache", False):
         _set("dubbing.tts_cache", False)
     _set("dubbing.unresolved_policy", getattr(args, "unresolved", None))
+    _set("dubbing.max_start_delay_ms", getattr(args, "max_start_delay_ms", None))
     _set("dubbing.mix_mode", getattr(args, "mix_mode", None))
     _set("dubbing.original_volume", getattr(args, "original_volume", None))
     _set("dubbing.voice_volume", getattr(args, "voice_volume", None))
@@ -528,6 +670,46 @@ def _run_transcribe(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.transcribe import run
     config = _load_config(args)
     return run(args, config)
+
+
+def _run_local_asr(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.local_asr import run
+    return run(args)
+
+
+def _run_local_diarize(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.local_diarize import run
+    return run(args)
+
+
+def _run_ocr(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import run
+
+    return run(args, {})
+
+
+def _run_ocr_resume(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import resume_scan
+
+    return resume_scan(args, {})
+
+
+def _run_ocr_review(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import review
+
+    return review(args, {})
+
+
+def _run_ocr_cache(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.ocr import cache
+
+    return cache(args, {})
+
+
+def _run_asr_review(args: argparse.Namespace) -> int:
+    from videocaptioner.cli.commands.asr_review import run
+
+    return run(args, {})
 
 
 def _run_subtitle(args: argparse.Namespace) -> int:

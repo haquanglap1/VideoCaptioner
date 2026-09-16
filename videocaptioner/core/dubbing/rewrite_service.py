@@ -9,11 +9,13 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from videocaptioner.core.dubbing.models import DubbingGroup
-from videocaptioner.core.llm import call_llm
+from videocaptioner.core.dubbing.planner import spoken_unit_count
+from videocaptioner.core.llm.client import LLMCredentials, get_llm_credentials
+from videocaptioner.core.llm.owned_request import OwnedLLMRequest
 from videocaptioner.core.prompts import get_prompt
 from videocaptioner.core.utils.cache import get_llm_cache
 
-PROMPT_VERSION = "dubbing-rewrite-v1"
+PROMPT_VERSION = "dubbing-rewrite-steady-v3"
 _PROTECTED_RE = re.compile(
     r"(?:[$€£¥]\s?\d+(?:[.,]\d+)*|\d+(?:[.,]\d+)?\s?(?:%|kg|g|km|m|cm|mm|km/h|mph|°C|°F|GB|MB|TB|Hz|kHz|MHz|GHz)?|\b[A-Za-z]+\d+[A-Za-z0-9-]*\b)",
     re.IGNORECASE,
@@ -36,6 +38,8 @@ class RewriteRequest:
     target_spoken_unit_budget: int
     attempt_number: int
     custom_style_prompt: str = ""
+    previous_text: str = ""
+    next_text: str = ""
 
 
 def generate_rewrite_cache_key(request: RewriteRequest, model: str, rescue: bool) -> str:
@@ -49,6 +53,9 @@ def generate_rewrite_cache_key(request: RewriteRequest, model: str, rescue: bool
         "attempt_number": request.attempt_number,
         "style": request.custom_style_prompt,
         "model": model,
+        "target_language": request.target_language,
+        "source_language": request.source_language,
+        "context": [request.previous_text, request.next_text],
         "rescue": rescue,
     }
     return hashlib.sha256(
@@ -71,8 +78,12 @@ def validate_rewrite_response(
     *,
     rescue: bool,
 ) -> str:
+    normalized = raw.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", normalized, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        normalized = fenced.group(1)
     try:
-        data = json.loads(raw)
+        data = json.loads(normalized)
     except json.JSONDecodeError as exc:
         raise ValueError("Rewrite response must be strict JSON without markdown") from exc
     if not isinstance(data, dict) or set(data) != {"group_id", "tts_text", "preserved_terms"}:
@@ -100,11 +111,18 @@ class TimingRewriteService:
         self,
         model: str,
         *,
-        caller: Callable[..., Any] = call_llm,
+        caller: Callable[..., Any] | None = None,
         cache: Any = None,
+        credentials: LLMCredentials | None = None,
+        request_timeout: int = 120,
+        check: Callable[[], None] = lambda: None,
     ):
         self.model = model
-        self.caller = caller
+        self.check = check
+        def cancelled():
+            check()
+            return False
+        self.caller = caller or OwnedLLMRequest(credentials or get_llm_credentials(), request_timeout, cancelled)
         self.cache = cache if cache is not None else get_llm_cache()
 
     @property
@@ -112,6 +130,7 @@ class TimingRewriteService:
         return bool(self.model.strip())
 
     def rewrite(self, request: RewriteRequest, *, rescue: bool) -> str | None:
+        self.check()
         if not self.configured:
             return None
         key = f"dubbing-rewrite:{generate_rewrite_cache_key(request, self.model, rescue)}"
@@ -143,9 +162,11 @@ def request_for_group(
     target_language: str,
     attempt_number: int,
     custom_style_prompt: str = "",
+    previous_text: str = "",
+    next_text: str = "",
 ) -> RewriteRequest:
     ratio = group.fit_ratio if group.fit_ratio > 0 else 1.0
-    current_units = max(1, len(group.tts_text.split()))
+    current_units = max(1, spoken_unit_count(group.tts_text))
     target_units = max(1, round(current_units / max(ratio, 1.0)))
     return RewriteRequest(
         group_id=group.group_id,
@@ -159,4 +180,6 @@ def request_for_group(
         target_spoken_unit_budget=target_units,
         attempt_number=attempt_number,
         custom_style_prompt=custom_style_prompt,
+        previous_text=previous_text,
+        next_text=next_text,
     )

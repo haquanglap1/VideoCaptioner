@@ -1,7 +1,7 @@
 # coding: utf-8
 
 import requests
-from PyQt5.QtCore import QObject, QVersionNumber, pyqtSignal
+from PyQt5.QtCore import QObject, QThread, QVersionNumber, pyqtSignal
 
 from videocaptioner.config import VERSION
 from videocaptioner.core.utils.cache import get_version_state_cache
@@ -97,10 +97,14 @@ class VersionChecker(QObject):
     def perform_check(self) -> None:
         """Perform version check."""
         try:
+            if QThread.currentThread().isInterruptionRequested():
+                return
             version_data = self.get_latest_version_info()
-            if not version_data:
+            if not version_data or QThread.currentThread().isInterruptionRequested():
                 return
             self.has_new_version()
-            self.checkCompleted.emit()
         except Exception:
             logger.exception("Version check failed")
+        finally:
+            # Empty/error responses must release the worker's event loop too.
+            self.checkCompleted.emit()
