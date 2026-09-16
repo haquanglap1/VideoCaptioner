@@ -1,5 +1,34 @@
 # Project Status
 
+## 2026-09-16 (Đối chiếu vision gateway, sửa chọn dòng OCR và thử giọng nhất quán)
+
+- User yêu cầu commit/push bản sửa download, sau đó dùng GPT-5.6 Terra hoặc assistant
+  đọc ảnh đối chiếu OCR/ASR và xem lại độ tự nhiên của giọng. Bản download đã push
+  `0a0e3fa`. Credential được đọc riêng, không ghi vào source, log, env hoặc prompt.
+- Gateway có `gpt-5.6-terra`; thử 8 crop, 2 request song song, không retry, timeout 90 s:
+  3 thành công, 5 timeout. Usage chỉ được trả cho 3 request (5.848 token); không suy
+  usage/chi phí của các request timeout. Assistant đọc các ảnh còn lại; một thán từ
+  ngắn còn bất định, không dùng làm nhãn exact-match. Không coi AI reference là human ground truth.
+- Raw ở 59.267 s đã có câu phụ đề đúng, nhưng policy v2 lấy box `* *` cao 49 px làm
+  chuẩn và loại dòng chữ cao 32 px. Thêm `horizontal-anchors-punctuation-v3`: box chỉ
+  có dấu câu không quyết định ngưỡng chiều cao khi có dòng chữ cắt vạch; vẫn nối dấu
+  rời gần chữ và giữ dòng chỉ có dấu câu nếu không có dòng chữ. V1/v2 giữ nguyên;
+  character tracking chấp nhận v2/v3, checkpoint cũ không bị migrate hay ghi đè.
+- Replay 162 candidate raw đã lưu, không inference/API mới: sửa đúng 2 projection
+  (khôi phục câu bị `* *` che và bỏ `**` xa chữ). Checkpoint giữ nguyên SHA. Đây chưa
+  giải quyết fragmentation/18 export issues của lượt OCR trước và không giả xuất SRT.
+- ASR kiểm có kiểm soát trên cùng audio 20–70 s, không prompt gợi ý: VAD-on còn 3 cue,
+  VAD-off không có cue sau lọc, raw vẫn là hallucination. Không đổi mặc định VAD chỉ để
+  lấy số đẹp. RMS mono/channel 0,897–0,968 ở ba đoạn không cho thấy triệt tiêu kênh lớn;
+  chưa đủ bằng chứng quy nguyên nhân mọi chỗ thiếu lời cho downmix hoặc VAD.
+- Mẫu giọng B giữ 3 câu/11 s: bổ sung thán từ nhìn thấy, lời Việt hội thoại hơn, cùng
+  reference nữ do OmniVoice tự tổng hợp (không clone giọng diễn viên), không tăng tốc.
+  3 final TTS attempts mới/0 cache hit, 3 fit, 0 failed, delay tối đa 530 ms. Độ tự nhiên
+  vẫn cần user nghe, không suy từ fit. Không chạy lại toàn bộ ASR/OCR video.
+- Regression chọn dòng fail trước sửa; sau sửa OCR + GUI OCR **299 passed**; Ruff,
+  Pyright và diff check pass. Evidence ở `.tools/ocr-compare-20260916-155842/`; không
+  đưa ảnh, raw response, transcript hoặc model vào Git.
+
 ## 2026-09-16 (Video Bilibili thật: download, ASR, OCR và hai engine lồng tiếng)
 
 - User yêu cầu dùng `BV1GFbk6LEVm` để test, cung cấp cookie và sau đó cho phép cài/tải

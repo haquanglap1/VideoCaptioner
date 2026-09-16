@@ -13,10 +13,15 @@ from .models import EngineRead, OcrError
 @dataclass(frozen=True)
 class LineSelectionPolicy:
     anchors: tuple[float, ...] = (0.5,)
-    policy: Literal["horizontal-anchors-punctuation-v1", "horizontal-anchors-punctuation-v2"] = "horizontal-anchors-punctuation-v2"
+    policy: Literal[
+        "horizontal-anchors-punctuation-v1",
+        "horizontal-anchors-punctuation-v2",
+        "horizontal-anchors-punctuation-v3",
+    ] = "horizontal-anchors-punctuation-v3"
 
     def __post_init__(self) -> None:
-        if (self.policy not in ("horizontal-anchors-punctuation-v1", "horizontal-anchors-punctuation-v2")
+        if (self.policy not in ("horizontal-anchors-punctuation-v1", "horizontal-anchors-punctuation-v2",
+                                "horizontal-anchors-punctuation-v3")
                 or not isinstance(self.anchors, tuple)
                 or not 1 <= len(self.anchors) <= 2
                 or any(type(y) not in (int, float) or not math.isfinite(y) or not 0 < y < 1 for y in self.anchors)
@@ -35,14 +40,18 @@ class LineSelectionPolicy:
                   max(p[0] for p in line.box), max(p[1] for p in line.box)) for line in raw.lines]
         if any(not all(math.isfinite(v) for v in b) or b[0] >= b[2] or b[1] >= b[3] for b in boxes):
             raise OcrError("Line selection needs nonempty OCR box geometry")
+        punctuation = {i for i, line in enumerate(raw.lines) if line.text.strip()
+                       and all(c.isspace() or unicodedata.category(c).startswith("P") for c in line.text)}
         selected = set()
         for anchor in self.anchors:
             crossing = [i for i, b in enumerate(boxes) if b[1] <= anchor * height <= b[3]]
+            if self.policy == "horizontal-anchors-punctuation-v3":
+                # Tall background punctuation must not set the minimum subtitle height.
+                text_crossing = [i for i in crossing if i not in punctuation]
+                crossing = text_crossing or crossing
             largest = max((boxes[i][3] - boxes[i][1] for i in crossing), default=0)
             selected.update(i for i in crossing if self.policy == "horizontal-anchors-punctuation-v1"
                             or boxes[i][3] - boxes[i][1] >= largest * .75)
-        punctuation = {i for i, line in enumerate(raw.lines) if line.text.strip()
-                       and all(c.isspace() or unicodedata.category(c).startswith("P") for c in line.text)}
         # Only attach to original text anchors; punctuation must not chain into UI rows.
         parents = selected - punctuation
         for i in punctuation - selected:

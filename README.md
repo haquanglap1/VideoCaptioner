@@ -115,6 +115,10 @@ resume dùng cấu hình đã lưu, không tự đổi dữ liệu cũ. Chữ n�
 box vẫn có thể lọt; lựa chọn này không sửa chữ, bổ sung dấu thiếu hoặc ghép
 các cue bị tracking tách theo nền. Binary cũ không đọc được JSON bật tùy chọn này.
 
+Lượt quét mới ưu tiên dòng chữ đi qua vạch trước khi xét các box chỉ chứa dấu câu;
+ký hiệu nền cao ở xa không được làm loại mất dòng phụ đề thật. Dấu câu rời gần chữ
+vẫn được giữ. Checkpoint đã lưu tiếp tục dùng đúng policy cũ khi mở lại/resume.
+
 Với **phụ đề một dòng** trên nền chữ chuyển động, bật thêm **Ổn định nhóm phụ
 đề một dòng (CPU)**. Chế độ này dùng PP-OCRv6 medium đã cài để theo dõi hình
 chữ theo từng frame và bỏ các ký hiệu nhỏ ngoài dòng chính. CLI dùng

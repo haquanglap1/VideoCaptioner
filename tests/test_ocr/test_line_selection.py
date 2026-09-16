@@ -23,9 +23,9 @@ def line(text, x=80, y=8, width=300, height=64, score=.9):
                                  (float(x + width), float(y + height)), (float(x), float(y + height))))
 
 
-def selected_document():
+def selected_document(policy=None):
     old = make_document()
-    config = replace(old.config, line_selection=LineSelectionPolicy())
+    config = replace(old.config, line_selection=policy or LineSelectionPolicy())
     raw = EngineRead((line("  e\u0301，學生 "), line("Menu", y=90, height=15),
                       line("。", x=390, y=66, width=10, height=10)), config.profile_sha256)
     identifier = document_id(old.visual_source, config)
@@ -73,6 +73,35 @@ def test_small_ui_symbol_is_excluded_but_detached_punctuation_is_preserved():
     double = EngineRead((line("First", y=5, height=40), second,
                         line(">", x=400, y=76, width=5, height=8)), "fixture")
     assert LineSelectionPolicy((.25, .8)).select(double, 100) == (0, 1)
+
+
+def test_taller_distant_punctuation_cannot_suppress_the_subtitle_line():
+    raw = EngineRead((line("* *", x=1514, y=10, width=26, height=49),
+                      line("Dialogue text", x=648, y=25, width=427, height=32)), "fixture")
+    before = digest(raw)
+    assert LineSelectionPolicy().select(raw, 89) == (1,)
+    assert selected_text(raw, (1,)) == "Dialogue text"
+    assert digest(raw) == before
+    legacy = LineSelectionPolicy(policy="horizontal-anchors-punctuation-v2")
+    assert legacy.select(raw, 89) == (0,)
+
+
+def test_punctuation_only_subtitle_is_kept_without_a_text_anchor():
+    raw = EngineRead((line("…?", y=38, width=60, height=22),), "fixture")
+    assert LineSelectionPolicy().select(raw, 100) == (0,)
+
+
+def test_v2_document_roundtrip_preserves_policy_identity_and_resume(tmp_path):
+    legacy = selected_document(LineSelectionPolicy(policy="horizontal-anchors-punctuation-v2"))
+    payload = legacy.to_dict()
+    path = tmp_path / "legacy-v2.json"
+    legacy.save(path)
+    reopened = OcrDocument.load(path)
+    assert reopened == legacy and reopened.to_dict() == payload
+    validate_resume(replace(reopened, complete=False), legacy.config)
+    assert reopened.config.line_selection.policy == "horizontal-anchors-punctuation-v2"
+    assert LineSelectionPolicy.parse("0.5").policy == "horizontal-anchors-punctuation-v3"
+    assert selected_document().id != legacy.id
 
 
 @pytest.mark.parametrize("anchors", [(), (.8, .2), (.5, .5), (float("nan"),), (0,), (1,), (True,)])

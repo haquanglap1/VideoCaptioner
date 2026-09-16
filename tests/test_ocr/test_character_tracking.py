@@ -34,6 +34,8 @@ def character_config():
 
 def test_character_policy_requires_one_line_and_a_supported_profile():
     config = character_config()
+    legacy = replace(config, line_selection=LineSelectionPolicy(policy="horizontal-anchors-punctuation-v2"))
+    assert legacy.line_selection.policy == "horizontal-anchors-punctuation-v2"
     for changed in (dict(line_selection=None), dict(line_selection=LineSelectionPolicy((.25, .75))),
                     dict(line_selection=LineSelectionPolicy(policy="horizontal-anchors-punctuation-v1")),
                     dict(profile_snapshot=None)):

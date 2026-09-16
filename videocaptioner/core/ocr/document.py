@@ -46,7 +46,8 @@ class OcrConfig:
             raise OcrError("The installed OCR profile supports the explicit zh configuration")
         if self.tracking_policy == "character-features-v1":
             if (self.line_selection is None or len(self.line_selection.anchors) != 1
-                    or self.line_selection.policy != "horizontal-anchors-punctuation-v2"):
+                    or self.line_selection.policy not in ("horizontal-anchors-punctuation-v2",
+                                                          "horizontal-anchors-punctuation-v3")):
                 raise OcrError("Character tracking requires exactly one selected subtitle line")
             stages = self.profile_snapshot.stage_parameters if self.profile_snapshot else {}
             if stages.get("Rec.ocr_version") != "PP-OCRv6" or stages.get("Rec.model_type") != "medium":
