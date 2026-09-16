@@ -1,5 +1,32 @@
 # Project Status
 
+## 2026-09-16 (Video Bilibili thật: download, ASR, OCR và hai engine lồng tiếng)
+
+- User yêu cầu dùng `BV1GFbk6LEVm` để test, cung cấp cookie và sau đó cho phép cài/tải
+  OCR/OmniVoice trong dự án. Toàn bộ source sandbox, tools, runtime, cache, temp và evidence
+  nằm ở `.tools/bv1gf-20260916-145613/`; file bàn giao ở
+  `work-dir/BV1GFbk6LEVm-test-20260916-145613/`. Cookie gốc/settings repo giữ nguyên hash.
+- GUI download worker ban đầu tải cả anthology 4 ngôn ngữ rồi trả path rỗng. Thêm
+  `noplaylist=True` để luồng một-video trả đúng P1 hoặc phần `?p=` được chọn. Regression
+  tái hiện fail trước sửa, sau sửa 2 pass; online retest dùng media đã tải, trả đúng P1
+  và giữ SHA. Video P1 dài 266.566625 s, 1920x886, AV1/FLAC, 133,782,527 byte.
+- ASR Faster-Whisper large-v3 CUDA trên toàn P1: exit 0, 33 đoạn JSON/SRT. Chất lượng
+  chưa đạt: raw có câu ảo 25.680–40.340 s bị bộ lọc có sẵn loại bỏ; output đầu tiên ở
+  44.010 s. Không sửa raw hoặc gọi output tồn tại là nghiệm thu độ chính xác.
+- OCR v6 medium CPU, tracking characters một dòng, ROI `0.05,0.88,0.90,0.10`, 20–70 s:
+  chạm cap 120 request ở lượt đầu; resume giữ nguyên 69 cue đầu, scan complete 94 cue.
+  Còn 18 export issues nên exit 5, không xuất SRT. Có câu đúng nhưng tách vụn/chọn nhầm
+  ký hiệu; giữ raw/checkpoint, không bỏ guard hoặc giả review. Hai lượt 453.688 s/83.234 s.
+- OmniVoice và VieNeu tạo WAV mới trên GPU cho cùng mẫu 11 s/3 câu Việt do assistant
+  soạn từ ASR: mỗi engine 3 attempts, 0 cache hit, 3 fit, 0 failed, tốc độ 1x; sequential
+  delay tối đa 660/300 ms. OmniVoice WAV mono 24 kHz, VieNeu mono 48 kHz; video H.264/AAC
+  kèm mov_text, FFmpeg decode exit 0. Đây chưa phải lồng tiếng toàn video hay test LLM dịch.
+- Native GUI source mở mẫu OmniVoice trong Video Editor, thấy hình đổi/playhead
+  4.824/11.000 s; đóng bằng Alt+F4. Chưa build EXE mới; nghe/UX chủ quan vẫn cần user.
+- Download change: targeted tests/Ruff/Pyright/diff check pass; không chạy lại full suite.
+  Không commit/push các thay đổi của lượt test này. Ưu tiên tiếp theo là chất lượng OCR/ASR
+  dựa trên evidence đã lưu, không lặp inference toàn video để lấy số mới.
+
 ## 2026-09-16 (Hợp nhất ASR-S3 / OmniVoice / OCR với Editor / Subtitle Style / VieNeu)
 
 - Theo yêu cầu user, hợp nhất source của `codex/asr-s3-native` tại `bed964e` (60 commit

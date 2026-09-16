@@ -228,6 +228,8 @@ class VideoDownloadThread(QThread):
             "quiet": True,  # Silence logging
             "no_warnings": True,  # Silence warnings
             "noprogress": True,
+            # The task pipeline accepts one media path, not an anthology/playlist result.
+            "noplaylist": True,
             "writesubtitles": need_subtitle,  # Uploaded subtitles (preferred)
             "writeautomaticsub": need_subtitle,  # Auto-generated subtitles (fallback)
             "writethumbnail": need_thumbnail,  # Thumbnail
