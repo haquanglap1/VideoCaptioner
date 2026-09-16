@@ -4,3 +4,5 @@ scripts/ocr_stream_worker.py text eol=lf
 videocaptioner/resources/ocr/ocr_stream_worker.py text eol=lf
 scripts/ocr_tracking_worker_v2.py text eol=lf
 videocaptioner/resources/ocr/ocr_tracking_worker_v2.py text eol=lf
+scripts/ocr_tracking_worker_v3.py text eol=lf
+videocaptioner/resources/ocr/ocr_tracking_worker_v3.py text eol=lf

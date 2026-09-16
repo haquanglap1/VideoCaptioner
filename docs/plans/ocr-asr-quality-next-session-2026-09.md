@@ -1,5 +1,17 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+> Cập nhật sau lượt tiếp tục từ `46d457e`: audit mới nhất là
+> `.tools/ocr-asr-quality-20260916-213401/`; đọc section mới đầu
+> `docs/dev/ocr-asr-quality-first-results-2026-09.md` trước các mục lịch sử bên dưới.
+> V3 đã sửa background/empty cue/split D2 (4 cue, 11 request, export exit0),
+> D1 giữ 2 cue/6 request. Text D2 vẫn thiếu glyph không có trong dictionary và dấu;
+> không coi là quality pass. Qwen đã dùng thêm đúng 1 request D1 context 24–36 s;
+> không lặp lại ba lượt cũ hoặc lượt context. D3 chưa inference mới.
+> Candidate v3a đo và cleanup khác một binding; v3b sau đó sửa thêm biên đổi
+> standalone punctuation, có lượt đo riêng trong `ocr-v3b/` đúng final hash.
+> Dùng hash/explicit bridge trong báo cáo, không sửa checkpoint. Sau khi v3 được commit, đổi semantics phải
+> version mới và giữ resume v1/v2/v3. Whole-video/EXE/TTS vẫn bị chặn bởi quality.
+
 Tiếp tục làm việc tại root repository **VideoCaptioner**, nhánh
 `codex/ocr-asr-quality-pilot`. Trả lời tiếng Việt, giữ code/identifier/file name
 bằng English. Đây là phiên **tiếp tục triển khai**, không chỉ lập lại plan.

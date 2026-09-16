@@ -389,7 +389,7 @@ class OcrDialog(QDialog):
         if policy:
             self.line_anchors.setText(",".join(f"{y * 100:g}" for y in policy.anchors))
         self.select_lines.setChecked(policy is not None)
-        self.stable_tracking.setChecked(document.config.tracking_policy in ("character-features-v1", "character-features-v2"))
+        self.stable_tracking.setChecked(document.config.tracking_policy in ("character-features-v1", "character-features-v2", "character-features-v3"))
         self.refresh()
 
     def load_review(self):

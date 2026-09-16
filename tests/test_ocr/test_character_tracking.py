@@ -101,6 +101,7 @@ def test_companion_is_bundled_and_keeps_legacy_bridge_pinned():
 @pytest.mark.parametrize("mode,policy,worker", [
     ("characters", "character-features-v1", "ocr_tracking_worker.py"),
     ("characters-v2", "character-features-v2", "ocr_tracking_worker_v2.py"),
+    ("characters-v3", "character-features-v3", "ocr_tracking_worker_v3.py"),
 ])
 def test_cli_character_mode_selects_the_companion_before_scan(tmp_path, monkeypatch, mode, policy, worker):
     from videocaptioner.cli import exit_codes as EXIT

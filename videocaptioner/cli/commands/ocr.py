@@ -69,7 +69,8 @@ def run(args: Namespace, config: dict) -> int:
         return EXIT.FILE_NOT_FOUND
     root = Path(args.ocr_runtime) if args.ocr_runtime else default_runtime()
     mode = getattr(args, "tracking", "edges")
-    tracking = ("character-features-v2" if mode == "characters-v2" else
+    tracking = ("character-features-v3" if mode == "characters-v3" else
+                "character-features-v2" if mode == "characters-v2" else
                 "character-features-v1" if mode == "characters" else "edge-tiles-ocr2-v1")
     bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / CHARACTER_TRACKING_WORKERS.get(
         tracking, "ocr_stream_worker.py")

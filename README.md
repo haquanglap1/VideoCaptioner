@@ -135,6 +135,12 @@ nhiều khoảng đệm và bbox thay đổi theo frame. Chưa thay mặc địn
 caption ngắn và thiếu dấu vẫn còn lỗi; xem [kết quả quality-first](docs/dev/ocr-asr-quality-first-results-2026-09.md).
 Checkpoint v1/v2 tiếp tục dùng đúng policy và worker đã lưu.
 
+Pilot `--tracking characters-v3` loại thêm box nền lệch hàng và kiểm tín hiệu hình
+chữ trước khi tạo cue; dấu chấm độc lập được giữ bằng hình học nét. Đặt vạch chọn
+qua phần giữa dòng chữ. D2 đã hết cue nền giả/tách câu đáp, nhưng recognizer vẫn
+thiếu ký tự ngoài dictionary và dấu ở mép dòng; chưa đổi mặc định hoặc nghiệm thu
+chất lượng. Checkpoint v1/v2/v3 giữ đúng worker hash, không tự nâng phiên bản.
+
 Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và xuất JSON/SRT ngay
 khi quét xong, **không cần duyệt từng câu hoặc có bản chữ gốc**. Có thể lưu thêm
 `ocr-document-v1` bằng `--checkpoint` để mở lại hoặc tiếp tục khi bị hủy.

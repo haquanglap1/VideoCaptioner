@@ -83,6 +83,7 @@ def test_worker_v2_has_independent_identity_and_keeps_v1_bytes():
 @pytest.mark.parametrize('policy,worker_name', [
     ('character-features-v1', 'ocr_tracking_worker.py'),
     ('character-features-v2', 'ocr_tracking_worker_v2.py'),
+    ('character-features-v3', 'ocr_tracking_worker_v3.py'),
 ])
 def test_cli_resume_uses_saved_worker_without_migrating_policy(tmp_path, monkeypatch, policy, worker_name):
     from tests.test_ocr.test_character_tracking import character_config
@@ -109,7 +110,8 @@ def test_cli_resume_uses_saved_worker_without_migrating_policy(tmp_path, monkeyp
 
 
 @pytest.mark.integration
-def test_local_worker_retains_blank_fade_and_one_frame_changes(tmp_path):
+@pytest.mark.parametrize('worker_name', ['ocr_tracking_worker_v2.py', 'ocr_tracking_worker_v3.py'])
+def test_local_worker_retains_blank_fade_and_one_frame_changes(tmp_path, worker_name):
     """Real CPU features on synthetic glyphs; explicitly opt in to the installed runtime."""
     from videocaptioner.core.ocr.installation import inspect_installation, resources
     from videocaptioner.core.ocr.models import EngineRead, ReadLine, RoiFrame
@@ -123,7 +125,7 @@ def test_local_worker_retains_blank_fade_and_one_frame_changes(tmp_path):
     labels = ['', '学生三人。', '学生三人。', '学生五人。', '学生三人。',
               '学生三人！', '学生三人。', '', '学生三人。', '学生三人。', '', '……', '']
     decisions = []
-    worker = CpuOcrRuntime(installation.root, resources() / 'ocr_tracking_worker_v2.py', tmp_path / 'jobs',
+    worker = CpuOcrRuntime(installation.root, resources() / worker_name, tmp_path / 'jobs',
                           installation.profile_sha256, expected_profile=installation.profile, max_requests=1)
     with worker:
         for index, label in enumerate(labels):
@@ -144,7 +146,8 @@ def test_local_worker_retains_blank_fade_and_one_frame_changes(tmp_path):
 
 
 @pytest.mark.integration
-def test_local_worker_box_width_jitter_does_not_hide_punctuation(tmp_path):
+@pytest.mark.parametrize('worker_name', ['ocr_tracking_worker_v2.py', 'ocr_tracking_worker_v3.py'])
+def test_local_worker_box_width_jitter_does_not_hide_punctuation(tmp_path, worker_name):
     from videocaptioner.core.ocr.installation import inspect_installation, resources
     from videocaptioner.core.ocr.models import EngineRead, ReadLine, RoiFrame
     from videocaptioner.core.ocr.runtime import CpuOcrRuntime
@@ -157,7 +160,7 @@ def test_local_worker_box_width_jitter_does_not_hide_punctuation(tmp_path):
     image = Image.new('RGB', (600, 90), 'black')
     ImageDraw.Draw(image).text((200, 20), '学生三人……', font=font, fill='white')
     frame = RoiFrame(0, 0, Fraction(1, 1000), Fraction(0), 600, 90, image.tobytes())
-    worker = CpuOcrRuntime(installation.root, resources() / 'ocr_tracking_worker_v2.py', tmp_path / 'jobs',
+    worker = CpuOcrRuntime(installation.root, resources() / worker_name, tmp_path / 'jobs',
                           installation.profile_sha256, expected_profile=installation.profile, max_requests=1)
     decisions = []
     with worker:
@@ -169,7 +172,8 @@ def test_local_worker_box_width_jitter_does_not_hide_punctuation(tmp_path):
 
 
 @pytest.mark.integration
-def test_local_worker_nearby_moving_text_is_outside_selected_band(tmp_path):
+@pytest.mark.parametrize('worker_name', ['ocr_tracking_worker_v2.py', 'ocr_tracking_worker_v3.py'])
+def test_local_worker_nearby_moving_text_is_outside_selected_band(tmp_path, worker_name):
     from videocaptioner.core.ocr.installation import inspect_installation, resources
     from videocaptioner.core.ocr.models import EngineRead, ReadLine, RoiFrame
     from videocaptioner.core.ocr.runtime import CpuOcrRuntime
@@ -179,7 +183,7 @@ def test_local_worker_nearby_moving_text_is_outside_selected_band(tmp_path):
         pytest.skip('Requires the explicitly selected PP-OCRv6 medium runtime')
     installation = inspect_installation(Path(runtime))
     font = ImageFont.truetype(str(Path(__file__).parents[2] / 'resource/fonts/NotoSansSC-Regular.ttf'), 32)
-    worker = CpuOcrRuntime(installation.root, resources() / 'ocr_tracking_worker_v2.py', tmp_path / 'jobs',
+    worker = CpuOcrRuntime(installation.root, resources() / worker_name, tmp_path / 'jobs',
                           installation.profile_sha256, expected_profile=installation.profile, max_requests=1)
     decisions = []
     with worker:

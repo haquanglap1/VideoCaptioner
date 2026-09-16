@@ -30,7 +30,7 @@ class OcrTask:
     cache_mib: int = 64
     resume_document: Optional["OcrDocument"] = None
     line_selection: Optional["LineSelectionPolicy"] = None
-    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2"] = "edge-tiles-ocr2-v1"
+    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
 
 
 def _generate_task_id() -> str:

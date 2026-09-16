@@ -13,6 +13,7 @@ from .models import FrameSpan, OcrError, RoiFrame, VisualDecision
 CHARACTER_TRACKING_WORKERS = {
     "character-features-v1": "ocr_tracking_worker.py",
     "character-features-v2": "ocr_tracking_worker_v2.py",
+    "character-features-v3": "ocr_tracking_worker_v3.py",
 }
 
 

@@ -1,5 +1,120 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## Tiếp tục từ `46d457e`: tracking D2 đã sửa, text gate còn mở
+
+Audit tiếp theo: `.tools/ocr-asr-quality-20260916-213401/`. Source SHA, 28 file
+runtime/input/worker đối chiếu và 59 file bảo vệ được chốt trước sửa; hai stash
+giữ nguyên. Qwen được verify lại toàn inventory trước recognition. Các mục bên
+dưới section này về v2 là kết quả lịch sử, không phải lượt chạy mới.
+
+### OCR v3
+
+`--tracking characters-v3` chọn worker/policy mới; v1/v2 và recognition bridge
+giữ nguyên byte. New scans của GUI vẫn giữ mode cũ; GUI/CLI đọc policy đã lưu
+để resume. Model/resource/cache identity phân biệt v3, không migrate checkpoint.
+
+- Regression hai box tổng hợp fail trên v2: box chỉ cắt mép anchor, và box nền
+  cao ở gần nhưng lệch tâm dòng. V3 yêu cầu anchor đi qua vùng giữa box và các
+  box phụ chia sẻ tâm dòng chính; không mở rộng support hoặc ghép text sau OCR.
+- Replay 27 frame PTS thật tái hiện 57,033 s/62,833 s có nền nhưng bị báo present,
+  và box nền tại 62,567 s gây split ở 62,600 s. V3 loại các ca đó.
+- Khi tiled CTC không có glyph confidence đủ, kiểm nét punctuation độc lập:
+  component nhỏ, gọn và cùng hàng có thể giữ dấu chấm ngay cả khi CTC blank.
+  Regression gradient fail trước sửa; standalone dots/fade/one-frame glyph change
+  được giữ. Đây là heuristic pilot chưa hiệu chuẩn cho mọi font/nền hoặc fade;
+  không dùng confidence làm bằng chứng transcript đầy đủ và chưa promote mặc định.
+
+| Ca, candidate v3a | Complete / export | Cue | Fresh / cache | Tracking / feature batches | Wall |
+|---|---|---:|---:|---:|---:|
+| D1 28,8–32,3 s | true / exit0 | 2 | 6 / 0 | 105 / 231 | 70,625 s |
+| D2 57–63 s | true / exit0 | 4 | 11 / 0 | 180 / 287 | 98,344 s |
+
+Mỗi candidate đúng một lượt/window, cap 40 recognition và 360 s/window. D2 giữ
+câu đáp 61,867–62,767 s liên tục, không tạo hai cue nền giả, không còn empty
+candidate. Raw/guard/cue ngắn còn nguyên; exit0 vẫn **không phải text quality pass**.
+
+Recognizer còn bỏ thán từ đầu dòng ở 62,900 s và dấu cuối. Hai diagnostic riêng,
+mỗi diagnostic 6 recognizer batches trên hai frame cố định, kiểm grayscale/local
+contrast rồi neutral padding/inversion/isolated glyph. Không phương án nào lấy
+lại thán từ; không đưa các variant đó vào app. Inventory dictionary 18.708 entry
+xác nhận glyph mà assistant đọc trên ảnh không thuộc dictionary hiện tại. Đây
+là nguyên nhân có thể kiểm độc lập; không thể sửa bằng threshold hoặc tự thêm
+entry vào dictionary khi weights/output classes không đổi. Reference ảnh vẫn là
+AI reference, không được gọi human ground truth. Dấu cuối còn bị detector crop
+ở frame đầu và lựa chọn candidate; giữ disagreement, chưa sửa bằng ghép raw.
+
+Diagnostic presence ban đầu thêm 6 recognizer batches (3 frame thật/3 synthetic);
+các lỗi harness trước inference do API argument không đúng được ghi riêng.
+Replay baseline/candidate có 27 tracking request mỗi lượt, 0 recognition;
+không cộng feature batches vào recognition request hoặc giấu attempts thất bại.
+
+**Worker/checkpoint bytes của candidate đầu (v3a):** CLI đo worker SHA
+`a62c173ddaa0f63b17e7cd1a5667dacbeeb1c2eb85067ca712d13e99dfd33eb0`.
+`candidate-workers/measured-v3.py` và `ocr_stream_worker.py` được giữ để dùng
+explicit bridge. Final source SHA
+`a7c444ed863bc43c751c5b67ef3476c09da4bc983752fc5e9471f073fa30f760`
+chỉ đổi binding `xs` không dùng thành `_` sau Pyright warning. Final bytes có
+model regression và cache parity; không rewrite hash checkpoint hoặc nhận
+vơ worker đó đã chạy lại hai window. Checkpoint complete, không cần resume.
+
+Review thêm assertion đổi standalone ellipsis thành period phát hiện v3a chỉ
+báo uncertain và không tách biên. Candidate v3b thêm so sánh mask nét compact
+giữa hai frame liên tiếp khi CTC yếu ở cả hai frame; không bridge qua blank.
+Regression fail trước sửa rồi pass; kiểu số NumPy cũng được đổi về scalar Python
+trước JSON RPC sau một lần protocol regression fail. Final source/worker SHA
+`9bef0946f8456c9f7e4a36f49feba0555f61540dfc8f45eea4f6f94375931447`.
+`ocr-v3b/` giữ lượt đo riêng trên đúng final bytes, theo cùng cap/window. Giữ
+`candidate-workers/v3a-final.py` cho partial native cũ; không sửa hash checkpoint.
+
+| Ca, final v3b | Complete / export | Cue | Fresh / cache | Tracking / feature batches | Wall |
+|---|---|---:|---:|---:|---:|
+| D1 28,8–32,3 s | true / exit0 | 2 | 6 / 0 | 105 / 231 | 66,625 s |
+| D2 57–63 s | true / exit0 | 4 | 11 / 0 | 180 / 287 | 98,391 s |
+
+Hai candidate tổng cộng 34 recognition request trên bốn window hoàn tất;
+18 diagnostic recognizer batches và synthetic tests được tính riêng. Final v3b
+không đổi text/biên D1/D2 so với v3a; lỗi dictionary/dấu vẫn được giữ mở.
+
+### ASR ngữ cảnh độc lập
+
+Giả thuyết duy nhất: clip D1 27–34 s thiếu ngữ cảnh ở biên. Chuẩn bị audio gốc
+24–36 s cùng mono16k/PCM16, Qwen1.7B/cùng pin/cùng language, không OCR prompt.
+Vùng 27–34 s có 99,9893% PCM samples bằng bản cũ và 100% vùng trong sau bỏ
+20 ms mỗi đầu; khác biệt nhỏ chỉ ở biên resampling. Energy không xác minh phoneme
+hay transcript, nên `speech_reference` vẫn unknown.
+
+Đúng **1 recognition mới, 0 cache hit**, 13,657 s request / 32,844 s toàn CLI,
+cap 180 s stage, không retry. Có lại phần đầu bị thiếu và thêm lời ở phần context,
+nhưng một từ đáng ngờ vẫn còn. Không chọn engine thắng, không chấm CER/WER,
+không alignment hoặc ghép text với giờ Whisper. Qwen vẫn là TXT chưa timed.
+
+D3 có audio gốc 104–129 s để kiểm biên, nhưng không nhận dạng lại: filtered dump
+đã khóa chỉ phủ 107–126 s; padding bằng original sẽ đổi cả preprocessing.
+Giữ đúng dump cũ và không chạy Kim_Vocal_2 lần hai. P2 quality còn mở.
+
+### Validation và điều kiện dừng
+
+- OCR/GUI offline: **313 passed, 7 deselected**; ASR/CLI: **243 passed**.
+- Final worker gần code: **23 passed**, gồm **7 integration** CPU/model thật
+  trên synthetic, có cả v2 compatibility. Không cộng trùng thành tổng suite mới.
+- Cache/no-cache frame 30 s bằng nhau: 4 tracking, 0 recognition mới, final hash.
+- Ruff pass; Pyright working tree 0 errors/0 warnings; translations/diff check pass.
+- P3 domain/CLI: D1 2 cue, D2 4 cue và Whisper baseline 33 cue qua table/handoff,
+  undo và hai vòng editor save/reopen giữ text/ms/IDs/metadata; SRT giữ text/time.
+- Native GUI trên candidate v3a: dùng Computer Use chọn source thật, mở checkpoint D2, xuất JSON và
+  lưu checkpoint đủ 4 cue; so byte/domain giữ raw, text, ms, IDs, metadata. Mở
+  partial thật, resume model CPU và bấm hủy: worker dừng, GUI còn phản hồi và giữ
+  trạng thái partial, không cho xuất; 42 tracking/63 feature batches/0 recognition
+  mới, job wall 34,250 s. Click hủy ở 33,740 s, vượt budget thao tác
+  30 s đã đặt; giữ ghi nhận vi phạm này, không nới cap hoặc gọi budget pass.
+  GUI editor playback/save/reopen và full source-to-result workflow vẫn chưa đủ.
+- P3 service cancellation trên bytes v3a trước sửa punctuation: 8 tracking/0 recognition, lưu partial
+  thật; CLI từ chối export partial và source khác hash với exit5, không tạo SRT.
+  Đây là kiểm service/CLI thật, tách riêng với thao tác nút hủy native.
+- Holdout annotation/inference, whole-video, full offline, build/EXE và TTS vẫn
+  **NOT RUN** vì P1/P2 chưa đạt. Không thay sáu câu Việt/voice B. Tiếp tục từ
+  dictionary coverage và reference audio, không lặp lại candidate cùng input.
+
 Đã bắt đầu triển khai P0–P4 từ
 [plan ưu tiên OCR/ASR](../plans/ocr-asr-quality-first-2026-09.md) của phiên trước.
 Tiếp tục bằng [prompt bàn giao](../plans/ocr-asr-quality-next-session-2026-09.md).

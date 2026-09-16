@@ -1,5 +1,36 @@
 # Project Status
 
+## 2026-09-16 (OCR D2 tracking v3, Qwen context và dictionary coverage)
+
+- Xác minh `46d457e` trùng remote, source/runtime hashes và hai stash; audit mới
+  `.tools/ocr-asr-quality-20260916-213401/`. Reuse Qwen/runtime/media, không tải model.
+- Thêm `character-features-v3` / `--tracking characters-v3`, giữ nguyên bytes v1/v2.
+  Box nền cắt mép anchor/lệch tâm dòng không còn tham gia so hình; CTC yếu cần
+  bằng chứng nét dấu câu độc lập. Regression hình học 2 fail và gradient presence
+  1 fail trước sửa. Dấu chấm, fade, blank, đổi một glyph/frame và bbox jitter được kiểm.
+- Final CLI một lượt/cửa sổ: D1 2 cue, 6 request/0 cache, 66,625 s; D2 4 cue,
+  11 request/0 cache, 98,391 s. Cả hai complete/export exit0; D2 không còn cue nền
+  57,033/62,833 s hoặc split 62,600 s. Không xóa cue ngắn, raw hay bỏ export guard.
+- Text D2 vẫn thiếu thán từ/dấu. Hai probe 6 recognition/cặp frame kiểm contrast
+  và padding đều không khôi phục thán từ. Inventory dictionary 18.708 entry cho
+  thấy ký tự thán từ được assistant đọc trên ảnh không có trong dictionary;
+  confidence cao không chứng minh đủ chữ. P1 quality còn mở, chưa promote v3.
+- Qwen verified lại cùng pin; đúng 1 request mới/0 cache cho D1 mở ngữ cảnh 24–36 s,
+  32,844 s toàn CLI. PCM vùng trong trùng input cũ, lấy lại phần đầu nhưng từ
+  đáng ngờ vẫn còn; reference lời nói unknown. D3 giữ filtered dump, chỉ chuẩn bị
+  audio gốc có ngữ cảnh để đối chiếu, không nhận dạng lại/không tách vocals lần hai.
+- Offline OCR/GUI **313 passed, 7 deselected**; ASR/CLI **243 passed**. Final worker
+  regression **23 passed**, gồm 7 ca model CPU thật. Cache parity 4 tracking/0
+  recognition mới; Ruff, Pyright 0 errors/0 warnings, translations và diff check pass.
+- P3 domain/CLI: OCR D1/D2 cùng 33 cue ASR baseline giữ text/ms/IDs/metadata qua
+  table/handoff/undo và hai vòng editor save/reopen. Native gates ghi riêng trong
+  [báo cáo tiếp tục](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+- Worker đo CLI được lưu riêng trước cleanup một binding không dùng; checkpoint
+  giữ nguyên hash. Review bổ sung phát hiện standalone punctuation đổi một frame
+  chưa tách biên; candidate v3b so nét trực tiếp, được đo riêng trên final bytes.
+  Xem báo cáo để chọn đúng explicit bridge. Holdout/whole-video/full offline/EXE/TTS chưa chạy
+  vì quality gates chưa đạt; không đổi sáu câu Việt hay recipe giọng B.
+
 ## 2026-09-16 (Ưu tiên OCR/ASR: triển khai có giới hạn, quality gate chưa đạt)
 
 - P0 xác minh `62abaca`, index sạch, hai stash nguyên; source đúng SHA bàn giao.

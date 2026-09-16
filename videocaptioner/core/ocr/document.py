@@ -31,7 +31,7 @@ class OcrConfig:
     profile_sha256: str
     bridge_sha256: str
     language: str = "zh"
-    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2"] = "edge-tiles-ocr2-v1"
+    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
     consensus_policy: Literal["exact-read-uncalibrated-v1"] = "exact-read-uncalibrated-v1"
     profile_snapshot: OcrProfileSnapshot | None = None
     # Omission preserves the serialized config and IDs of all existing documents.
@@ -44,7 +44,7 @@ class OcrConfig:
             raise OcrError("Invalid OCR line selection policy")
         if self.language != "zh":
             raise OcrError("The installed OCR profile supports the explicit zh configuration")
-        if self.tracking_policy in ("character-features-v1", "character-features-v2"):
+        if self.tracking_policy in ("character-features-v1", "character-features-v2", "character-features-v3"):
             if (self.line_selection is None or len(self.line_selection.anchors) != 1
                     or self.line_selection.policy not in ("horizontal-anchors-punctuation-v2",
                                                           "horizontal-anchors-punctuation-v3")):
