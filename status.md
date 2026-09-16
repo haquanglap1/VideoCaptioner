@@ -1,5 +1,32 @@
 # Project Status
 
+## 2026-09-16 (Mẫu C/D, giữ ranh giới người nói và probe OCR/ASR ngắn)
+
+- Tiếp tục từ `7e2cb10`, working tree sạch; kiểm đúng SHA video đã có và giữ
+  hai stash. Tạo audit riêng `bv1gf-prosody-20260916-171148`, không ghi vào
+  settings/cache/media của user; source snapshot được đối chiếu với code chạy.
+- C giữ reference B, thử tag/punctuation ở tốc độ 1×: 3 WAV mới, delay tối đa
+  670 ms. User đánh giá C kém và chỉ ra hai người đối thoại. D giữ hai WAV
+  người khách từ B, tạo reference tổng hợp và một WAV người chủ, gán lượt
+  thủ công; không tự gọi là diarization. D 1×/delay 530 ms; user xác nhận tách
+  được vai nhưng giọng sư phụ/tiên nhân trẻ chưa hợp, chưa nghiệm thu chọn giọng.
+- E thử lại sư phụ theo xác nhận **nữ trẻ, điềm tĩnh**, dùng thuộc tính voice
+  design có tài liệu để tạo reference; giữ hai WAV đệ tử. Một WAV lời mời mới,
+  tốc độ 1×, delay 530 ms; chờ nghe E. B–E vẫn là reference tổng hợp, chưa clone
+  giọng diễn viên; ngữ cảnh xưng hô hiện chưa tự định tuyến voice theo vai.
+- Sửa `DubbingEngine._create_dubbing_cues` giữ `segment.speaker`: planner
+  không còn mất ranh giới người nói đã có từ ASR metadata/override. Không tự
+  nhận diện người nói, chọn giọng, hoặc suy nhãn từ SRT. Regression trước sửa
+  4 fail/3 pass; sau sửa dubbing **131 pass**, CLI **149 pass**; Ruff và
+  translation sync pass, Pyright working tree 0 errors/0 warnings.
+- OCR: 18 lỗi cũ đều `empty_engine_read`, checkpoint giữ SHA. Probe frame
+  30 s xác nhận dòng 32 px bị tracker loại vì floor 36 px theo chiều cao ROI.
+  A/B ROI 3,5 s: bản hẹp lại tách vụn và chạm cap 18 request/exit5; không
+  tích hợp thành fix hoặc bỏ guard. ASR hai clip 7 s/6 s giữ VAD lấy lại lời
+  thiếu nhưng còn sai chữ/tên/câu đáp. Không inference toàn video/API mới.
+- C/D H.264/AAC/mov_text, 11 s, decode và phụ đề sạch tag đã kiểm. GUI native,
+  build/smoke EXE chưa chạy mới. Xem [bằng chứng và giới hạn](docs/dev/dialogue-speaker-boundaries-2026-09.md).
+
 ## 2026-09-16 (Đối chiếu vision gateway, sửa chọn dòng OCR và thử giọng nhất quán)
 
 - User yêu cầu commit/push bản sửa download, sau đó dùng GPT-5.6 Terra hoặc assistant

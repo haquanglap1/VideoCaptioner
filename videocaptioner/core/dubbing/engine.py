@@ -454,6 +454,7 @@ class DubbingEngine:
                     source_text=source_text,
                     subtitle_text=translated_text or source_text,
                     tts_text=text,
+                    speaker=getattr(seg, "speaker", None) or "",
                     original_index=index,
                 )
             )

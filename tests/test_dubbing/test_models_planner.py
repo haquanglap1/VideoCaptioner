@@ -3,6 +3,7 @@ from copy import deepcopy
 import pytest
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
+from videocaptioner.core.asr.metadata import ASRMetadata
 from videocaptioner.core.dubbing.engine import DubbingEngine
 from videocaptioner.core.dubbing.models import (
     DubbingCue,
@@ -49,6 +50,39 @@ def test_engine_cues_keep_source_subtitle_and_tts_separate():
     assert cues[0].source_text == "Original"
     assert cues[0].subtitle_text == "Target"
     assert cues[0].tts_text == "Target"
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "expected_groups"),
+    [
+        (ASRMetadata("soniox", "request-a", "1"), ASRMetadata("soniox", "request-a", "2"), 2),
+        (ASRMetadata("soniox", "request-a", "1"), ASRMetadata("soniox", "request-a", "1"), 1),
+        (ASRMetadata("soniox", "request-a", "1"), ASRMetadata("soniox", "request-b", "1"), 2),
+        (ASRMetadata("soniox", "request-a", "1"), None, 2),
+        (None, None, 1),
+        (ASRMetadata("soniox", "request-a", "1", speaker_override="guest"),
+         ASRMetadata("soniox", "request-a", "1", speaker_override="host"), 2),
+        (ASRMetadata("soniox", "request-a", "1", speaker_override=""), None, 1),
+    ],
+)
+def test_asr_speaker_boundaries_reach_dubbing_plan(first, second, expected_groups):
+    from videocaptioner.core.dubbing.config import DubbingConfig
+    from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+
+    data = ASRData([
+        ASRDataSeg("First phrase", 0, 1000, metadata=first),
+        ASRDataSeg("Second phrase", 1100, 2000, metadata=second),
+    ])
+    before = deepcopy([segment.metadata for segment in data.segments])
+    plan = DubbingOrchestrator(DubbingEngine())._build_dubbing_plan(
+        data, "synthetic.json", 3.0, DubbingConfig(strip_cjk=False)
+    )
+    assert len(plan.groups) == expected_groups
+    assert [segment.metadata for segment in data.segments] == before
+    assert [g.tts_text for g in plan.groups] == (
+        ["First phrase", "Second phrase"] if expected_groups == 2
+        else ["First phrase Second phrase"]
+    )
 
 
 def test_bilingual_layout_can_be_selected_without_guessing():
