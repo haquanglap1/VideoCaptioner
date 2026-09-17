@@ -1,5 +1,31 @@
 # Project Status
 
+## 2026-09-17 (ASR D3 beam5: đã đo, chưa đạt; tách coverage D1/D2)
+
+- Audit `.tools/asr-beam-20260917-183523/`, từ `5e3ddfb` sạch/khớp remote;
+  verify 6.868 hash cũ, bảo vệ 6.878 file, snapshot 770 file đúng bytes checkout.
+- Khóa một hypothesis greedy decoding/cụm lặp: **1 request/1 generation batch**
+  với **5 beams**, trên nguyên D3 filtered 19 s đã lưu. WAV/model pin/language/
+  token cap 864 giữ nguyên; không prompt/reference/context hoặc tách vocals lại.
+- CUDA hoàn tất/EOS, **0 failure/cache/retry**, process **31,500 s** trong
+  cap 180 s; inference **15,110 s**, load **11,953 s**. Qwen tổng **14 requests**.
+  Cụm lặp đổi nhưng vẫn khác visual reference, token đuôi vẫn còn:
+  **D3 content FAIL/P2 unresolved**. Không promote beam5/chunk7s hoặc sửa parser.
+- **1 tokenizer replay** khớp raw trước parser/response/TXT; 46 tokens, beam
+  ancestry thực có nhánh 0/2/4. **17 targeted tests passed, 1 warning**; ba mock
+  checks pass. Một preflight thiếu NumPy trong app Python dừng trước inference;
+  dùng lại Python Qwen riêng, không cài package/model hoặc sửa production code.
+- D1/D2 đọc lại evidence, **0 request mới**: D1 context có phần mở đầu nhưng
+  onset chưa rõ; D2 baseline đặt câu cuối ở 63,33–64,95 s, ngoài clip 57–63 s.
+  Hỗ trợ giới hạn coverage D2, không chứng minh accuracy trên cùng audio.
+  Spelling tên/thán từ khác caption chưa là lỗi speech được xác minh.
+- Sửa mô tả holdout: historical whole-source Whisper đã có output giao H1/H2;
+  khi tra D2, excerpt cũng lộ H1 text và đầu metadata timing H2. Không gọi
+  wholly unseen; **candidate holdout mới chưa chạy**. Giữ 539 ms playback H1 cũ.
+- Alignment/native mới/whole-video mới/full offline/EXE/TTS **NOT RUN**.
+  Worker đóng/release lease; OCR, app/default, sáu câu Việt/recipe B giữ nguyên.
+  Không thử lại cleanup cũ bị policy chặn. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (ASR D3: đo cửa sổ ngắn; hết token đuôi, cụm lặp còn sai)
 
 - Audit `.tools/asr-d3-20260917-180217/`, từ `f3ec6ed` sạch/khớp remote;

@@ -1,5 +1,105 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — D3 beam search không giải quyết content gate
+
+Audit `.tools/asr-beam-20260917-183523/`, bắt đầu từ `5e3ddfb` sạch và khớp
+remote. Verify 6.868 hash cũ, bảo vệ 6.878 file; snapshot 770 file copy bytes
+từ checkout và so trước các gate. Không đổi production code/default/OCR,
+không cài package hoặc tải model. App implementation vẫn `6db7921`.
+
+### Hypothesis và lượt đo duy nhất
+
+Raw Qwen filtered 19 s lặp cả cụm; chia 7 giây vẫn nhận khác lời. Whisper
+large-v3 VAD-on filtered có một cách đọc khác với probability **0,172607** ở
+từ tranh chấp. Giả thuyết mới: greedy decoding chốt sớm vào nhánh lặp; beam
+search có thể chọn sequence khác mà không đổi acoustic input hoặc thêm text.
+Đây là hypothesis thử nghiệm, không khẳng định nguyên nhân đã được chứng minh.
+
+Đã kiểm installed Qwen `generate` chuyển kwargs tới `thinker.generate`; đối
+chiếu [Transformers generation](https://huggingface.co/docs/transformers/v4.57.0/main_classes/text_generation).
+Bridge riêng audit thay `num_beams=5`, giữ `do_sample=False` và một sequence
+được model chọn. Bật `output_scores` chỉ để lưu score/beam ancestry. Không
+chọn beam bằng caption. Không thay installed runtime hoặc source bridge.
+
+Khóa trước inference: **1 request/1 generation batch, 5 beams**, retry/cache 0,
+stage 120 s, outer process 180 s. Reuse canonical D3 filtered WAV **304.000
+samples/19 s**, SHA `06c78390aea4e3b17c80c54c45dbf14918a3f6cb621ec07eb6515a98d6f49ea9`;
+model pin đã verify `7278e1e70fe206f11671096ffdd38061171dd6e5`. CUDA/BF16/SDPA,
+Chinese, window 19 s và token cap 864; không prompt/context/reference, alignment
+hoặc tách vocals lại. So với whole-window filtered baseline, không coi các
+partition chunk7s khác nhau là cùng input request.
+
+| Gate | Kết quả mới |
+|---|---|
+| Request / generation batch / beams | 1 / 1 / 5 |
+| Complete / failed / cache / retry | 1 EOS / 0 / 0 / 0 |
+| Outer process / inference / model load | 31,500 s / 15,110 s / 11,953 s |
+| Generated tokens / cap | 46 / 864 |
+| Peak allocated VRAM | 4.698.543.616 byte; không phải toàn bộ GPU memory |
+| Qwen cumulative | 14 = 13 lịch sử + 1 mới |
+
+### Kết quả và kiểm chứng
+
+Cụm lặp đã đổi thành một cách diễn đạt khác, nhưng vẫn khác AI visual reference;
+token đuôi cũ vẫn còn. Những phần thiếu đầu câu so với caption vẫn được ghi rõ
+trong bảng audit. **D3 content gate FAIL/P2 unresolved**; không promote beam5,
+không sửa parser, không retry/sweep. Giữ toàn bộ output và đủ sáu raw cũ + hai
+output chunk7s + output mới; cả hai baseline Whisper original/filtered được
+đọc lại riêng. Không sửa chữ theo caption hoặc gọi khác caption là speech CER/WER.
+
+**1 tokenizer replay** khớp raw trước parser, response và TXT; EOS/token-count/
+prompt/budget/plan/worker hashes đều pass. Beam ancestry có nhánh **0/2/4**,
+xác nhận đường beam hoạt động. Lưu token IDs, raw decode, effective overrides,
+sequence score và ancestry của sequence được model chọn; không lưu mọi logits
+hoặc các nhánh bị loại. **0 inference kiểm chứng**. Parser không đổi chữ ở
+request này; không suy ngược raw lịch sử chỉ có post-parser text.
+
+**17 targeted tests passed, 1 warning** trên final checkout snapshot. Ba mock
+checks kiểm forwarding beam kwargs, raw retention và EOS guard đều pass; không
+tính chúng là GPU/model tests. Preflight đầu thiếu NumPy trong app Python,
+dừng trước inference; chạy mock bằng Python Qwen riêng đã cài. Giữ receipt lỗi,
+không cài dependency vào Qt process. Worker đã đóng/release lease; exit1 là
+normal owned-process termination sau response thành công, không phải ASR failure.
+
+### D1/D2: đánh giá coverage riêng bằng evidence đã lưu
+
+Hypothesis riêng: thiếu đầu/cuối khi so caption với audio window hẹp có thể là
+giới hạn phạm vi input. Không chạy lại hai context đã đo hoặc lấy output dài
+hơn làm bằng chứng accuracy tốt hơn trên cùng audio.
+
+- **D1:** context 24–36 s có phần mở đầu mà request 27–34 s thiếu. Chưa có onset
+  timestamp đủ tin cậy để kết luận phần đó bị mốc 27 s cắt hay decoder bỏ.
+  Coverage evidence partial; nội dung/syllable còn unresolved.
+- **D2:** historical native baseline đặt câu cuối ở **63,33–64,95 s**, hoàn
+  toàn ngoài request 57–63 s. Context 54–67 s có câu này; hỗ trợ hypothesis thiếu
+  phạm vi. Native timing chưa là speech ground truth. Frame caption 62,9333125 s
+  chỉ cách clip end 66,6875 ms, không đủ suy rằng cả lời caption nằm trong clip.
+  Spelling tên và thán từ khác caption tiếp tục là bất định lời nói.
+
+**0 D1/D2 request mới**, không căn thời gian hoặc gán giờ Whisper cho chữ Qwen.
+Không sửa editor schema/timing/IDs/CommandStack/provenance/save behavior.
+
+### Hiệu chỉnh lịch sử holdout và bàn giao
+
+Khi tra D2, phát hiện whole-source Whisper baseline đã lưu một cue giao H1
+và bốn cue giao H2. Excerpt đầu file cũng lộ H1 text và đầu metadata timing H2;
+không mở thêm transcript holdout để chấm chất lượng. Vì vậy ghi chú cũ “H2 chưa
+inference” chỉ có thể dùng cho **quality-pilot candidate mới**, không phải mọi
+ASR lịch sử. Không gọi H1/H2 wholly unseen. Giữ cả 539 ms native playback H1
+đã biết; chưa chạy candidate holdout hoặc annotation/acceptance mới.
+
+Evidence: `candidate-plan-locked.json`, `runtime-verified.json`, `preflight.json`,
+`attempts.jsonl`, `worker-raw/`, `results/`, `candidate-results.json`,
+`token-verification.json`, `boundary-assessment.json`, `holdout-exposure.json`,
+`asr-visual-comparison.json`, `coverage-ledger.json`, `quality-report.md`,
+`publication.json`. Raw/transcript/absolute paths chỉ nằm trong audit bị ignore.
+
+Alignment/native GUI/editor mới/holdout candidate/whole-video mới/full offline/
+EXE/TTS **NOT RUN**. Không đổi sáu câu Việt/recipe B. Không thử lại cleanup cũ
+bị policy chặn, giữ artifact phiên này. Candidate đã hết cap: bước tiếp cần
+hypothesis acoustic mới hoặc đường ASR độc lập có căn cứ và budget riêng,
+không tiếp tục sweep beam/chunk hoặc dùng caption chữa parser.
+
 ## 2026-09-17 — ASR D3: một candidate cửa sổ 7 giây đã đo bằng CUDA
 
 Audit `.tools/asr-d3-20260917-180217/`, bắt đầu từ `f3ec6ed`; HEAD/remote,

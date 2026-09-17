@@ -1,5 +1,47 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — D3 beam5 đã hết cap, text gate chưa đạt
+
+Ưu tiên ASR, giữ OCR hiện tại. Audit **`.tools/asr-beam-20260917-183523/`**,
+bắt đầu từ `5e3ddfb`; publication/HEAD/remote đọc live. App implementation vẫn
+`6db7921`, không sửa production code/default/parser hoặc installed runtime.
+
+- Đã chạy đúng **1 Qwen request/1 generation batch, 5 beams** trên canonical
+  D3 filtered 19 s cũ. Cùng 304.000 samples/model pin/Chinese/BF16/SDPA/token cap 864;
+  không context/prompt/reference/tách vocals lại. Stage 120 s, process cap 180 s.
+- Complete/EOS, 0 failure/cache/retry, process **31,500 s**, inference 15,110 s,
+  load 11,953 s. **Qwen tổng 14**. Cụm lặp đổi nhưng vẫn khác visual reference,
+  token đuôi còn: **D3 content FAIL/P2 unresolved**, không promote beam5/chunk7s.
+- **1 tokenizer replay** khớp raw trước parser/response/TXT; 46 tokens và beam
+  ancestry 0/2/4. Lưu selected sequence score/ancestry, không mọi logits/nhánh.
+  17 targeted tests passed, 1 warning; ba mock checks pass. Preflight đầu thiếu
+  NumPy ở app Python dừng trước inference; dùng Python Qwen sẵn có, không cài mới.
+- **D1/D2 0 request mới**: đọc lại hypothesis coverage. D1 context có mở đầu
+  nhưng chưa biết onset để quy nguyên nhân mất lời. D2 native baseline dự đoán
+  câu cuối ở 63,33–64,95 s ngoài clip 57–63 s; context 54–67 s có câu đó. Đây là
+  hỗ trợ giới hạn phạm vi, không chứng minh accuracy cùng audio. Tên/thán từ
+  khác caption chưa được xác minh là lỗi lời nói.
+- **Sửa nhãn holdout:** historical whole-source Whisper đã có output giao H1/H2.
+  Khi tra D2, excerpt lộ H1 text và đầu metadata timing H2; không gọi wholly
+  unseen. “H2 chưa inference” ở mục cũ chỉ đúng cho candidate quality-pilot.
+  Candidate holdout mới chưa chạy; giữ H1 playback 539 ms đã biết.
+- Worker đóng/release lease. Alignment/native mới/whole-video mới/full offline/
+  EXE/TTS NOT RUN. Giữ sáu câu Việt/recipe B, toàn bộ artifact và hai stash.
+
+Đọc `publication.json`, `candidate-plan-locked.json`, `runtime-verified.json`,
+`candidate-results.json`, `token-verification.json`, `boundary-assessment.json`,
+`holdout-exposure.json`, `asr-visual-comparison.json`, `whisper-baseline-readback.json`,
+`coverage-ledger.json`, `quality-report.md`, `preservation-check-final.json`.
+Không lặp beam5 hoặc các request đã hết cap. Chọn hypothesis acoustic mới hoặc
+đường ASR độc lập từ raw cụm tranh chấp; khóa input/config/cap/deadline trước đo.
+Không bị buộc tiếp tục Qwen, không sweep model/config, sửa chữ theo caption hoặc
+chờ user chép tiếng Trung. D1 cần evidence onset; D2 không đòi clip kết thúc 63 s
+chứa cả câu ngoài clip. Không suy lại PCM/parser đã kiểm nếu không có dấu hiệu mới.
+
+Quyền sửa/test/inference local và commit/push phần liên quan sau review/validation
+với allowlist vẫn áp dụng. Không reset/clean/merge master/động stash. Kiểm Git
+live và bảo vệ dirty state. Không retry cleanup audit cũ đã bị policy chặn.
+
 ## Bàn giao ASR mới nhất — D3 chunk7s đã đo, không lặp candidate
 
 Mục này cập nhật số request và bằng chứng ASR bên dưới; ưu tiên OCR khoảng
