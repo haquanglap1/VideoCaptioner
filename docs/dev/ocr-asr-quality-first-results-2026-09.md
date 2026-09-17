@@ -1,5 +1,80 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — D1 có acoustic evidence trước cut; D3 chưa có candidate mới
+
+Audit `.tools/asr-acoustic-20260917-213905/`, từ `372db11` sạch/khớp remote.
+Verify **6.888 hash** lịch sử; bảo vệ **6.995 file**, baseline **764 tracked
+file**. Không chạy app nên không tạo app snapshot mới; kiểm hash production
+trước/sau. App implementation vẫn `6db7921`; không sửa code/default/parser/OCR.
+
+### Phép đo khóa trước khi chạy
+
+Hypothesis: cut 27 s có thể đi qua speech event. Đo hoạt động trên nguyên D1
+context **24–36 s / 192.000 samples**, SHA
+`246677d5528737b2f7d5ea93f5f414ed8f349a9ec48d3b6010bdd5a9394e5c99`.
+Không nhận dạng chữ hoặc dùng caption làm prompt. Reuse **Silero v3 ONNX**,
+SHA `f87d83bb8929f0608b1b907d3f520b865758a93e34f27e78b21d69d1a9fe54ec`,
+và environment OCR CPU sẵn có; không tải/cài lại. Manifest giữ 1.244 hashes
+của model/wrapper/Python/NumPy/ONNX Runtime, không thay installed runtime.
+
+Dùng interface từ wrapper đã lưu, đối chiếu
+[Silero v3.1 upstream](https://raw.githubusercontent.com/snakers4/silero-vad/v3.1/utils_vad.py).
+CPU 1 thread, frame **1.536 samples / 96 ms**, threshold **0,5**, state liên tục
+từ đầu WAV. Cap **1 stream / 125 forward calls / 1 load / 60 s**, retry/cache 0.
+Giữ native output hai class, probability và hash tensor từng frame; không sweep
+threshold/window. VAD inference không phải ASR recognition hoặc forced alignment.
+
+### Kết quả D1 và D3
+
+VAD complete, process **0,515 s**, load **0,031 s**, inference **0,031 s**,
+0 failure/cache/retry. Dải raw score vượt ngưỡng đầu tiên là **26,688–27,552 s**;
+cut 27 s nằm giữa dải. Ba frame hoàn toàn trước cut phủ **288 ms**, score
+**0,8205 / 0,8489 / 0,8359**; dải dự đoán bắt đầu trước cut **312 ms**.
+Kết hợp raw Qwen context lịch sử có lời mở đầu trong khi clip hẹp thiếu nó,
+đây là **bằng chứng hỗ trợ boundary hypothesis**, chưa chứng minh onset của
+từ bị thiếu hoặc causality riêng cho từ đó. Không coi context dài là thắng
+accuracy trên cùng input; **P2 vẫn unresolved**.
+
+Replay đủ 125 probability frames qua `get_speech_timestamps` đã lưu, kiểm
+exact float32 tensor SHA, **0 inference mới**. Span đầu của postprocessor
+mặc định là **26,658–28,926 s**: hysteresis nối hai raw runs và padding 30 ms
+dịch biên. Giữ cả hai biểu diễn; không gán chúng làm timestamp từ/câu chuẩn.
+
+D3 chỉ phân tích phổ trên đủ **sáu interval native Whisper lịch sử**, cùng
+original/filtered WAV đã khóa; các interval không phải lexical alignment đã
+nghiệm thu. FFT Hann 25 ms, hop 10 ms; không resample/separation hoặc đổi audio.
+Vùng tranh chấp **113,970–115,530 s** có RMS **−25,352 / −26,877 dBFS**
+(original/filtered), tỉ lệ năng lượng **3–8 kHz: 2,349% / 2,590%**, thấp nhất
+sáu vùng ở cả hai input. Đó là mixed-signal statistics, không SNR hoặc phép
+đo độ rõ phụ âm. **Chưa chứng minh separator làm mất chữ**; không suy ra EQ,
+separation hay model/window candidate mới từ số đo này. **D3 content FAIL giữ nguyên**.
+
+### Validation, preservation và bước tiếp
+
+**7 preflight + 15 verification checks pass**; plan/worker/input/runtime giữ
+hash, 125 frame phủ đúng WAV, nguồn/timing map đúng và process trong cap.
+125 tensor replays là kiểm audit, **0 app tests mới**; không cộng 17/509 cũ.
+**0 Qwen/SenseVoice/Whisper/OCR recognition mới**; Qwen tổng **14**, SenseVoice
+tổng **1**. Ghi riêng một VAD stream / 125 forward calls thực tế.
+
+D2 giữ evidence câu cuối ngoài 63 s. Reuse AI visual reference có prior
+exposure; speech ground truth unknown, không CER/WER. Không playback/frame
+hoặc exposure holdout mới; giữ H1 playback 539 ms và historical Whisper
+output/exposure H1/H2. Alignment/native mới/candidate holdout/whole-video/
+full offline/EXE/TTS **NOT RUN**. Sáu câu Việt/recipe B và hai stash giữ nguyên.
+
+Không có file cache/temp mới cần xóa; chỉ có thư mục runtime rỗng. Không thử
+lại cleanup audit cũ bị policy chặn, không có approval rejection mới phiên này.
+Đọc `analysis-plan-locked.json`, `runtime-manifest.json`, `vad-frames.jsonl`,
+`vad-results.json`, `upstream-postprocess-replay.json`, `signal-results.json`,
+`D3-acoustic-assessment.json`, `boundary-assessment.json`, `verification.json`,
+`coverage-ledger.json`, `quality-report.md`, preservation và `publication.json`.
+
+D1 đã có bằng chứng cut qua hoạt động giống lời nói, vẫn thiếu lexical onset.
+Không biến VAD thành alignment hoặc chạy lại context đã hết cap. D3 cần thêm
+evidence acoustic phân biệt che lấp/cách phát âm với khác biệt caption trước
+khi khóa candidate mới; không sweep, ghép output hoặc sửa text theo caption.
+
 ## 2026-09-17 — SenseVoice CTC độc lập không giải quyết D3
 
 Audit `.tools/asr-sensevoice-20260917-192331/`, từ `99f4b6d` sạch/khớp remote.

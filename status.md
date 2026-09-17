@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-09-17 (ASR D1: VAD hỗ trợ giả thuyết cut qua lời nói; P2 còn mở)
+
+- Audit `.tools/asr-acoustic-20260917-213905/`, từ `372db11` sạch/khớp
+  remote; verify 6.888 hash cũ, bảo vệ 6.995 file và baseline 764 tracked file.
+  App implementation `6db7921` giữ nguyên; không đổi OCR/default/parser.
+- Reuse D1 context WAV 24–36 s và Silero v3 ONNX đã có: **1 VAD stream /
+  125 forward calls**, CPU 1 thread, threshold 0,5, frame 96 ms; cap 60 s.
+  Complete **0,515 s**, 0 retry/cache/failure; không tải/cài dependency/model.
+- Raw VAD có dải **26,688–27,552 s**, cắt 27 s nằm giữa hoạt động dự đoán;
+  ba frame hoàn toàn trước cut phủ 288 ms. **Hỗ trợ boundary hypothesis D1**,
+  chưa xác minh onset từ bị thiếu hoặc speech accuracy. P2 vẫn unresolved.
+- 7 preflight + 15 verification checks pass; 125 tensor hashes khớp khi replay
+  probability qua postprocessor cũ, **0 inference kiểm tra / 0 app tests mới**.
+  Span sau hysteresis/padding khác raw run, không dùng làm lexical alignment.
+- D3 đo phổ đủ sáu interval trên hai WAV cũ: vùng tranh chấp có tỉ lệ năng lượng
+  3–8 kHz thấp nhất sáu vùng ở cả original/filtered; chưa chứng minh separator
+  làm mất chữ hoặc đủ căn cứ cho EQ/candidate mới. Giữ **D3 content FAIL**.
+- **0 ASR/OCR recognition mới**; Qwen tổng 14, SenseVoice tổng 1. VAD inference
+  được ghi riêng. D2 evidence ngoài 63 s, sáu câu Việt/recipe B và hai stash giữ.
+- Alignment/native mới/holdout/whole-video/full offline/EXE/TTS NOT RUN.
+  Không file temp/cache mới cần xóa; không retry cleanup audit cũ bị policy chặn.
+  [Kết quả](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (ASR D3 SenseVoice CTC: một lượt độc lập, text gate vẫn fail)
 
 - Audit `.tools/asr-sensevoice-20260917-192331/`, từ `99f4b6d` sạch/khớp
