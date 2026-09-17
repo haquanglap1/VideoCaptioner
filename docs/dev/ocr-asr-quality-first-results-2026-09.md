@@ -1,5 +1,97 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — SenseVoice CTC độc lập không giải quyết D3
+
+Audit `.tools/asr-sensevoice-20260917-192331/`, từ `99f4b6d` sạch/khớp remote.
+Verify **6.878 hash** lịch sử, bảo vệ **6.888 file**, snapshot **770 file** copy
+đúng checkout. App implementation vẫn `6db7921`; không sửa production code,
+default/parser, OCR hoặc runtime đã cài.
+
+### Hypothesis, runtime và giới hạn
+
+Qwen greedy/beam và Whisper cho các cách đọc khác nhau ở cụm bị che; một
+decoder **SenseVoice CTC** độc lập có thể tránh ảnh hưởng lặp từ decoder
+autoregressive. Đây là hypothesis thử nghiệm, không phải kết luận nguyên nhân.
+Dùng [API chính thức của sherpa-onnx](https://k2-fsa.github.io/sherpa/onnx/sense-voice/python-api.html),
+model từ repository được tài liệu đó chỉ dẫn. Không sweep model/config.
+
+Inventory không thấy SenseVoice/sherpa trong runtime Qwen hoặc các artifact
+đọc được; một số thư mục temp khác bị access denied, không suy thành vắng mặt
+toàn máy. Theo quyền chuẩn bị local, tải **FP32 ONNX** riêng audit, revision
+`2365baeacb507f821a0c8120fcee3d484dba7a07`, weights SHA
+`977016bd9c79f9eb343430b5cc305e07ab64d5212dff41b0dcfa1694bee9a8cb`.
+Verify SHA upstream cho model/wheels và Git blob cho tokens. Cài đúng hai
+wheel `sherpa-onnx==1.13.8`, `sherpa-onnx-core==1.13.8` vào dependency target
+riêng, reuse Python Qwen; không sửa environment app hoặc installed runtime.
+Một lookup package version 1.12.14 trả HTTP 404 trước chuẩn bị; version thật
+1.13.8 lấy từ PyPI metadata. Không tính lookup đó thành inference failure.
+
+Khóa trước inference: **1 request/1 batch**, cap process **180 s**, retry/cache
+0; CPU **4 threads**, Chinese, greedy CTC, ITN bật. Giữ nguyên canonical WAV
+filtered D3 **19 s/304.000 samples**, SHA
+`06c78390aea4e3b17c80c54c45dbf14918a3f6cb621ec07eb6515a98d6f49ea9`.
+Không VAD chia nhỏ, audio transform, separation, hotword, prompt hoặc context.
+Đây là diagnostic engine riêng audit, chưa phải tích hợp CLI/GUI provider mới.
+
+### Kết quả và validation
+
+| Gate | Kết quả mới |
+|---|---|
+| Request / recognizer batch | 1 / 1 |
+| Complete / failed / cache / retry | 1 / 0 / 0 / 0 |
+| Process / load / recognition | 2,093 s / 0,984 s / 0,219 s |
+| Provider / GPU jobs | CPU / 0 |
+| Qwen cumulative / SenseVoice cumulative | 14 / 1 |
+| Text gate | FAIL; P2 unresolved |
+
+Câu mở đầu bị thay bằng các chữ không phù hợp, câu nhận lời thiếu từ và cụm
+lặp thành các mảnh khác caption. Token đuôi Qwen cũ không xuất hiện, nhưng
+không đủ để pass toàn nội dung. Giữ nguyên output, không ghép với những câu
+đúng của engine khác hoặc chọn theo caption. Sáu crop đã trực tiếp đọc lại
+trước candidate; **AI visual reference**, đã có prior exposure, không phải
+blind/human speech ground truth. Không speech CER/WER.
+
+**6 preflight checks** kiểm input, API, một dispatch không hotword và chặn
+request lặp. **13 output/provenance checks** pass: plan/worker/runtime/input
+hash không đổi, **45 tokens** đều có trong vocabulary và ghép đúng native
+text/TXT, metadata nhất quán, process trong cap. Mapping symbol sang token ID
+là readback, không phải pre-CTC argmax path. Raw native JSON giữ language,
+emotion, event và timestamps; không lưu full logits. EOS không áp dụng CTC.
+Native timestamp chỉ được kiểm consistency, **chưa nghiệm thu timing phụ đề**;
+không chạy forced alignment. Process kết thúc bình thường, không GPU lease.
+
+**0 app tests mới** vì code app không đổi; không cộng 17/509 lịch sử.
+Report script từng gặp `KeyError` do key path Windows khi tổng hợp hash; sửa
+đọc hash từ path thật và chạy lại tổng hợp, **0 inference thêm**. Worker/plan/raw
+của lượt đo giữ nguyên. Không dùng lỗi report để cấp lại request.
+
+### Coverage và bàn giao
+
+D1 chỉ đọc các row 24–36 s từ baseline cũ: không có cue giao đoạn. Bản native
+27–34 s có cue bắt đầu local 60 ms nhưng không chứa lời xưng hô đầu câu,
+nên không định vị được onset lời đó. **D1 onset vẫn unresolved**. D2 giữ
+evidence câu cuối ở 63,33–64,95 s ngoài clip cũ. **0 D1/D2 request mới**.
+Không in thêm row holdout; giữ H1 playback 539 ms và exposure H1/H2 đã ghi.
+
+Evidence: `runtime-preparation-plan.json`, `downloads.json`,
+`runtime-manifest.json`, `preflight.json`, `candidate-plan-locked.json`,
+`effective-config.txt`, `results/native-result.json`, `candidate-results.json`,
+`candidate-assessment.json`, `verification.json`, `asr-visual-comparison.json`,
+`boundary-assessment.json`, `coverage-ledger.json`, `quality-report.md`, cleanup
+receipt và `publication.json`. Model/raw/private transcript chỉ ở audit ignore.
+
+Candidate đã hết cap; không retry/tune, promote hoặc tải thêm model để sweep.
+Bước tiếp cần hypothesis acoustic có căn cứ và budget mới từ cụm tranh chấp,
+hoặc evidence onset D1 độc lập. Giữ ambiguity caption/lời nói; không sửa parser
+hay text bằng đáp án. OCR giữ mức ưu tiên phụ đã chấp nhận.
+
+Alignment/native GUI/editor mới/candidate holdout/whole-video mới/full offline/
+EXE/TTS **NOT RUN**. Giữ model/runtime/raw/snapshot, sáu câu Việt/recipe B và
+hai stash; không thử lại cleanup audit cũ từng bị policy chặn.
+Cleanup cache/temp/wheel archive dư của audit mới cũng bị automatic approval
+review chặn (`blocked by policy`) trước khi tạo process: **0 byte đã xóa**,
+**71.343.668 bytes còn nguyên**; giữ receipt, không retry hoặc đổi cách xóa.
+
 ## 2026-09-17 — D3 beam search không giải quyết content gate
 
 Audit `.tools/asr-beam-20260917-183523/`, bắt đầu từ `5e3ddfb` sạch và khớp

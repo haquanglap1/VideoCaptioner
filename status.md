@@ -1,5 +1,31 @@
 # Project Status
 
+## 2026-09-17 (ASR D3 SenseVoice CTC: một lượt độc lập, text gate vẫn fail)
+
+- Audit `.tools/asr-sensevoice-20260917-192331/`, từ `99f4b6d` sạch/khớp
+  remote; verify 6.878 hash cũ, bảo vệ 6.888 file, snapshot 770 file đúng bytes.
+- Khóa hypothesis decoder CTC độc lập trên đúng D3 filtered 19 s/304.000
+  samples. Chuẩn bị SenseVoice FP32 ONNX và sherpa-onnx/core 1.13.8 riêng audit;
+  không thay installed runtime, production code/default/parser hoặc OCR.
+- **1 request/1 batch CPU**, 4 threads, Chinese/ITN/greedy CTC, không prompt,
+  hotword, context hoặc xử lý lại audio. Cap 180 s, retry/cache 0. Complete,
+  process **2,093 s**, load **0,984 s**, recognition **0,219 s**, 0 failed attempt.
+- Câu mở đầu và cụm lặp sai rõ, câu nhận lời thiếu từ. Token đuôi cũ không còn
+  nhưng **D3 content FAIL/P2 unresolved**; không promote, retry hoặc ghép chữ.
+  Qwen giữ tổng **14**, SenseVoice tổng **1**; OCR/Whisper/D1/D2 không request mới.
+- **6 preflight checks + 13 output/provenance checks pass**, 45 tokens ghép đúng
+  native text/TXT. Giữ raw native CTC; không lưu pre-CTC logits. EOS không áp
+  dụng. Native timestamps chỉ kiểm consistency, chưa nghiệm thu subtitle timing.
+  **0 app tests mới** vì app không đổi; không cộng 17/509 tests lịch sử.
+- D1 readback chỉ lọc 24–36 s: whole-source baseline không có cue giao đoạn;
+  bản ngắn không chứa lời mở đầu nên chưa xác định onset. D2 giữ evidence câu
+  cuối ngoài 63 s. Không có exposure holdout mới; giữ nhãn contamination cũ.
+- Alignment/native mới/candidate holdout/whole-video/full offline/EXE/TTS
+  **NOT RUN**. Giữ sáu câu Việt/recipe B, raw và hai stash.
+  Cleanup cache/temp/wheels riêng audit bị automatic approval review chặn
+  (`blocked by policy`): giữ 71.343.668 bytes, chưa xóa, không retry.
+  [Kết quả](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (ASR D3 beam5: đã đo, chưa đạt; tách coverage D1/D2)
 
 - Audit `.tools/asr-beam-20260917-183523/`, từ `5e3ddfb` sạch/khớp remote;

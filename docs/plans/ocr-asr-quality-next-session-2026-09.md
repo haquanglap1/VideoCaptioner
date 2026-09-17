@@ -1,5 +1,52 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — SenseVoice CTC đã hết cap, D3 vẫn chưa đạt
+
+Ưu tiên ASR; giữ OCR hiện có. Audit **`.tools/asr-sensevoice-20260917-192331/`**,
+bắt đầu từ `99f4b6d`; đọc `publication.json` và Git live cho commit mới.
+App implementation vẫn `6db7921`; không sửa production code/default/parser.
+
+- Đã thử đúng **1 request/1 batch SenseVoice CTC** độc lập trên canonical D3
+  filtered WAV 19 s/304.000 samples cũ. CPU 4 threads, greedy/Chinese/ITN;
+  không VAD cắt đoạn, prompt/context/hotword, audio transform hoặc separation.
+- Complete, **0 failed/cache/retry**, process **2,093 s**, load **0,984 s**,
+  recognition **0,219 s**, cap 180 s. Câu mở đầu/cụm lặp sai rõ, câu nhận lời
+  thiếu từ. Token đuôi Qwen cũ không còn nhưng **D3 content FAIL/P2 unresolved**.
+  Không promote, retry hoặc ghép các đoạn đẹp giữa các engine.
+- **SenseVoice tổng 1; Qwen tổng 14**. OCR/Whisper/D1/D2 0 request mới.
+  6 preflight + 13 output/provenance checks pass; 45 native tokens khớp TXT.
+  Không giữ pre-CTC logits/argmax; EOS không áp dụng. Timestamps chỉ metadata
+  native chưa nghiệm thu timing, không forced alignment. 0 app tests mới.
+- Model FP32 ONNX mới và dependency chỉ ở audit này; runtime cũ không đổi.
+  Pin `2365baeacb507f821a0c8120fcee3d484dba7a07`, weights SHA
+  `977016bd9c79f9eb343430b5cc305e07ab64d5212dff41b0dcfa1694bee9a8cb`.
+  Reuse Qwen Python với `sensevoice-deps/` sherpa-onnx/core 1.13.8;
+  `runtime-manifest.json`/`downloads.json` có hashes. Không tải/cài lại.
+- D1 readback lọc 24–36 s: whole-source baseline không có cue giao đoạn;
+  bản ngắn không chứa lời mở đầu nên không chứng minh onset. D1 unresolved.
+  D2 giữ evidence câu cuối ngoài 63 s. Không exposure holdout mới; giữ lịch sử
+  H1 playback 539 ms và historical Whisper output/exposure H1/H2.
+- Alignment/native mới/candidate holdout/whole-video/full offline/EXE/TTS
+  NOT RUN. Giữ sáu câu Việt/recipe B, artifact, model và hai stash.
+- Cleanup cache/temp/wheels mới bị automatic approval review chặn
+  (`blocked by policy`); 71.343.668 bytes còn nguyên, xóa 0 byte. Không retry
+  cleanup này hoặc audit cũ. Xem `cleanup-receipt.json`.
+
+Đọc `runtime-preparation-plan.json`, `runtime-manifest.json`, `preflight.json`,
+`candidate-plan-locked.json`, `effective-config.txt`, `candidate-results.json`,
+`candidate-assessment.json`, `verification.json`, `ai-visual-reference.json`,
+`asr-visual-comparison.json`, `boundary-assessment.json`, `coverage-ledger.json`,
+`quality-report.md`, cleanup receipt, preservation và `publication.json`.
+`case.id` trong plan kế thừa nhãn input beam5 lịch sử; candidate thực nằm ở
+field `candidate=sensevoice-ctc-d3-filtered-fp32-v1`. Không sửa plan đã khóa.
+
+**Không lặp SenseVoice, beam5, chunk7s hoặc các request context đã hết cap.**
+Không sweep thêm model/config. Bước tiếp cần hypothesis acoustic mới có căn cứ
+trên raw vùng tranh chấp, hoặc evidence onset D1; khóa input/config/cap trước
+inference. Không sửa text theo caption hoặc đòi user chép tiếng Trung.
+Quyền local/commit/push allowlist vẫn áp dụng; không merge/reset/clean/động stash
+hoặc thử lại cleanup audit cũ bị policy chặn.
+
 ## Bàn giao mới nhất — D3 beam5 đã hết cap, text gate chưa đạt
 
 Ưu tiên ASR, giữ OCR hiện tại. Audit **`.tools/asr-beam-20260917-183523/`**,
