@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-09-17 (ASR D3: đo cửa sổ ngắn; hết token đuôi, cụm lặp còn sai)
+
+- Audit `.tools/asr-d3-20260917-180217/`, từ `f3ec6ed` sạch/khớp remote;
+  verify 6.858 hash cũ, bảo vệ 6.868 file, snapshot 770 file đúng bytes checkout.
+- Chạy thật Qwen CUDA trên D3 original và Kim dump đã lưu với tùy chọn có sẵn
+  `--local-chunk-ms 7000`: original 3 phần, filtered 4 phần; ghép PCM từng nhóm
+  khớp đủ 304.000 sample. Không tách vocals lại, không thêm context/caption/prompt.
+- Khóa **7 request/7 batches**, hoàn tất cả 7; 0 failure/cache/retry. Process
+  **58,422 s** trong cap 240 s; inference cộng **32,329 s**, load **18,828 s**;
+  peak allocated VRAM **4.698.543.616 byte**. Qwen lịch sử 6, tổng hiện **13**.
+- Hai output không còn token đuôi cũ. Original vẫn sai cụm lặp; filtered gần
+  caption hơn nhưng thiếu một từ, thêm thán từ và dấu câu ở biên chunk.
+  **D3 quality gate chưa đạt; P2 unresolved.** Không promote cửa sổ 7 giây.
+- Giữ token IDs/raw decode trước parser trong audit. **7 decode replays** khớp
+  raw và response, đều EOS; prompt chỉ có audio và Chinese, không reference.
+  Parser không đổi chữ trong 7 request này; chưa chứng minh nguyên nhân mọi
+  output lịch sử. **17 targeted tests passed, 1 warning**, không cộng 509 cũ.
+- Không sửa app/default/OCR/runtime hoặc cài thêm package/model. D1/D2 reuse
+  raw cũ; speech ground truth unknown, không CER/WER. Alignment/native mới/
+  holdout/whole-video/full offline/EXE/TTS **NOT RUN**. Hai GPU worker đã đóng.
+  Cleanup khoảng 264 MB cache/temp riêng audit bị policy chặn; giữ nguyên dữ liệu.
+  [Kết quả và giới hạn](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (đổi ưu tiên: OCR khoảng 80–90%, tập trung speech-to-text)
 
 - User chấp nhận OCR khoảng **80–90%**; ưu tiên chính là **speech-to-text tốt**.

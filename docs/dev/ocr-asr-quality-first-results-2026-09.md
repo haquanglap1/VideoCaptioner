@@ -1,5 +1,85 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — ASR D3: một candidate cửa sổ 7 giây đã đo bằng CUDA
+
+Audit `.tools/asr-d3-20260917-180217/`, bắt đầu từ `f3ec6ed`; HEAD/remote,
+tree/index và hai stash được kiểm live. Verify **6.858 hash** từ baseline trước,
+bảo vệ **6.868 file**, copy **770 file** từ checkout và so bytes trước từng gate.
+Giữ OCR hiện tại theo ưu tiên speech-to-text. Không cài/tải thêm model/package,
+không sửa app/default/parser hoặc runtime đã cài. Harness chỉ thêm quan sát
+token/decode sau `generate`, trước parser, trong bridge riêng của audit;
+bỏ đoạn quan sát ra khớp source bridge. Đây là CLI source gate với harness quan
+sát, không phải native GUI/EXE hay tích hợp một policy mới vào production.
+
+### Hypothesis và điều kiện đã khóa
+
+Kiểm ảnh hưởng của ngữ cảnh decoder 19 giây tới cụm lặp bằng tùy chọn có sẵn
+`--local-chunk-ms 7000`. Reuse D3 original request WAV và đúng Kim_Vocal_2
+`*_dump.wav`; không dùng `*_mdx.wav`, tách vocals lại hoặc kéo dài window.
+Model pin `7278e1e70fe206f11671096ffdd38061171dd6e5`, CUDA/BF16/SDPA, Chinese,
+greedy và EOS budget giữ nguyên. Không prompt/reference/previous text context.
+
+Giới hạn 7 giây được chọn trước khi xem partition/kết quả mới. Splitter hiện có
+chọn biên bằng energy, nên original/filtered có partition khác nhau. So mỗi
+output với baseline cùng preprocessing; không coi chúng là cặp cùng chunk audio.
+Mốc dưới đây là **window nhận dạng**, không phải subtitle/alignment timestamps.
+
+| Input D3 | Các phần tương đối trong 19 s (ms) | Requests / batches | CLI wall |
+|---|---|---:|---:|
+| Original | 0–6500; 6500–13250; 13250–19000 | 3 / 3 | 28,485 s |
+| Filtered | 0–6450; 6450–9650; 9650–15850; 15850–19000 | 4 / 4 | 28,937 s |
+
+Ghép từng partition khớp toàn bộ **304.000 PCM sample/input**, không bỏ/lặp sample.
+Khóa **7 request**, batch 1, một attempt/part, **0 retry/cache**, stage 60 s,
+hard process cap 240 s; chạy hai job tuần tự. Cả 7 complete/EOS, 0 failed.
+Outer process **58,422 s**; inference cộng **32,329 s**, load cộng **18,828 s**,
+peak allocated VRAM **4.698.543.616 byte**. Không cộng thời gian con vào process
+wall. Hai worker đã đóng/release lease; exit1 do `LocalRuntime.close()` terminate
+owned process sau response thành công, không tính thành failed inference.
+**Qwen tổng 13 request = 6 lịch sử + 7 mới**, không phải 13 batch mới.
+
+### Kết quả và giới hạn
+
+- Original: token đuôi cũ không còn, nhưng nhận sai cụm lặp vẫn xuất hiện ngay
+  trong raw decoder. Chia ngắn chưa giải quyết được lỗi nội dung này.
+- Filtered: có thêm phần mở đầu câu chấp nhận; cụm lặp gần caption hơn baseline,
+  nhưng còn thiếu một từ nối và thêm thán từ. Token đuôi cũ không còn; punctuation
+  mới cắt một câu ở biên chunk. Giữ nguyên toàn bộ output, không sửa dấu/ghép lời.
+- Cả hai vẫn thiếu thán từ đầu window so với caption. Caption chỉ là
+  **AI visual reference**; các khác biệt chưa tự xác minh được lời thực nói.
+  Assistant đọc lại sáu crop D3 đã lưu; không xem thêm holdout hoặc tạo lại frame.
+- **D3 text/content gate chưa đạt, P2 unresolved.** Có tín hiệu cải thiện hẹp
+  ở filtered và đuôi; không công bố winner/accuracy, promote chunk7s hoặc alignment.
+  D1/D2 tiếp tục reuse bốn output cũ; không đổi spelling theo caption hoặc chạy
+  lại context chỉ để lấy thêm output. Bảng audit giữ đủ sáu output cũ + hai
+  output ghép mới và toàn bộ bảy chunk mới.
+
+**7 tokenizer decode replays** khớp raw decode trước parser và response;
+7 EOS/token-count/budget checks đều đạt. Input IDs decode ra cùng prompt cố định
+chỉ có audio và Chinese. TXT khớp nối nguyên raw chunk. **0 inference kiểm chứng**.
+Trong bảy request này parser không thay chữ; không quy lỗi cụm lặp mới cho parser.
+Synthetic replay xác nhận upstream có heuristic rút gọn lặp dài, nhưng output
+lịch sử chỉ có post-parser text: replay idempotent không chứng minh raw cũ.
+Không sửa parser theo một nguyên nhân D3 chưa được chứng minh.
+
+**17 targeted tests passed, 1 warning**: chunk PCM/retry/cache/EOS, text-only
+recovery và CLI TXT guards. Không cộng 509 tests lịch sử. Một lệnh harness đầu
+sai đường dẫn script, exit2 trước import/inference; giữ receipt và sửa đường dẫn,
+không phải retry model. Ruff/Pyright/full offline không chạy lại vì không sửa
+production code. Git diff check và preservation kiểm riêng khi publication.
+
+Evidence: `candidate-plan-locked.json`, `runtime-verified.json`, `inputs/`,
+`attempts.jsonl`, `worker-raw/`, `results/`, `candidate-results.json`,
+`verification.json`, `token-verification.json`, `asr-visual-comparison.json`,
+`quality-report.md`, `publication.json`. Giữ raw/model/checkpoint/snapshot.
+Cleanup cache/temp riêng phiên **chưa thực hiện**: automatic approval review
+chặn lệnh xóa với `blocked by policy`, kể cả một absolute target đã kiểm tra;
+giữ khoảng 264 MB và ghi `cleanup-receipt.json`. Speech ground truth
+unknown, không CER/WER, alignment/native mới/holdout/whole-video/full offline/
+EXE/TTS **NOT RUN**; H1 đã lộ 539 ms, H2 chưa inference. Recipe B và sáu câu Việt
+giữ nguyên. Candidate đã dùng hết budget; không sweep chunk size hoặc lặp lại
+7 request. Bước tiếp cần hypothesis mới từ lỗi decoder/acoustic còn lại.
+
 ## 2026-09-17 — điều chỉnh tiêu chí theo user: ưu tiên speech-to-text
 
 Sau kết quả candidate, user chấp nhận OCR khoảng **80–90%** và ưu tiên

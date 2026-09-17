@@ -1,5 +1,46 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao ASR mới nhất — D3 chunk7s đã đo, không lặp candidate
+
+Mục này cập nhật số request và bằng chứng ASR bên dưới; ưu tiên OCR khoảng
+80–90%/speech-to-text vẫn giữ. Audit **`.tools/asr-d3-20260917-180217/`** bắt đầu
+từ `f3ec6ed`; publication sau đó xem `publication.json` và Git live. App vẫn
+`6db7921`, không đổi production code/default/parser/OCR/runtime đã cài.
+
+- Đã đo Qwen D3 107–126 s qua CLI source với `--local-chunk-ms 7000`:
+  original 3 request, filtered 4 request; exact union **304.000 PCM sample** mỗi
+  input. Reuse đúng `D3-request.wav` original và Kim_Vocal_2 `*_dump.wav` cũ.
+- **7 request/7 batches mới, 7 complete/EOS, 0 failure/cache/retry**;
+  hard cap 240 s, stage 60 s; outer process **58,422 s**. Tổng Qwen hiện **13**,
+  gồm sáu request lịch sử. Không gọi cap cũ còn dư hoặc chạy lại bảy part này.
+- Original vẫn nhận sai cụm lặp; filtered gần caption hơn nhưng thiếu từ/thêm
+  thán từ, và có punctuation do biên chunk. Hai output không còn token đuôi cũ.
+  **Text gate chưa đạt/P2 unresolved**; không promote chunk7s hoặc chạy alignment.
+- Giữ token IDs/decode trước parser từ bridge audit chỉ thêm quan sát.
+  **7 decode replays** khớp response, EOS/token counts/budget pass; prompt chỉ
+  audio/Chinese. Sai cụm lặp mới đã có ngay trong decoder, không do parser đổi
+  text ở bảy request này. Không suy ngược rằng raw sáu request cũ cũng đã có đủ.
+- **17 targeted tests passed, 1 warning**, không cộng 509 cũ; một harness path
+  failure trước inference được giữ. D1/D2 không inference mới; dùng bốn raw cũ.
+- Sáu crop D3 đã đọc lại; vẫn là AI visual reference, không speech ground truth.
+  Không CER/WER, alignment/native mới/holdout/whole-video/full offline/EXE/TTS;
+  giữ H1 contamination 539 ms/H2 chưa inference, sáu câu Việt và recipe B.
+
+Đọc `candidate-plan-locked.json`, `runtime-verified.json`, `candidate-results.json`,
+`verification.json`, `token-verification.json`, `parser-observation.json`,
+`quality-report.md`, `asr-visual-comparison.json`, `coverage-ledger.json`,
+`preservation-check-final.json`, cleanup receipt và `publication.json`.
+Cleanup khoảng 264 MB cache/temp của audit mới bị automatic approval review
+chặn (`blocked by policy`); dữ liệu còn nguyên, không báo là đã dọn.
+`inputs/`/`worker-raw/`/`results/` giữ đủ 7 part và 2 output ghép; bảng đối chiếu
+giữ cả sáu output cũ. Mốc partition chỉ là window nhận dạng, không timestamp lời.
+
+**Bước tiếp:** tập trung lỗi acoustic/decoder D3 còn lại và coverage D1/D2;
+không tiếp tục sweep cửa sổ ngắn hoặc sửa parser bằng đáp án caption. Khóa một
+hypothesis mới có căn cứ/budget/input trước inference. Không chờ human transcript,
+không đưa reference vào prompt, không đuổi lỗi OCR nhỏ. Khi sửa app cần regression
+synthetic red trước sửa. Giữ quyền và quy trình Git/preservation bên dưới.
+
 ## Chỉ đạo ưu tiên mới nhất của user — OCR khoảng 80–90%, ASR là chính
 
 User chấp nhận OCR khoảng **80–90%**, chủ yếu cần **speech-to-text tốt**.
