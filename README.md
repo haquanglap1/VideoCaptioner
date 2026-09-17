@@ -141,6 +141,12 @@ qua phần giữa dòng chữ. D2 đã hết cue nền giả/tách câu đáp, n
 thiếu ký tự ngoài dictionary và dấu ở mép dòng; chưa đổi mặc định hoặc nghiệm thu
 chất lượng. Checkpoint v1/v2/v3 giữ đúng worker hash, không tự nâng phiên bản.
 
+Pilot `--consensus punctuation-v2` xử lý trường hợp detector cắt mất cụm dấu chấm
+cuối dòng: chỉ chọn nguyên một candidate khi cụm dấu sáng, gọn khớp vị trí trên
+cả hai ảnh. Không ghép chữ, không khôi phục ký tự ngoài dictionary và vẫn giữ
+disagreement/raw. Đây là heuristic hẹp chưa hiệu chuẩn cho mọi font/nền; mặc định
+vẫn là `--consensus exact-v1`. Checkpoint lưu policy riêng và resume giữ policy đó.
+
 Lệnh `ocr` đọc một ROI cố định bằng CPU runtime đã cài và xuất JSON/SRT ngay
 khi quét xong, **không cần duyệt từng câu hoặc có bản chữ gốc**. Có thể lưu thêm
 `ocr-document-v1` bằng `--checkpoint` để mở lại hoặc tiếp tục khi bị hủy.

@@ -76,6 +76,7 @@ class OcrThread(OcrWorker):
         bridge_sha = hashlib.sha256(bridge.read_bytes()).hexdigest() if tracking in CHARACTER_TRACKING_WORKERS else config.bridge_sha256
         config = replace(config, line_selection=policy, tracking_policy=tracking, bridge_sha256=bridge_sha)
         if self.task.resume_document is not None:
+            config = replace(config, consensus_policy=self.task.resume_document.config.consensus_policy)
             if config != self.task.resume_document.config:
                 raise OcrError("Runtime/profile không khớp checkpoint; chọn đúng bộ OCR đã dùng trước đó.")
             config = self.task.resume_document.config

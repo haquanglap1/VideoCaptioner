@@ -17,11 +17,13 @@ from videocaptioner.core.ocr.pipeline import RegionResult
 from videocaptioner.core.ocr.profile import OcrProfileSnapshot
 
 
-def make_document(texts=("学生三人\n2026年。", "学生三人\n2026年。"), *, approved=False, timing_issues=()):
+def make_document(texts=("学生三人\n2026年。", "学生三人\n2026年。"), *, approved=False, timing_issues=(),
+                  consensus_policy="exact-read-uncalibrated-v1"):
     profile = OcrProfileSnapshot("synthetic", (("fixture", "1.0"),),
                                  tuple((name, "d" * 64) for name in ("det", "rec", "cls")), "e" * 64, 10,
                                  (("synthetic", True),), (("input", "fixture"),))
-    config = OcrConfig(Roi(0, 0, 1, 1), Selection(100, 1500), "b" * 64, "c" * 64, profile_snapshot=profile)
+    config = OcrConfig(Roi(0, 0, 1, 1), Selection(100, 1500), "b" * 64, "c" * 64, profile_snapshot=profile,
+                       consensus_policy=consensus_policy)
     source = VisualSourceIdentity("a" * 64, 1000, VideoInfo(0, VideoGeometry(640, 120),
                                                          Fraction(1, 1000), Fraction(3)), config.selection)
     identifier = document_id(source, config)

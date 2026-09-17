@@ -465,6 +465,8 @@ def build_parser() -> argparse.ArgumentParser:
                           "includes nearby detached punctuation. Omit to keep all lines.")
     ocr.add_argument("--tracking", choices=["edges", "characters", "characters-v2", "characters-v3"], default="edges",
                      help="Character tracking stabilizes one selected line using PP-OCRv6 medium (slower CPU mode)")
+    ocr.add_argument("--consensus", choices=["exact-v1", "punctuation-v2"], default="exact-v1",
+                     help="Experimental punctuation-v2 requires matching visible dots in both candidate frames")
     ocr.add_argument("--language", choices=["zh"], default="zh")
     ocr.add_argument("--ocr-runtime", help="Installed runtime root; defaults to models/ocr beside the app")
     ocr.add_argument("--ocr-bridge", help="Explicit worker override; otherwise use the bundled bridge")

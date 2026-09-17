@@ -11,6 +11,7 @@ from .consensus import CandidateRead, Consensus, ReadCache, choose_read
 from .decoder import RoiDecoder
 from .line_selection import LineSelectionPolicy
 from .models import Check, EngineRead, OcrError, RoiFrame, Selection, VisualDecision
+from .punctuation_consensus import POLICY, choose_witnessed_read
 from .tracking import RegionTracker, TrackedRegion
 
 
@@ -54,11 +55,15 @@ class OcrPipeline:
     def __init__(self, recognizer: Recognizer, cache: ReadCache, *, check: Check = lambda: None,
                  line_selection: LineSelectionPolicy | None = None,
                  visual_reader: Callable[[RoiFrame, EngineRead | None], VisualDecision] | None = None,
-                 frame_progress: Callable[[Fraction], None] = lambda _: None):
+                 frame_progress: Callable[[Fraction], None] = lambda _: None,
+                 consensus_policy: str = "exact-read-uncalibrated-v1"):
         self.recognizer, self.cache, self.check = recognizer, cache, check
         self.line_selection = line_selection
         self.visual_reader = visual_reader
         self.frame_progress = frame_progress
+        if consensus_policy not in ("exact-read-uncalibrated-v1", POLICY):
+            raise OcrError("Unknown OCR consensus policy")
+        self.consensus_policy = consensus_policy
         self.metrics = PipelineMetrics()
         self.started = False
 
@@ -83,7 +88,9 @@ class OcrPipeline:
                 self.metrics.cache_hits += 1
             indices = self.line_selection.select(raw, frame.height) if self.line_selection else None
             reads.append(CandidateRead(frame.pts, crop_hash, raw, hit, indices))
-        result = RegionResult(region.start_ms, region.end_ms, tuple(reads), choose_read(tuple(reads)),
+        consensus = (choose_witnessed_read(tuple(reads), region.candidates) if self.consensus_policy == POLICY
+                     else choose_read(tuple(reads)))
+        result = RegionResult(region.start_ms, region.end_ms, tuple(reads), consensus,
                               region.issues, region.start_window_ms, region.end_window_ms,
                               region.first_pts, region.last_pts)
         self.metrics.tracks += 1

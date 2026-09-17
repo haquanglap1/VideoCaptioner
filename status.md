@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-09-17 (OCR chọn dấu cuối có bằng chứng ảnh; quality gates vẫn mở)
+
+- Baseline `62e852a` khớp remote, working tree ban đầu sạch; audit
+  `.tools/ocr-asr-quality-20260917-112253/` verify 29 file và bảo vệ 224 file.
+- Thêm opt-in `--consensus punctuation-v2` / `witnessed-punctuation-v2`.
+  Chọn nguyên raw candidate có cụm dấu cuối chỉ khi hai ảnh cùng chứng minh
+  nét dấu sáng/gọn ngoài bbox bị cắt. Không thay tracking worker v1/v2/v3,
+  dictionary, mặc định, raw hoặc export guard. GUI resume giữ consensus đã lưu.
+- Regression selection và GUI resume đều fail trước sửa. Final scope:
+  **337 OCR/GUI passed, 7 deselected**, **243 ASR/CLI passed**; Ruff, Pyright
+  0 errors/0 warnings, translation sync pass. Không chạy full offline/EXE.
+- CLI thật một lượt/window: D1 2 cue, 6 recognition/0 cache, 86,516 s; D2 4 cue,
+  11 recognition/0 cache, 123,391 s. D2 lấy lại dấu cuối, thán từ vẫn thiếu.
+  Recognition diagnostic riêng: PP-OCRv4 có dictionary coverage nhưng 2 crop
+  vẫn đọc sai, không tích hợp; V5 thiếu glyph nên không inference.
+- Qwen D3 dùng audio gốc cùng đoạn 107–126 s, một request/0 cache, 33,812 s;
+  giữ nguyên filtered dump và reuse Whisper VAD-on. Lời sai/lặp/đuôi vẫn còn,
+  reference unknown; không CER/WER, alignment, tách vocals lại hoặc audio upload.
+- Domain roundtrip D1/D2 và 33 cue ASR giữ text/ms/IDs/metadata. Native Editor
+  mở/phát/lưu/mở lại D2 thật, giữ 4 cue. Playback dừng ở 74,539 s: vô tình xem
+  539 ms đầu H1; H1 không còn hoàn toàn unseen, không gọi holdout protocol pass.
+  Native OCR source-to-result/cancel cuối chưa chạy; quality P1/P2 chưa đạt.
+  Chi tiết hashes, counts và giới hạn trong [báo cáo](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-16 (OCR D2 tracking v3, Qwen context và dictionary coverage)
 
 - Xác minh `46d457e` trùng remote, source/runtime hashes và hai stash; audit mới

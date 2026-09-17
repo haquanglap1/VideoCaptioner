@@ -153,10 +153,11 @@ def test_dialog_open_is_lazy_and_roi_drag_respects_letterbox(qapp, monkeypatch):
 
 
 @pytest.mark.parametrize("mismatch", [False, True])
-def test_open_checkpoint_resume_uses_saved_settings_and_keeps_review(qapp, tmp_path, monkeypatch, mismatch):
+@pytest.mark.parametrize("consensus", ["exact-read-uncalibrated-v1", "witnessed-punctuation-v2"])
+def test_open_checkpoint_resume_uses_saved_settings_and_keeps_review(qapp, tmp_path, monkeypatch, mismatch, consensus):
     from PyQt5.QtCore import QThread
 
-    document = replace(make_document(), complete=False)
+    document = replace(make_document(consensus_policy=consensus), complete=False)
     checkpoint = tmp_path / "saved.json"
     document.save(checkpoint)
     original = checkpoint.read_bytes()
@@ -164,7 +165,9 @@ def test_open_checkpoint_resume_uses_saved_settings_and_keeps_review(qapp, tmp_p
     monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.QFileDialog.getOpenFileName",
                         lambda *_: (str(checkpoint), "JSON"))
     monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.verify_visual_file", lambda *_a, **_k: None)
-    installed = replace(document.config, bridge_sha256="f" * 64) if mismatch else document.config
+    installed = replace(document.config, consensus_policy="exact-read-uncalibrated-v1")
+    if mismatch:
+        installed = replace(installed, bridge_sha256="f" * 64)
     monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.inspect_installation",
                         lambda *_: SimpleNamespace(config=lambda *_: installed, root=tmp_path, bridge=tmp_path / "bridge.py"))
 

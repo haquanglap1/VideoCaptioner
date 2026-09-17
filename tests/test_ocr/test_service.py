@@ -92,8 +92,9 @@ def test_failed_scan_keeps_incomplete_checkpoint(make_video, text_image, ffmpeg_
 
 @pytest.mark.parametrize("explicit_sha", [True, False])
 @pytest.mark.parametrize("checkpoint_flag", ["--checkpoint", "--review", None])
+@pytest.mark.parametrize("consensus", ["exact-v1", "punctuation-v2"])
 def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text_image, ffmpeg_tools, tmp_path, monkeypatch,
-                                                              explicit_sha, checkpoint_flag):
+                                                              explicit_sha, checkpoint_flag, consensus):
     ffmpeg, ffprobe = ffmpeg_tools
     source = make_video([text_image(""), text_image(), text_image(), text_image("")])
     root = tmp_path / "runtime"
@@ -139,6 +140,8 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
                  "--ffmpeg", ffmpeg, "--ffprobe", ffprobe, "-o", str(output_path)]
     if explicit_sha:
         arguments += ["--line-anchors", "0.5"]
+    if consensus != "exact-v1":
+        arguments += ["--consensus", consensus]
     if checkpoint_flag:
         arguments += [checkpoint_flag, str(review_path)]
     if not explicit_sha:
@@ -150,6 +153,8 @@ def test_cli_scan_review_resume_export_no_recognition_on_resume(make_video, text
     assert data.segments[0].text == raw.text
     assert data.segments[0].ocr_metadata.observations[0].selected_candidate_id is None
     assert data.segments[0].ocr_metadata.config.line_selection == (LineSelectionPolicy() if explicit_sha else None)
+    assert data.segments[0].ocr_metadata.config.consensus_policy == (
+        "witnessed-punctuation-v2" if consensus == "punctuation-v2" else "exact-read-uncalibrated-v1")
     assert review_path.is_file() == bool(checkpoint_flag)
     # OCR defaults keep measured cues/text without approval or optimize/split.
     srt = tmp_path / "captions.srt"

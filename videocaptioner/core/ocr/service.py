@@ -65,7 +65,8 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
                     progress(min(99, percent), f"Đang theo dõi hình chữ: {float(end_ms) / 1000:.2f}s.")
 
             pipeline = OcrPipeline(recognizer, cache, check=check, line_selection=config.line_selection,
-                                   visual_reader=visual_reader, frame_progress=frame_progress)
+                                   visual_reader=visual_reader, frame_progress=frame_progress,
+                                   consensus_policy=config.consensus_policy)
             try:
                 if boundary:
                     position = boundary.start_ms if boundary.start_ms is not None else config.selection.start_ms

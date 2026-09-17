@@ -1,5 +1,120 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — tiếp tục từ `62e852a`: chọn dấu cuối, loại candidate recognition
+
+Audit mới: `.tools/ocr-asr-quality-20260917-112253/`. Kiểm live HEAD/remote/index/
+diff/stash trước sửa; 29 source/runtime/input files đúng hash, 224 file bảo vệ.
+Snapshot từ đúng HEAD, sync allowlist trước kiểm; settings/cache/log/temp/HF/Torch/UV
+nằm trong audit. Không đổi runtime đã có hoặc cài package global.
+
+### Dictionary và recognition
+
+- PP-OCRv6 medium metadata có 18.708 entry, output 18.710 class; thiếu `诶`.
+  Dictionary PP-OCRv5 upstream cũng thiếu glyph này, nên không tải model V5.
+- Một giả thuyết: Chinese PP-OCRv4 có glyph cần đọc. Dictionary 6.623 entry,
+  model output 6.625 class; verify embedded metadata trước inference. Chỉ tải
+  recognizer còn thiếu vào audit, reuse Python/ONNX CPU runtime đã có.
+  Model SHA `6a2676219be9907c7fc9cf61ebaa843bf2898777def567925b78886fcd90c07a`
+  khớp [manifest RapidOCR](https://github.com/RapidAI/RapidOCR/blob/main/python/rapidocr/default_models.yaml).
+- Khóa hai crop raw cùng hash với probe trước, cap 2 recognizer batches/120 s,
+  không retry inference. Cả hai vẫn sai glyph; crop sau còn kém phần cuối.
+  **Loại candidate, không tích hợp V4**. Dictionary coverage là điều kiện cần,
+  không phải accuracy pass. Một lỗi harness thiếu `font_path` xảy ra trước inference;
+  lần sửa API mới thực hiện đúng 2 batches/0 cache. Không lặp probes contrast/padding.
+
+### Consensus có bằng chứng ảnh, giữ tracking v3
+
+Ảnh PTS 1006400 và 1007467 đều có cụm dấu cuối; detector ở ảnh đầu chỉ tới x=960,
+ảnh sau tới x=1012. Hai raw khác dấu, count hòa nhau; v1 chọn raw thiếu dấu do
+confidence cao hơn. Synthetic regression tái hiện fail trước sửa, không đưa crop/
+transcript của user vào fixture.
+
+Thêm `witnessed-punctuation-v2`, opt-in CLI `--consensus punctuation-v2`.
+Chỉ chọn **nguyên một raw read** có suffix dot/ellipsis, cùng body, bbox cùng hàng
+mở rộng sang phải, cùng revision và đúng frame hash. Ảnh ở cả hai candidate phải
+có đúng số component sáng/gọn khớp vị trí; fade, blank, thiếu/thêm/đổi vị trí dấu,
+đổi body hoặc nhiều dòng không được nâng candidate theo heuristic này.
+Disagreement và uncalibrated flags vẫn giữ; không ghép text/merge cue/bỏ guard.
+Mặc định `exact-v1` và toàn bộ bytes worker v1/v2/v3 không đổi.
+
+Replay đầu dùng ngưỡng sáng thấp bị lẫn nền vào hai dot component và không chọn
+candidate. Tách phần sáng của nét khôi phục 6 component trên cả hai ảnh; replay
+cuối đổi đúng raw candidate, **0 inference**. Đây là heuristic hẹp của pilot,
+chưa hiệu chuẩn cho nền sáng, màu chữ, font, dấu khác hoặc thay đổi nhỏ không có
+trong candidate frames; không tuyên bố sửa mọi lỗi punctuation/tracking.
+
+Policy nằm trong config/document/cache identity, không migrate checkpoint cũ.
+GUI resume trước sửa tái tạo consensus mặc định rồi từ chối checkpoint v2;
+regression fail đúng ca này, sửa giữ policy đã lưu mà vẫn kiểm profile/worker.
+Test harness GUI đầu tạo checkpoint rỗng gây thêm một failure không liên quan;
+đã sửa fixture trước khi chốt regression thực và giữ log cả hai attempts.
+
+| CLI thật, một lượt/window | Cue | Fresh/cache | Tracking/feature batches | Wall | Complete/export |
+|---|---:|---:|---:|---:|---|
+| D1 28,8–32,3 s | 2 | 6/0 | 105/231 | 86,516 s | true/exit0 |
+| D2 57–63 s | 4 | 11/0 | 180/287 | 123,391 s | true/exit0 |
+
+Cap khóa trước chạy: 40 recognition và 360 s/window. D1 text/biên giữ nguyên;
+D2 giữ biên, lấy lại dấu cuối. Thán từ thiếu vẫn **unresolved**, P1 chưa pass.
+17 recognition request window riêng với 2 diagnostic recognizer batches;
+actual window recognizer attempts 12+14, detector attempts 111+191.
+Tracking/feature batches không cộng vào recognition. Không mở lại window cùng config.
+
+Final consensus source SHA:
+`7464cfa5950da83df0f1f88666c4fb59a03b5e6688b71174fdf29bea954961d1`.
+Worker v3 vẫn `9bef0946f8456c9f7e4a36f49feba0555f61540dfc8f45eea4f6f94375931447`.
+`ocr-consensus-v2/plan.json` và checkpoints giữ đúng bytes đã đo. Phiên sau đổi
+semantics consensus cần version mới, giữ đường resume của version đã commit.
+
+### ASR D3 độc lập
+
+Giả thuyết mới: so Qwen trên audio gốc và filtered dump **cùng 107–126 s** để
+kiểm ảnh hưởng preprocessing tới lời lặp/đuôi lẻ. Khóa input hash/WAV info/config/
+budget trong `asr-original/plan-locked.json` trước request; verify runtime Qwen
+cùng pin `7278e1e70fe206f11671096ffdd38061171dd6e5`. Reuse raw Qwen filtered và
+Whisper VAD-on original/filtered; không chạy lại các baseline hoặc Kim_Vocal_2.
+
+Đúng **1 request mới/0 cache, 33,812 s**, cap stage 180 s/wall 240 s. Request WAV
+SHA `4e02d2ccfa4452bf28e1cdeeb6eadb3e62ccacd20174e3dd1d115049b96dd36c`.
+Lời lặp đổi nội dung, đuôi đáng ngờ vẫn tồn tại. Chưa có independent listening
+reference; giữ `unknown`, không kết luận preprocessing/model thắng, không CER/WER,
+alignment hay ghép text với timing engine khác. Không upload audio/OCR prompt.
+
+### Validation, native và gate còn mở
+
+- Final OCR/GUI scope **337 passed, 7 deselected**; ASR/CLI **243 passed**.
+  Test mới gần consensus 16 ca được tính trong 337, không cộng trùng.
+  Ruff pass, Pyright 0 errors/0 warnings, translation sync pass.
+  Worker/model không đổi; 7 real-model regressions của audit trước được reuse
+  theo hash, không gọi là 7 inference tests mới trong phiên này.
+- Domain/CLI D1 2 cue, D2 4 cue và ASR baseline 33 cue giữ text/ms/IDs/metadata
+  qua table/handoff/undo và hai vòng save/reopen. SRT giữ text/time.
+- Qua Computer Use, native Editor mở project D2 được tạo từ CLI candidate,
+  phát video thật (quan sát frame và clock tiến từ 57,267 s tới 65,947 s),
+  lưu JSON+SRT rồi mở lại đủ 4 cue. Artifact sau native save giữ đúng text/ms/
+  IDs/metadata. Không coi thao tác này là native OCR source-to-result workflow
+  hoặc xác nhận nghe tiếng Trung, EXE hay inference toàn video.
+- **Sai lệch protocol:** click pause khi clock khoảng 73,940 s, dừng thực ở
+  **74,539 s**; preview đã lấn 539 ms vào H1 74–94 s. H1 không còn hoàn toàn
+  unseen; phải ghi contamination hoặc khóa đoạn thay thế trước phép đo holdout
+  tương lai. Không có inference trên H1/H2; không tự coi phần còn lại là holdout pass.
+- Native OCR cancel trên candidate cuối chưa chạy; giữ nguyên vi phạm 33,740 s
+  so budget 30 s của audit trước, không đổi thành pass. Service/CLI cancellation
+  cuối dừng sau 8 tracking/0 recognition/0 feature batches, 18,047 s dưới cap 30 s;
+  giữ partial và từ chối export với exit5. Receipt riêng `guard-checks/` không đại
+  diện thao tác nút native.
+- P1 glyph/text và P2 speech reference vẫn mở. Holdout inference, whole-video,
+  full offline, build/EXE, TTS **NOT RUN**. Sáu câu Việt, voice B, media/models/
+  raw/settings và hai stash được bảo vệ; chưa merge `master`.
+
+Evidence chính: `dictionary-inventory.json`, `recognizer-v4-{plan,coverage,results}.json`,
+`consensus-bright-replay.json`, `ocr-consensus-v2/`, `asr-original/`,
+`p3-roundtrip-consensus/`, `native/results.json`, `run-ledger.jsonl`, `review.json`,
+`preservation-check.json`, `publication.json`. Failed harness attempts còn trong log;
+không tính chúng thành inference pass. Nhánh tiếp theo cần recognizer có coverage
+và accuracy trên glyph nhỏ hoặc reference audio đủ tin cậy; không lặp V4/raw hay
+Qwen D3 original vừa chạy để chọn output đẹp.
+
 ## Tiếp tục từ `46d457e`: tracking D2 đã sửa, text gate còn mở
 
 Audit tiếp theo: `.tools/ocr-asr-quality-20260916-213401/`. Source SHA, 28 file

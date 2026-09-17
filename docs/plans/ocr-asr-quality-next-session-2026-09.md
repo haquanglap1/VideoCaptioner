@@ -1,5 +1,21 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+> Cập nhật 2026-09-17 sau baseline `62e852a`: audit mới nhất
+> `.tools/ocr-asr-quality-20260917-112253/`; đọc section 2026-09-17 trong báo cáo.
+> `--tracking characters-v3 --consensus punctuation-v2` giữ raw đầy đủ dấu cuối D2
+> bằng bằng chứng nét dấu trên hai ảnh; D1 2 cue/6 request, D2 4 cue/11 request,
+> 0 cache. Tracking worker v3 nguyên hash; consensus mới có version/identity riêng.
+> Thán từ vẫn thiếu: V4 có dictionary coverage nhưng 2 crop đọc sai, đã loại;
+> V5 thiếu glyph, không tải/inference. Không lặp các probes/candidate đó.
+> Qwen đã dùng thêm 1 request D3 original 107–126 s, vẫn còn lời lặp/đuôi đáng ngờ;
+> giữ original và filtered dump độc lập, không tách vocals lại/không alignment.
+> Native Editor D2 đã mở/phát/lưu/mở lại, nhưng pause dừng ở 74,539 s làm lộ 539 ms
+> đầu H1. H1 phải mang nhãn contaminated hoặc được thay trước validation tương lai;
+> chưa có inference holdout. Native OCR full workflow/cancel cuối còn mở.
+> 337 OCR/GUI và 243 ASR/CLI pass, Ruff/Pyright/translations pass; quality P1/P2
+> vẫn chưa đạt nên không mở whole-video/EXE/TTS. Live HEAD/remote/stashes phải kiểm
+> lại; các baseline và section v1/v2/v3 bên dưới chỉ là lịch sử.
+
 > Cập nhật sau lượt tiếp tục từ `46d457e`: audit mới nhất là
 > `.tools/ocr-asr-quality-20260916-213401/`; đọc section mới đầu
 > `docs/dev/ocr-asr-quality-first-results-2026-09.md` trước các mục lịch sử bên dưới.

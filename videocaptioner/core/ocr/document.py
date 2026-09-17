@@ -32,7 +32,7 @@ class OcrConfig:
     bridge_sha256: str
     language: str = "zh"
     tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
-    consensus_policy: Literal["exact-read-uncalibrated-v1"] = "exact-read-uncalibrated-v1"
+    consensus_policy: Literal["exact-read-uncalibrated-v1", "witnessed-punctuation-v2"] = "exact-read-uncalibrated-v1"
     profile_snapshot: OcrProfileSnapshot | None = None
     # Omission preserves the serialized config and IDs of all existing documents.
     line_selection: LineSelectionPolicy | None = field(default=None, metadata={"omit_none": True})
@@ -40,6 +40,8 @@ class OcrConfig:
     def __post_init__(self) -> None:
         sha256(self.profile_sha256)
         sha256(self.bridge_sha256)
+        if self.consensus_policy not in ("exact-read-uncalibrated-v1", "witnessed-punctuation-v2"):
+            raise OcrError("Unknown OCR consensus policy")
         if self.line_selection is not None and not isinstance(self.line_selection, LineSelectionPolicy):
             raise OcrError("Invalid OCR line selection policy")
         if self.language != "zh":

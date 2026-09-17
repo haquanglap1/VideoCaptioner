@@ -93,7 +93,10 @@ def run(args: Namespace, config: dict) -> int:
                              hashlib.sha256(bridge.read_bytes()).hexdigest(), args.language,
                              profile_snapshot=OcrProfileSnapshot.from_bytes((root / "profile.json").read_bytes(),
                                                                             expected), line_selection=line_selection,
-                             tracking_policy=tracking)
+                             tracking_policy=tracking,
+                             consensus_policy=("witnessed-punctuation-v2"
+                                               if getattr(args, "consensus", "exact-v1") == "punctuation-v2"
+                                               else "exact-read-uncalibrated-v1"))
     except OcrError as exc:
         output.error(str(exc))
         return EXIT.USAGE_ERROR
