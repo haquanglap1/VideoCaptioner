@@ -227,6 +227,42 @@ def test_results_export_without_approval_and_details_are_optional(qapp):
     dialog.close()
 
 
+@pytest.mark.parametrize("complete", [False, True])
+def test_open_checkpoint_restores_selection_and_roi_controls(qapp, tmp_path, monkeypatch, complete):
+    from videocaptioner.core.ocr.geometry import Roi
+
+    document = replace(make_document(), complete=complete)
+    checkpoint = tmp_path / "saved.json"
+    document.save(checkpoint)
+    original = checkpoint.read_bytes()
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.QFileDialog.getOpenFileName",
+                        lambda *_: (str(checkpoint), "JSON"))
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.verify_visual_file", lambda *_a, **_k: None)
+    dialog = OcrDialog(source="synthetic.mov")
+    dialog.position_ms.setValue(99000)
+    stale_roi = Roi(.1, .2, .3, .4)
+    dialog.canvas.roi = stale_roi
+    dialog.roi_changed(stale_roi)
+    dialog.load_review()
+    wait_worker(dialog.worker)
+    qapp.processEvents()
+    try:
+        selection = document.config.selection
+        assert (dialog.start_ms.value(), dialog.end_ms.value()) == (selection.start_ms, selection.end_ms)
+        assert dialog.position_ms.value() == selection.start_ms
+        roi = document.config.roi
+        assert [spin.value() for spin in dialog.roi_values] == [roi.x, roi.y, roi.width, roi.height]
+        assert dialog.canvas.roi == roi
+        assert dialog.session.document == document
+        assert dialog.resume_button.isEnabled() == (not complete)
+        assert not dialog.scan_button.isEnabled()  # Loading data must not manufacture a verified preview.
+        assert checkpoint.read_bytes() == original
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
 @pytest.mark.parametrize("handoff", [False, True])
 @pytest.mark.parametrize("source_mismatch", [False, True])
 def test_direct_export_verifies_source_in_worker_and_preserves_raw(qapp, tmp_path, monkeypatch,

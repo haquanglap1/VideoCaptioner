@@ -403,6 +403,16 @@ class OcrDialog(QDialog):
     def accept_document(self, document):
         self.session = OcrReviewSession(document)
         self.review_path = None
+        selection = document.config.selection
+        self.start_ms.setValue(selection.start_ms)
+        self.end_ms.setValue(selection.end_ms)
+        self.position_ms.setValue(selection.start_ms)
+        self.canvas.roi = document.config.roi
+        roi = document.config.roi
+        # Rebuild candidates before refreshing controls that read their IDs.
+        for spin, value in zip(self.roi_values, (roi.x, roi.y, roi.width, roi.height)):
+            spin.setValue(value)
+        self.canvas.update()
         policy = document.config.line_selection
         if policy:
             self.line_anchors.setText(",".join(f"{y * 100:g}" for y in policy.anchors))

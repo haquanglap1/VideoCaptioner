@@ -1,5 +1,27 @@
 # Project Status
 
+## 2026-09-17 (native OCR → editor giữ dữ liệu; sửa controls khi mở checkpoint)
+
+- Audit `.tools/native-roundtrip-20260917-223430/`, từ `0bbda7d`; snapshot
+  **770 file đúng bytes**, verify 7.029 hash cũ, bảo vệ 7.068 file và 16 media
+  cache files cũ riêng. Mọi settings/cache/output của app được cô lập trong audit.
+- GUI source thật mở D2 đã lưu, hiển thị 4 cue, lưu checkpoint, chuyển bảng
+  phụ đề → Video Editor, sửa marker → Undo/Redo/Undo, lưu/mở lại project hai
+  vòng. Text/ms/IDs/raw giữ; project JSON và SRT **giữ exact bytes giữa hai vòng**.
+- Phát hiện và sửa `OcrDialog.accept_document`: Đầu/Cuối, Xem tại và ROI
+  trước đó vẫn hiển thị giá trị cũ/default. Bản sửa lấy đúng selection/ROI
+  trong checkpoint; không sửa document, worker, policy/default hoặc parser.
+- Native sau sửa mở lại checkpoint vừa lưu: đúng **57000–63000 ms**, vị trí
+  **57000**, ROI **0.05/0.88/0.90/0.10**, đủ 4 cue; lưu lại giữ exact bytes.
+- **64 tests pass**, gồm 2 regression red-before-fix; Ruff/Pyright/translation
+  sync pass. **24 native artifact checks pass**. Hai GUI gate exit0; giữ lỗi
+  harness trước event loop và lỗi của bản sửa trung gian, không gọi chúng là pass.
+- **0 OCR/ASR/VAD/translation/TTS inference mới**, không playback/holdout mới;
+  reuse waveform/thumbnails cũ. Đây là native saved-data workflow D2, chưa phải
+  fresh recognition/cancel GPU/EXE acceptance. ASR D1/P2 unresolved, D3 FAIL giữ.
+- Dọn 394 cache/temp files mới, **1.842.398 bytes**, không lỗi; giữ evidence,
+  model/raw, sáu câu Việt/recipe B và hai stash. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (ASR D1 prefix: không lấy được lexical evidence; onset vẫn chưa rõ)
 
 - Audit `.tools/asr-d1-prefix-20260917-220411/`, từ `6bd2743` sạch/khớp remote;

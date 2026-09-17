@@ -1,5 +1,51 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — native D2 giữ dữ liệu; UI checkpoint đã sửa
+
+Audit **`.tools/native-roundtrip-20260917-223430/`**, bắt đầu `0bbda7d`;
+đọc `publication.json` và Git live cho commit mới. Phiên này **có sửa app UI**:
+`OcrDialog.accept_document` đồng bộ Đầu/Cuối, Xem tại và ROI từ checkpoint.
+ASR/OCR worker, default, parser, tracking v3/consensus punctuation-v2 không đổi.
+
+- Native source bằng Computer Use: mở D2 complete đã lưu, 4 cue → lưu OCR
+  JSON → bảng phụ đề → Video Editor → sửa marker/Undo/Redo/Undo → hai vòng
+  save/reopen. Text/ms/IDs/raw giữ; project JSON và SRT giữ exact bytes.
+- Đã phát hiện controls vẫn hiện 0–60000 ms/ROI toàn ảnh dù checkpoint D2
+  là 57000–63000 ms. Hai regression complete/partial fail trước sửa.
+  Bản sửa trung gian refresh sớm gặp stale candidate ID; test bắt và đã sửa.
+- **64 tests pass, 1 warning**, gồm hai tests mới; Ruff/Pyright/translation sync
+  pass. **24 final native artifact checks pass**. Không cộng tests lịch sử.
+- Native sau sửa mở chính checkpoint vừa lưu: controls đúng **57000–63000**,
+  Xem tại **57000**, ROI **0.05/0.88/0.90/0.10**, đủ 4 cue; resave exact bytes.
+  Scan không tự bật khi thiếu preview. Full editor roundtrip đo trước UI fix;
+  sau fix kiểm riêng native checkpoint reopen/resave và controls, không nói quá gate.
+- Hai GUI gate exit0, **790,984 s / 252,750 s**. Harness đầu fail trước event
+  loop do `QApplication.exec_` sai tham số, 2,250 s; giữ log/code. Giữ verifier
+  fail do relative path và đếm snapshots thay cho Undo transitions; final sửa
+  phép kiểm, không thay raw hoặc lặp GUI. Modal UIA focus/coordinates có sai lệch;
+  quan sát screenshot và dùng bàn phím, đường dẫn file dialog dùng backslash.
+- Verify **7.029 prior hashes**, bảo vệ **7.068 file + 16 media cache files**;
+  snapshot **770 file** đúng bytes. Initial code nằm trong `measured-baseline/`,
+  snapshot hiện là final code; mỗi gate có hashes riêng. Không dùng số 764 cũ
+  thay inventory snapshot hiện tại. Giữ model/raw, sáu câu Việt/recipe B, hai stash.
+- **0 recognition/VAD/translation/TTS mới**, không playback/holdout mới.
+  Reuse waveform/thumbnails cũ. Qwen tổng14, SenseVoice tổng1; Whisper prefix
+  của phiên trước vẫn là lịch sử, không chạy lại. ASR **D1/P2 unresolved, D3 FAIL**.
+- Dọn **394 cache/temp files / 1.842.398 bytes**, không lỗi; giữ required
+  evidence và 16 cached-media files. Không retry cleanup audit cũ bị policy chặn.
+
+Đọc `native-plan-locked.json`, `native-harness-amendment.json`, snapshot gates,
+`native-v2-receipt.json`, `fixed-native-plan.json`, `native-fixed-receipt.json`,
+`native-verification-final.json`, `observations*/`, `outputs/`, `screenshots/`,
+regression/scoped logs, `quality-checks.json`, `pyright-final.log`, cleanup,
+preservation và `publication.json`. Đây là **D2 saved-data native pass**, chưa
+fresh OCR source-to-result, cancel GPU thật, holdout, whole-video, EXE hay TTS.
+
+Bước tiếp ưu tiên ASR D3 theo evidence/hypothesis có căn cứ riêng. Không cần lặp
+native roundtrip vừa pass nếu không có code change hoặc lỗi mới. Không lặp D1
+prefix/context, VAD cũ, SenseVoice/beam5/chunk7s; không sweep hoặc sửa raw bằng
+caption. Giữ quyền local/commit/push allowlist; không merge/reset/clean/động stash.
+
 ## Bàn giao mới nhất — D1 prefix Whisper không lấy được lexical evidence
 
 Ưu tiên ASR; giữ OCR hiện có. Audit **`.tools/asr-d1-prefix-20260917-220411/`**,

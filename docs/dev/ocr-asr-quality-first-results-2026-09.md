@@ -1,5 +1,75 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — Native saved-data D2 pass; sửa controls của checkpoint OCR
+
+Audit `.tools/native-roundtrip-20260917-223430/`, bắt đầu từ `0bbda7d` sạch.
+Copy **770 file đúng bytes** từ checkout, gồm `_version.py` sẵn có, không sinh
+lại. Verify **7.029 prior hashes**, bảo vệ **7.068 file** và kiểm riêng **16 file
+media cache cũ**. Settings/log/cache/output thuộc audit; source/model/raw cũ chỉ đọc.
+
+### Luồng GUI source đã thực hiện
+
+Dùng `computer-use:computer-use` thao tác cửa sổ app thật. MainWindow và các
+callback mở/lưu/handoff/edit/undo giữ code app; harness chỉ quan sát trạng thái,
+chặn `OcrThread.start` nếu vô tình nhận dạng. Không preload checkpoint thay cho
+thao tác mở native. Chọn D2 trước khi chạy: checkpoint complete, **4 cue**, giữ
+tracking v3/consensus punctuation-v2 và raw PaddleOCR-VL đã có.
+
+1. Chọn source, mở checkpoint bằng file dialog và để app xác minh source.
+2. Lưu checkpoint mới, chuyển JSON sang bảng phụ đề rồi Video Editor.
+3. Thay riêng display text cue đầu bằng marker ASCII, Apply → Undo → Redo → Undo.
+4. Lưu project JSON + SRT, mở lại, lưu lần hai rồi mở lại lần hai.
+
+Bảng phụ đề và editor giữ đủ 4 cue, text, canonical ms, IDs, OCR metadata/raw.
+Chỉnh sửa chỉ đổi display text đã chọn; hai lần Undo khôi phục exact cues.
+**Project JSON và SRT giữ exact bytes giữa hai vòng lưu.** Không ghép text
+với timing khác nguồn, không dịch hoặc ghi marker vào output cuối.
+
+### Lỗi UI được sửa và kiểm lại
+
+Khi mở D2, dữ liệu đúng nhưng controls vẫn hiện **0–60000 ms** và ROI toàn ảnh.
+`accept_document` trước đó chỉ khôi phục line anchors/tracking checkbox. Bản sửa
+đồng bộ Đầu/Cuối, Xem tại và ROI số/canvas từ `document.config`, rồi mới refresh
+candidate controls. Document/policy/worker/default/parser không đổi.
+
+Hai synthetic regressions cho complete/partial đều fail trước sửa. Bản sửa
+trung gian refresh quá sớm gặp stale candidate ID khi đổi document; test có sẵn
+bắt được lỗi đó. Final **64 passed, 1 warning** cho UI OCR/assistance/document/
+resume, gồm hai regression mới; Ruff, Pyright **0 errors/0 warnings**, translation
+sync pass. Pyright lần đầu cảnh báo đường dẫn venv của snapshot; lần cuối chỉ rõ
+venv gốc, không cài hoặc nâng dependency.
+
+Native sau sửa mở lại chính checkpoint vừa lưu ở bước 2: controls đúng
+**57000–63000 ms**, Xem tại **57000 ms**, ROI **0.05/0.88/0.90/0.10**, đủ 4 cue.
+Scan vẫn disabled khi chưa có preview được xác minh; mở dữ liệu không nạp model.
+Lưu checkpoint sau sửa giữ exact bytes với file trước sửa. Full editor workflow
+ở trên đo trước UI fix; sau fix kiểm riêng native reopen/resave và controls.
+
+**24 final native artifact checks pass.** Hai GUI gate exit0, lần lượt
+**790,984 s** và **252,750 s**, không timeout; tổng **1043,734 s**. Lần harness
+đầu exit1 sau 2,250 s trước event loop do truyền sai tham số `QApplication.exec_`;
+giữ code/log/receipt và sửa observer riêng, không coi là app crash. Giữ cả verifier
+ban đầu: một lệnh sai relative path chưa chạy, một assertion đếm nhầm snapshots
+redo-enabled thành số lần Undo; final kiểm hai state transitions và exact data,
+không replay GUI để chọn kết quả. UIA focus/coordinates ở modal không đáng tin
+trên màn hình này; dùng screenshot và bàn phím, không sửa app để né tool.
+
+### Phạm vi và bàn giao
+
+**0 OCR/ASR/VAD/translation/TTS inference mới**, không playback hoặc holdout
+navigation. Waveform/thumbnails reuse 16 file cũ đúng hash; editor player giữ
+stopped, vị trí 0, viewport trước H1. Giữ contamination/exposure lịch sử H1/H2.
+Không đánh đồng saved-data GUI pass với recognition accuracy, fresh full native
+OCR, real GPU cancellation, toàn video, full offline suite, EXE hoặc TTS.
+**D1/P2 unresolved, D3 content FAIL**; OCR text D2 còn lỗi đã biết, chưa accuracy mới.
+
+Đã dọn **394 cache/temp files / 1.842.398 bytes**, không lỗi; giữ snapshot,
+observations/screenshots, raw/output và 16 cached-media files dùng làm evidence.
+Không thử lại cleanup audit cũ. Đọc `native-plan-locked.json`, harness amendment,
+`native-v2-receipt.json`, `fixed-native-plan.json`, `native-fixed-receipt.json`,
+`native-verification-final.json`, `observations*/`, `outputs/`, `screenshots/`,
+regression/scoped logs, quality checks, cleanup/preservation và `publication.json`.
+
 ## 2026-09-17 — Whisper trên prefix D1 không cung cấp lexical evidence
 
 Audit `.tools/asr-d1-prefix-20260917-220411/`, từ `6bd2743` sạch/khớp remote.
