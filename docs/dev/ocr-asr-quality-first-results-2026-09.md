@@ -1,5 +1,76 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — Whisper trên prefix D1 không cung cấp lexical evidence
+
+Audit `.tools/asr-d1-prefix-20260917-220411/`, từ `6bd2743` sạch/khớp remote.
+Verify **6.995 hash cũ**, bảo vệ **7.029 file**, baseline **764 tracked file**.
+App implementation `6db7921` giữ nguyên; không chạy app hoặc tạo snapshot mới.
+
+### Diagnostic khóa trước inference
+
+Acoustic evidence cũ đặt hoạt động dự đoán qua cut 27 s. Hypothesis mới kiểm
+xem riêng audio trước cut có tạo được lexical evidence cho lời mở đầu hay không.
+Lấy đúng **48.000 samples mono s16/16 kHz**, khoảng nửa mở **[24,27) s**, từ
+192.000 samples context đã lưu; không resample/filter/separation/padding.
+WAV SHA `7a2eadfeeac6d0d689b9bef4d33cc9b071c2cda408b7600744c7032519fa99ae`.
+Đây là diagnostic prefix cố ý bị cắt, không phải policy cắt ngắn mới hoặc phép
+so sánh accuracy giữa engine. Lượt Qwen context cũ không được chạy lại.
+
+Reuse native Faster-Whisper-XXL và **large-v3** đã có; weights SHA
+`69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1`.
+Inventory/hash **5.130 file** của tools/model; không cài/tải mới. Cấu hình được
+kiểm qua `--help` của executable thực: CUDA FP16, Chinese, Silero v3 CPU,
+threshold 0,5, temperature 0, **temperature fallback None**, 5 beams, token cap 64,
+word timestamps false, không prompt/hotword/context text. Cap **1 native task /
+120 s / 0 retry**. AI visual reference cũ được đọc lại trước candidate; có prior
+exposure, không phải independent listening. Không đưa chữ đó vào command.
+
+### Kết quả và cách hiểu
+
+Process **27,219 s**, exit0; model load theo log **1,96 s**, native operation
+**25,694 s**, VAD **0,134 s**. Native VAD giữ local **1,788–3,000 s** trong prefix,
+tương ứng source **25,788–27,000 s**. Đây là một VAD invocation trên input mới,
+không replay stream 24–36 s cũ; số VAD forward nội bộ không được executable lộ ra.
+Log có một processing segment; không coi đó là chứng minh mọi internal decoder call.
+
+Raw sinh một câu kêu gọi like/subscribe thay vì lời mở đầu cần kiểm. Giữ native
+JSON/TXT/log/token IDs đầy đủ trong audit. **Diagnostic FAIL: không có lexical
+evidence đáng tin; true onset INCONCLUSIVE.** Output có biểu hiện hallucination,
+chưa có independent listening để chấm speech truth. Native avg_logprob
+**−0,217831**, no_speech_prob **0,095581** không được dùng làm điểm accuracy.
+Native segment 25,790–26,990 s chỉ là metadata của output không dùng được;
+không gắn mốc này cho chữ Qwen. VAD evidence cũ vẫn giữ, vì một bản đọc trên
+prefix bị cắt không chứng minh lời mở đầu vắng mặt hoặc cut vô hại.
+
+**6 preflight + 17 checks cuối pass**, kiểm input/plan/worker/runtime,
+process/cap, CUDA FP16, native representation và metadata; **0 app tests**.
+Harness đầu fail hai giả định: TXT native chứa timing prefix, và timestamp
+tokens không bị `skip_special_tokens` loại bỏ. Giữ `verify.py`,
+`verification.json`, `token-verification.json` ban đầu; `verify_v2.py` chỉ bỏ
+metadata khi đối chiếu. Hai lượt token decode replay, **0 inference replay**;
+lượt cuối 33 native tokens gồm 2 timestamp markers và **31 text tokens** khớp
+body JSON/TXT. Full generation EOS/logits/beam ancestry chưa được capture;
+không gọi native segment tokens là toàn bộ decoder trace.
+
+**Whisper mới 1 native task**, không gọi tổng Whisper lịch sử là 1. **VAD mới
+1 prefix stream**, forward count unknown. Qwen tổng **14**, SenseVoice tổng **1**;
+OCR/Qwen/SenseVoice/D2/D3 không recognition mới. **P2 unresolved, D3 content FAIL**
+giữ nguyên. Chưa chạy word/forced alignment, native GUI/editor, candidate holdout,
+whole-video, full offline, EXE hoặc TTS. H1 playback 539 ms và historical Whisper
+output/exposure H1/H2 giữ nhãn cũ; không exposure mới.
+
+Đã dọn **15 CUDA cache files mới / 47.635.186 bytes**, inventory/hash/path và
+receipt lưu trong audit; không lỗi, không đụng cleanup audit cũ. Model/raw,
+sáu câu Việt/recipe B và hai stash được giữ. Đọc `candidate-plan-locked.json`,
+`runtime-manifest.json`, `process-receipt.json`, `candidate-results.json`,
+`candidate-assessment.json`, `verification-final.json`, `token-verification-final.json`,
+`coverage-ledger.json`, preservation, cleanup và `publication.json`.
+
+Không lặp prefix này, kéo dài/cắt thêm để chọn output, hoặc dùng fail làm lý do
+chạy lại context/SenseVoice/beam5/chunk7s. D1 vẫn cần evidence lexical đáng tin
+trước khi kết luận từ bị cắt; D3 cần hypothesis acoustic có căn cứ riêng.
+Không đổi production/default/parser hoặc mở gate sau để né quality còn thiếu.
+
 ## 2026-09-17 — D1 có acoustic evidence trước cut; D3 chưa có candidate mới
 
 Audit `.tools/asr-acoustic-20260917-213905/`, từ `372db11` sạch/khớp remote.

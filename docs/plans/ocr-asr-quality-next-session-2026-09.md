@@ -1,5 +1,55 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — D1 prefix Whisper không lấy được lexical evidence
+
+Ưu tiên ASR; giữ OCR hiện có. Audit **`.tools/asr-d1-prefix-20260917-220411/`**,
+bắt đầu từ `6bd2743`; đọc `publication.json` và Git live cho commit mới.
+App implementation vẫn `6db7921`; không đổi production code/default/parser.
+
+- Khóa và chạy **1 native Whisper large-v3 task** trên **[24,27) s**, đúng
+  48.000 PCM samples cắt nguyên bytes từ D1 context cũ, không resample/filter.
+  Đây là diagnostic lexical evidence trước cut dựa trên VAD cũ, không phải
+  context retry hoặc policy cửa sổ ngắn. Input SHA
+  `7a2eadfeeac6d0d689b9bef4d33cc9b071c2cda408b7600744c7032519fa99ae`.
+- CUDA FP16/Chinese, VAD-on Silero v3 CPU threshold 0,5, temperature0,
+  fallback None, 5 beams/64 tokens, word timestamps false; không prompt,
+  hotword/context text, separation hoặc alignment. Cap 120 s; **27,219 s**,
+  exit0, load 1,96 s, 0 retry/cache/process failure. Không tải/cài gì mới.
+- Raw là câu kêu gọi tương tác, không phải lời mở đầu cần kiểm:
+  **diagnostic FAIL / true onset INCONCLUSIVE**. Không dùng confidence hoặc
+  native timestamps làm speech evidence. Không kết luận prefix không có lời
+  hoặc bác bỏ VAD support cũ; vẫn **D1/P2 unresolved**, **D3 content FAIL**.
+- **6 preflight + 17 final verification checks pass**, 0 app tests. Initial
+  verification fail hai giả định representation được giữ: TXT có timing prefix,
+  tokens có timestamp markers. V2 so body sau metadata, raw không đổi; 33 tokens
+  gồm 2 markers/31 text tokens khớp. Hai token decode replays, 0 inference replay.
+  Full EOS/logits/beam ancestry và số decoder calls nội bộ chưa được capture.
+- **Whisper mới 1 task**, không gọi tổng lịch sử là 1. **VAD mới 1 prefix stream**;
+  log giữ 25,788–27,000 s, số forward nội bộ unknown. Không lặp stream 24–36 s.
+  Qwen tổng **14**, SenseVoice tổng **1**, OCR/D2/D3 0 recognition mới.
+- Verify 6.995 hash cũ, bảo vệ 7.029 file, baseline 764 tracked file;
+  5.130 runtime/tool/model hashes giữ. Không app/snapshot mới. Đã dọn đúng
+  15 CUDA cache files mới / **47.635.186 bytes**, receipt không lỗi; không
+  retry cleanup audit cũ bị chặn. Giữ raw/model, sáu câu Việt/recipe B, hai stash.
+- Alignment/native GUI/candidate holdout/whole-video/full offline/EXE/TTS
+  **NOT RUN**. Không exposure mới; giữ H1 playback 539 ms và historical
+  Whisper output/exposure H1/H2. AI visual reference có prior exposure;
+  speech ground truth unknown, không CER/WER.
+
+Đọc `candidate-plan-locked.json`, `runtime-manifest.json`, `preflight.json`,
+`process-receipt.json`, `recognition.log`, `results/`, `candidate-results.json`,
+`candidate-assessment.json`, initial/final verification và token-verification,
+`coverage-ledger.json`, `quality-report.md`, cleanup, preservation, `publication.json`.
+Weights large-v3 SHA
+`69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1`.
+
+**Không lặp prefix này hoặc thêm cửa sổ lân cận để chọn output.** Giữ các cap
+context/SenseVoice/beam5/chunk7s/VAD cũ đã hết. D1 cần evidence lexical đáng tin
+trước khi kết luận từ bị cắt; D3 cần hypothesis acoustic có căn cứ riêng trước
+inference. Không suy EQ từ band energy, dùng VAD làm forced alignment, sweep
+model/config hoặc sửa text bằng caption. Không đòi user chép tiếng Trung.
+Quyền local/commit/push allowlist giữ; không merge/reset/clean/động stash.
+
 ## Bàn giao mới nhất — D1 có acoustic boundary evidence; không ASR recognition mới
 
 Ưu tiên ASR, giữ OCR hiện có. Audit **`.tools/asr-acoustic-20260917-213905/`**,

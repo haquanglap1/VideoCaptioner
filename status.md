@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-09-17 (ASR D1 prefix: không lấy được lexical evidence; onset vẫn chưa rõ)
+
+- Audit `.tools/asr-d1-prefix-20260917-220411/`, từ `6bd2743` sạch/khớp remote;
+  verify 6.995 hash cũ, bảo vệ 7.029 file và baseline 764 tracked file.
+  App implementation `6db7921`, OCR/default/parser giữ nguyên.
+- Khóa **1 native Whisper large-v3 task** trên đúng 48.000 PCM samples
+  **24–27 s** cắt từ context cũ. CUDA FP16, Chinese, Silero v3 CPU/VAD-on,
+  temperature 0, fallback tắt, 5 beams/64 token cap, word timestamps tắt.
+  Không prompt/caption, separation hoặc resample; cap 120 s, không retry.
+- Exit0, process **27,219 s**, model load 1,96 s; raw là câu kêu gọi tương tác,
+  không cung cấp lời mở đầu cần kiểm. **Diagnostic FAIL / onset INCONCLUSIVE**;
+  không chứng minh prefix không có lời, không phủ định acoustic evidence cũ.
+- 6 preflight + **17 verification checks cuối pass**, 0 app tests. Hai giả định
+  representation của harness ban đầu fail được giữ: TXT có tiền tố thời gian,
+  native tokens có timestamp markers. Replay cuối khớp 31 text tokens; không
+  sửa raw hoặc inference lại. Full generation EOS/internal calls chưa quan sát.
+- **Whisper mới 1 task; VAD mới 1 prefix stream**, số forward nội bộ unknown;
+  Qwen tổng 14, SenseVoice tổng 1, OCR 0 mới. D3 content FAIL/P2 unresolved.
+  Không alignment/native GUI/holdout/whole-video/full offline/EXE/TTS.
+- Đã dọn đúng 15 CUDA cache files mới, **47.635.186 bytes**; giữ raw/model,
+  sáu câu Việt/recipe B và hai stash. Không retry cleanup audit cũ bị chặn.
+  [Kết quả và giới hạn](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (ASR D1: VAD hỗ trợ giả thuyết cut qua lời nói; P2 còn mở)
 
 - Audit `.tools/asr-acoustic-20260917-213905/`, từ `372db11` sạch/khớp
