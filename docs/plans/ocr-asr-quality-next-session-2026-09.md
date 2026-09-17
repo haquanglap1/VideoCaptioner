@@ -1,8 +1,8 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
 Cập nhật 2026-09-17 sau phiên tiếp từ
-`a29791fd15a453b29dfd504eb5e99e977512d297`. App implementation vẫn là `cb437cb`;
-GOT raw và dynamic patches đều bị loại, native partial cancel/save/reopen đã
+`5403845258ea07288224851e19ad38c6b43f6307`. App implementation vẫn là `cb437cb`;
+SVTRv2 cũng đã bị loại; PCM ASR và native open/save/reopen partial 69 cue đã
 được kiểm thêm. Bản này thay nội dung prompt cũ;
 chi tiết lịch sử và các candidate thất bại vẫn ở báo cáo kết quả/audit, không bị xóa.
 Commit chứa bản prompt này chỉ đổi tài liệu; kiểm live HEAD/remote trước khi làm.
@@ -30,7 +30,7 @@ section **2026-09-17** đầu `docs/dev/ocr-asr-quality-first-results-2026-09.md
 `docs/plans/ocr-asr-quality-first-2026-09.md`. `PLAN ONLY` và v1/v2/v3 trong các
 section cũ là lịch sử; không dùng chúng thay trạng thái bàn giao dưới đây.
 
-Phiên mới nhất bắt đầu với `a29791f` trùng remote, working tree sạch; app implementation
+Phiên mới nhất bắt đầu với `5403845` trùng remote, working tree sạch; app implementation
 `cb437cb` giữ nguyên. Commit report/handoff tiếp theo xem `publication.json` trong
 audit mới, rồi kiểm live Git. `master`/`origin/master` lúc kiểm đều ở
 `62abacae421d2011948f467d3386d81de9f8879b`, chưa merge pilot.
@@ -45,7 +45,25 @@ không đoán dựng lại hoặc chạy lại inference chỉ để tạo evide
 
 ## 3. Evidence và runtime phải reuse
 
-Audit mới nhất: **`.tools/ocr-asr-quality-20260917-145000/`**. Đọc:
+Audit mới nhất: **`.tools/ocr-asr-quality-20260917-151112/`**. Đọc:
+
+- `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
+- `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
+- `runtime-manifest-final.json`, `baseline.json`, `snapshot-allowlist.json`,
+  `snapshot-initial.json` và các `*-snapshot.json`
+- `svtr-upstream.json`, `svtr-inventory.json`, `svtr-plan-locked.json`,
+  `svtr-results.json`, `svtr-verification.json`, runtime amendment và receipts
+- `asr-audio-plan-locked.json`, `asr-audio-results.json`, `asr-pcm-amendment.json`,
+  **`asr-audio-final.json`**; bản initial có self-comparison D3 được ghi rõ/sửa ở final
+- `native-text-partial/{plan-locked,results}.json`,
+  `native-text-save/{plan-locked,results}.json`, `native-text-save/ui-saved.ocr.json`,
+  `native-verification.json`, hai native process receipts
+
+Phiên này verify 626 hash cũ, bảo vệ 705 file, copy 763 tracked file từ checkout.
+Không sửa app, không chạy lại targeted/full suite; 6 đối chiếu tensor/decode
+upstream là kiểm harness, không phải app test hoặc 6 inference mới.
+
+Audit native cancel/listening trước: **`.tools/ocr-asr-quality-20260917-145000/`**. Đọc:
 
 - `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
 - `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
@@ -167,6 +185,19 @@ lặp đến 96 token khi chưa EOS. Peak allocated VRAM 23.528.787.456 byte.
 Không retry/tăng token/chọn patch hoặc tích hợp. Tổng GOT 6 request qua hai phiên;
 không lặp raw **hoặc tiled**, không xem tiling thất bại là lý do sweep cấu hình.
 
+**SVTRv2 cũng đã bị loại** trong audit `151112`: hypothesis encoder CTC khác
+có dictionary coverage. Official `PaddlePaddle/ch_SVTRv2_rec`, pin
+`67349283ac400fb34f73a5c32f1c0c00df5ee26a`, weights SHA
+`2f9e8ea8852560f908e1a0fb497818477e5a3610f660ddb339b3dddb0c207116`.
+Inventory 6.623 dictionary entries/6.625 classes, target class 3872 trước inference.
+Paddle 3.0.0/NumPy 1.26.4 runtime riêng tại `151112/paddle-runtime/`; lỗi import
+setuptools xảy ra trước inference, amendment bổ sung 80.9.0 giữ plan/input/budget.
+Đúng 3 request/3 batches trên hai crop cùng hash và blank, CPU 4 threads,
+official preprocessing/greedy CTC, 0 cache/tracking/features, 0 retry. Hai crop
+vẫn sai glyph, blank rỗng; 0,875 s inference/4,125 s process. Sáu đối chiếu
+preprocessing/decode official đều khớp, không inference lại. Không tích hợp,
+không scan window, không lặp SVTRv2 hoặc đổi preprocessing để chọn output.
+
 Bắt đầu bằng đối chiếu evidence này và chọn **một giả thuyết recognition mới có
 căn cứ**. Inventory profile/weights/output classes/dictionary trước inference;
 coverage chỉ là điều kiện cần. Không rerun V4/raw, tải V5, lặp các probes cũ hoặc
@@ -191,7 +222,15 @@ Qwen đã thực hiện tổng cộng **6 request** cho các giả thuyết đã
    cuối trong input mở rộng, tên riêng vẫn khác caption; thán từ chưa xác nhận
    bằng nghe. Không gọi thêm input là thắng accuracy trên cùng audio.
 
-Phiên `145000` không có ASR inference mới; Qwen vẫn tổng 6 request. Bộ
+Phiên `151112` không có ASR inference mới; Qwen vẫn tổng 6 request. Năm cặp
+input/request mono khớp PCM/sample counts; D3 original từ source stereo 44,1 kHz
+qua `decode_audio`/`wav_bytes` tái tạo đúng bytes request 304.000 sample. Lượt audit
+ban đầu dùng chính request làm input D3 nên chỉ là pack identity; amendment/final
+đã kiểm từ stereo thật, không tính self-comparison thành bằng chứng độc lập.
+Ba listening WAV giữ nguyên hashes; số đo clipping/channel chỉ là signal check,
+không xác nhận lời nói. Không có listener/transcript mới, reference vẫn unknown.
+
+Phiên `145000` cũng không có ASR inference mới. Bộ
 `listening/` có ba original WAV D1 24–36, D2 54–67, D3 107–126 s, copy đúng
 bytes/PCM input cũ, không kèm caption/model output. Chưa có transcript độc lập;
 template vẫn unknown. Nếu nhận reference, ghi người nghe, mốc bất định và
@@ -224,6 +263,14 @@ Chỉ alignment sau text gate; không ghép text Qwen với giờ Whisper khác 
 
 ## 6. Validation và native — phân biệt đúng bằng chứng
 
+- Phiên `151112`: native open/save/reopen **partial lịch sử thật 69 cue, v1**
+  giữ exact document và bytes, incomplete; UI Export khóa, CLI exit5 không SRT.
+  Lượt đầu open pass nhưng timer 170 s đóng trước save; lượt sau preload cùng
+  partial rồi save/reopen qua modal native, quan sát nạp xong và bấm Đóng, exit0.
+  Không recognition/tracking/playback. Không biến complete thành partial;
+  không gọi đây là fresh v3 cancel/resume có chữ hoặc full source/ROI-to-result.
+  0 app tests mới; 6 đối chiếu upstream preprocessing/CTC pass riêng bằng dữ liệu
+  đã lưu. Không cộng với 92 tests cũ và không mở holdout/whole-video/EXE/TTS.
 - Phiên `145000`: **92 passed, 1 warning**, thêm OCR UI vào targeted contracts
   cũ; 763 file tracked khớp bytes trước gate. Không đổi app, không có regression
   app mới; không chạy lại toàn bộ suite/lint/type hoặc build để thay quality.

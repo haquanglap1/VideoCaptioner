@@ -1,5 +1,80 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — từ `5403845`: loại SVTRv2; kiểm PCM và native partial 69 cue
+
+Audit `.tools/ocr-asr-quality-20260917-151112/`. HEAD/remote khớp `5403845`,
+index/working tree sạch trước làm. Verify **626 hash cũ**, bảo vệ **705 file**;
+copy 763 file tracked từ checkout và so bytes trước từng gate. Giữ settings,
+cache/temp/log trong audit, hai stash và `master` nguyên trạng. App implementation
+vẫn `cb437cb`; không sửa tracking v1/v2/v3, consensus, profile hoặc mặc định.
+
+### Recognition: một recognizer CTC khác, chưa sửa được glyph D2
+
+Giả thuyết: encoder CTC khác có dictionary phù hợp có thể đọc hai crop lỗi mà
+không dùng bộ sinh token đã hallucinate. Chọn duy nhất bản official
+[PaddlePaddle/ch_SVTRv2_rec](https://huggingface.co/PaddlePaddle/ch_SVTRv2_rec),
+revision `67349283ac400fb34f73a5c32f1c0c00df5ee26a`. Không lặp V4/GOT hoặc sweep model.
+
+- Inventory trước inference: 6.623 dictionary entries, **6.625 output classes**;
+  glyph cần kiểm có class index 3872. Weights SHA-256
+  `2f9e8ea8852560f908e1a0fb497818477e5a3610f660ddb339b3dddb0c207116`
+  khớp LFS metadata official. Coverage chỉ là điều kiện cần.
+- Runtime cũ không có Paddle. Tạo `paddle-runtime/` riêng trong audit với
+  PaddlePaddle 3.0.0, NumPy 1.26.4; app/OCR/Qwen environments giữ nguyên.
+  Lượt đầu lỗi `ModuleNotFoundError: setuptools` trước predictor/inference,
+  giữ receipt; bổ sung setuptools 80.9.0 theo amendment, không đổi plan/input/cap.
+- Khóa **3 request/3 batches, 180 s, 0 retry, 0 warmup**: đúng hai raw crop
+  cùng hash với V4/GOT và blank cũ. Dùng BGR/height48/dynamic width, preprocessing
+  official, greedy CTC không lọc confidence; CPU 4 threads, MKLDNN tắt.
+- Thực hiện 3/3, **0 cache/tracking/features**, 0 failed inference attempts;
+  inference 0,875 s, worker 1,062 s, process 4,125 s. Blank rỗng nhưng cả hai
+  crop đều sai glyph đầu câu, nên **loại candidate**, không scan D1/D2 hoặc tích hợp.
+  Raw/log/output tensors giữ local; reference ảnh vẫn là AI, không human ground truth.
+- Replay 3 tensor preprocessing và 3 output decode khớp implementation official
+  PaddleX; **6 đối chiếu pass, 0 inference mới**. Đây là kiểm harness, không phải
+  6 test app hay bằng chứng recognition đạt. Không sửa app nên không có regression
+  fail-before-fix mới và không chạy lại 92 tests cũ để cộng số pass.
+
+Evidence: `svtr-upstream.json`, `svtr-inventory.json`, `svtr-plan-locked.json`,
+`runtime-amendment*.json`, `svtr-results.json`, `svtr-verification.json` và receipts.
+
+### ASR: kiểm input/request, reference lời nói vẫn unknown
+
+Năm cặp WAV mono input/request cũ khớp PCM và sample count. D3 original kiểm riêng
+từ stereo 44,1 kHz qua đúng `decode_audio`/`wav_bytes`: tái tạo nguyên request WAV
+304.000 sample, SHA `4e02d2ccfa4452bf28e1cdeeb6eadb3e62ccacd20174e3dd1d115049b96dd36c`.
+Đây là CPU decode kiểm tính toàn vẹn, không recognition hoặc alignment.
+Audit ban đầu trỏ input D3 tới chính request; giữ dòng đó là pack identity,
+amendment/final report thay bằng phép so từ source stereo, không tính self-comparison.
+
+Ba listening WAV vẫn khớp file/PCM hashes. D3 stereo không có sample full-scale;
+100 ms mid/stronger-channel RMS ratio nhỏ nhất 0,596. Các số đo tín hiệu không
+chứng minh lời nói hoặc intelligibility. Trong reference artifacts được bàn giao
+chưa có listener/transcript độc lập; user không biết tiếng Trung. Giữ
+`reference=unknown`, không CER/WER, không chọn engine thắng. **0 ASR mới**, Qwen
+vẫn tổng 6 request; không upload, tách vocals lại hoặc mở holdout.
+Evidence: `asr-audio-plan-locked.json`, `asr-audio-results.json`,
+`asr-pcm-amendment.json`, **`asr-audio-final.json`**.
+
+### Native: bảo toàn partial có chữ, không nhận dạng lại
+
+Dùng Computer Use mở checkpoint lịch sử thật **69 cue, incomplete, tracking v1**
+từ audit nguồn; không biến complete thành partial. Lượt đầu native open/readback
+khớp document, nhưng timer 170 s đóng harness trước save; giữ receipt exit0 đó.
+Lượt sau preload cùng partial, rồi **lưu và mở lại bằng modal native**, quan sát
+UI nạp xong và bấm Đóng; process exit0 sau 97,172 s. Save/reopen giữ đủ text/ms/
+IDs/raw/config; file lưu **khớp bytes** checkpoint gốc, vẫn incomplete. UI Export
+bị khóa; CLI export **exit5**, không tạo SRT. Không recognition/tracking/playback.
+
+Đây là native open/save/reopen **partial v1 có chữ**, bổ sung gate partial v3
+0 cue trước đó; chưa kiểm fresh v3 cancel/resume có chữ hoặc full source/ROI-to-result.
+Evidence: `native-text-partial/`, `native-text-save/`, `native-verification.json`.
+
+P1/P2 vẫn **unresolved**. Native full workflow/listening acceptance còn thiếu;
+H1 vẫn có contamination 539 ms từ trước. Holdout/whole-video/full offline/build
+EXE/TTS **NOT RUN**. Không lặp SVTRv2 trên các crop này hoặc sweep recognizer;
+lượt tiếp cần giả thuyết recognition mới có căn cứ và reference lời nói phù hợp.
+
 ## 2026-09-17 — từ `a29791f`: loại dynamic patches; native partial cancel/save/reopen
 
 Audit `.tools/ocr-asr-quality-20260917-145000/`. Live HEAD/remote khớp `a29791f`,

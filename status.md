@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-09-17 (SVTRv2 bị loại; PCM ASR và partial native có chữ)
+
+- Audit `.tools/ocr-asr-quality-20260917-151112/` bắt đầu từ `5403845` khớp
+  remote, tree/index sạch; verify 626 hash cũ, bảo vệ 705 file. Snapshot 763
+  file tracked khớp checkout trước các gate; app implementation vẫn `cb437cb`.
+- Chọn một recognizer CTC mới: official `ch_SVTRv2_rec`, pin
+  `67349283ac400fb34f73a5c32f1c0c00df5ee26a`, dictionary/output 6.623/6.625.
+  Tạo Paddle runtime riêng trong audit. Lỗi thiếu setuptools trước inference
+  được giữ và sửa qua amendment; app/OCR/Qwen environments không đổi.
+- Diagnostic đúng 3 request/3 batches, 0 cache/tracking/features: hai crop vẫn
+  sai glyph, blank rỗng; **loại candidate**, không tích hợp hoặc scan window.
+  Inference 0,875 s/process 4,125 s. Sáu đối chiếu preprocessing/CTC với upstream
+  pass bằng tensor/output đã lưu, 0 inference mới; không tính là app tests.
+- ASR: năm cặp input/request mono khớp PCM; D3 original tái tạo từ stereo qua
+  app CPU decode khớp nguyên request 304.000 sample. Sửa rõ self-comparison ban
+  đầu trong amendment/final audit. Listening reference vẫn unknown; 0 ASR mới,
+  tổng Qwen 6, không CER/WER/alignment/upload hoặc tách vocals lại.
+- Native open/save/reopen checkpoint thật 69 cue incomplete v1 giữ nguyên
+  bytes/text/ms/IDs/raw/config; Export UI khóa, CLI exit5 không tạo SRT. Lượt đầu
+  auto-close trước save được giữ; lượt sau hoàn tất save/reopen và đóng native.
+  Đây không phải fresh v3 cancel/resume có chữ hay full source-to-result.
+- Không đổi app nên không chạy lại tests/lint/type toàn app; 92 pass trước là
+  lịch sử. P1/P2 unresolved; holdout/whole-video/full offline/EXE/TTS NOT RUN.
+  Hai stash, sáu câu Việt và voice B giữ nguyên. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (GOT tiled bị loại; native OCR hủy/lưu/mở lại partial)
 
 - Live `a29791f` khớp remote, index/working tree sạch; audit mới
