@@ -75,17 +75,25 @@ class OcrThread(OcrWorker):
                   else installation.bridge)
         bridge_sha = hashlib.sha256(bridge.read_bytes()).hexdigest() if tracking in CHARACTER_TRACKING_WORKERS else config.bridge_sha256
         config = replace(config, line_selection=policy, tracking_policy=tracking, bridge_sha256=bridge_sha)
+        extra = {}
+        if self.task.recognizer_runtime:
+            from videocaptioner.core.ocr.vl import inspect_vl
+
+            root = Path(self.task.recognizer_runtime)
+            config = replace(config, recognizer=inspect_vl(root, check).profile)
+            extra["recognizer_root"] = root
         if self.task.resume_document is not None:
             config = replace(config, consensus_policy=self.task.resume_document.config.consensus_policy)
             if config != self.task.resume_document.config:
                 raise OcrError("Runtime/profile không khớp checkpoint; chọn đúng bộ OCR đã dùng trước đó.")
             config = self.task.resume_document.config
-        self.progress.emit(0, "Đang đọc phụ đề trong hình bằng CPU…")
+        self.progress.emit(0, "Đang đọc phụ đề bằng PaddleOCR-VL (GPU, thử nghiệm)…" if config.recognizer
+                           else "Đang đọc phụ đề trong hình bằng CPU…")
         return run_cpu_ocr(Path(self.task.file_path), config, installation.root, bridge,
                            max_requests=self.task.max_requests, check=check,
                            checkpoint=self.capture, progress=self.progress.emit,
                            expected_source_sha256=self.task.expected_source_sha256, cache_mib=self.task.cache_mib,
-                           resume_document=self.task.resume_document)
+                           resume_document=self.task.resume_document, **extra)
 
     def capture(self, document: OcrDocument) -> None:
         self.partial_document = document

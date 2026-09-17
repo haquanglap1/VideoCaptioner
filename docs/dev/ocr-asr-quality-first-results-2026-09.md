@@ -1,5 +1,99 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — từ `0403e02`: app candidate VL opt-in; D2 chưa đạt text gate
+
+Audit `.tools/ocr-asr-quality-20260917-171207/`. HEAD/remote khớp trước làm,
+working tree/index sạch; verify **6.791 hash cũ**, bảo vệ **6.858 file**. Copy 763
+tracked file ban đầu; snapshot gate cuối 770 file gồm file mới và `_version.py`
+đã có, so bytes checkout trước từng gate. Không cài/tải model hoặc package mới.
+
+### Boundary recognizer đã triển khai
+
+Candidate `paddleocr-vl-1.5-anchor-v1` qua `--recognizer-runtime` hoặc ô runtime
+PaddleOCR-VL trong cửa sổ OCR. CPU PP-OCRv6 giữ geometry/tracking; crop RGB union
+của dòng được chọn có margin cố định được đưa vào GPU worker riêng. Prompt chỉ
+là `OCR:`, không chứa chữ CTC/reference. Recipe pin model/custom code/tokenizer/
+packages; BF16/SDPA/greedy96/no KV cache giữ như diagnostic. Chi tiết tại
+[contract candidate](ocr-vl-candidate-2026-09.md).
+
+Checkpoint lưu recognizer identity riêng, token IDs/raw decode/EOS/crop hash và
+geometry CTC. Read/cache IDs tách khỏi CPU; field mới được omit trên dữ liệu cũ.
+GPU score để 0 vì chưa hiệu chuẩn; không dùng box input crop thay detector box
+khi cached tracking. Giữ nguyên worker v1/v2/v3 và punctuation-v2; không sửa raw,
+dictionary, old resume hoặc export guard. Missing runtime/identity, timeout/hủy,
+protocol/crop mismatch và output thiếu EOS đều dừng, không fallback/retry ngầm.
+
+Một GPU lease/job; cap 40 tổng CPU geometry + VL requests và 360 s/job. Transport
+giữ các bộ đếm riêng cho request, batch CTC/VL, tracking/features/cache. Test hủy
+dùng process thật với worker synthetic; **chưa đo hủy khi model GPU đang generate**.
+
+### Một lượt D1/D2 theo plan khóa
+
+| Window | Cue | CPU requests / rec batches | VL requests / batches | Tracking / features | Process wall | Scan/export | Text |
+|---|---:|---:|---:|---:|---:|---|---|
+| D1 28,8–32,3 s | 2 | 6 / 12 | 6 / 6 | 105 / 231 | 127,906 s | complete/exit0 | PASS trên frame đã đọc |
+| D2 57–63 s | 4 | 11 / 14 | 11 / 11 | 180 / 287 | 171,329 s | complete/exit0 | FAIL |
+
+0 failed inference/cache/retry; 17/17 VL response EOS. Peak allocated VRAM D1
+**1.984.445.952 byte** theo runtime receipt; D2 **1.983.719.424 byte**.
+Không cộng thời gian tracking/GPU chồng nhau thành tổng. Tổng lịch sử VL hiện
+**21 attempts: 20 complete, 1 failed**; bốn diagnostic attempts cũ, gồm first-forward
+failure, vẫn giữ nguyên. Không có request mới trên đúng crop diagnostic đã hết quyền.
+
+D1 giữ body/dấu trên ảnh. D2 giữ bốn cue và biên như baseline, nhưng raw được chọn
+ở cue cuối sai thán từ; dấu ba chấm cũng khác giữa các raw read. Hai candidate cuối
+có score chưa hiệu chuẩn bằng nhau: policy chọn nguyên raw cũ giữ candidate sớm.
+Candidate muộn đọc đúng glyph theo AI reference vẫn được lưu, **không chọn riêng
+theo đáp án**, không ghép raw hoặc sửa consensus để công bố pass. **P1 unresolved;
+candidate D2 text gate FAIL**, không promote default.
+
+Offline readback: 17 token decode replays khớp. Crop diagnostic đầu tại PTS
+1006400 nằm nguyên pixels trong crop app có padding; tensor processor khác.
+Candidate app sau tại PTS 1007467 khác diagnostic PTS 1006933, nên không có phép
+so identical-input cho cặp này. Một harness đầu giả định nhầm PTS đã fail; amendment
+chuyển sang match PTS và ghi unmatched rõ ràng. **0 verification inference**;
+chưa đủ bằng chứng nhân quả rằng padding tự nó gây lỗi.
+
+Evidence: `candidate-plan-locked.json`, `candidate-code-amendment.json`,
+`candidate-D{1,2}/` (inputs/raw/checkpoint/events/runtime receipts),
+`candidate-quality-assessment.json`, `candidate-verification*.json`.
+
+### ASR và validation
+
+Assistant đọc 12 frame/crop cũ, ghi source hash/frame hash/PTS khi có, mốc seek
+xấp xỉ khi evidence cũ không có PTS chính xác và prior exposure. Đặt
+`reference_kind=AI visual reference`, không human-reviewed. Bảng đối chiếu chứa
+**cả sáu raw Qwen đã chạy**, mỗi output giữ đúng window/preprocessing/hash.
+D1 còn khác từ, D2 khác spelling tên/thán từ; D3 khác cụm lặp và token đuôi.
+Giữ **P2 unresolved**, speech ground truth unknown; 0 ASR mới, không upload,
+CER/WER, alignment hoặc sửa sáu câu Việt/recipe B. Không chờ human transcript.
+
+**509 passed, 7 deselected, 1 warning**, gồm 23 synthetic contracts mới; không cộng
+các lượt test lặp hoặc số lịch sử. Bảy real-model tests deselected được ghi đúng,
+không gọi là inference mới. Ruff, Pyright **0 errors/0 warnings**, translation sync
+pass. Bốn checkpoint lịch sử v1/v3 giữ exact JSON/config/raw/IDs/metrics.
+D1 2 cue và D2 4 cue qua table/handoff/undo/hai vòng editor save-reopen giữ
+text/ms/IDs/generation provenance; SRT giữ text/time. Đây là domain/source gate,
+không phải native GUI mới hoặc text acceptance D2.
+
+Review cuối bổ sung guard CLI bảo vệ model/dependencies/Python payload nằm ngoài
+thư mục manifest khỏi output ghi đè; ba test mới được tính trong 509 ở trên.
+Worker/recipe/recognition giữ nguyên, không chạy lại D1/D2. Bản CLI lúc đo được
+giữ riêng trong `measured-code/`; `post-review-amendment.json` phân biệt bytes
+đã đo với guard output cuối, không gọi toàn bộ CLI sau review là cùng bytes.
+
+Giữ các harness failures trong receipts: module mới chưa có ở red collection;
+Git quoting tên Unicode làm snapshot gate lỗi trước test; basetemp parent thiếu;
+một lệnh sai test path collect0/exit4; typing/snapshot venv lookup ban đầu và lỗi
+stdout encoding của runner; giả định PTS ở kiểm crop nêu trên. Các lần sửa harness
+không thêm model inference. EOL-only edit đã undo của `consensus.py` được phục hồi
+exact bytes trước inference bằng amendment; plan gốc không bị viết lại.
+
+Native mới, real GPU cancel, holdout, whole-video, full offline, EXE và TTS
+**NOT RUN**. H1 contamination 539 ms không đổi. Giữ model/raw/receipts/snapshot;
+dọn riêng cache/temp của audit hiện tại. `publication.json`, review/allowlist và
+preservation receipts là nguồn trạng thái Git cuối.
+
 ## 2026-09-17 — từ `56bbbdf`: crop0 bổ sung đạt diagnostic; ASR reference còn thiếu
 
 Audit `.tools/ocr-asr-quality-20260917-164027/` bắt đầu từ HEAD/remote `56bbbdf`,

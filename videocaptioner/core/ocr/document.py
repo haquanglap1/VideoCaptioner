@@ -15,6 +15,7 @@ from .line_selection import LineSelectionPolicy, selected_text
 from .models import EngineRead, OcrError, Selection
 from .pipeline import RegionResult
 from .profile import OcrProfileSnapshot
+from .vl_profile import VlProfile
 
 TEXT_ISSUES = frozenset({"engine_disagreement", "insufficient_independent_crops", "uncalibrated_profile",
                          "low_engine_score"})
@@ -36,6 +37,7 @@ class OcrConfig:
     profile_snapshot: OcrProfileSnapshot | None = None
     # Omission preserves the serialized config and IDs of all existing documents.
     line_selection: LineSelectionPolicy | None = field(default=None, metadata={"omit_none": True})
+    recognizer: VlProfile | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         sha256(self.profile_sha256)
@@ -44,6 +46,9 @@ class OcrConfig:
             raise OcrError("Unknown OCR consensus policy")
         if self.line_selection is not None and not isinstance(self.line_selection, LineSelectionPolicy):
             raise OcrError("Invalid OCR line selection policy")
+        if self.recognizer is not None and (not isinstance(self.recognizer, VlProfile)
+                or self.line_selection is None or len(self.line_selection.anchors) != 1):
+            raise OcrError("PaddleOCR-VL candidate requires one explicitly selected line")
         if self.language != "zh":
             raise OcrError("The installed OCR profile supports the explicit zh configuration")
         if self.tracking_policy in ("character-features-v1", "character-features-v2", "character-features-v3"):
@@ -56,6 +61,10 @@ class OcrConfig:
                 raise OcrError("Character tracking requires the installed PP-OCRv6 medium profile")
         elif self.tracking_policy != "edge-tiles-ocr2-v1":
             raise OcrError("Unknown OCR tracking policy")
+
+    @property
+    def read_revision(self) -> str:
+        return digest([self.profile_sha256, self.recognizer]) if self.recognizer else self.profile_sha256
 
 
 @dataclass(frozen=True)
@@ -238,6 +247,11 @@ class OcrMetrics:
     worker_process_wall_s: float | None = None
     tracking_requests: int | None = field(default=None, metadata={"omit_none": True})
     visual_batches: int | None = field(default=None, metadata={"omit_none": True})
+    gpu_requests: int | None = field(default=None, metadata={"omit_none": True})
+    gpu_responses: int | None = field(default=None, metadata={"omit_none": True})
+    gpu_recognizer_attempts: int | None = field(default=None, metadata={"omit_none": True})
+    gpu_inference_s: float | None = field(default=None, metadata={"omit_none": True})
+    gpu_process_wall_s: float | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         import math
@@ -281,7 +295,7 @@ class OcrDocument:
             if first_ms > cue.exact_start_ms or last_ms >= cue.exact_end_ms:
                 raise OcrError("OCR boundary PTS do not match the source timeline")
             for candidate in cue.candidates:
-                if candidate.raw.revision != self.config.profile_sha256:
+                if candidate.raw.revision != self.config.read_revision:
                     raise OcrError("OCR engine revision does not match the saved profile")
                 if candidate.id != candidate_id(self.id, candidate.frame_pts, candidate.crop_sha256, candidate.raw):
                     raise OcrError("OCR candidate identity mismatch")

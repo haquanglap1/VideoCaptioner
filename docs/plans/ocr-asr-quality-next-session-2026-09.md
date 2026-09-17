@@ -1,5 +1,73 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Trạng thái mới nhất: app candidate đã triển khai và đo từ `0403e02`
+
+**Mục này thay các chỉ đạo “bắt đầu tích hợp”, “chưa scan D1/D2”, “implementation
+vẫn cb437cb” ở phần bàn giao cũ bên dưới.** Phiên mới nhất có code app; đọc
+`publication.json` và Git live để biết commit, không suy commit từ ghi chú cũ.
+
+- Audit **`.tools/ocr-asr-quality-20260917-171207/`**. Verify 6.791 hash cũ,
+  bảo vệ 6.858 file; snapshot ban đầu 763 tracked file, gate cuối 770 file gồm
+  source/test mới và `_version.py` sẵn có. Không tải/cài model/package mới.
+- Candidate **`paddleocr-vl-1.5-anchor-v1`** đã vào CLI/GUI opt-in, không default.
+  `--recognizer-runtime` chọn thư mục có `paddle-vl-runtime.json`; manifest của
+  lượt đo ở `171207/vl-runtime/`, dùng Qwen Python + model/deps cũ như bên dưới.
+  [Contract](../dev/ocr-vl-candidate-2026-09.md) mô tả schema/path/identity.
+- CPU giữ PP-OCRv6 geometry/tracking. VL đọc original RGB union dòng có margin
+  nửa chiều cao theo ngang, một phần tư theo dọc; prompt chỉ `OCR:`. Giữ token
+  IDs/raw decode/EOS/crop bounds/hash và CTC geometry. Score VL=0 chưa hiệu chuẩn.
+  Recipe SHA `4911e12502304a5c06a9b705a88dab4028ca8030d8c56b92cbf1b89196a5d3fe`;
+  worker SHA `5b49d0e678500e08a9731f9c9a9677d1751c1152f22effa6bbf8a051c8142283`.
+- Một lượt/window đã dùng xong: D1 2 cue, 6 CPU + 6 VL requests, 127,906 s;
+  D2 4 cue, 11 CPU + 11 VL, 171,329 s. Cả hai complete/export exit0, không retry,
+  cache hoặc failed inference. CPU recognizer batches 12/14; VL batches 6/11;
+  tracking 105/180, feature batches 231/287. Cap tổng CPU+VL 40/360 s/window.
+- **D1 text PASS trên frame đã đọc; D2 text FAIL.** Raw được chọn cue cuối sai
+  thán từ và thiếu một phần dấu ba chấm. Raw frame sau đọc đúng vẫn được giữ;
+  hai score bằng 0, unchanged whole-read policy chọn raw sớm. Không lấy riêng
+  output đúng hoặc sửa câu theo đáp án rồi gọi model pass. **P1/P2 unresolved**.
+- Tổng VL hiện **21 attempts, 20 complete/1 failed**: 4 diagnostic cũ + 17 app
+  requests mới. Không lặp hai crop/blank diagnostic hoặc D1/D2 bằng đúng candidate
+  này. Không tự cấp một lượt mới chỉ vì đã sang phiên; cần hypothesis mới có
+  version/input/config/budget khóa, không sweep hoặc chọn kết quả đẹp.
+- 17 token decode replays khớp, 0 inference kiểm tra. Diagnostic crop0 tại PTS
+  1006400 nằm nguyên pixels trong app crop có padding; processor tensors khác.
+  Candidate app sau là PTS1007467, **khác** diagnostic crop1 PTS1006933. Harness
+  đầu giả định nhầm đã fail và được giữ; final ghi unmatched, không self-compare.
+  Chưa chứng minh padding là nguyên nhân duy nhất; không tự retry crop0 để thử.
+- **509 passed, 7 deselected, 1 warning**, gồm 23 VL synthetic contracts;
+  Ruff/Pyright/translation sync pass. Bốn checkpoint cũ v1/v3 giữ exact JSON.
+  D1/D2 table/handoff/undo/hai vòng editor save-reopen giữ text/ms/IDs/raw; SRT giữ
+  text/time. Đây là domain/source checks, không phải native GUI mới.
+- Review cuối thêm guard CLI bảo vệ payload model/deps/Python ở ngoài thư mục
+  manifest; ba tests nằm trong 509. Worker/recipe giữ nguyên, không inference lại.
+  `measured-code/` giữ CLI lúc đo; `post-review-amendment.json` ghi thay đổi sau đo.
+- **12 AI visual annotations**, đối chiếu đủ 6 raw Qwen cũ; 0 ASR mới/Qwen tổng6.
+  D1 từ, D2 tên/thán từ, D3 cụm lặp/token đuôi còn khác caption. Speech ground
+  truth unknown; không CER/WER/alignment hoặc sửa sáu câu Việt. Không chờ human
+  transcript. Có thể tiếp tục phần độc lập, chỉ inference ASR khi có hypothesis mới.
+- Native mới/real GPU cancel/holdout/whole-video/full offline/EXE/TTS **NOT RUN**.
+  Tests hủy GPU dùng process thật với worker synthetic, không model inference.
+  H1 contamination 539 ms giữ nguyên. Model/raw/checkpoint/receipts/snapshot được
+  giữ; cache/temp riêng phiên được dọn theo receipts, không đụng artifact cũ.
+
+Đọc trước: `publication.json`, `review.json`, `commit-allowlist.json`,
+`preservation-check-final.json`, `phase-results.json`, `coverage-ledger.json`,
+`run-ledger.jsonl`, `quality-report.md`, `runtime-manifest-final.json`,
+`candidate-plan-locked.json`, `candidate-code-amendment.json`,
+`candidate-quality-assessment.json`, `candidate-D1/`, `candidate-D2/`,
+`candidate-verification*.json`, `old-checkpoint-verification.json`,
+`p3-candidate-roundtrip/results.json`, `ai-visual-reference.json`,
+`asr-visual-comparison-final.json`, `asr-visual-comparison.md`, cleanup receipts.
+
+**Bước tiếp:** review boundary/selection đang fail bằng input/raw đã lưu; giữ
+identity và không hardcode glyph hoặc tự chọn candidate theo AI đáp án. Chỉ đổi
+semantics khi có version mới và regression trước sửa. Không rerun cùng candidate,
+không dùng default/promote/holdout/TTS để né D2 hoặc ASR còn lỗi. Scope quyền
+commit/push và các dữ liệu phải bảo vệ ở phần dưới vẫn áp dụng.
+
+## Bàn giao lịch sử trước khi tích hợp — dùng để tra evidence, không lặp work
+
 Cập nhật 2026-09-17 sau phiên tiếp từ `56bbbdf`. App implementation vẫn là
 `cb437cb`. User đã cấp riêng 1 attempt crop0/90 s; lượt đó hoàn tất, EOS và giữ
 glyph/body theo AI visual reading. Reuse nguyên crop1/blank cũ: diagnostic nhỏ

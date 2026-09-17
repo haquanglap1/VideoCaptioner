@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 from argparse import Namespace
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
@@ -62,6 +64,19 @@ def _validate_suffixes(args: Namespace) -> None:
             raise OcrError("OCR checkpoint/report output must use .json")
 
 
+def _recognizer_profile(root: Path, inputs: list[Path], destinations: list[str | None]):
+    from videocaptioner.core.ocr.vl import inspect_vl
+
+    installation = inspect_vl(root)
+    # A manifest can reuse payloads outside its own directory. Protect those too.
+    python_root = installation.python.parent
+    if python_root.name.lower() in ("scripts", "bin"):
+        python_root = python_root.parent
+    for protected in (root, installation.model, installation.dependencies, python_root):
+        _paths(inputs, destinations, protected)
+    return installation.profile
+
+
 def run(args: Namespace, config: dict) -> int:
     source = Path(args.input)
     if not source.is_file():
@@ -97,6 +112,10 @@ def run(args: Namespace, config: dict) -> int:
                              consensus_policy=("witnessed-punctuation-v2"
                                                if getattr(args, "consensus", "exact-v1") == "punctuation-v2"
                                                else "exact-read-uncalibrated-v1"))
+        if getattr(args, "recognizer_runtime", None):
+            recognizer_root = Path(args.recognizer_runtime)
+            settings = replace(settings, recognizer=_recognizer_profile(
+                recognizer_root, [source, bridge], [args.review, args.output, args.report]))
     except OcrError as exc:
         output.error(str(exc))
         return EXIT.USAGE_ERROR
@@ -120,6 +139,11 @@ def resume_scan(args: Namespace, config: dict) -> int:
         cache_limit_bytes(args.cache_mib)
         _paths([source, saved, bridge], [args.review, args.output, args.report], root)
         document = OcrDocument.load(saved)
+        if getattr(args, "recognizer_runtime", None):
+            profile = _recognizer_profile(Path(args.recognizer_runtime), [source, saved, bridge],
+                                           [args.review, args.output, args.report])
+            if profile != document.config.recognizer:
+                raise OcrError("Recognizer runtime does not match the checkpoint")
         validate_resume(document, document.config)
         if not args.ocr_bridge and document.config.tracking_policy in CHARACTER_TRACKING_WORKERS:
             bridge = resources() / CHARACTER_TRACKING_WORKERS[document.config.tracking_policy]
@@ -133,10 +157,12 @@ def resume_scan(args: Namespace, config: dict) -> int:
 def _scan(args: Namespace, source: Path, settings: OcrConfig, root: Path, bridge: Path,
           resume_document: OcrDocument | None = None) -> int:
     try:
+        extra: dict[str, Any] = ({"recognizer_root": Path(args.recognizer_runtime)}
+                 if getattr(args, "recognizer_runtime", None) else {})
         document = run_cpu_ocr(source, settings, root, bridge, max_requests=args.max_requests,
                                timeout=args.timeout, ffmpeg=args.ffmpeg, ffprobe=args.ffprobe,
                                checkpoint=lambda doc: doc.save(args.review) if args.review else None, cache_mib=args.cache_mib,
-                               progress=lambda _percent, message: output.info(message), resume_document=resume_document)
+                               progress=lambda _percent, message: output.info(message), resume_document=resume_document, **extra)
         if args.report:
             atomic_json(Path(args.report), {"schema": "ocr-report-v1", "document_id": document.id,
                                            "complete": document.complete, "metrics": document.to_dict()["metrics"],

@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-09-17 (PaddleOCR-VL opt-in vào app; D1 đạt, D2 còn lỗi chữ)
+
+- Audit `.tools/ocr-asr-quality-20260917-171207/`, từ `0403e02` sạch/khớp remote;
+  verify 6.791 hash cũ, bảo vệ 6.858 file, snapshot ban đầu 763 tracked file.
+- Thêm recognizer `paddleocr-vl-1.5-anchor-v1` opt-in qua CLI/GUI: GPU Python riêng,
+  recipe/worker identity, raw token/decode/crop/geometry provenance, cache/resume
+  riêng, GPU lease, timeout/cancel. Giữ default và bytes tracking/consensus cũ.
+- Một lượt/window: D1 2 cue, 6 CPU + 6 VL requests, 127,906 s; D2 4 cue,
+  11 CPU + 11 VL, 171,329 s. Cả hai complete/export exit0, trong cap 40/360 s;
+  0 cache/retry/failed inference. Tổng mới 17 VL; không lặp diagnostic.
+- D1 khớp chữ quan sát; **D2 text gate FAIL**: raw được chọn sai glyph thán từ,
+  còn khác dấu ba chấm. Raw frame sau đúng được giữ, không chọn theo đáp án.
+  **P1/P2 unresolved**, không promote default hoặc mở holdout.
+- **509 passed, 7 deselected, 1 warning**, gồm 23 synthetic VL contracts;
+  Ruff/Pyright/translation sync pass. Bốn checkpoint cũ giữ exact JSON;
+  D1/D2 table/handoff/undo/editor save-reopen hai vòng giữ text/ms/IDs/raw.
+- 17 decode replays và một crop containment same-PTS khớp, 0 inference kiểm tra;
+  crop app còn lại có PTS khác diagnostic nên không gọi identical input.
+- 12 annotation `AI visual reference`, đối chiếu cả 6 raw Qwen cũ; 0 ASR mới,
+  speech ground truth unknown, không CER/WER/alignment hoặc sửa sáu câu Việt.
+- Native mới/real GPU cancel/holdout/whole-video/full offline/EXE/TTS NOT RUN.
+  [Contract candidate](docs/dev/ocr-vl-candidate-2026-09.md) ·
+  [Kết quả](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (crop0 bổ sung đạt diagnostic; chuẩn bị tiếp tích hợp OCR)
 
 - Audit `.tools/ocr-asr-quality-20260917-164027/`: từ `56bbbdf` sạch/khớp

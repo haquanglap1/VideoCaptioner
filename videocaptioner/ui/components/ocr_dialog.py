@@ -88,6 +88,14 @@ class OcrDialog(QDialog):
         self._button(row, "Kiểm tra model đã cài", self.check_runtime)
         controls.addLayout(row)
         row = QHBoxLayout()
+        self.recognizer_runtime = QLineEdit()
+        self.recognizer_runtime.setPlaceholderText("PaddleOCR-VL thử nghiệm: chọn runtime GPU; để trống dùng CPU")
+        self.recognizer_runtime.setToolTip("Thử trên đoạn ngắn, một dòng phụ đề. Tối đa 40 lượt nhận dạng / 360 giây; "
+                                          "chưa được nghiệm thu trên toàn video.")
+        row.addWidget(self.recognizer_runtime, 1)
+        self._button(row, "Chọn PaddleOCR-VL…", self.choose_recognizer_runtime)
+        controls.addLayout(row)
+        row = QHBoxLayout()
         self.start_ms, self.end_ms, self.position_ms = QSpinBox(), QSpinBox(), QSpinBox()
         for label, spin, value in (("Đầu (ms)", self.start_ms, 0), ("Cuối (ms)", self.end_ms, 60000),
                                     ("Xem tại (ms)", self.position_ms, 0)):
@@ -97,6 +105,8 @@ class OcrDialog(QDialog):
             row.addWidget(spin)
         self._button(row, "Tải ảnh chọn ROI", self.load_preview)
         self.scan_button = self._button(row, "Đọc phụ đề bằng CPU", self.scan)
+        self.recognizer_runtime.textChanged.connect(
+            lambda text: self.scan_button.setText("Đọc phụ đề" if text.strip() else "Đọc phụ đề bằng CPU"))
         controls.addLayout(row)
         row = QHBoxLayout()
         self.roi_values = []
@@ -292,6 +302,12 @@ class OcrDialog(QDialog):
         if path:
             self.runtime.setText(path)
 
+    def choose_recognizer_runtime(self):
+        path = QFileDialog.getExistingDirectory(self, "Chọn runtime PaddleOCR-VL đã chuẩn bị")
+        if path:
+            self.recognizer_runtime.setText(path)
+            self.scan_button.setText("Đọc phụ đề")
+
     def check_runtime(self):
         root = Path(self.runtime.text()) if self.runtime.text().strip() else None
         self.status.setText("Đang kiểm tra file/model đã cài; không nạp engine…")
@@ -365,7 +381,8 @@ class OcrDialog(QDialog):
                 Selection(self.start_ms.value(), self.end_ms.value()), self.runtime.text(),
                 expected_source_sha256=self.source_preview.source_sha256, cache_mib=self.cache_mib.value(),
                 line_selection=self.line_policy(),
-                tracking_policy="character-features-v1" if self.stable_tracking.isChecked() else "edge-tiles-ocr2-v1")
+                tracking_policy="character-features-v1" if self.stable_tracking.isChecked() else "edge-tiles-ocr2-v1",
+                recognizer_runtime=self.recognizer_runtime.text().strip())
             self._start(OcrThread(task), self.accept_document)
         except ValueError:
             self.status.setText("Kiểm tra đầu/cuối video và vị trí dòng: một hoặc hai số tăng dần, lớn hơn 0 và nhỏ hơn 100.")
@@ -379,7 +396,8 @@ class OcrDialog(QDialog):
         task = TaskFactory.create_ocr_task(self.source.text(), document.config.roi,
             document.config.selection, self.runtime.text(),
             expected_source_sha256=document.visual_source.snapshot_sha256,
-            cache_mib=self.cache_mib.value(), resume_document=document)
+            cache_mib=self.cache_mib.value(), resume_document=document,
+            recognizer_runtime=self.recognizer_runtime.text().strip())
         self._start(OcrThread(task), self.accept_document)
 
     def accept_document(self, document):

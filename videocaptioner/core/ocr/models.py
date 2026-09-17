@@ -87,9 +87,35 @@ class ReadLine:
 
 
 @dataclass(frozen=True)
+class GenerationRead:
+    token_ids: tuple[int, ...]
+    raw_decode: str
+    crop_sha256: str
+    crop_bounds: tuple[int, int, int, int]
+    geometry_lines: tuple[ReadLine, ...]
+    eos_token_id: int
+    # This box comes from the input crop, not localization by the generator.
+    geometry_kind: str = "anchor-union-pad-v1"
+
+    def __post_init__(self):
+        if (not self.token_ids or len(self.token_ids) > 96
+                or any(type(t) is not int or not 0 <= t < 103424 for t in self.token_ids)
+                or self.token_ids[-1] != self.eos_token_id
+                or type(self.eos_token_id) is not int or self.eos_token_id != 2
+                or self.geometry_kind != "anchor-union-pad-v1"
+                or not isinstance(self.raw_decode, str) or len(self.raw_decode) > 8192
+                or len(self.crop_sha256) != 64 or any(c not in "0123456789abcdef" for c in self.crop_sha256)
+                or len(self.crop_bounds) != 4 or any(type(v) is not int for v in self.crop_bounds)
+                or not 0 <= self.crop_bounds[0] < self.crop_bounds[2]
+                or not 0 <= self.crop_bounds[1] < self.crop_bounds[3]):
+            raise OcrError("Invalid OCR generation evidence")
+
+
+@dataclass(frozen=True)
 class EngineRead:
     lines: tuple[ReadLine, ...]
     revision: str
+    generation: GenerationRead | None = field(default=None, metadata={"omit_none": True})
 
     @property
     def text(self) -> str:

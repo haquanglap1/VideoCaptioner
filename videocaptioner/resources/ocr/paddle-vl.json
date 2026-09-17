@@ -1,0 +1,53 @@
+{
+  "schema": "paddle-vl-recipe-v1",
+  "id": "paddleocr-vl-1.5-anchor-v1",
+  "model": "PaddlePaddle/PaddleOCR-VL-1.5",
+  "revision": "2a4195faa5e7914c12f2fc601d72c81caf8d2da5",
+  "model_files": {
+    "added_tokens.json": "f59f889088e0fe21c523e7cf121bb6dca3b0bb148cb7159fbb4572c74dfc5644",
+    "chat_template.jinja": "2f27812dab7f333e471884e0c803d807f11953d5453140dfb1aaba234f872bc8",
+    "config.json": "ce7f4565f8b1db78532ad5d1b9ebe55c2139d49bd4cb04778b580a08a598f171",
+    "configuration_paddleocr_vl.py": "753dd93654c3a9c8c85a3eaee1e3092dd12591b0f2dce0305e1abfb7a41ff160",
+    "generation_config.json": "a6701d78ab3b4d972307cdec3b69d4c13f46e0d5140514f50ab7d84259324b94",
+    "image_processing_paddleocr_vl.py": "a4fa521b9cb16e207f94b7f2d16427771776dfc634420d319fc4916ee58049ec",
+    "inference.yml": "b70e21114423f553b433e977f16c1360092ac9f609e04bc5c10fed3a8a791a6e",
+    "LICENSE": "b8c4d7deccd236af023af1c88c4d4e8f0fc2f41914e0fb23a3ec9678fb5a8456",
+    "model.safetensors": "d557c9d8997ae57ed3b1b33bdf347be878cc335687f32ca105341c16973f8958",
+    "modeling_paddleocr_vl.py": "c5013dff57ca8b87dc1de64d0fd839a44313de09d230a4fb2d08289d2cad5111",
+    "preprocessor_config.json": "111872ab1e8bb7fd040ac5087bfced7ab8f011f02139b088cba294964c3b1d0e",
+    "processing_paddleocr_vl.py": "e29cb1e5f275f2bd3ce051bd5c9983a33894e693b2823a0e13d4c07c8c4f9e13",
+    "processor_config.json": "1568858960a9760c54431dae693a6152e601ff55cdf6d2eab97a4a99958faea0",
+    "README.md": "0eeebf42ca617495dec7343909667a79840b240d7cb6c5572e221fad0b128557",
+    "special_tokens_map.json": "d3a125c03103deb2acaf7730791bdbbf196f620e5a2213b664511ff9b4b25bab",
+    "tokenizer.json": "c8a215a59183d0d0781adc33bacd3ce6162716f7fd568fb30234a74d69803a7d",
+    "tokenizer.model": "34ef7db83df785924fb83d7b887b6e822a031c56e15cff40aaf9b982988180df",
+    "tokenizer_config.json": "1f979337347cc0cb72a6282d8a23ed183539aa81a87a906f022aee2bab83c7c5"
+  },
+  "packages": {
+    "torch": "2.8.0+cu128",
+    "transformers": "4.57.6",
+    "tokenizers": "0.22.2",
+    "huggingface-hub": "0.36.2",
+    "numpy": "2.2.6",
+    "Pillow": "12.3.0"
+  },
+  "overlay_packages": {
+    "einops": "0.8.1",
+    "protobuf": "5.29.5",
+    "sentencepiece": "0.2.1",
+    "torchvision": "0.23.0+cu128"
+  },
+  "output_classes": 103424,
+  "tokenizer_size": 101316,
+  "prompt": "OCR:",
+  "max_new_tokens": 96,
+  "do_sample": false,
+  "use_cache": false,
+  "dtype": "bfloat16",
+  "attention": "sdpa",
+  "seed": 0,
+  "threads": 4,
+  "processor": "official defaults RGB use_fast=false",
+  "routing": "anchor-union-pad-v1",
+  "mask_adapter": "inputs_embeds to input_embeds only"
+}

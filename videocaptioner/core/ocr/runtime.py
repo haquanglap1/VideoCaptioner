@@ -170,6 +170,10 @@ class CpuOcrRuntime:
         if hashlib.sha256((self.root / "profile.json").read_bytes()).hexdigest() != self.profile_sha256:
             raise OcrError("CPU OCR profile hash mismatch")
         self.bridge_sha256 = hashlib.sha256(self.bridge.read_bytes()).hexdigest()
+        return self._launch([str(python), "-I", "-B", str(self.bridge)], "CPUExecutionProvider")
+
+    def _launch(self, command: list[str], provider: str) -> CpuOcrRuntime:
+        """Shared bounded transport; each recognizer supplies its own verified startup."""
         try:
             self.jobs_root.mkdir(parents=True, exist_ok=True)
             self.temporary = tempfile.TemporaryDirectory(prefix="cpu-", dir=self.jobs_root)
@@ -177,7 +181,7 @@ class CpuOcrRuntime:
             self.started = time.monotonic()
             self.state = "starting"
             self.process = subprocess.Popen(
-                [str(python), "-I", "-B", str(self.bridge), "--root", str(self.root), "--job-dir", str(self.directory),
+                [*command, "--root", str(self.root), "--job-dir", str(self.directory),
                  "--profile-sha256", self.profile_sha256], stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=child_environment(),
                 creationflags=_NO_WINDOW, start_new_session=os.name != "nt",
@@ -190,7 +194,7 @@ class CpuOcrRuntime:
             if (health.get("status") != "ready" or health.get("protocol") != PROTOCOL
                     or health.get("profile_sha256") != self.profile_sha256
                     or health.get("bridge_sha256") != self.bridge_sha256
-                    or health.get("provider") != "CPUExecutionProvider"):
+                    or health.get("provider") != provider):
                 raise OcrError("CPU OCR worker identity mismatch")
             if self.expected_profile is not None and (
                     health.get("dictionary_sha256") != self.expected_profile.dictionary_sha256

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable
@@ -50,7 +51,7 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
         identity = VisualSourceIdentity.from_snapshot(snapshot, info, config.selection)
         if resume_document is not None:
             resume_document.visual_source.require_match(identity)
-        scope = CacheScope(snapshot.sha256, config.profile_sha256, digest([identity.to_dict(), digest(config)]))
+        scope = CacheScope(snapshot.sha256, config.read_revision, digest([identity.to_dict(), digest(config)]))
         decoder = RoiDecoder(snapshot.path, info, config.roi, ffmpeg=ffmpeg, check=check,
                              seek_pts=boundary.seek_pts if boundary else None)
         identifier = document_id(identity, config)
@@ -101,14 +102,35 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
                 checkpoint: Callable[[OcrDocument], None] = lambda _: None,
                 progress: Callable[[int, str], None] = lambda *_: None,
                 expected_source_sha256: str = "", cache_mib: int = DEFAULT_CACHE_MIB,
-                resume_document: OcrDocument | None = None) -> OcrDocument:
+                resume_document: OcrDocument | None = None, recognizer_root: Path | None = None) -> OcrDocument:
     cache_limit_bytes(cache_mib)
     if resume_document is not None:
         validate_resume(resume_document, config)
+    begun = time.monotonic()
+    gpu = None
+    if bool(config.recognizer) != (recognizer_root is not None):
+        raise OcrError("Select the recognizer runtime matching this OCR checkpoint")
+    if config.recognizer is not None:
+        from .vl import PaddleVlRuntime, inspect_vl
+
+        original_check = check
+
+        def candidate_check():
+            original_check()
+            if time.monotonic() - begun >= 360:
+                raise OcrError("OCR candidate job deadline exhausted")
+
+        check = candidate_check
+        max_requests = min(max_requests, 40)
+        assert recognizer_root is not None
+        installation = inspect_vl(recognizer_root, check)
+        if installation.profile != config.recognizer:
+            raise OcrError("OCR recognizer changed after the config snapshot")
+        gpu = PaddleVlRuntime(installation, jobs_directory(), timeout=min(timeout, 90),
+                             max_requests=max_requests, check=check)
     jobs = jobs_directory()
     runtime = CpuOcrRuntime(runtime_root, bridge, jobs, config.profile_sha256, max_requests=max_requests,
                             timeout=timeout, check=check, expected_profile=config.profile_snapshot)
-    begun = time.monotonic()
     latest: OcrDocument | None = None
 
     def capture(document: OcrDocument) -> None:
@@ -116,17 +138,33 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
         latest = document
 
     try:
-        with runtime:
+        with ExitStack() as stack:
+            stack.enter_context(runtime)
+            recognizer: Recognizer = runtime
+            if gpu is not None:
+                from .vl import VlRecognizer
+
+                stack.enter_context(gpu)
+                assert config.line_selection is not None
+                recognizer = VlRecognizer(runtime, gpu, config.line_selection, config.read_revision, max_requests)
             if (runtime.bridge_sha256 != config.bridge_sha256
                     or OcrProfileSnapshot.from_bytes((runtime_root / "profile.json").read_bytes(), config.profile_sha256)
                     != config.profile_snapshot):
                 raise OcrError("OCR bridge or profile changed after the config snapshot")
-            scan_video(source, config, runtime, jobs_root=jobs, ffmpeg=ffmpeg,
+            def track(frame, raw):
+                # The generator's input rectangle is not detector geometry. Reuse only
+                # the original CTC boxes so cached reads preserve the old tracker.
+                if gpu is not None and raw is not None:
+                    raw = EngineRead(raw.generation.geometry_lines if raw.generation else (), config.profile_sha256)
+                assert config.line_selection is not None
+                return runtime.track(frame, config.line_selection.anchors[0], raw, check)
+
+            scan_video(source, config, recognizer, jobs_root=jobs, ffmpeg=ffmpeg,
                        ffprobe=ffprobe, check=check, checkpoint=capture, progress=progress,
                        expected_source_sha256=expected_source_sha256,
                        cache_root=cache_directory() if cache_mib else None, cache_mib=cache_mib,
                        resume_document=resume_document,
-                       visual_reader=(lambda frame, raw: runtime.track(frame, config.line_selection.anchors[0], raw, check))
+                       visual_reader=track
                        if config.tracking_policy in CHARACTER_TRACKING_WORKERS and config.line_selection else None)
     finally:
         if latest is not None:
@@ -138,7 +176,12 @@ def run_cpu_ocr(source: Path, config: OcrConfig, runtime_root: Path, bridge: Pat
                 classifier_attempts=metrics.started_inference_calls["cls"], worker_inference_s=metrics.inference_s,
                 worker_process_wall_s=metrics.process_wall_s,
                 tracking_requests=metrics.tracking_requests if config.tracking_policy in CHARACTER_TRACKING_WORKERS else None,
-                visual_batches=metrics.visual_batches if config.tracking_policy in CHARACTER_TRACKING_WORKERS else None))
+                visual_batches=metrics.visual_batches if config.tracking_policy in CHARACTER_TRACKING_WORKERS else None,
+                gpu_requests=gpu.metrics.requests if gpu else None,
+                gpu_responses=gpu.metrics.completed if gpu else None,
+                gpu_recognizer_attempts=gpu.metrics.started_inference_calls["rec"] if gpu else None,
+                gpu_inference_s=gpu.metrics.inference_s if gpu else None,
+                gpu_process_wall_s=gpu.metrics.process_wall_s if gpu else None))
             checkpoint(latest)
     assert latest is not None
     return latest

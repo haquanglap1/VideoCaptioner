@@ -68,12 +68,14 @@ hiddenimports += ["videocaptioner.core.asr.review",
 hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.thread.ocr_thread",
                   "videocaptioner.core.ocr.installation", "videocaptioner.core.ocr.resume",
                   "videocaptioner.core.ocr.line_selection",
+                  "videocaptioner.core.ocr.vl", "videocaptioner.core.ocr.vl_profile",
                   "videocaptioner.resources.ocr.ocr_tracking_worker",
                   "videocaptioner.resources.ocr.ocr_tracking_worker_v2",
                   "videocaptioner.resources.ocr.ocr_tracking_worker_v3",
                   "videocaptioner.cli.commands.ocr"]
 # The external OCR bridge and both legacy/v6 profiles are bundled by the resource tree above.
 # ONNX/OpenCV/NumPy stay in models/ocr/env, never inside the Qt executable.
+# PaddleOCR-VL recipe/worker are resource data; Torch stays in its explicit GPU runtime.
 hiddenimports += collect_submodules("videocaptioner")
 # Native settings/probe pages load lazily; explicitly retain their frozen entry points.
 hiddenimports += ["videocaptioner.core.asr.native_api",

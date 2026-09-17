@@ -31,6 +31,7 @@ class OcrTask:
     resume_document: Optional["OcrDocument"] = None
     line_selection: Optional["LineSelectionPolicy"] = None
     tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
+    recognizer_runtime: str = ""
 
 
 def _generate_task_id() -> str:
