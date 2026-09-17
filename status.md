@@ -1,5 +1,19 @@
 # Project Status
 
+## 2026-09-17 (đổi ưu tiên: OCR khoảng 80–90%, tập trung speech-to-text)
+
+- User chấp nhận OCR khoảng **80–90%**; ưu tiên chính là **speech-to-text tốt**.
+  Đây là mục tiêu chấp nhận, không phải số accuracy đã đo trên toàn video.
+- Giữ OCR candidate hiện có; lỗi glyph/dấu nhỏ ở D2 được theo dõi nhưng không
+  chặn triển khai ASR. Không tiếp tục tối ưu OCR chỉ để đạt exact-match mọi chữ.
+- Tập trung ASR vào mất lời, nhận sai cụm lặp, thêm lời không có và timing;
+  ưu tiên D3, sau đó coverage đầu/cuối câu D1/D2. Reuse sáu raw Qwen và audio
+  đã khóa; inference mới cần hypothesis/budget mới, không lặp lượt đã tiêu thụ.
+- `AI visual reference` tiếp tục được dùng để đối chiếu; không chờ human
+  transcript. Giữ riêng raw ASR và bất định giữa caption với lời thực nói.
+- Điều chỉnh này không tự nghiệm thu ASR hoặc mở whole-video/EXE/TTS. Các
+  kết quả fail và giới hạn validation trước vẫn giữ nguyên như bằng chứng lịch sử.
+
 ## 2026-09-17 (PaddleOCR-VL opt-in vào app; D1 đạt, D2 còn lỗi chữ)
 
 - Audit `.tools/ocr-asr-quality-20260917-171207/`, từ `0403e02` sạch/khớp remote;

@@ -1,5 +1,28 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Chỉ đạo ưu tiên mới nhất của user — OCR khoảng 80–90%, ASR là chính
+
+User chấp nhận OCR khoảng **80–90%**, chủ yếu cần **speech-to-text tốt**.
+Mục này thay yêu cầu phải sửa hết lỗi OCR/đạt exact-match D2 trước khi tiến hành
+ASR ở các phần dưới. Mức 80–90% là mục tiêu chấp nhận, **chưa phải accuracy đã
+đo trên toàn nguồn**; không sửa báo cáo lịch sử thành OCR đã pass một phép đo mới.
+
+Giữ OCR hiện có làm nguồn đối chiếu phụ. Ghi nhận các lỗi glyph/dấu còn lại nhưng
+không dành tiếp các lượt inference để đuổi từng lỗi nhỏ. OCR không được âm thầm
+làm mất cả câu/đoạn, làm hỏng timing hoặc raw/provenance; các guard này vẫn giữ.
+
+**Bước tiếp tập trung ASR:** ưu tiên cụm lặp/nhận sai và token đuôi D3, rồi lời
+thiếu ở đầu/cuối D1/D2. Đọc `asr-visual-comparison-final.json`, các WAV/raw/config
+đã khóa trước khi đề xuất đúng một hypothesis mới có input/budget rõ ràng.
+Không chạy lại sáu lượt Qwen đã tiêu thụ hoặc chọn output đẹp nhất. Mục tiêu là
+giữ đủ lời, đúng nội dung và timing dùng được; không áp tiêu chí OCR exact-match
+để trì hoãn nhánh này. AI visual reference được user chấp nhận, không chờ human
+transcript; giữ bất định lời thực nói và không đưa caption vào ASR prompt.
+
+Việc giảm ưu tiên OCR không tự cho phép gọi ASR đạt, đổi OCR default hoặc mở
+whole-video/full offline/EXE/TTS khi các gate liên quan còn thiếu. Các số đo/fail
+cũ bên dưới vẫn là lịch sử, không phải lý do tiếp tục tập trung vào OCR.
+
 ## Trạng thái mới nhất: app candidate đã triển khai và đo từ `0403e02`
 
 **Mục này thay các chỉ đạo “bắt đầu tích hợp”, “chưa scan D1/D2”, “implementation

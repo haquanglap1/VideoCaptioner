@@ -1,5 +1,18 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — điều chỉnh tiêu chí theo user: ưu tiên speech-to-text
+
+Sau kết quả candidate, user chấp nhận OCR khoảng **80–90%** và ưu tiên
+**speech-to-text tốt**. Đây là tiêu chí sản phẩm mới, không phải một số accuracy
+đã được đo. Giữ kết quả OCR hiện có; lỗi glyph/dấu nhỏ ở D2 không còn là điều
+kiện chặn tiến độ ASR. Kết quả D2 fail theo exact-text gate cũ vẫn được giữ.
+
+Công việc tiếp theo tập trung ASR D3 (cụm lặp, nội dung khác caption, token đuôi),
+rồi coverage đầu/cuối D1/D2. Tiếp tục dùng AI visual reference với nhãn nguồn rõ;
+không yêu cầu human transcript mới triển khai, không trộn caption vào prompt ASR.
+Chưa có inference, sửa code hoặc phép đo accuracy mới trong lần đổi ưu tiên này.
+Các budget đã tiêu thụ, raw/model/media, sáu câu Việt và recipe B giữ nguyên.
+
 ## 2026-09-17 — từ `0403e02`: app candidate VL opt-in; D2 chưa đạt text gate
 
 Audit `.tools/ocr-asr-quality-20260917-171207/`. HEAD/remote khớp trước làm,
