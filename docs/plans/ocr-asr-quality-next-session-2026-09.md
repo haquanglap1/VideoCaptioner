@@ -1,5 +1,47 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — audio conditioning pretrained có tác dụng; D3 chưa đạt
+
+Audit **`.tools/asr-conditioning-20260918-022835/`**, từ `4ea3a0a`; đọc
+`publication.json` và Git live. App implementation vẫn **`724906e`**; không
+sửa app/default/parser/OCR/installed runtime/tracking v3/consensus punctuation-v2.
+
+- Khóa phép che audio embeddings: **1 pretrained load/1 audio encoder +2 text-model
+  forwards**, CUDA/BF16/SDPA nguyên trạng, use_cache=false. Reuse tensor đã lưu
+  và46 token raw beam5; prompt265 +45 raw =310 positions. Không beam search,
+  generate/transcribe/processor/tokenizer decode hoặc đưa caption vào model.
+- Đủ **247 audio rows** được chèn đúng bits/thứ tự. Nhánh thứ hai chỉ zero đúng
+  các rows này. Logits đổi **46/46 positions**; cụm lặp/đuôi đều phụ thuộc audio
+  theo intervention. KL trung bình **2,119753/6,736341 nats**; không speech pass.
+- **37,297 s**, cap120s, exit0/retry0; **29 artifact checks pass**, FP64 từ NPZ,
+  0 verification inference/0 app tests. Có pretrained diagnostic inference;
+  **0 recognition mới**, Qwen tổng15/SenseVoice tổng1, Whisper/OCR/VAD mới0.
+- Bác bỏ complete audio disconnection trong input này; không biết audible event
+  nào khiến model sinh token sai. Zero embeddings ngoài phân phối; teacher forcing
+  có prefix raw. Không dùng sensitivity/likelihood làm speech truth, hallucination
+  classifier, alignment hoặc lý do xóa từ. Không so như historical beam parity.
+- Verify **8.148 prior hashes**, bảo vệ **8.196 file**, baseline764 tracked,
+  runtime4.663 hashes. Setup đầu fail trước inference vì raw beam5 thiếu trong
+  flat inventory; SHA khớp frontend locked plan, bổ sung protection. Giữ failure.
+- **D3 FAIL/P2 unresolved**, D1 onset unresolved, D2 saved-data native pass giữ.
+  Numerical frontend NOT PASS/real-model cache parity UNKNOWN giữ. Alignment/
+  native mới/holdout/whole-video/full offline/EXE/translation/TTS **NOT RUN**.
+- Dọn28 cache/temp/profile files mới/**186.001.606 bytes**, không lỗi; giữ raw
+  logits/embeddings/receipts. Không retry cleanup cũ hoặc xóa artifact phiên khác.
+
+Đọc plan/runtime, setup amendment/supplement, diagnostic, `input-sequence.json`,
+`forward-events.jsonl`, `audio-logits.npz`, `logits.npz`, `embeddings.npz`,
+results/receipts/logs, `conditioning-results.json`, verification/assessment,
+coverage/phase, cleanup/preservation và publication. Giữ model/raw/sáu câu Việt/
+recipe B/hai stash; không app snapshot/playback/annotation/holdout exposure mới.
+
+**Ablation đã hết cap.** Không lặp hoặc đổi zero/mean/permutation để tìm kết quả.
+Chưa có candidate sửa lexical được chứng minh. Không tự bật penalty, xóa đuôi,
+chép caption hoặc cấp lại cap SDPA mask/cache/frontend/VAD/context/prefix/
+SenseVoice/beam5/chunk7s. Không đòi user chép tiếng Trung hoặc lặp native D2.
+Tiếp tục khi có evidence độc lập về acoustic/lexical mechanism; giữ quyền local/
+commit/push allowlist và toàn bộ giới hạn Git/phạm vi bên dưới.
+
 ## Bàn giao mới nhất — decoder cache synthetic pass; chưa có candidate ASR mới
 
 Audit **`.tools/asr-decoder-cache-20260918-014909/`**, bắt đầu `8f6bc80`; đọc

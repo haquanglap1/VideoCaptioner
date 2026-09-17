@@ -1,5 +1,96 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-18 — D3: đo conditioning audio trên decoder pretrained
+
+Audit `.tools/asr-conditioning-20260918-022835/`, bắt đầu `4ea3a0a` sạch,
+khớp remote. App implementation vẫn `724906e`; không sửa app/default/parser/
+OCR/tracking v3/consensus punctuation-v2 hoặc installed runtime.
+
+### Giả thuyết và phép đo
+
+Các diagnostic trước chưa quan sát merged embeddings hoặc logits pretrained.
+Giả thuyết mới: audio có thể bị bỏ qua khi decoder dự đoán cụm lặp/token đuôi.
+Đọc `Thinker.forward` đang cài: nó chèn audio qua `masked_scatter`. Khóa một
+intervention sau encoder để kiểm đường truyền và sự phụ thuộc vào audio;
+không lấy synthetic cache pass làm căn cứ chạy recognition mới.
+
+Reuse tensor BF16 đã capture ở audit SDPA và **46 token raw beam5** được lưu,
+gồm EOS. Không chạy processor, đọc lại WAV để xử lý, tokenizer decode hoặc
+đưa AI visual reference/chữ đã sửa vào model. Model1.7B pin cũ, CUDA/BF16,
+SDPA nguyên trạng; **không áp lại bản vá block mask**. Lỗi mask đã biết vẫn
+tồn tại trong backend này, phù hợp đường beam5 lịch sử. Không lặp beam search.
+
+Input teacher forcing có **310 positions**: prompt265 +45 token raw trước EOS.
+Lượt đầu chạy Thinker thật, capture encoder output và merged input của text
+model. Oracle độc lập gán từng row audio vào slice9–255 để so exact bits.
+Lượt thứ hai giữ cùng IDs, toàn bộ embeddings ngoài audio và vị trí, chỉ đặt
+247 audio rows bằng0. Cả hai `use_cache=False`; không gọi `generate/transcribe`.
+Lưu đủ hai ma trận logits **46×151.936**, embeddings, IDs và counters.
+
+### Kết quả và giới hạn
+
+**1 pretrained model load /1 audio encoder forward /2 text-model forwards**
+(hai Thinker invocations, không cộng như hai model khác). Process **37,297 s**,
+cap120s, exit0/retry0; load **3,094 s**, đoạn forward/capture **15,594 s**.
+Peak allocated VRAM **4.698.449.408 bytes**. Không recognition hoặc sequence mới.
+
+**29/29 artifact checks pass**, tính metrics từ logits bằng FP64, không inference
+kiểm tra. Merge đủ247 rows đúng thứ tự/bytes, intervention chỉ đổi đúng audio.
+Logits thay đổi tại **46/46 vị trí**; log-probability của cả46 token raw cao hơn
+trong nhánh audio thật so với zero embeddings. Đây là số đo có điều kiện trên
+raw prefix, không phải xác suất đúng của transcript.
+
+| Nhóm token raw đã khóa | Token | KL trung bình, audio so zero (nats) | Mean log-probability delta |
+|---|---:|---:|---:|
+| Cụm lặp | 7 | 2,119753 | 2,168454 |
+| Đuôi, gồm dấu câu | 2 | 6,736341 | 6,893595 |
+| EOS | 1 | 0,048053 | 0,048064 |
+
+Riêng token lexical đuôi, log-probability là **−0,148387** với audio và
+**−10,935542** khi che audio; KL **10,492536 nats**. Không có cơ sở gọi đuôi
+hoàn toàn do text-only decoder trong phép này. **Không kết luận token đó thật
+sự được nói**: background, acoustic ambiguity hoặc lỗi model vẫn chưa phân biệt.
+
+Zero embeddings là intervention ngoài phân phối, không phải audio im lặng.
+Teacher forcing đã cung cấp prefix do model sinh trước đó; mức nhạy thấp/cao
+không phân loại hallucination hay chứng minh chữ/timing. Đây không phải replay
+beam search, cached/full parity hoặc forced alignment. Không dùng likelihood
+để xóa token, chép caption, bật penalty hay cấp lại cap recognition đã hết.
+Phép đo bác bỏ giả thuyết mạnh “audio bị mất hoàn toàn” ở input này; chưa giải
+thích lỗi lexical còn lại và **chưa có recognition candidate mới đủ căn cứ**.
+
+### Preservation và trạng thái
+
+Verify **8.148 prior hashes**; baseline764 tracked và runtime4.663 hashes.
+Setup đầu fail trước plan/model load vì raw beam5 không nằm trong flat inventory
+kế thừa. File vẫn tồn tại; SHA khớp `historical_generation_sha256` trong frontend
+locked plan đã được bảo vệ. Thêm supplemental protection, không sửa baseline cũ;
+tổng **8.196 file** được bảo vệ. Đây là sửa giả định inventory, không inference
+retry. Log load giữ warning `temperature`; không có lời gọi generation từ warning.
+
+**0 app tests, 0 token decode, 0 verification inference**, không cộng tests cũ.
+Có pretrained diagnostic inference, nên không ghi cả phiên là0 model inference.
+**0 ASR/OCR/VAD mới**, Qwen recognition tổng15/SenseVoice tổng1 giữ. Không
+download/install/upload, sửa audio hoặc annotation/playback/holdout exposure mới.
+Giữ raw/model, sáu câu Việt/recipe B, hai stash và refs master.
+
+Dọn đúng **28 cache/temp/profile files mới /186.001.606 bytes**, không lỗi.
+Chỉ xóa file trong audit hiện tại sau kiểm absolute path/size/hash; giữ logits,
+embeddings và receipts. Không retry cleanup cũ hoặc dọn artifact phiên khác.
+
+**D3 content FAIL/P2 unresolved**; D1 onset unresolved, D2 coverage ngoài63s và
+saved-data native pass giữ. Frontend numerical **NOT PASS**, real-model cache
+parity **UNKNOWN** giữ. Speech truth unknown, không CER/WER. Alignment/native
+mới/holdout/whole-video/full offline/EXE/translation/TTS **NOT RUN**.
+
+Evidence: `plan-locked.json`, `runtime-manifest.json`, `setup-amendment.json`,
+`protected-supplement.json`, `input-sequence.json`, `forward-events.jsonl`,
+`audio-logits.npz`, `logits.npz`, `embeddings.npz`, `results.json`, receipts/logs,
+`conditioning-results.json`, `verification.json`, `D3-assessment.json`,
+coverage/phase, cleanup/preservation và `publication.json`. Phép ablation đã
+hết cap; không thử zero/mean/permutation khác để chọn kết quả. Bước tiếp cần
+bằng chứng mới gắn được acoustic/lexical mechanism với một sửa đổi cụ thể.
+
 ## 2026-09-18 — D3: kiểm riêng text KV cache, causal mask và RoPE
 
 Audit `.tools/asr-decoder-cache-20260918-014909/`, bắt đầu `8f6bc80` sạch,

@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-09-18 (ASR D3: pretrained decoder sử dụng audio; chưa có bản sửa nội dung)
+
+- Audit `.tools/asr-conditioning-20260918-022835/`, từ `4ea3a0a` sạch/khớp remote.
+  Verify **8.148 prior hashes**, bảo vệ **8.196 file** gồm raw bổ sung đã đối chiếu
+  SHA lịch sử; baseline764 tracked/runtime4.663 hashes. App vẫn `724906e`.
+- Khóa một phép che embeddings audio trên Qwen pretrained: **1 audio encoder +
+  2 text-model forwards**, CUDA/BF16/SDPA nguyên trạng, không generate/transcribe.
+  Reuse tensor BF16 và46 token raw beam5; không đưa caption vào model.
+- Đủ **247 audio rows** được chèn đúng bytes/thứ tự; che đúng các rows đó làm
+  logits thay đổi ở **46/46 vị trí**. Cụm lặp và token đuôi đều nhạy với audio;
+  bác bỏ giả thuyết mất hoàn toàn conditioning trong phép đo này. Không suy
+  likelihood/sensitivity thành lời nói đúng, hallucination classifier hoặc timing.
+- Process **37,297 s**, cap120s, exit0/retry0; **29 artifact checks pass**,
+  **0 app tests/inference verification/token decode**. Có pretrained inference
+  chẩn đoán; **0 recognition mới**, Qwen tổng15/SenseVoice tổng1 giữ.
+- **D3 FAIL/P2 unresolved**; numerical frontend NOT PASS và real-model cache
+  parity UNKNOWN giữ. Không sửa app/default/OCR/runtime hoặc promote candidate;
+  không native mới/holdout/whole-video/full offline/EXE/translation/TTS.
+  Dọn28 cache/temp/profile files mới, **186.001.606 bytes**, không retry cleanup cũ.
+  [Phạm vi, kết quả và giới hạn](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-18 (ASR D3: chưa tái hiện lỗi KV cache/RoPE trên decoder tổng hợp)
 
 - Audit `.tools/asr-decoder-cache-20260918-014909/`, từ `8f6bc80` sạch/khớp
