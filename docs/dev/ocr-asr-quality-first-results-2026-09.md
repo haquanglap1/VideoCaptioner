@@ -1,5 +1,70 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — từ `c330f77`: PaddleOCR-VL có tín hiệu tốt, diagnostic chưa đủ
+
+Audit `.tools/ocr-asr-quality-20260917-160948/` bắt đầu từ HEAD/remote `c330f77`,
+tree/index sạch. Verify **705 hash cũ**, bảo vệ **6.303 file**, gồm cả runtime
+Paddle trước; copy **763 file tracked** đúng bytes checkout và kiểm trước từng
+gate. Inventory đọc 291 tài liệu evidence. Lỗi setup ban đầu do các file cấu hình
+JSON Lines trong package Paddle được giữ trong amendment; không sửa artifact cũ.
+
+### Recognition: giữ tỷ lệ dòng bằng encoder dynamic resolution
+
+Chọn duy nhất [PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5),
+pin `2a4195faa5e7914c12f2fc601d72c81caf8d2da5`. Giả thuyết: encoder độ phân giải
+động cùng decoder OCR có thể giữ glyph đầu dòng nhỏ mà đường resize vuông hoặc
+patch rời trước đó chưa đọc đủ. Không lặp V4/GOT/SVTRv2 hoặc sweep recognizer.
+
+- Weights SHA `d557c9d8997ae57ed3b1b33bdf347be878cc335687f32ca105341c16973f8958`
+  khớp LFS official; 1.917.255.968 byte. Output/embedding **103.424 classes**,
+  tokenizer **101.316 entries**; target glyph là token 97757. Inventory và input
+  tensors khóa trước inference; coverage chỉ là điều kiện cần.
+- Reuse Qwen Python/Torch 2.8.0+cu128/Transformers 4.57.6 với code official pinned
+  đọc local. Bổ sung torchvision 0.23.0+cu128, sentencepiece 0.2.1, protobuf 5.29.5,
+  einops 0.8.1 vào `vl-deps/` riêng; app/Qwen environments không đổi. Đây là
+  diagnostic custom-code runtime, chưa là app profile hoặc portable acceptance.
+- Cùng hai raw crop và blank trước đó; prompt `OCR:`, processor mặc định,
+  BF16/SDPA, greedy, 96 new tokens, không KV cache. Cap **3 request/3 batches,
+  180 s**, không retry. Crop0 lỗi trong first forward do keyword `inputs_embeds`
+  không khớp `input_embeds` của masking API, trước token đầu; **vẫn tính 1 request
+  và 1 failed inference attempt**. Không gọi đây là crop nhận sai chữ.
+- Adapter local chỉ đổi tên keyword; bốn ca mask CPU kiểm eager/SDPA, có/không
+  padding đều fail ở lời gọi cũ và giữ đúng causal/padding mask sau adapter.
+  Amendment giữ nguyên model/input/decoding, chỉ chạy **hai input chưa chạy**:
+  crop1 và blank; không retry crop0. Hard cap process còn lại 155 s, tổng vẫn <180 s.
+- Crop1 giữ glyph đầu, phần thân và dấu cuối theo **AI visual reference cũ**;
+  blank rỗng, cả hai EOS. Hai request hoàn tất mất 14,874 s generation; tổng hai
+  process inference, kể cả lượt lỗi, **46,984 s**. Peak allocated VRAM lượt sau
+  1.981.510.656 byte. Tổng **3 attempts/3 batches: 2 complete, 1 failed**;
+  0 cache/tracking/feature batches, 0 retry, không ghép raw.
+
+**INCOMPLETE, chưa tích hợp hoặc scan window**: crop0 chưa có output, nên không
+đạt gate cả hai crop dù crop1/blank có tín hiệu tốt. Không loại model vì lỗi API,
+không lấy riêng crop1 để công bố quality pass, không tự cấp thêm request khi cap
+đã hết. Các lỗi import/harness trước inference cũng giữ trong receipts/amendments.
+
+Replay 12 input tensors và hai token decodes từ dữ liệu lưu đều khớp; cộng với
+bốn ca mask là kiểm harness, **0 app tests và 0 recognition mới**. Không cộng các
+số này với 92 tests lịch sử. Evidence chính: `vl-{upstream,inventory,plan-locked,
+results,plan-remaining-locked,remaining-results,verification}.json`,
+`vl-compat-verification.json`, runtime amendments và process receipts.
+
+### ASR và giới hạn còn lại
+
+Tìm nguồn đối chiếu theo video chính thức chỉ có mô tả/credits, chưa có transcript
+nghe độc lập D1/D2/D3. Truy vấn metadata Bilibili không đăng nhập trả **HTTP 412**;
+không suy ra nguồn không có subtitle. Giữ `reference=unknown`, tổng Qwen vẫn 6,
+**0 ASR mới**, không upload audio, CER/WER, alignment hoặc tách vocals lại.
+Evidence: `asr-reference-{plan-locked,results}.json`.
+
+Không đổi app; implementation vẫn `cb437cb`. Native mới, holdout, whole-video,
+full offline, build EXE và TTS **NOT RUN**. Native partial 69 cue v1 và các gate
+v3 trước vẫn là bằng chứng lịch sử, không nâng thành fresh full workflow.
+P1/P2 unresolved; H1 contamination 539 ms giữ nguyên. Hai stash, sáu câu Việt,
+recipe B và dữ liệu cũ được bảo toàn. Dọn riêng cache/temp/profile/tools tạm do
+audit này tạo theo yêu cầu user; giữ model, raw, tensors, snapshot và receipts.
+Inventory xóa và số byte thực tế nằm trong `cleanup-receipt.json` của audit.
+
 ## 2026-09-17 — từ `5403845`: loại SVTRv2; kiểm PCM và native partial 69 cue
 
 Audit `.tools/ocr-asr-quality-20260917-151112/`. HEAD/remote khớp `5403845`,

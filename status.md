@@ -1,5 +1,23 @@
 # Project Status
 
+## 2026-09-17 (PaddleOCR-VL: crop1/blank tốt; diagnostic còn thiếu crop0)
+
+- Audit `.tools/ocr-asr-quality-20260917-160948/`: HEAD/remote `c330f77` sạch;
+  verify 705 hash, bảo vệ 6.303 file, snapshot 763 file khớp bytes checkout.
+- Inventory PaddleOCR-VL-1.5 pinned, 103.424 classes/101.316 tokenizer entries.
+  Reuse Qwen Python và dependency overlay riêng trong audit, không đổi app.
+- Cap 3 attempts: crop0 lỗi keyword masking API trước token đầu; adapter đổi
+  tên keyword qua 4 ca mask CPU. Chỉ chạy tiếp crop1/blank, không retry crop0:
+  crop1 giữ glyph/body/dấu theo AI reference, blank rỗng, cả hai EOS.
+- Tổng 3 request/3 batches: 2 complete, 1 failed; 0 cache/tracking/features;
+  46,984 s tổng process inference. **INCOMPLETE**, chưa tích hợp/scan window;
+  crop0 không có output, không thể gọi toàn diagnostic đạt.
+- 12 tensor comparisons/2 decode replays khớp; 0 app tests mới. ASR reference
+  vẫn unknown; metadata nguồn HTTP 412; 0 ASR mới, Qwen tổng 6.
+- P1/P2 unresolved; native mới/holdout/whole-video/full offline/EXE/TTS NOT RUN.
+  Giữ hai stash, dữ liệu cũ và voice B. Dọn cache/temp riêng phiên này, giữ
+  evidence/model/snapshot. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (SVTRv2 bị loại; PCM ASR và partial native có chữ)
 
 - Audit `.tools/ocr-asr-quality-20260917-151112/` bắt đầu từ `5403845` khớp
