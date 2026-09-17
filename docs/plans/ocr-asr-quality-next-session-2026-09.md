@@ -1,5 +1,42 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — decoder cache synthetic pass; chưa có candidate ASR mới
+
+Audit **`.tools/asr-decoder-cache-20260918-014909/`**, bắt đầu `8f6bc80`; đọc
+`publication.json` và Git live. App implementation vẫn **`724906e`**, không sửa
+app/default/parser/OCR/installed runtime/tracking v3/consensus punctuation-v2.
+
+- Khóa đúng2 ca tiny random Thinker FP32/CPU và BF16/CUDA: batch1, prefill265,
+  48 cached steps qua `prepare_inputs_for_generation`, full313 đối chiếu và
+  future-suffix perturbation. Không speech/caption/pretrained weights/generate.
+- **102 synthetic forwards/204 SDPA calls**, 0 audio encoder forwards,
+  **26 synthetic checks pass**. Cache/RoPE/causal visibility đúng integer oracle;
+  prefix265 exact invariant. Cached/full logits max diff **8,94070e-8/0**.
+  Process **23,672 s**, cap90s, exit0, retry0. Cả hai ca đã hết cap, không lặp.
+- **29 artifact checks pass**, đọc NPZ và tính FP64, **0 inference verification,
+  0 token decode replay, 0 app tests**. Không cộng tests cũ. Model nhỏ/không padding/
+  độ dài cố định: **real-model cache parity UNKNOWN**, không suy speech pass.
+- Chưa tái hiện lỗi decoder đủ để sửa/chạy ASR mới. **D3 content FAIL/P2 unresolved**
+  giữ; Qwen tổng15/SenseVoice tổng1, Whisper/ASR/OCR/VAD mới0. Numerical frontend
+  NOT PASS giữ; không replay trace/DFT. Các issue upstream207/201/211 và PR125
+  đã triage, chưa cung cấp nguyên nhân D3 phù hợp; không upgrade/sweep từ đó.
+- Verify **8.081 prior hashes**, bảo vệ **8.148 file**, baseline764 tracked và
+  runtime4.663 hashes. Không app invocation/snapshot, playback/annotation/holdout
+  exposure mới. Dọn25 cache/temp/profile files mới/**229.985.562 bytes**; giữ
+  model/raw/sáu câu Việt/recipe B/hai stash, không retry cleanup cũ.
+- D1 onset unresolved; D2 coverage/native saved-data pass giữ. Alignment/native
+  mới/holdout/whole-video/full offline/EXE/translation/TTS **NOT RUN**.
+
+Đọc `upstream-triage.json`, locked plan/runtime, `diagnostic.py`, hai bộ
+`*-result.json`, `*-observations.json`, `*-logits.npz`, input IDs, receipts/logs,
+verification/assessment/coverage/phase, cleanup/preservation và publication.
+
+Không lấy synthetic pass làm căn cứ bật/tắt cache hoặc cấp lại cap SDPA mask.
+Bước ASR tiếp cần evidence độc lập mới về acoustic/lexical mechanism. Không
+lặp frontend/VAD/context/prefix/SenseVoice/beam5/chunk7s, không sửa raw theo
+caption hoặc đòi user chép tiếng Trung. Không lặp native D2 vừa pass. Giữ quyền
+local/commit/push allowlist và giới hạn Git/phạm vi bên dưới; không động stash.
+
 ## Bàn giao mới nhất — SDPA mask đã có proof; D3 sửa mask vẫn chưa đạt
 
 Audit **`.tools/asr-sdpa-20260918-011948/`**, bắt đầu `83d6616`; đọc

@@ -1,5 +1,77 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-18 — D3: kiểm riêng text KV cache, causal mask và RoPE
+
+Audit `.tools/asr-decoder-cache-20260918-014909/`, bắt đầu `8f6bc80` sạch,
+khớp remote. Verify **8.081 prior hashes**, bảo vệ **8.148 file**, baseline
+**764 tracked file**, runtime **4.663 hashes**. Không app invocation/snapshot
+hoặc sửa app/default/parser/OCR/installed runtime; implementation vẫn `724906e`.
+
+### Giả thuyết và giới hạn đã khóa
+
+Candidate SDPA mask trước đã hết cap và vẫn fail nội dung. Evidence trước chỉ
+đếm49 text-model forwards, chưa kiểm KV cache/position của decoder. SDK tính
+`rope_deltas` khi prefill và dựng vị trí qua nhánh khác ở những bước tiếp theo.
+Giả thuyết mới: nhánh incremental có thể sai cache/vị trí/causal visibility sau
+prefill265, độc lập với lỗi audio encoder. Đây là giả thuyết cần kiểm, chưa phải
+nguyên nhân D3 đã chứng minh hoặc quyền chạy lại nhận dạng.
+
+Đã tra [issue207](https://github.com/QwenLM/Qwen3-ASR/issues/207) về batch khác
+độ dài, [issue201](https://github.com/QwenLM/Qwen3-ASR/issues/201) về truyền cấu
+hình attention, [issue211](https://github.com/QwenLM/Qwen3-ASR/issues/211) về
+benchmark và [PR125](https://github.com/QwenLM/Qwen3-ASR/pull/125/files) về
+Transformers5.x. Chúng đều Open lúc kiểm; chưa cung cấp nguyên nhân phù hợp cho
+lượt D3 batch1/SDPA thực/Transformers4.57.6 đã lưu. Không upgrade hoặc chạy các
+cấu hình khác chỉ từ những báo cáo này; `upstream-triage.json` ghi phạm vi.
+
+Plan khóa **hai ca**, FP32/CPU và BF16/CUDA, cùng seed1729, batch1,
+vocab64/hidden32/2 layers/4 heads/head_dim8. Dùng Thinker thật với random weights
+và IDs tổng hợp, **không nạp pretrained weights, audio, caption hoặc transcript**.
+Mỗi ca đúng51 forward: full313, prefill265, 48 bước cache qua
+`prepare_inputs_for_generation`, rồi full313 với suffix đã đổi. Audio tower nhỏ
+được khởi tạo nhưng chặn mọi forward. Không chạy `generate`.
+
+Oracle độc lập yêu cầu ba dòng RoPE là integer range0–312, cache size265–313,
+vị trí attention chỉ được nhìn các vị trí trước đó hoặc chính nó. So logits cached/full
+với tolerance khóa trước: FP32 `atol=rtol=1e-5`; BF16 `atol=0.002, rtol=0.02`.
+Đây là tolerance số học, không tiêu chí speech quality. Đổi suffix phải giữ
+prefix265 exact; không nới tolerance hoặc chọn seed/output sau chạy.
+
+### Kết quả và ý nghĩa
+
+**26 synthetic checks pass**, process **23,672 s**, cap90s, exit0, retry0.
+Tổng **102 random-model forwards/204 SDPA operator calls**. Cả hai ca có cache,
+RoPE và causal visibility đúng oracle; prefix invariant exact khi đổi suffix.
+Sai khác cached/full logits tối đa **8,94070e-8** với FP32, **0** với BF16;
+không có phần tử vượt tolerance hoặc argmax disagreement trên IDs tổng hợp.
+
+Chưa tái hiện lỗi cache trong hai ca đã khóa. **Không kết luận decoder pretrained
+đúng trên D3**: model nhỏ, một input không padding, độ dài cố định và dữ liệu
+không phải audio. Chưa đo full-size real-model logits/hidden states, mọi độ dài,
+batch khác nhau hoặc FA2/internal CUDA kernel parity. Không dùng negative result
+hẹp này để giải thích lỗi nội dung bằng ngôn ngữ/dataset, promote hay cấp lại cap.
+
+**29 artifact verification checks pass**: đọc NPZ đã lưu, tính lại sai khác bằng
+FP64, so integer positions/cache/attention và hashes/receipts. **0 inference
+verification, 0 token decode replay, 0 app tests**; không cộng tests lịch sử.
+Một lệnh PowerShell đọc file/search đầu phiên bị parser từ chối vì brace expansion
+kiểu bash; lệnh đọc đã sửa, không có inference hoặc app mutation từ lỗi đó.
+
+**0 ASR/OCR/VAD mới**, Qwen tổng15/SenseVoice tổng1 giữ nguyên. D3 content **FAIL**,
+P2 **unresolved**, D1 onset chưa rõ; D2 beyond63s/native saved-data pass giữ.
+Numerical frontend **NOT PASS** không đổi và không trace/DFT replay. Speech ground
+truth vẫn unknown; chỉ reuse AI visual reference có prior exposure, không CER/WER.
+Không annotation/playback/holdout exposure mới; giữ H1 playback539ms và historical
+Whisper output/exposure H1/H2. Alignment/native mới/whole-video/full offline/EXE/
+translation/TTS **NOT RUN**. Model/raw, sáu câu Việt/recipe B và hai stash giữ.
+
+Dọn đúng **25 cache/temp/profile files mới / 229.985.562 bytes**, không retry
+cleanup cũ. Đọc `plan-locked.json`, `runtime-manifest.json`, `diagnostic.py`,
+hai bộ `*-result.json`/`*-observations.json`/`*-logits.npz`, receipts/logs,
+`verification.json`, `D3-assessment.json`, coverage/phase, cleanup/preservation
+và `publication.json`. Hai ca đã dùng xong; không lặp/tune diagnostic này hoặc
+chạy thêm ASR chỉ vì đổi phiên. Chưa có recognition candidate mới có căn cứ.
+
 ## 2026-09-18 — D3: lỗi SDPA block mask có thật; sửa riêng mask chưa đạt text gate
 
 Audit `.tools/asr-sdpa-20260918-011948/`, bắt đầu `83d6616` sạch/khớp remote.

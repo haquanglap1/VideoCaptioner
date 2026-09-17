@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-09-18 (ASR D3: chưa tái hiện lỗi KV cache/RoPE trên decoder tổng hợp)
+
+- Audit `.tools/asr-decoder-cache-20260918-014909/`, từ `8f6bc80` sạch/khớp
+  remote. Verify **8.081 prior hashes**, bảo vệ **8.148 file**, baseline764 tracked
+  và runtime4.663 hashes; app implementation `724906e` giữ nguyên.
+- Khóa hai ca tiny random Thinker: FP32/CPU và BF16/CUDA, batch1, prefill265
+  rồi48 bước đơn, qua `prepare_inputs_for_generation` thật. So cached/full
+  logits và kiểm causal visibility, cache size, RoPE bằng integer oracle.
+- **26 synthetic checks + 29 artifact checks pass**; 102 random-model forwards,
+  204 SDPA calls, **0 pretrained/audio-encoder/recognition/generation forwards**.
+  Process **23,672 s**, cap90s, exit0, retry0. Sai khác logits FP32 tối đa
+  `8,94070e-8`; BF16 bằng0; đổi suffix giữ exact prefix trên cả hai ca.
+- Chưa tái hiện lỗi trong phạm vi này; **real-model cache parity UNKNOWN**.
+  Không đủ căn cứ sửa decoder/chạy ASR mới. Qwen tổng15/SenseVoice tổng1 giữ;
+  **D3 content FAIL/P2 unresolved**, numerical frontend NOT PASS giữ.
+- **0 app tests**, không sửa app/default/parser/OCR/installed runtime. Không
+  playback/holdout/alignment/native mới/whole-video/full offline/EXE/TTS.
+  Giữ model/raw, sáu câu Việt/recipe B và hai stash. Dọn25 cache/temp/profile
+  files mới, **229.985.562 bytes**; không retry cleanup cũ.
+  [Kết quả và giới hạn](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-18 (ASR D3: xác minh lỗi SDPA mask; candidate sửa mask vẫn fail nội dung)
 
 - Audit `.tools/asr-sdpa-20260918-011948/`, từ `83d6616` sạch/khớp remote.
