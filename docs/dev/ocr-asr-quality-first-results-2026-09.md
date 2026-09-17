@@ -1,5 +1,78 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — từ `56bbbdf`: crop0 bổ sung đạt diagnostic; ASR reference còn thiếu
+
+Audit `.tools/ocr-asr-quality-20260917-164027/` bắt đầu từ HEAD/remote `56bbbdf`,
+tree/index sạch. Verify **6.303 hash cũ**, bảo vệ **6.791 file**, copy **763 file
+tracked** đúng bytes checkout và kiểm trước các gate; inventory 331 tài liệu
+evidence. App implementation vẫn `cb437cb`, không sửa app/profile/default.
+
+### PaddleOCR-VL: hoàn tất đúng một attempt bổ sung đã được user cấp
+
+Sau khi chuẩn bị runner và khóa plan, user đã cấp riêng **1 attempt crop0,
+tối đa 90 s, không retry tiếp**. `authorization.json` gắn với SHA plan
+`aee967215494affdb564af00219642ce350abe200da135f8d5486b7292bb030a`.
+Plan giữ nguyên bytes và chữ PENDING lịch sử; receipt authorization mới là bằng
+chứng quyền đã cấp. Cap ba attempts cũ không được sửa hoặc xóa failed attempt.
+
+- Reuse model/weights/tokenizer và `vl-deps/` của audit `160948`, không tải/cài
+  thêm. Pinned PaddleOCR-VL-1.5, BF16/SDPA, prompt `OCR:`, greedy96,
+  `use_cache=false`; adapter keyword masking API giữ đúng hash đã verify.
+- Chỉ input0 đã khóa, raw BGR SHA
+  `e7b90e210c8aad45707a8250eaa03a05b9fdb94969513ffe3444b2bf1b225148`;
+  reuse đúng bốn input tensors cũ. Deadline worker 75 s, hard process cap 90 s.
+- **1 request/1 batch, 0 failed, 0 cache/tracking/features**, không warmup hoặc
+  retry tiếp. Generation **14,828 s**, process **23,782 s**, exit0, EOS.
+  Crop0 giữ glyph đầu và phần thân nhìn thấy theo AI visual reading; không thêm
+  dấu ngoài crop. Peak allocated VRAM **1.978.958.848 byte**.
+- Crop1 và blank reuse nguyên output cũ, không chạy lại. Diagnostic hai crop
+  và blank **PASS trong phạm vi nhỏ này**, theo **AI visual reference, không
+  human ground truth**. Tổng lịch sử **4 attempts: 3 complete, 1 failed**;
+  failed first forward cũ vẫn giữ. Tổng process inference **70,766 s** qua hai
+  audit với cap riêng, không gọi là bốn request mới hoặc một budget đã được nới.
+- Readback **4 tensor comparisons + 3 token decode replays** đều khớp,
+  0 recognition trong verification, **0 app tests mới**. Không cộng lại 12/2/4
+  checks trước hoặc 92 tests lịch sử. Model unload khi worker thoát.
+
+**P1 vẫn unresolved**: chưa tích hợp recognizer vào app, scan D1/D2 hoặc chứng
+minh blank/fade/punctuation/one-frame-change qua pipeline. Attempt bổ sung đã
+dùng hết; không lặp crop0/crop1/blank để chọn output. Bước tiếp theo là candidate
+opt-in có identity/provenance riêng và gate D1/D2 theo budget đã khóa, không
+promote default chỉ từ diagnostic.
+
+Evidence: `vl-supplement-plan-locked.json`, `authorization.json`,
+`vl-supplement-{results,receipt,verification}.json`, `run-ledger.jsonl`.
+
+### ASR: xác định nguồn YouTube không đủ làm reference lời nói
+
+Một metadata extraction bằng yt-dlp đã cài, không cookie/login, trên
+[bản phát hành chính thức](https://www.youtube.com/watch?v=mT86JXY6oEw)
+trả duration **261 s**, language **en-US**, không có manual track trong response;
+chỉ có automatic captions, gồm lựa chọn Chinese. Không coi lựa chọn Chinese
+tự động là bản chép audio gốc tiếng Trung. Edition/timebase cũng chưa khớp với
+nguồn Bilibili 266,566625 s. Không tải transcript/media hoặc phát video.
+
+Reference độc lập cần người hiểu tiếng Trung nghe audio gốc D1/D2/D3, chép lời
+và đánh dấu chỗ không chắc; ghi rõ người nghe và prior exposure tới caption/ASR.
+Kịch bản chính thức chỉ hỗ trợ nếu kiểm khớp lời thực nói. Caption, bản dịch,
+ASR khác hoặc signal statistics không tự trở thành ground truth. User không
+biết tiếng Trung, không yêu cầu user tự chép lời. Giữ **reference=unknown**,
+0 ASR mới/upload/CER/WER/alignment; Qwen tổng vẫn 6. Evidence:
+`asr-reference-{plan-locked,results,assessment}.json`.
+
+**Chỉ đạo bổ sung sau giải thích:** user chấp nhận chính assistant đọc chữ từ
+ảnh làm reference. Working reference từ đây là **AI visual reference**, không
+bắt buộc human transcript mới tiếp tục OCR/ASR. Đối chiếu ASR với caption phải
+ghi phần khớp/khác/chưa rõ; không coi mọi khác biệt là lỗi lời nói hoặc tính
+CER/WER lời nói từ caption. Không đưa đáp án vào prompt ASR; giữ raw/provenance.
+Chỉ đạo này thay điều kiện chờ human reference, không tự chứng minh ASR đã đạt.
+Receipt `reference-policy-amendment.json` và prompt phiên sau ghi rõ thay đổi.
+
+Native mới/holdout/whole-video/full offline/EXE/TTS **NOT RUN**. Giữ H1
+contamination 539 ms, hai stash, sáu câu Việt và recipe B. Dọn riêng temporary
+files của audit này; giữ model/raw/tensors/snapshot/receipts. Gate Git/preservation
+và publication cuối nằm trong audit; prompt phiên tiếp theo đã cập nhật.
+
 ## 2026-09-17 — từ `c330f77`: PaddleOCR-VL có tín hiệu tốt, diagnostic chưa đủ
 
 Audit `.tools/ocr-asr-quality-20260917-160948/` bắt đầu từ HEAD/remote `c330f77`,

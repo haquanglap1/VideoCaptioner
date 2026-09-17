@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-09-17 (crop0 bổ sung đạt diagnostic; chuẩn bị tiếp tích hợp OCR)
+
+- Audit `.tools/ocr-asr-quality-20260917-164027/`: từ `56bbbdf` sạch/khớp
+  remote; verify 6.303 hash cũ, bảo vệ 6.791 file, snapshot 763 file khớp bytes.
+- User cấp riêng 1 attempt crop0/90 s. Giữ model/input/adapter/decoding;
+  **1 request/1 batch**, 0 failed/cache/tracking/features, EOS, exit0;
+  generation 14,828 s/process 23,782 s. Không retry tiếp.
+- Crop0 giữ glyph/body theo AI reading; reuse crop1/blank cũ. Diagnostic nhỏ
+  **PASS**, tổng lịch sử 4 attempts gồm 3 complete và 1 failed cũ. Không human
+  ground truth, chưa tích hợp/scan window/promote; **P1 vẫn unresolved**.
+- 4 tensor comparisons/3 decode replays khớp; 0 app tests mới, không cộng số
+  lịch sử. App implementation vẫn `cb437cb`, không đổi app/profile/default.
+- Metadata YouTube official: 261 s/en-US, chỉ automatic caption tracks trong
+  response; không đủ làm reference audio tiếng Trung. ASR reference unknown,
+  0 ASR mới, Qwen tổng 6; không CER/WER/alignment/upload.
+- User sau đó chấp nhận **AI visual reference** do assistant đọc trực tiếp ảnh
+  làm bản đối chiếu OCR/ASR; không chờ human transcript mới triển khai. Giữ
+  nhãn visual và bất định lời nói; không tự nâng thành speech ground truth.
+- Native mới/holdout/whole-video/full offline/EXE/TTS NOT RUN. Prompt phiên sau
+  chuyển sang candidate OCR opt-in và D1/D2 có cap; không lặp diagnostic đã xong.
+  [Kết quả](docs/dev/ocr-asr-quality-first-results-2026-09.md) ·
+  [Prompt tiếp tục](docs/plans/ocr-asr-quality-next-session-2026-09.md).
+
 ## 2026-09-17 (PaddleOCR-VL: crop1/blank tốt; diagnostic còn thiếu crop0)
 
 - Audit `.tools/ocr-asr-quality-20260917-160948/`: HEAD/remote `c330f77` sạch;

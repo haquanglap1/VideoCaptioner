@@ -1,11 +1,17 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
-Cập nhật 2026-09-17 sau phiên tiếp từ `c330f77`. App implementation vẫn là
-`cb437cb`. PaddleOCR-VL-1.5 có crop1/blank tốt nhưng diagnostic **INCOMPLETE**:
-crop0 lỗi runtime trước token đầu và không retry vì cap ba attempts đã hết.
-Không gọi model này bị loại về accuracy hoặc đã đạt. Chi tiết candidate thất bại
-trước vẫn giữ trong báo cáo/audit. Commit chứa prompt chỉ đổi tài liệu; kiểm live
-HEAD/remote và `publication.json` mới trước khi làm.
+Cập nhật 2026-09-17 sau phiên tiếp từ `56bbbdf`. App implementation vẫn là
+`cb437cb`. User đã cấp riêng 1 attempt crop0/90 s; lượt đó hoàn tất, EOS và giữ
+glyph/body theo AI visual reading. Reuse nguyên crop1/blank cũ: diagnostic nhỏ
+**PASS**, chưa tích hợp hoặc scan D1/D2; **P1/P2 vẫn unresolved**. Tổng lịch sử
+PaddleOCR-VL 4 attempts, 3 complete/1 failed cũ; quyền bổ sung đã dùng hết.
+Chi tiết candidate thất bại trước vẫn giữ trong báo cáo/audit. Commit chứa prompt
+chỉ đổi tài liệu; kiểm live HEAD/remote và `publication.json` trước khi làm.
+
+**Chỉ đạo mới nhất của user:** dùng chính assistant đọc chữ trực tiếp từ frame
+làm reference đối chiếu. Gắn nhãn `AI visual reference`; không bắt buộc human
+transcript và không dừng triển khai chỉ vì thiếu nó. Phân biệt chữ trên hình với
+lời thực nói; không nâng AI reference thành human ground truth.
 
 Tiếp tục tại root repository **VideoCaptioner**, nhánh `codex/ocr-asr-quality-pilot`.
 Trả lời tiếng Việt, giữ code/identifier/file name bằng English. Đây là phiên
@@ -22,6 +28,9 @@ Trả lời tiếng Việt, giữ code/identifier/file name bằng English. Đâ
   path vào Git. Mọi output mới nằm trong một audit root riêng dưới `.tools/`.
 - Chưa whole-video/full offline/build/EXE/TTS khi P1/P2/P3 chưa đạt. Giữ sáu câu
   Việt và recipe giọng B đã chấp nhận, không dịch/rewrite/thử giọng lại.
+- Được dùng AI visual reference do assistant trực tiếp đọc ảnh để đối chiếu
+  OCR/ASR theo chỉ đạo mới. Đây là working reference được user chấp nhận;
+  không yêu cầu user chép/duyệt tiếng Trung hoặc chờ human reference mới làm tiếp.
 
 ## 2. Đọc và kiểm trước khi sửa
 
@@ -30,7 +39,7 @@ section **2026-09-17** đầu `docs/dev/ocr-asr-quality-first-results-2026-09.md
 `docs/plans/ocr-asr-quality-first-2026-09.md`. `PLAN ONLY` và v1/v2/v3 trong các
 section cũ là lịch sử; không dùng chúng thay trạng thái bàn giao dưới đây.
 
-Phiên mới nhất bắt đầu với `c330f77` trùng remote, working tree sạch; app implementation
+Phiên mới nhất bắt đầu với `56bbbdf` trùng remote, working tree sạch; app implementation
 `cb437cb` giữ nguyên. Commit report/handoff tiếp theo xem `publication.json` trong
 audit mới, rồi kiểm live Git. `master`/`origin/master` lúc kiểm đều ở
 `62abacae421d2011948f467d3386d81de9f8879b`, chưa merge pilot.
@@ -45,7 +54,27 @@ không đoán dựng lại hoặc chạy lại inference chỉ để tạo evide
 
 ## 3. Evidence và runtime phải reuse
 
-Audit mới nhất: **`.tools/ocr-asr-quality-20260917-160948/`**. Đọc:
+Audit mới nhất: **`.tools/ocr-asr-quality-20260917-164027/`**. Đọc:
+
+- `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check-final.json`
+- `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
+- `baseline.json`, `snapshot-allowlist.json`, `snapshot-initial.json`, snapshot gates,
+  `runtime-manifest-final.json`, `cleanup-final-plan.json`, `cleanup-final-receipt.json`
+- `preflight.json`, `vl-supplement-plan-locked.json`, **`authorization.json`**,
+  `vl-supplement-results.json`, `vl-supplement-receipt.json`,
+  `vl-supplement-verification.json`, `vl-outputs/0.json`
+- `asr-reference-plan-locked.json`, `asr-reference-results.json`,
+  `asr-reference-assessment.json`, **`reference-policy-amendment.json`**,
+  `coverage-final-amendment.json`
+
+Phiên này verify 6.303 hash cũ, bảo vệ 6.791 file, copy 763 tracked file đúng
+bytes. `*-prepared` và `quality-report-prepared.md` là trạng thái trước khi user
+cấp quyền, không dùng thay final. Plan giữ chữ PENDING tại thời điểm khóa;
+`authorization.json` là quyền cấp sau đó, gắn đúng SHA plan. Field kế thừa
+`original_attempts_consumed=1` chỉ nói về first forward cũ; `previous_attempts=3`
+là tổng cap cũ đã tiêu thụ. Không sửa plan khóa để xóa lịch sử này.
+
+Audit PaddleOCR-VL đầu tiên: **`.tools/ocr-asr-quality-20260917-160948/`**. Đọc:
 
 - `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
 - `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
@@ -213,7 +242,7 @@ vẫn sai glyph, blank rỗng; 0,875 s inference/4,125 s process. Sáu đối ch
 preprocessing/decode official đều khớp, không inference lại. Không tích hợp,
 không scan window, không lặp SVTRv2 hoặc đổi preprocessing để chọn output.
 
-**PaddleOCR-VL-1.5 chưa đủ gate, không phải candidate đã bị loại:** audit `160948`,
+**PaddleOCR-VL-1.5 đã qua diagnostic nhỏ sau attempt bổ sung:** audit `160948` và `164027`,
 pin `2a4195faa5e7914c12f2fc601d72c81caf8d2da5`, weights SHA
 `d557c9d8997ae57ed3b1b33bdf347be878cc335687f32ca105341c16973f8958`.
 103.424 output classes/101.316 tokenizer entries; target token 97757. Reuse Qwen
@@ -228,13 +257,29 @@ blank rỗng, cả hai EOS. 14,874 s generation hoàn tất, 46,984 s tổng pro
 lượt lỗi, 0 cache/tracking/features. 12 input tensors/2 token decode replays khớp;
 đây là kiểm harness, 0 app tests mới. Không sửa app/profile hoặc scan window.
 
-Không suy crop0 nhận sai/đúng từ crop1. Cap cũ không còn request; không tự retry
-crop0, lặp crop1/blank hoặc chuyển sang window để vượt diagnostic gate. Nếu user
-cấp lượt kiểm bổ sung riêng, cần khóa cap/input/compatibility trước khi đọc crop0,
-reuse nguyên output crop1/blank; chưa có quyền bổ sung đó trong audit này.
+Trong audit `164027`, user đã cấp **1 attempt bổ sung riêng cho crop0**, hard
+process cap 90 s/worker 75 s, không retry tiếp. Giữ nguyên weights/input tensors/
+adapter/BF16/SDPA/prompt/greedy96. Output crop0 giữ glyph đầu và body nhìn thấy,
+EOS; **1 request/1 batch, 0 failed/cache/tracking/features**, generation 14,828 s,
+process 23,782 s, exit0; peak allocated VRAM 1.978.958.848 byte. Crop1/blank reuse
+nguyên bytes. Tổng hai audit **4 attempts, 3 complete/1 failed**, process 70,766 s;
+không sửa failure trước hoặc gọi bốn attempts là lượt mới.
 
-Bắt đầu bằng đối chiếu evidence này và xác định gate còn thiếu; chỉ chọn **một
-giả thuyết recognition mới có căn cứ** nếu thực sự khác các lượt đã dùng. Inventory profile/weights/output classes/dictionary trước inference;
+Diagnostic hai raw crops/blank **PASS theo AI visual reference**. Bốn tensor
+comparisons crop0 và ba token decode replays đều khớp, 0 inference verification,
+0 app tests mới. Không phải human ground truth hoặc quality acceptance toàn app.
+Attempt bổ sung đã dùng hết; **không lặp crop0/crop1/blank**, không tải model khác
+để sweep. Reuse Qwen Python, model và dependency overlay tại audit `160948`.
+
+**Bước triển khai tiếp theo:** kiểm boundary recognizer/profile/runtime trong
+app, chuẩn bị candidate PaddleOCR-VL opt-in với identity/provenance riêng. Giữ
+tracking/consensus cũ và old resume; nếu đổi semantics phải version mới. Tách
+runtime GPU khỏi Qt/app Python, một GPU job, deadline/cancel thật. Không thêm
+glyph bằng dictionary giả hoặc chỉ thay đúng câu đang biết đáp án. Dùng regression
+synthetic để kiểm routing/raw/identity/cache/resume và failure guards trước khi
+khóa một lượt app candidate trên D1/D2. Không đổi default từ diagnostic nhỏ.
+
+Inventory profile/weights/output classes/tokenizer trước inference;
 coverage chỉ là điều kiện cần. Không rerun V4/raw, tải V5, lặp các probes cũ hoặc
 sweep nhiều model. Không tự thêm dictionary entry khi weights/classes không đổi.
 Không hardcode transcript, nối raw để che lỗi, xóa cue ngắn hoặc nới export guard.
@@ -246,6 +291,31 @@ tracking, feature batches, cache và failed attempts. Regression fail trước s
 giữ blank/fade/standalone punctuation/one-frame change/cache/resume guards.
 
 ## 5. ASR — nhánh độc lập, không lặp những lượt đã dùng
+
+Phiên `164027`: một metadata extraction từ bản YouTube official
+`https://www.youtube.com/watch?v=mT86JXY6oEw` trả 261 s, language en-US,
+không có manual track trong response, chỉ automatic captions (có Chinese).
+Không tải transcript/media, không playback. Khác edition/timebase với nguồn
+266,566625 s; chưa có reference tiếng Trung. `asr-reference-{results,assessment}.json`
+giữ evidence. Không gọi automatic Chinese track là người nghe độc lập.
+
+**Working reference đã được user chấp nhận:** assistant trực tiếp đọc chữ từ
+frame gốc D1/D2/D3, reuse ảnh/annotation đã có; ghi source/frame PTS/hash, text
+nhìn thấy và chỗ không chắc. Đặt `reference_kind=AI visual reference`; không lấy
+output recognizer đang đo làm đáp án, không tự gán human-reviewed. Khi annotation
+mới, đọc ảnh trước output candidate nếu có thể; ghi prior exposure nếu đã thấy.
+
+Đối chiếu ASR bằng bảng audio window/visual text/raw ASR/phần khớp-phần khác/
+vùng chưa xác định. Đây là phép đối chiếu với caption, không mặc định mọi khác
+biệt là lỗi lời nói. Không cần human transcript mới triển khai tiếp; đừng dành
+cả phiên chỉ tìm reference hoặc hỏi user chép tiếng Trung. Có thể bổ sung người
+nghe/kịch bản nếu có, nhưng việc thiếu nguồn đó không tự chặn P2.
+
+Ground truth lời nói vẫn chưa xác minh; không báo CER/WER như độ chính xác lời
+nói từ caption. Không đưa visual reference vào prompt ASR để làm đẹp kết quả.
+Nếu về sau chỉnh phụ đề theo chữ trên hình, ghi visual-assisted correction và
+giữ raw ASR. Các quality gate còn lại vẫn phải kiểm; quyền dùng AI reference
+không tự có nghĩa ASR hiện đã đạt.
 
 Phiên `160948`: tìm nguồn chính thức theo title chỉ thấy mô tả/credits; metadata
 Bilibili anonymous trả HTTP 412, không có transcript nghe độc lập mới. Không
@@ -276,9 +346,9 @@ bytes/PCM input cũ, không kèm caption/model output. Chưa có transcript đ�
 template vẫn unknown. Nếu nhận reference, ghi người nghe, mốc bất định và
 prior exposure trước khi gọi independent; không tự gán nhãn human-reviewed.
 **User không biết tiếng Trung**, đã xác nhận trong phiên `145000`. Không yêu cầu
-user chép lời hoặc nghiệm thu chữ tiếng Trung. Agent tiếp tục tìm bằng chứng
-đối chiếu độc lập phù hợp; thiếu thì giữ unknown và tiếp tục nhánh khác, không
-dùng caption hay một ASR khác làm ground truth chắc chắn.
+user chép lời hoặc nghiệm thu chữ tiếng Trung. Tình trạng này là lịch sử trước
+khi user chấp nhận AI visual reference; áp working reference mới ở đầu mục này,
+không coi thiếu human reference là điều kiện dừng triển khai.
 
 D2 context WAV SHA `a29238016dca8f756dac8343ce6dfca99bd646a2fa11bcb659f810a1d6161f52`;
 request SHA `8dbdd5555010d993f6a31220c433eec676c36c8a056c9fba839cf5b709256668`.
@@ -297,12 +367,17 @@ Giữ hai preprocessing riêng; không tách vocals lần hai hoặc padding fil
 Tiếp tục kiểm audio/reference và chỉ inference khi có giả thuyết mới, khóa WAV/
 hash/config/budget trước chạy. Reuse Whisper large-v3 **VAD-on**; VAD-off đã fail.
 Không đưa OCR/đáp án vào ASR prompt, không upload audio, không chọn output đẹp nhất.
-Reference lời nói hiện **unknown**: cần bằng chứng nghe độc lập cho vùng bất định;
-không chấm CER/WER hoặc gọi mọi khác biệt với caption là lỗi lời nói.
+Reference lời nói hiện **unknown**, working reference là **AI visual** được user
+chấp nhận. Tiếp tục đối chiếu/triển khai với nhãn nguồn và bất định rõ ràng;
+không chấm CER/WER lời nói hoặc gọi mọi khác biệt với caption là lỗi lời nói.
 Chỉ alignment sau text gate; không ghép text Qwen với giờ Whisper khác lời.
 
 ## 6. Validation và native — phân biệt đúng bằng chứng
 
+- Phiên `164027`: 1 supplemental OCR request đã được user cho phép, không
+  request crop1/blank mới. 4 tensor comparisons/3 decode replays là kiểm harness,
+  **0 app tests mới**. Diagnostic nhỏ pass không thay D1/D2 hoặc native workflow.
+  ASR 0 mới/Qwen tổng 6; native/holdout/whole-video/full offline/EXE/TTS NOT RUN.
 - Phiên `160948`: 4 synthetic mask checks, 12 tensor comparisons, 2 decode
   replays; 0 app tests, không cộng 92 lịch sử. Native mới NOT RUN; các kết quả
   native bên dưới là lịch sử. Không mở holdout/whole-video/EXE/TTS.
@@ -381,5 +456,8 @@ liên quan. Reference Việt 5,16 s SHA
 `509ff70aee71483ec547a0d86d354e153cb61f07ca28e76b3da4078384b14c2d`,
 `instruct=female`, `language=vi`, seed0, 32 steps, speed1×. Chưa tích hợp/TTS.
 
-**Bắt đầu ngay bằng Git/evidence và lỗi recognition D2 còn mở; tiếp tục ASR độc
-lập. Không kết thúc chỉ bằng nhắc lại kế hoạch hoặc chạy lại candidate đã thất bại.**
+**Bắt đầu ngay bằng Git/evidence, rồi triển khai candidate PaddleOCR-VL opt-in
+và khóa gate D1/D2 theo budget. Diagnostic nhỏ đã xong, không lặp lại. Đối chiếu
+ASR bằng AI visual reference đã được user chấp nhận, không chờ human transcript.
+Giữ bất định lời nói đúng phạm vi. Không kết thúc chỉ bằng nhắc
+lại kế hoạch, sweep model hoặc chạy lại candidate đã thất bại.**
