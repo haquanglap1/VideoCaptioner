@@ -1,5 +1,97 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-18 — D3: lỗi SDPA block mask có thật; sửa riêng mask chưa đạt text gate
+
+Audit `.tools/asr-sdpa-20260918-011948/`, bắt đầu `83d6616` sạch/khớp remote.
+Verify **8.020 prior hashes**, bảo vệ **8.081 file**, baseline **764 tracked file**.
+Không chạy app/tạo snapshot hoặc sửa production/default/parser/OCR/installed runtime;
+app implementation vẫn `724906e`. Model/raw, sáu câu Việt/recipe B và hai stash giữ.
+
+### Căn cứ mới và bản vá giới hạn
+
+Đọc đúng Qwen SDK 0.0.6 và Transformers 4.57.6 đã ghim: audio encoder có
+`_prepare_attention_mask`, nhưng `forward` không gọi hàm đó và không truyền mask
+tới layers. `cu_seqlens` được gửi tới SDPA wrapper qua kwargs, nhưng wrapper không
+chuyển chúng vào PyTorch operator. Vì `is_causal=False`, đường này cho phép attention
+trên cả clip. Đây là cơ chế sau frontend, khác các trace/DFT đã hết cap.
+
+[Upstream PR #103](https://github.com/QwenLM/Qwen3-ASR/pull/103) mô tả cùng lỗi;
+lúc kiểm PR vẫn **Open**, không coi là bản sửa đã được upstream merge/nghiệm thu.
+Local proof và source đã ghim là căn cứ trực tiếp của candidate. Bản vá trong
+audit chỉ thêm hai statement: tạo mask bằng helper sẵn có, rồi truyền nó vào mỗi
+encoder layer. Thay method trong process riêng; không sửa SDK trên đĩa, decoder,
+weights, tokenizer, audio, prompt hoặc generation policy.
+
+Synthetic plan khóa trước chạy. Lượt đầu **7,281 s/exit1**: cả ba encoder calls
+không nhận mask, nhưng thay block cuối chỉ làm đầu ra block đầu khác
+`9,31323e-10`, không đạt assertion độ nhạy `>1e-5` của tiny random model. Giữ
+failure/raw/script; không gọi toàn bộ lượt này pass hoặc chạy lại ba forward đó.
+Amendment dùng Q/K bằng zero và V có giá trị 0/10 để kiểm operator bằng phép tính
+độc lập: không mask cho trung bình 5 trên mọi vị trí, block mask cho đúng 0/10.
+Sáu encoder forward còn lại kiểm wiring, invariance và output khi xử lý riêng
+các block. **13 final checks pass**, **7,547 s/exit0**; sai khác so các block riêng
+`9,31323e-10`, invariance bằng 0, giữ tolerance `1e-5`.
+
+Tổng **9 forward encoder tổng hợp với random weights**, **5 direct SDPA calls**,
+không pretrained weights/ASR trong các phép này. Đây là harness checks, không
+app tests hoặc chứng minh speech quality. FA2 kernel/GPU numerical parity không
+được đo. Các chunk7s lịch sử nằm trong một attention block mà vẫn nhận sai, nên
+không giả định lỗi mask giải thích toàn bộ D3.
+
+### Một candidate nhận dạng đã khóa
+
+`qwen-d3-filtered-sdpa-block-mask-v1`: nguyên D3 filtered WAV 107–126 s,
+**304.000 samples**, SHA
+`06c78390aea4e3b17c80c54c45dbf14918a3f6cb621ec07eb6515a98d6f49ea9`.
+Giữ model revision `7278e1e70fe206f11671096ffdd38061171dd6e5`, CUDA/BF16/SDPA,
+Chinese, greedy một beam, cap864 tokens, không context/hotword/caption, không
+separation/VAD/crop/EQ mới. So với whole-clip filtered greedy lịch sử; beam5 và
+chunk7s chỉ là evidence khác, không gọi là matched control.
+
+**1 request/1 generation batch**, process **27,359 s** trong cap180 s, exit0;
+load **2,641 s**, inference **17,015 s**. EOS hoàn tất, **49 tokens**, 0 cache,
+retry hoặc recognition failure; peak allocated VRAM **4.698.449.408 bytes**.
+Quan sát **1 audio encoder forward, 24 encoder layer calls, 49 text-model forwards**;
+đây là số module calls đo thực, không số CUDA kernels. Cả 24 mask có boundaries
+`[0,104,208,247]`, **23.153 allowed / 37.856 blocked attention pairs**, đúng hash
+mask BF16 được dựng lại độc lập. Worker đã thoát và release lease.
+
+Raw lấy lại từ nhận lời đầu câu nhưng cụm tranh chấp vẫn thay nội dung, thêm
+thán từ và còn token đuôi không được visual reference giải thích. Giữ nguyên
+toàn bộ output: **D3 content FAIL/P2 unresolved**, không promote/retry/ghép chữ.
+Mask làm thay đổi đường tính encoder nhưng chưa giải quyết chất lượng nhận dạng.
+Đối chiếu vẫn là **AI visual reference có prior exposure**, speech ground truth
+unknown, không CER/WER hoặc accuracy winner; raw riêng trong audit, không đưa vào Git.
+
+### Verification và bảo toàn
+
+**28 artifact/provenance checks pass**, một token decode replay khớp raw trước
+parser/SDK/TXT, **0 inference verification, 0 app tests**. Verifier đầu fail
+trước decode vì giả định có `tokenizer.json`; giữ log/code, bản cuối dùng đúng
+`tokenizer_config.json`/`vocab.json`/`merges.txt` qua tokenizer sẵn có. Không tạo
+file giả hoặc nhận dạng lại. Warning generation flags/pad token giữ trong log.
+
+Tensors của **candidate lần này** ngay trước generate có BF16 bits/IDs/masks
+khớp CPU reconstruction cũ, prompt265 IDs khớp record beam5. Không suy thành
+historical recognition tensor equality hoặc general GPU parity. Numerical gate
+frontend **36/39, bổ sung23/24, overall NOT PASS** vẫn nguyên; không chạy lại
+trace/DFT hoặc nới threshold. SDK tự preprocessing một lần trong nhận dạng mới;
+không thêm standalone frontend diagnostic.
+
+**Qwen tổng15**, SenseVoice tổng1, Whisper/OCR/VAD/alignment/separation mới0.
+Không download/install/upload, native GUI/playback/annotation/holdout exposure
+mới. D1 onset unresolved; D2 coverage ngoài63s và native saved-data pass giữ.
+H1 playback539ms và historical Whisper H1/H2 exposure không đổi. Whole-video,
+full offline, EXE, translation/TTS **NOT RUN**. Dọn đúng **33 cache/temp files /
+259.625.785 bytes**, 0 lỗi; không retry cleanup cũ, giữ toàn bộ evidence/model.
+
+Đọc `patch-provenance.json`, hai `encoder-forward-*.py` và diff, synthetic plan/
+red/amendment/final, locked candidate plan, runtime manifest, process receipts,
+raw generation/tensors, 24 layer observations, verification, `D3-assessment.json`,
+coverage/phase/cleanup/preservation và `publication.json`. Candidate này đã hết
+cap. Không chạy lại với original/beam/window khác; bước nhận dạng mới cần căn cứ
+độc lập khác, không lấy riêng lỗi mask làm lý do sweep hoặc promote runtime.
+
 ## 2026-09-18 — D3: frontend không bỏ frame; numerical verifier chưa pass toàn bộ
 
 Audit `.tools/asr-frontend-20260918-005832/`, bắt đầu `f84d5cb` sạch/khớp remote.

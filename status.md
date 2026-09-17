@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-09-18 (ASR D3: xác minh lỗi SDPA mask; candidate sửa mask vẫn fail nội dung)
+
+- Audit `.tools/asr-sdpa-20260918-011948/`, từ `83d6616` sạch/khớp remote.
+  Verify **8.020 prior hashes**, bảo vệ **8.081 file**, baseline **764 tracked**;
+  app implementation vẫn `724906e`, không sửa app/OCR/default/parser/installed runtime.
+- SDK Qwen đang cài bỏ qua hàm tạo block mask trước audio encoder layers;
+  Transformers SDPA không dùng `cu_seqlens`. Tái hiện bằng operator tổng hợp,
+  thêm đúng hai statement trong process audit, không thay file runtime đã cài.
+- Synthetic đầu giữ **FAIL** do assertion độ nhạy đầu ra tiny random model;
+  ba forward đã dùng không lặp. Sáu forward còn lại + proof SDPA tất định cho
+  **13 final checks pass**, tổng **9 synthetic encoder forwards**, không weights thật.
+- Khóa **1 Qwen request/batch CUDA**, D3 filtered nguyên **304.000 samples**,
+  BF16/SDPA/greedy864. Process **27,359 s**, inference **17,015 s**, exit0/EOS;
+  0 retry/cache/recognition failure. **Qwen tổng15**, SenseVoice tổng1.
+- Cả **24 encoder layers** nhận mask đúng `[0,104,208,247]`; **49 tokens /
+  49 text-model forwards**. **28 verification checks pass**, một token decode
+  replay, không inference kiểm tra. Verifier đầu sai giả định `tokenizer.json`
+  được giữ; bản cuối dùng vocab/merges thật. **0 app tests mới**.
+- Raw vẫn sai cụm tranh chấp và có token đuôi: **D3 content FAIL/P2 unresolved**.
+  Không promote/retry; lỗi mask không phải nguyên nhân duy nhất. Numerical gate
+  frontend cũ vẫn **NOT PASS**, không replay hoặc nới threshold.
+- Không VAD/OCR/Whisper mới, native/holdout/whole-video/full offline/EXE/TTS.
+  Dọn **33 cache/temp files / 259.625.785 bytes**, không lỗi, không retry cleanup
+  cũ; giữ raw/model/sáu câu Việt/recipe B/hai stash. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-18 (ASR D3: frontend giữ đủ frame; kiểm số học còn một ca fail)
 
 - Audit `.tools/asr-frontend-20260918-005832/`, từ `f84d5cb` sạch/khớp remote.
