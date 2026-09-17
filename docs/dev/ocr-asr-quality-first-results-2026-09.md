@@ -1,5 +1,97 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — D3: suy giảm cục bộ có thật, chưa chứng minh separator làm mất lời
+
+Audit `.tools/asr-d3-transfer-20260917-232009/`, bắt đầu ở `724906e` sạch/khớp
+remote. Verify **7.068 prior hashes**, bảo vệ **7.969 file**, gồm evidence native
+mới nhất và media cache cần giữ; baseline **764 tracked file**. Không chạy app,
+không tạo snapshot mới hoặc sửa production/default/parser/OCR. Các con số snapshot
+770 file của phiên native là lịch sử riêng, không thay số baseline Git ở đây.
+
+### Phép đo temporal transfer
+
+Hypothesis mới kiểm **lệch thời gian hoặc suy giảm cục bộ** do Kim_Vocal_2 trên
+cặp original/filtered đã lưu. Khác phép đo band energy trước: phép này so waveform
+theo thời gian, không lặp PCM decode, stereo cancellation hoặc nhận dạng.
+Hai input giữ nguyên 304.000 samples mono s16/16 kHz, 107–126 s:
+
+- Original SHA `4e02d2ccfa4452bf28e1cdeeb6eadb3e62ccacd20174e3dd1d115049b96dd36c`.
+- Filtered SHA `06c78390aea4e3b17c80c54c45dbf14918a3f6cb621ec07eb6515a98d6f49ea9`.
+
+Khóa worker/input/runtime/threshold trước khi đọc kết quả. Tương quan tuyến tính
+chuẩn hóa, bỏ DC, tìm lag ±1.600 samples; FFT được đối chiếu bằng direct dot.
+[Định nghĩa correlate của SciPy](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.correlate.html)
+là tài liệu phương pháp; harness dùng NumPy đã có, không cài SciPy hoặc package mới.
+Positive lag nghĩa là filtered trễ hơn original. Giữ toàn clip và đủ sáu interval
+Whisper lịch sử, không coi interval đó là lexical alignment đã nghiệm thu.
+
+Đỉnh tương quan đều ở **0 sample**. Vùng tranh chấp 113,970–115,530 s có
+correlation **0,864618**; trung bình filtered/original giảm **1,525 dB**. Không
+phát hiện gross delay theo phép đo đã khóa, nhưng chưa loại trừ thay đổi phổ
+hoặc mất chi tiết lời nói.
+
+Đo đủ **1.899 block 20 ms, hop 10 ms**. Flag khi original RMS ≥−45 dBFS và
+filtered/original ≤−20 dB, giữ nhóm block liên tiếp phủ ≥100 ms. Đây là ngưỡng
+triage kỹ thuật, không phải ngưỡng accuracy hoặc speech đã hiệu chuẩn. Có 18
+nhóm flag trong toàn clip; một nhóm giao vùng tranh chấp: **114,040–114,170 s**,
+12 block phủ **130 ms**. Trung bình cả câu đã che mức suy giảm cục bộ này.
+Không từ đó gán tín hiệu bị loại thành phụ âm, lời nói hoặc nền.
+
+### VAD cặp theo flag đã khóa
+
+Sau khi lưu kết quả DSP, khóa hypothesis thứ hai: so hoạt động dự đoán trên hai
+WAV liên tục để kiểm flag vừa tìm, **không cắt input quanh câu đang tranh chấp**.
+Reuse Silero v3 ONNX SHA
+`f87d83bb8929f0608b1b907d3f520b865758a93e34f27e78b21d69d1a9fe54ec`
+và OCR CPU environment; verify 1.244 runtime hashes, không tải/cài mới.
+
+**2 streams / 198 forwards mỗi stream / 1 model load**, CPU 1 thread,
+threshold 0,5, frame 1.536 samples/96 ms. Mỗi stream có h/c zero riêng rồi giữ
+state liên tục; frame cuối 1.408 samples thật + 128 zero pad, không bỏ sample.
+Đây là VAD D3 mới; không lặp hai stream D1 lịch sử.
+
+Tiêu chí đã khóa: ít nhất hai frame liên tiếp giao flag có original ≥0,5 và
+filtered <0,5. Hai frame thực tế:
+
+| Source interval | Original probability | Filtered probability |
+|---|---:|---:|
+| 114,008–114,104 s | 0,245913 | 0,960973 |
+| 114,104–114,200 s | 0,264426 | 0,793105 |
+
+**Tiêu chí mất hoạt động original-only không đạt.** Xác suất filtered cao hơn
+trong cả hai frame; không nâng thành bằng chứng từ còn đủ, hoặc tín hiệu bị
+loại chắc chắn là nền. VAD có thể sai và chịu ảnh hưởng recurrent state; không
+dùng nó làm phoneme/word alignment. **Chưa đủ căn cứ cho EQ, retiming, mixback,
+separator mới hoặc thêm lượt ASR. D3 content FAIL/P2 unresolved giữ nguyên.**
+
+### Validation và giới hạn
+
+**11 synthetic checks pass** trước đo: known shifts, gain, erasure, silence và
+noise controls. **7 DSP + 6 VAD preflight checks**, **28 final checks pass**.
+Replay energy bằng integer PCM độc lập khớp cả 1.899 block; replay **396 tensor
+hashes**, kiểm state chain, zero initial state, final state và native probabilities.
+Không gọi model lại khi verify; đây là kiểm harness, **0 app tests mới**.
+
+DSP process **0,391 s**, VAD process **0,578 s**, mỗi cap 60 s, exit0, không
+timeout/retry/cache/failed attempt. **0 ASR/OCR recognition mới**; VAD mới 2
+streams/396 forwards được đếm riêng. Qwen tổng **14**, SenseVoice tổng **1**,
+Whisper mới **0**. Không tạo audio đã sửa, ảnh hoặc annotation mới; không upload.
+Speech ground truth vẫn unknown, không CER/WER hoặc accuracy winner.
+
+D1 onset vẫn unresolved; D2 saved-data native pass và coverage ngoài 63 s giữ
+evidence cũ. Không playback/holdout exposure mới; giữ H1 539 ms và historical
+Whisper output/exposure H1/H2. Alignment, native mới, candidate holdout, whole-video,
+full offline, EXE, translation/TTS **NOT RUN**. Sáu câu Việt/recipe B và hai stash giữ.
+Không có cache/temp/profile file mới cần dọn, 0 delete attempt; không retry cleanup cũ.
+
+Đọc `analysis-plan-locked.json`, `transfer-results.json`, `paired-blocks.jsonl`,
+`vad-plan-locked.json`, `vad-pair-results.json`, hai `*-vad-frames.jsonl`,
+`D3-assessment.json`, `verification.json`, process receipts, runtime manifests,
+coverage/phase/cleanup/preservation và `publication.json`. Không lặp hai VAD
+streams, tune threshold hoặc chọn subwindow mới từ kết quả này. Bước mới cần
+evidence độc lập khác cho lỗi acoustic/lexical; diagnostic này chưa đưa ra một
+candidate nhận dạng có căn cứ để triển khai hay promote.
+
 ## 2026-09-17 — Native saved-data D2 pass; sửa controls của checkpoint OCR
 
 Audit `.tools/native-roundtrip-20260917-223430/`, bắt đầu từ `0bbda7d` sạch.

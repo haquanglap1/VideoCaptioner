@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-09-17 (ASR D3: kiểm suy giảm cục bộ và VAD cặp, chưa đủ căn cứ sửa audio)
+
+- Audit `.tools/asr-d3-transfer-20260917-232009/`, từ `724906e` sạch/khớp
+  remote. Verify **7.068 prior hashes**, bảo vệ **7.969 file**, baseline **764
+  tracked file**. Không chạy app/tạo snapshot mới; production/default/OCR giữ nguyên.
+- Dùng hai WAV D3 19 s đã lưu; **1.899 block** và sáu interval cũ. Đỉnh tương
+  quan ở **0 sample** trên toàn clip và cả sáu interval trong miền ±100 ms.
+  Không phát hiện lệch thời gian lớn bằng phép đo này; không phải word alignment.
+- Có **130 ms tại 114,040–114,170 s** giảm ít nhất 20 dB trên các block đã khóa,
+  trong khi trung bình cả vùng tranh chấp chỉ giảm **1,525 dB**. Đây là mất
+  năng lượng cục bộ, chưa xác định là lời nói hay nền.
+- Khóa tiếp **2 Silero v3 VAD streams / 396 forwards**, CPU, cùng hai WAV;
+  state riêng/liên tục, cuối mỗi stream pad 128 samples. Hai frame liên quan:
+  original **0,246/0,264**, filtered **0,961/0,793**. Tiêu chí mất hoạt động
+  original-only **không đạt**; không chứng minh từ được giữ hoặc bị mất.
+- DSP **0,391 s**, VAD **0,578 s**, exit0, không retry/cache/failure. **11 synthetic
+  checks, 7 DSP + 6 VAD preflight, 28 final checks pass**; replay 396 tensor hashes,
+  0 inference kiểm tra, **0 app tests**. Không cộng tests hoặc inference lịch sử.
+- **0 ASR/OCR recognition mới**, Qwen tổng 14, SenseVoice tổng 1. Không đủ căn cứ
+  EQ/retime/mixback/tách giọng lại; **D3 FAIL/P2 unresolved** giữ. Không alignment,
+  native mới, holdout, whole-video, full offline, EXE hoặc TTS; không exposure mới.
+- Không có cache/temp file mới cần dọn; giữ raw/model, sáu câu Việt/recipe B và
+  hai stash. Không retry cleanup cũ. [Kết quả](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (native OCR → editor giữ dữ liệu; sửa controls khi mở checkpoint)
 
 - Audit `.tools/native-roundtrip-20260917-223430/`, từ `0bbda7d`; snapshot

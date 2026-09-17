@@ -1,5 +1,51 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — D3 temporal transfer/VAD cặp chưa đủ căn cứ sửa audio
+
+Audit **`.tools/asr-d3-transfer-20260917-232009/`**, từ `724906e`; đọc
+`publication.json` và Git live cho commit mới. **Không sửa app**, implementation
+vẫn `724906e`; OCR/default/parser/tracking v3/consensus punctuation-v2 giữ nguyên.
+
+- Reuse hai D3 WAV 19 s/304.000 samples. DSP trên đủ 1.899 block và sáu
+  interval cũ: đỉnh correlation ở **0 sample** trong miền ±100 ms. Không thấy
+  gross delay bằng phép này, không chứng minh word timing hoặc speech accuracy.
+- Phát hiện **114,040–114,170 s / 130 ms** giảm ≥20 dB ở các block đã khóa;
+  trung bình cả vùng tranh chấp chỉ giảm 1,525 dB. Đây là energy loss, chưa
+  biết là speech hay nền; không suy EQ/mixback/separation từ đó.
+- Khóa tiếp **2 Silero v3 CPU VAD streams / 396 forwards**, nguyên D3 original
+  và filtered, state riêng/liên tục, threshold0,5, frame96ms, cuối pad128 samples.
+  Hai frame giao flag: original **0,246/0,264**, filtered **0,961/0,793**.
+  Tiêu chí original-only activity loss **không đạt**. Không suy lời được giữ đủ,
+  âm bị loại là nền hoặc separator vô hại; **D3 FAIL/P2 unresolved** giữ.
+- DSP **0,391 s**, VAD **0,578 s**, cap60 s mỗi process, exit0, retry/cache/fail0.
+  **11 synthetic + 7 DSP preflight + 6 VAD preflight + 28 final checks pass**;
+  integer energy replay và 396 tensor hashes khớp, **0 inference verification**.
+  **0 app tests mới**; không cộng tests lịch sử.
+- **0 ASR/OCR recognition mới**, Qwen tổng14, SenseVoice tổng1, Whisper mới0.
+  VAD là inference riêng: không ghi cả phiên là 0 model inference. Không sửa
+  audio, download/install/upload, playback/annotation/holdout exposure mới.
+- Verify **7.068 prior hashes**, bảo vệ **7.969 file**, baseline **764 tracked
+  file**; không app invocation/snapshot mới. Đừng thay bằng 770 snapshot native.
+  Giữ raw/model, sáu câu Việt/recipe B, hai stash; không có cache/temp file mới
+  cần dọn, 0 delete attempt, không retry cleanup audit cũ.
+- Alignment/native mới/holdout/whole-video/full offline/EXE/TTS **NOT RUN**.
+  D1 onset chưa rõ, D2 saved-data native pass/coverage ngoài 63 s giữ evidence cũ.
+  Giữ H1 playback539ms và historical Whisper output/exposure H1/H2.
+
+Đọc `analysis-plan-locked.json`, `transfer-results.json`, `paired-blocks.jsonl`,
+`vad-plan-locked.json`, runtime manifests, process receipts, `vad-pair-results.json`,
+hai `*-vad-frames.jsonl`, `D3-assessment.json`, `verification.json`, coverage/phase,
+cleanup/preservation và `publication.json`.
+
+**Không lặp hai D3 VAD streams hoặc tune threshold/crop lại để tìm output đẹp.**
+Giữ các cap ASR/SenseVoice/beam5/chunk7s/D1 prefix-context đã hết. Phép đo này
+chưa cung cấp candidate acoustic có căn cứ để chạy ASR tiếp; bước mới phải có
+evidence độc lập khác cho cơ chế lỗi hoặc lexical content. Không sửa raw bằng
+caption, không dùng VAD làm forced alignment, không sweep model/config hoặc đòi
+user chép tiếng Trung. Tiếp tục phần độc lập khi có căn cứ; không lặp native D2
+vừa pass nếu không có thay đổi/lỗi mới. Giữ quyền local/commit/push allowlist và
+toàn bộ giới hạn Git/phạm vi bên dưới.
+
 ## Bàn giao mới nhất — native D2 giữ dữ liệu; UI checkpoint đã sửa
 
 Audit **`.tools/native-roundtrip-20260917-223430/`**, bắt đầu `0bbda7d`;
