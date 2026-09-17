@@ -1,5 +1,25 @@
 # Project Status
 
+## 2026-09-17 (GOT recognition diagnostic và ASR D2 thêm ngữ cảnh)
+
+- Tiếp tục đúng `3f731f2`, trùng remote; giữ hai stash và 538 file bảo vệ.
+  Audit mới `.tools/ocr-asr-quality-20260917-135038/` có plan/input/model hashes,
+  receipts và failed attempts; không sửa app hoặc promote candidate chưa đạt.
+- Kiểm GOT-OCR2 có tokenizer coverage cho glyph D2; dùng runtime CUDA đã có,
+  chỉ tải weights/tokenizer pinned, không cài package. Đúng 3 request/3 batches,
+  0 cache: lấy lại thán từ ở 1/2 raw crop, crop còn lại vẫn thiếu, blank sinh chữ.
+  **Loại candidate**, không ghép raws hoặc chạy window để chọn output đẹp.
+- Qwen D2 audio gốc 54–67 s: 1 request/0 cache, 28,375 s; phần PCM trong đoạn cũ
+  trùng tuyệt đối ngoài mép resampling. Có thêm mệnh đề cuối trong input mở rộng;
+  tên riêng/thán từ chưa được xác nhận bằng nghe. Reference vẫn unknown, không
+  CER/WER, alignment hoặc kết luận thắng trên cùng input. Tổng Qwen đã dùng: 6 request.
+- Final targeted contracts **72 passed, 1 warning** trên snapshot khớp 536 file
+  source/test/scripts với checkout. Lượt trước có khác line endings từ Git archive;
+  giữ bytes đã đo và log, chỉ chạy lại tests, không lặp inference.
+- Tracking v3, consensus punctuation-v2 và checkpoint/raw giữ nguyên hash.
+  P1/P2 chưa đạt; H1 vẫn có 539 ms contamination. Native mới, holdout, whole-video,
+  full offline, EXE và TTS **NOT RUN**. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (OCR chọn dấu cuối có bằng chứng ảnh; quality gates vẫn mở)
 
 - Baseline `62e852a` khớp remote, working tree ban đầu sạch; audit

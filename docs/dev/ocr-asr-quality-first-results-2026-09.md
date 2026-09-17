@@ -1,5 +1,93 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — từ `3f731f2`: GOT diagnostic bị loại; D2 ASR thêm ngữ cảnh
+
+Audit `.tools/ocr-asr-quality-20260917-135038/`. Live HEAD/remote đúng handoff,
+index/working tree sạch trước làm. Verify lại 224 hash từ baseline trước và
+giữ 538 file gồm source media, runtime, raw/checkpoint, settings, cookie,
+work-dir và voice B. Hai stash cùng `master` giữ nguyên. Đây là lượt inference
+local có thực hiện, nhưng không có candidate đủ căn cứ để sửa app production.
+
+### Recognition D2: tokenizer rộng hơn không tự bảo đảm chất lượng
+
+Giả thuyết mới: recognizer sinh token có thể biểu diễn glyph mà CTC dictionary
+hiện tại thiếu. Chọn duy nhất [GOT-OCR2](https://huggingface.co/stepfun-ai/GOT-OCR-2.0-hf),
+revision `d3017ef2c2c1395888c8d635c5e0508bcb0ac78d`; implementation Transformers
+đã có hỗ trợ plain/scene OCR. Không thử thêm V4/V5, không lặp contrast/padding.
+
+- Inventory trước inference: tokenizer và output embedding đều **151.860 class**;
+  glyph cần kiểm roundtrip qua token IDs `[6606, 114]`. Coverage chỉ là điều kiện cần.
+- Reuse Qwen Python riêng: Torch `2.8.0+cu128`, Transformers `4.57.6`, CUDA RTX 5090;
+  không thay environment, không cài package. Model chưa có nên tải đúng pinned files
+  vào audit. Weights SHA `6175ac7868a4e75735f5d59f78c465081ad3427eb4f312d072a0f1d16b333ba4`;
+  tokenizer SHA `36b382a3c48c9a143c30139dac6c8230ddfb0b46a3dc43082af6052abe99d9de`.
+- Hai crop cùng BGR SHA với V4 đã đo, PTS 1006400/1006933; thêm một blank synthetic.
+  Khóa trước cap **3 recognition/3 batches, 180 s, 0 retry**, greedy, 96 new tokens,
+  plain OCR mặc định, không đưa đáp án vào prompt. Không tracking/feature inference.
+- Hai lỗi harness trước inference được giữ: path tương đối resolve nhầm vào snapshot;
+  và model construction từ chối `sdpa`. Giữ plan/script cũ, tạo amendment `eager`
+  trước chạy; không sửa plan sau kết quả hoặc đổi cap. Hai lỗi đó có 0 recognition.
+- Lượt thực **3 requests/3 batches, 0 cache, 0 failed inference**, 18,047 s generation,
+  25,750 s worker tổng, peak allocated VRAM 3.624.613.376 byte. Cả ba có EOS.
+  Crop đầu lấy lại glyph; crop sau vẫn thiếu glyph. Blank sinh chuỗi chữ/số không có
+  trên ảnh. **Candidate bị loại theo gate đã khóa**, không tích hợp/profile app,
+  không chọn riêng output đầu hay ghép text giữa raws. Reference ảnh vẫn là AI.
+
+Evidence: `got-upstream.json`, `got-inventory.json`, `got-plan-locked.json`,
+`got-plan-eager-locked.json`, `got-results.json`, runtime logs/receipts.
+Không scan lại D1/D2: diagnostic thất bại nên chưa có căn cứ cho window candidate.
+Giữ worker v3 SHA `9bef0946f8456c9f7e4a36f49feba0555f61540dfc8f45eea4f6f94375931447`
+và consensus SHA `7464cfa5950da83df0f1f88666c4fb59a03b5e6688b71174fdf29bea954961d1`.
+
+### ASR D2 độc lập: mở input, chưa có speech reference
+
+Giả thuyết: request cũ 57–63 s kết thúc trong interval caption cuối; kiểm thêm
+ngữ cảnh audio gốc liền kề mà không đổi engine/language/decoding/preprocessing.
+Caption chỉ gợi ý nơi kiểm boundary, không được đưa vào prompt hay dùng làm nhãn
+lời nói. Khóa **54–67 s**, cap 1 request, stage 180 s/wall 240 s, không retry.
+Không chạm holdout hoặc trộn audio filtered của D3 với original context.
+
+- Reuse Qwen pin `7278e1e70fe206f11671096ffdd38061171dd6e5`, verify manifest/model.
+  WAV mono 16 kHz PCM16 có 208.000 sample, SHA
+  `a29238016dca8f756dac8343ce6dfca99bd646a2fa11bcb659f810a1d6161f52`.
+- Trong overlap 96.000 sample, 95.360 sample nội vùng bằng tuyệt đối;
+  toàn overlap bằng 99,989583%, sai khác tối đa 25 ở mép resampling. Không gọi
+  toàn bộ WAV mới là cùng input cũ; thay đổi chủ đích là thêm ngữ cảnh.
+- Đúng **1 fresh request/0 cache, 28,375 s** trong app, 28,781 s outer runner.
+  Request WAV SHA `8dbdd5555010d993f6a31220c433eec676c36c8a056c9fba839cf5b709256668`.
+  Output có thêm mệnh đề cuối, tên riêng vẫn khác chữ trên hình và thán từ chưa
+  được xác nhận bằng nghe. Không kết luận lỗi lời nói chỉ vì khác caption.
+- Tổng Qwen trên bộ này là **6 request**. Reference lời nói vẫn `unknown`;
+  chưa CER/WER, alignment, model winner hoặc mapping text sang giờ Whisper.
+  Whisper VAD-on và D3 original/filtered giữ nguyên, không tách vocals lại/upload.
+
+Evidence: `asr-d2-context/plan-locked.json`, request WAV/raw/TXT, `results.json`.
+Đã đưa audio D3 gốc cho user đối chiếu; chưa nhận transcript độc lập trong lượt này.
+
+### Validation, bảo toàn và giới hạn
+
+Final **72 passed, 1 warning**: punctuation consensus, OCR resume, Qwen TXT,
+long-audio sample retention, audio identity và GUI TXT contracts. Đây là offline
+contracts với mocks, không phải native/listening acceptance. Không đổi app code
+nên không tạo regression mới hoặc chạy lại toàn bộ 337/243 tests cũ/full suite.
+
+Phát hiện 74 file `git archive` khác checkout chỉ ở line endings. Snapshot ban đầu
+và backup bytes inference còn lưu; sync allowlist rồi đối chiếu **536 file** bằng
+bytes trước validation cuối. Không rerun inference và không thay hash checkpoint.
+Lượt test trước cũng 72 pass nhưng không cộng trùng; một lệnh test gõ sai path
+collect 0/exit4 được giữ trong ledger trước lượt final. P0 ledger ban đầu đếm nhầm
+224 hash cũ thành 538 do alias dict; receipt correction ghi riêng, không sửa lịch sử.
+
+`preservation-check.json`, `snapshot-gate-verification.json`, `review.json`,
+`phase-results.json`, `coverage-ledger.json` ghi scope chính xác. Commit chỉ có
+aggregate report/status/handoff; model, ảnh/audio, transcript và harness private
+nằm trong audit ignored. P1/P2 vẫn mở; không có native mới. H1 vẫn bị lộ 539 ms.
+Holdout/whole-video/full offline/build EXE/TTS **NOT RUN**; giữ sáu câu Việt/voice B.
+
+Lần tiếp theo không chạy lại GOT raw hoặc Qwen D2 54–67 s để chọn output đẹp.
+OCR cần giả thuyết mới có bằng chứng về độ ổn định recognition/negative controls;
+ASR cần nghe độc lập vùng tên riêng/thán từ/lời lặp trước khi chấm text hoặc alignment.
+
 ## 2026-09-17 — tiếp tục từ `62e852a`: chọn dấu cuối, loại candidate recognition
 
 Audit mới: `.tools/ocr-asr-quality-20260917-112253/`. Kiểm live HEAD/remote/index/

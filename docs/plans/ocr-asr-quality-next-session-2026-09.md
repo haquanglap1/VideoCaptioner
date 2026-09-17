@@ -1,7 +1,8 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
-Cập nhật 2026-09-17 sau implementation commit
-`cb437cbec0a6f946b1bc21e5e009f96007e6e885`. Bản này thay nội dung prompt cũ;
+Cập nhật 2026-09-17 sau phiên inference tiếp từ
+`3f731f29f1627616460357f122be14e88f575902`. App implementation vẫn là `cb437cb`;
+GOT diagnostic chưa đạt để tích hợp. Bản này thay nội dung prompt cũ;
 chi tiết lịch sử và các candidate thất bại vẫn ở báo cáo kết quả/audit, không bị xóa.
 Commit chứa bản prompt này chỉ đổi tài liệu; kiểm live HEAD/remote trước khi làm.
 
@@ -28,8 +29,9 @@ section **2026-09-17** đầu `docs/dev/ocr-asr-quality-first-results-2026-09.md
 `docs/plans/ocr-asr-quality-first-2026-09.md`. `PLAN ONLY` và v1/v2/v3 trong các
 section cũ là lịch sử; không dùng chúng thay trạng thái bàn giao dưới đây.
 
-Baseline implementation `cb437cb` đã push và remote đã verify; working tree sạch
-ở lần kiểm bàn giao. `master`/`origin/master` lúc đó đều ở
+Phiên mới bắt đầu với `3f731f2` trùng remote, working tree sạch; app implementation
+`cb437cb` giữ nguyên. Commit report/handoff tiếp theo xem `publication.json` trong
+audit mới, rồi kiểm live Git. `master`/`origin/master` lúc kiểm đều ở
 `62abacae421d2011948f467d3386d81de9f8879b`, chưa merge pilot.
 Giữ nguyên hai stash:
 
@@ -42,7 +44,17 @@ không đoán dựng lại hoặc chạy lại inference chỉ để tạo evide
 
 ## 3. Evidence và runtime phải reuse
 
-Audit mới nhất: **`.tools/ocr-asr-quality-20260917-112253/`**. Đọc:
+Audit mới nhất: **`.tools/ocr-asr-quality-20260917-135038/`**. Đọc:
+
+- `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
+- `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
+- `runtime-manifest-final.json`, `got-upstream.json`, `got-inventory.json`
+- `got-plan-locked.json`, `got-plan-eager-locked.json`, `got-results.json`
+- `asr-d2-context/plan-locked.json`, `results.json`, request WAV/raw/TXT
+- `snapshot-initial.json`, `snapshot-mismatches.json`, `snapshot-sync-receipt.json`,
+  `snapshot-gate-verification.json`, `p0-correction.json`, `targeted-contracts-final-receipt.json`
+
+Audit app candidate vẫn ở **`.tools/ocr-asr-quality-20260917-112253/`**. Đọc:
 
 - `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
 - `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
@@ -73,14 +85,21 @@ Runtime đã có, verify rồi reuse:
 - Qwen: `.tools/ocr-asr-quality-20260916-201453/qwen-runtime2/`, pin
   `7278e1e70fe206f11671096ffdd38061171dd6e5`. Runtime CUDA đã chạy thật,
   chưa portable acceptance; không chọn nhầm `qwen-runtime/` bị cài lỗi trước đó.
-- Diagnostic V4: audit mới nhất có `ch_PP-OCRv4_rec_server.onnx`, SHA
+- Diagnostic V4: audit `112253` có `ch_PP-OCRv4_rec_server.onnx`, SHA
   `6a2676219be9907c7fc9cf61ebaa843bf2898777def567925b78886fcd90c07a`.
   Candidate bị loại, chưa được tích hợp thành profile app.
+- Diagnostic GOT: audit `135038/got-model/`, revision
+  `d3017ef2c2c1395888c8d635c5e0508bcb0ac78d`, weights SHA
+  `6175ac7868a4e75735f5d59f78c465081ad3427eb4f312d072a0f1d16b333ba4`.
+  Reuse Qwen Python, không cài package; candidate bị loại, không phải runtime app.
 
 Đọc/điều chỉnh `setup.py`, `run.py` và harness liên quan trước dùng; tạo audit
 mới từ đúng checkout, không chạy nhầm `app/` snapshot cũ. Cô lập settings/cache/
 log/temp/HF/Torch/UV; sync allowlist và so bytes trước mỗi gate. Giữ Python app
 và runtime model riêng. Một GPU job tại một thời điểm.
+`git archive` có thể khác checkout ở CRLF dù status sạch: so bytes trước chạy,
+không đợi final review. Audit `135038` giữ 74 bản trước sync; không sửa chúng
+hoặc gọi mọi file snapshot ban đầu là byte-identical với checkout.
 
 ## 4. OCR — trạng thái cuối và việc cần làm
 
@@ -116,6 +135,13 @@ không được gọi human ground truth. V5 cũng thiếu glyph. V4 có coverag
 2 raw-crop batches trên đúng input cũ vẫn đọc sai glyph và kém phần cuối; đã loại.
 Contrast/grayscale/padding/inversion/isolated-glyph probes trước đó cũng thất bại.
 
+GOT-OCR2 đã thử **3 request/3 batches, 0 cache** trên hai raw crop cùng hash với
+V4 và một blank synthetic. Tokenizer/output 151.860 class biểu diễn được glyph;
+crop đầu lấy lại glyph, crop sau vẫn thiếu, blank hallucinate chữ/số. **Loại
+candidate theo gate khóa trước**, không dùng riêng crop thành công hay ghép raw.
+Lượt load `sdpa` lỗi trước inference; amendment `eager` giữ cùng cap/input,
+18,047 s generation/25,750 s worker. Không lặp GOT raw hoặc sweep model.
+
 Bắt đầu bằng đối chiếu evidence này và chọn **một giả thuyết recognition mới có
 căn cứ**. Inventory profile/weights/output classes/dictionary trước inference;
 coverage chỉ là điều kiện cần. Không rerun V4/raw, tải V5, lặp các probes cũ hoặc
@@ -130,12 +156,21 @@ giữ blank/fade/standalone punctuation/one-frame change/cache/resume guards.
 
 ## 5. ASR — nhánh độc lập, không lặp những lượt đã dùng
 
-Qwen đã thực hiện tổng cộng 5 request cho các giả thuyết đã khóa:
+Qwen đã thực hiện tổng cộng **6 request** cho các giả thuyết đã khóa:
 
 1. D1 27–34 s original, D2 57–63 s original, D3 107–126 s filtered dump (3 request).
 2. D1 original context 24–36 s (1 request): lấy lại đầu câu, còn từ đáng ngờ.
 3. D3 original 107–126 s (1 request/0 cache, 33,812 s): lời lặp đổi nội dung,
    đuôi đáng ngờ còn; chưa có căn cứ gọi original hoặc filtered tốt hơn.
+4. D2 original context 54–67 s (1 request/0 cache, 28,375 s): có thêm mệnh đề
+   cuối trong input mở rộng, tên riêng vẫn khác caption; thán từ chưa xác nhận
+   bằng nghe. Không gọi thêm input là thắng accuracy trên cùng audio.
+
+D2 context WAV SHA `a29238016dca8f756dac8343ce6dfca99bd646a2fa11bcb659f810a1d6161f52`;
+request SHA `8dbdd5555010d993f6a31220c433eec676c36c8a056c9fba839cf5b709256668`.
+95.360 PCM sample nội vùng 57–63 s bằng tuyệt đối; mép resampling có khác nhỏ.
+Không chạy lại context này để chọn output đẹp. Audio D3 gốc đã được đưa cho user
+nghe; chưa nhận transcript độc lập, reference vẫn unknown.
 
 D3 filtered recognition dùng `source-107-126-stereo.wav_dump.wav` sau Kim_Vocal_2,
 **không phải `*_mdx.wav`**. Locked dump SHA
@@ -154,6 +189,11 @@ Chỉ alignment sau text gate; không ghép text Qwen với giờ Whisper khác 
 
 ## 6. Validation và native — phân biệt đúng bằng chứng
 
+- Phiên `135038`: **72 passed, 1 warning** cho targeted consensus/resume/Qwen
+  TXT/long audio/audio identity/GUI TXT, chạy trên 536 file source/test/scripts
+  khớp bytes checkout. Không cộng với lượt 72 pass trước sync EOL. Một lệnh test
+  sai path collect 0/exit4 được giữ, không tính thành pass. Không sửa app nên
+  không có regression fail-before-fix mới; hai inference hypotheses chưa đủ gate.
 - OCR/GUI scope cuối: **337 passed, 7 deselected**; ASR/CLI: **243 passed**.
   16 test consensus mới đã nằm trong 337, không cộng trùng. Ruff/Pyright (0 errors,
   0 warnings)/translation sync pass. Đây là kết quả trước phiên mới, không thay
