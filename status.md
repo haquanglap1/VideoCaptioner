@@ -1,5 +1,28 @@
 # Project Status
 
+## 2026-09-17 (GOT tiled bị loại; native OCR hủy/lưu/mở lại partial)
+
+- Live `a29791f` khớp remote, index/working tree sạch; audit mới
+  `.tools/ocr-asr-quality-20260917-145000/` verify 538 hash cũ, bảo vệ 626 file.
+  Copy allowlist 763 file tracked từ checkout và so bytes trước từng gate.
+- Inventory lại GOT/model/tokenizer/output classes trước diagnostic dynamic
+  patches để kiểm biến dạng crop dài khi resize vuông; reuse runtime/weights,
+  không tải/cài mới. Khóa 3 request/3 batches, 180 s, 0 retry. Hai crop mất phần
+  lớn câu; blank lặp ký tự, chạm 96 token chưa EOS. **Loại candidate**; 0 cache,
+  38,109 s generation/46,765 s process, không tích hợp hoặc quét window.
+- Native resume/cancel CPU thật: bấm hủy 17,766 s, dừng 18,078 s (312 ms sau
+  click), watchdog không dùng; 9 tracking/0 recognition/0 feature batches mới.
+  Partial lưu qua UI và mở lại native khớp document/config, export vẫn exit5.
+  Fixture nạp partial sẵn; chưa full native source-to-result hoặc quality pass.
+  Lỗi harness sửa frozen `OcrTask` trước worker.start được giữ riêng, không phải
+  lỗi app; lượt sửa harness không thay budget, cửa sổ test đóng exit0.
+- ASR không inference mới, tổng Qwen vẫn 6. Tạo bộ nghe D1/D2/D3 chỉ có audio
+  từ input cũ, so bytes/PCM và giữ reference `unknown`; không CER/WER/alignment.
+- Targeted contracts **92 passed, 1 warning**; app vẫn `cb437cb`, bytes tracking
+  v3/punctuation-v2 không đổi. Hai stash, raw/checkpoint, sáu câu Việt/voice B giữ
+  nguyên. P1/P2 unresolved; H1 vẫn lộ 539 ms từ trước. Holdout/whole-video/full
+  offline/EXE/TTS **NOT RUN**. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (GOT recognition diagnostic và ASR D2 thêm ngữ cảnh)
 
 - Tiếp tục đúng `3f731f2`, trùng remote; giữ hai stash và 538 file bảo vệ.

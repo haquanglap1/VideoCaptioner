@@ -1,8 +1,9 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
-Cập nhật 2026-09-17 sau phiên inference tiếp từ
-`3f731f29f1627616460357f122be14e88f575902`. App implementation vẫn là `cb437cb`;
-GOT diagnostic chưa đạt để tích hợp. Bản này thay nội dung prompt cũ;
+Cập nhật 2026-09-17 sau phiên tiếp từ
+`a29791fd15a453b29dfd504eb5e99e977512d297`. App implementation vẫn là `cb437cb`;
+GOT raw và dynamic patches đều bị loại, native partial cancel/save/reopen đã
+được kiểm thêm. Bản này thay nội dung prompt cũ;
 chi tiết lịch sử và các candidate thất bại vẫn ở báo cáo kết quả/audit, không bị xóa.
 Commit chứa bản prompt này chỉ đổi tài liệu; kiểm live HEAD/remote trước khi làm.
 
@@ -29,7 +30,7 @@ section **2026-09-17** đầu `docs/dev/ocr-asr-quality-first-results-2026-09.md
 `docs/plans/ocr-asr-quality-first-2026-09.md`. `PLAN ONLY` và v1/v2/v3 trong các
 section cũ là lịch sử; không dùng chúng thay trạng thái bàn giao dưới đây.
 
-Phiên mới bắt đầu với `3f731f2` trùng remote, working tree sạch; app implementation
+Phiên mới nhất bắt đầu với `a29791f` trùng remote, working tree sạch; app implementation
 `cb437cb` giữ nguyên. Commit report/handoff tiếp theo xem `publication.json` trong
 audit mới, rồi kiểm live Git. `master`/`origin/master` lúc kiểm đều ở
 `62abacae421d2011948f467d3386d81de9f8879b`, chưa merge pilot.
@@ -44,7 +45,20 @@ không đoán dựng lại hoặc chạy lại inference chỉ để tạo evide
 
 ## 3. Evidence và runtime phải reuse
 
-Audit mới nhất: **`.tools/ocr-asr-quality-20260917-135038/`**. Đọc:
+Audit mới nhất: **`.tools/ocr-asr-quality-20260917-145000/`**. Đọc:
+
+- `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
+- `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
+- `runtime-manifest-final.json`, `baseline.json`, `snapshot-allowlist.json`,
+  `snapshot-initial.json` và các `*-snapshot.json`
+- `got-tiled-inventory.json`, `got-tiled-plan-locked.json`, `got-tiled-results.json`,
+  `got-tiled-inference-receipt.json`
+- `native-harness-amendment.json`, `native-cancel-v2/{plan-locked,results,verification}.json`,
+  `native-cancel-v2/ui-saved.ocr.json`, `native-reopen-result.json` và process receipts
+- `listening/reference-template.json`, `listening/README.md`, ba WAV D1/D2/D3
+- `targeted-contracts-receipt.json`: **92 passed, 1 warning**, không cộng 72 cũ.
+
+Audit diagnostic/context trước: **`.tools/ocr-asr-quality-20260917-135038/`**. Đọc:
 
 - `publication.json`, `review.json`, `commit-allowlist.json`, `preservation-check.json`
 - `phase-results.json`, `coverage-ledger.json`, `run-ledger.jsonl`, `quality-report.md`
@@ -100,6 +114,8 @@ và runtime model riêng. Một GPU job tại một thời điểm.
 `git archive` có thể khác checkout ở CRLF dù status sạch: so bytes trước chạy,
 không đợi final review. Audit `135038` giữ 74 bản trước sync; không sửa chúng
 hoặc gọi mọi file snapshot ban đầu là byte-identical với checkout.
+Audit `145000` copy 763 file tracked trực tiếp từ checkout và so bytes trước mọi
+gate; verify 538 hash cũ và bảo vệ 626 file. Reuse cơ chế này thay Git archive.
 
 ## 4. OCR — trạng thái cuối và việc cần làm
 
@@ -142,6 +158,15 @@ candidate theo gate khóa trước**, không dùng riêng crop thành công hay 
 Lượt load `sdpa` lỗi trước inference; amendment `eager` giữ cùng cap/input,
 18,047 s generation/25,750 s worker. Không lặp GOT raw hoặc sweep model.
 
+GOT **dynamic patches cũng đã bị loại** trong audit `145000`: hypothesis giảm
+biến dạng crop khoảng 7:1 khi resize vuông, giữ model/crop/greedy; chỉ bật
+`crop_to_patches=True`, min1/max12 mặc định. Inventory model/tokenizer/151.860
+output classes, hash crop/tensors/input IDs trước chạy. Đúng 3 request/3 batches,
+0 cache, 38,109 s generation/46,765 s process; hai crop mất phần lớn câu, blank
+lặp đến 96 token khi chưa EOS. Peak allocated VRAM 23.528.787.456 byte.
+Không retry/tăng token/chọn patch hoặc tích hợp. Tổng GOT 6 request qua hai phiên;
+không lặp raw **hoặc tiled**, không xem tiling thất bại là lý do sweep cấu hình.
+
 Bắt đầu bằng đối chiếu evidence này và chọn **một giả thuyết recognition mới có
 căn cứ**. Inventory profile/weights/output classes/dictionary trước inference;
 coverage chỉ là điều kiện cần. Không rerun V4/raw, tải V5, lặp các probes cũ hoặc
@@ -166,6 +191,16 @@ Qwen đã thực hiện tổng cộng **6 request** cho các giả thuyết đã
    cuối trong input mở rộng, tên riêng vẫn khác caption; thán từ chưa xác nhận
    bằng nghe. Không gọi thêm input là thắng accuracy trên cùng audio.
 
+Phiên `145000` không có ASR inference mới; Qwen vẫn tổng 6 request. Bộ
+`listening/` có ba original WAV D1 24–36, D2 54–67, D3 107–126 s, copy đúng
+bytes/PCM input cũ, không kèm caption/model output. Chưa có transcript độc lập;
+template vẫn unknown. Nếu nhận reference, ghi người nghe, mốc bất định và
+prior exposure trước khi gọi independent; không tự gán nhãn human-reviewed.
+**User không biết tiếng Trung**, đã xác nhận trong phiên `145000`. Không yêu cầu
+user chép lời hoặc nghiệm thu chữ tiếng Trung. Agent tiếp tục tìm bằng chứng
+đối chiếu độc lập phù hợp; thiếu thì giữ unknown và tiếp tục nhánh khác, không
+dùng caption hay một ASR khác làm ground truth chắc chắn.
+
 D2 context WAV SHA `a29238016dca8f756dac8343ce6dfca99bd646a2fa11bcb659f810a1d6161f52`;
 request SHA `8dbdd5555010d993f6a31220c433eec676c36c8a056c9fba839cf5b709256668`.
 95.360 PCM sample nội vùng 57–63 s bằng tuyệt đối; mép resampling có khác nhỏ.
@@ -189,6 +224,18 @@ Chỉ alignment sau text gate; không ghép text Qwen với giờ Whisper khác 
 
 ## 6. Validation và native — phân biệt đúng bằng chứng
 
+- Phiên `145000`: **92 passed, 1 warning**, thêm OCR UI vào targeted contracts
+  cũ; 763 file tracked khớp bytes trước gate. Không đổi app, không có regression
+  app mới; không chạy lại toàn bộ suite/lint/type hoặc build để thay quality.
+- Native partial resume/cancel/save/reopen mới: click hủy 17,766 s, stop 18,078 s,
+  latency 312 ms, watchdog không dùng; 9 tracking/detector mới, 0 recognition/
+  cache/feature batches. UI save và file-open riêng giữ exact document, incomplete,
+  v3/punctuation-v2; export vẫn exit5. Không playback/holdout mới. Fixture preloads
+  partial **0 cue**, chưa full native source/ROI-to-result hoặc giữ cue có text.
+- Lượt harness đầu sửa frozen `OcrTask` trực tiếp gây exit3221226505 trước
+  worker.start/0 inference; giữ evidence, sửa bằng `dataclasses.replace` trong
+  script mới, cùng budget. Native reopen lần đầu chưa quan sát final trước timer
+  đóng; lượt chỉ đọc riêng đã verify UI/readback và đóng exit0, 0 inference mới.
 - Phiên `135038`: **72 passed, 1 warning** cho targeted consensus/resume/Qwen
   TXT/long audio/audio identity/GUI TXT, chạy trên 536 file source/test/scripts
   khớp bytes checkout. Không cộng với lượt 72 pass trước sync EOL. Một lệnh test
@@ -202,13 +249,14 @@ Chỉ alignment sau text gate; không ghép text Qwen với giờ Whisper khác 
 - Domain D1 2 cue/D2 4 cue/Whisper baseline 33 cue giữ text/ms/IDs/metadata qua
   table/handoff/undo và hai vòng editor save/reopen; SRT giữ text/time.
 - Native Editor đã mở project D2 từ CLI candidate, phát video, save JSON+SRT và
-  reopen đủ 4 cue; bytes/domain giữ metadata. Chưa full native OCR source-to-result
-  hoặc native cancel trên candidate cuối, chưa EXE hay manual listening acceptance.
-- Service cancellation cuối thật: 8 tracking, 0 recognition, 0 feature batches,
+  reopen đủ 4 cue; bytes/domain giữ metadata. Full native OCR source-to-result,
+  EXE và manual listening acceptance vẫn chưa đạt; native partial cancel mới
+  được ghi riêng ở đầu mục này.
+- Service cancellation phiên `112253`: 8 tracking, 0 recognition, 0 feature batches,
   18,047 s dưới cap 30 s; partial được giữ, export exit5 không tạo SRT. Không gọi
   service cancellation là bấm nút hủy native.
-- Native cancel cũ bấm ở 33,740 s, vượt budget 30 s: giữ fail đó. Lượt native mới
-  cần cutoff/deadline thực trong harness đã khóa trước, thao tác hủy sớm và ghi
+- Native cancel cũ bấm ở 33,740 s, vượt budget 30 s: giữ fail đó. Lượt native sau
+  vẫn cần cutoff/deadline thực trong harness đã khóa trước, thao tác hủy sớm và ghi
   thời điểm click/dừng riêng; automatic watchdog không thay bằng chứng nút hủy.
 - Dùng skill `computer-use:computer-use`. Với modal, UIA `focused_element` từng
   báo sai dù caret đã ở File name: quan sát screenshot đúng modal trước nhập;

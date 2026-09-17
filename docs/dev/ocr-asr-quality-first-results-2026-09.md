@@ -1,5 +1,93 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-17 — từ `a29791f`: loại dynamic patches; native partial cancel/save/reopen
+
+Audit `.tools/ocr-asr-quality-20260917-145000/`. Live HEAD/remote khớp `a29791f`,
+working tree/index sạch trước làm. Verify 538 hash cũ, bảo vệ 626 file, giữ hai
+stash và `master`. Snapshot copy **763 file tracked từ checkout**, so bytes trước
+từng gate, không dùng Git archive khác line endings. Settings/cache/log/temp
+cô lập trong audit. Không đổi source app; implementation vẫn `cb437cb`.
+
+### Recognition: một giả thuyết preprocessing mới, không đạt
+
+Local Transformers `4.57.6` cho thấy đường cũ resize crop 246×35 và 299×38
+thành 1024×1024. [GOT processor hỗ trợ dynamic patches](https://huggingface.co/docs/transformers/v4.57.1/model_doc/got_ocr2).
+Giả thuyết mới là giảm biến dạng tỷ lệ nét bằng chế độ này; không lặp plain raw,
+contrast/padding/glyph-isolation, không đổi model hoặc thêm dictionary entry.
+
+- Verify lại đúng GOT revision/weights/tokenizer cũ; inventory **151.860 output
+  classes**, tokenizer coverage trước inference. Không tải model/cài package.
+- Khóa cùng pixel hashes của hai crop và blank; `crop_to_patches=True`,
+  `min_patches=1`, `max_patches=12` mặc định, plain OCR, greedy, BF16/eager,
+  96 new tokens. Processor tự tạo patch-reference prompt, không có đáp án.
+  Grids 7×1/8×1/7×1 tương ứng 8/9/8 ảnh encoder kể cả thumbnail; hash tensors
+  và input IDs khóa trước. Đây không phải 25 recognition request riêng.
+- Budget **3 recognition/3 batches, 180 s, 0 retry**; thực hiện đúng 3/3,
+  0 cache, 0 tracking/feature batches, không failed inference exception.
+  Generation 38,109 s, process 46,765 s; peak allocated VRAM 23.528.787.456 byte.
+- Hai crop đều mất phần lớn câu, không lấy lại glyph mục tiêu; blank lặp ký tự,
+  đạt 96 token khi **chưa EOS**. Gate đã khóa yêu cầu đủ glyph/body, không thêm
+  chữ và blank không hallucinate, nên **loại candidate**, không tích hợp/profile,
+  không scan D1/D2, không retry/tăng token hoặc ghép output.
+
+Evidence: `got-tiled-inventory.json`, `got-tiled-plan-locked.json`,
+`got-tiled-results.json`, `got-tiled-inference-receipt.json`. Tổng GOT diagnostic
+qua hai phiên là 6 request (3 raw cũ + 3 tiled mới); cả hai candidate bị loại.
+Reference ảnh vẫn là AI, không phải human ground truth. Chưa có recognition fix.
+
+### ASR: chuẩn bị reference, không nhận dạng lại
+
+Tạo `listening/` với ba WAV original D1 24–36 s, D2 54–67 s, D3 107–126 s
+copy đúng bytes của input đã có, kèm SHA/PCM/sample counts. README chỉ hướng dẫn
+nghe và ghi phần chưa rõ; không kèm caption hoặc output ASR. Template ghi nhận
+người nghe và việc đã xem caption/model output trước đó, không tự gán nhãn
+independent/human-reviewed. User xác nhận không biết tiếng Trung; không yêu cầu
+user chép/duyệt lời tiếng Trung ở phiên sau. Chưa có transcript nghe độc lập;
+việc tìm nguồn đối chiếu phù hợp vẫn thuộc phần điều tra của agent.
+`reference=unknown`, Qwen vẫn
+**6 request tổng/0 mới**; không CER/WER, alignment, audio upload hoặc tách vocals.
+
+### Native P3: hủy/lưu/mở lại partial có bằng chứng mới
+
+Fixture mở `OcrDialog` thật với partial từ service gate cũ, đúng source và
+tracking v3/consensus punctuation-v2. Dùng Computer Use bấm **Tiếp tục quét**
+rồi **Hủy tác vụ**, không thay thao tác nút bằng timer. Khóa 3 recognition tối đa,
+30 s/job; watchdog 25 s nếu thao tác không kịp và watchdog không được tính pass.
+
+- Lượt đầu lỗi harness gán `max_requests` vào frozen `OcrTask`, process exit
+  `3221226505` trước worker.start, 0 inference. Tái hiện `FrozenInstanceError`,
+  giữ script/plan/receipt; amendment dùng `dataclasses.replace`, cùng budget.
+- Lượt native thực click hủy ở **17,766 s**, worker kết thúc **18,078 s**, độ trễ
+  **312 ms**, watchdog không dùng. **9 tracking/9 detector attempts mới**,
+  0 recognition/cache/feature batches. Metrics resume là metrics lượt mới,
+  không lấy 9 trừ 8 calls cũ. UI hồi phục, Save/Resume bật lại và Export vẫn khóa.
+- Lưu `ui-saved.ocr.json` bằng modal native; document khớp bản capture, giữ
+  incomplete/config/source/metrics. CLI export partial **exit5**, không tạo SRT.
+- Mở lại ở lượt đầu chưa quan sát được trạng thái cuối trước harness tự đóng;
+  giữ giới hạn đó trong receipt. Lượt chỉ đọc riêng sau đó mở file qua native
+  modal, verify exact document trong callback và quan sát UI load xong. Không
+  recognition mới, Export vẫn khóa; cửa sổ được đóng bằng nút native, exit0.
+
+Đây là native **resume/cancel/save/reopen của partial 0 cue**, không thay gate
+source/ROI-to-result/export hoàn chỉnh, bảo toàn cue có nội dung, hoặc quality.
+Không playback, không mở thêm holdout; contamination H1 539 ms cũ vẫn giữ.
+Evidence: `native-harness-amendment.json`, `native-cancel-v2/{plan-locked,results,
+verification}.json`, `native-reopen-result.json` và các process receipts.
+
+### Validation và bàn giao
+
+**92 passed, 1 warning**: consensus/resume/OCR UI, Qwen TXT/long-audio/audio
+identity/GUI TXT, trên snapshot khớp checkout. Đây là offline contracts; không
+cộng với 72 pass phiên trước. Không đổi app nên không có regression app mới;
+không chạy Ruff/Pyright toàn app hoặc full suite chỉ để tạo thêm số pass.
+
+Bytes worker v3 và punctuation-v2, checkpoint/raw, model/runtime và sáu câu
+Việt/recipe B giữ nguyên. Commit chỉ cập nhật report/status/handoff. P1/P2 vẫn
+**unresolved**; native full workflow/listening acceptance còn thiếu.
+Holdout/whole-video/full offline/build EXE/TTS **NOT RUN**. Không lặp GOT raw/tiled
+hoặc các Qwen context đã đo; bước recognition tiếp phải có giả thuyết mới và
+inventory trước inference, còn ASR cần reference nghe độc lập.
+
 ## 2026-09-17 — từ `3f731f2`: GOT diagnostic bị loại; D2 ASR thêm ngữ cảnh
 
 Audit `.tools/ocr-asr-quality-20260917-135038/`. Live HEAD/remote đúng handoff,
