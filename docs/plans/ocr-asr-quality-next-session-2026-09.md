@@ -1,5 +1,43 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Bàn giao mới nhất — D3 frontend giữ đủ frame; numerical verification còn fail
+
+Audit **`.tools/asr-frontend-20260918-005832/`**, bắt đầu `f84d5cb`; đọc
+`publication.json` và Git live cho commit mới. **Không sửa app/runtime**,
+implementation vẫn `724906e`; OCR/default/parser/tracking/consensus giữ nguyên.
+
+- Khóa **3 synthetic + 2 D3 retained CPU preprocessing cases**, một lần/input,
+  không weights/model forward. SDK thật + processor thật, object model chỉ chặn
+  trước decoder, không trả output giả. Hai D3 đủ **304.000 samples / 1.900 active
+  feature frames / 247 audio tokens**, prompt265 IDs khớp record beam5 lịch sử.
+- Record lịch sử không bật repetition penalty/no-repeat/suppression/forced words;
+  beam5 override được đọc riêng. Không suy frontend bỏ chữ hoặc bật penalty từ đó.
+  **Historical feature tensors/GPU parity unknown**, không phải speech acceptance.
+- Harness đầu int64-only fail với feature mask int32; giữ raw và sửa kiểm từ NPZ,
+  không lặp silence. Verification đầu **36/39 pass**, 3 ca DFT vượt `1e-5`.
+  Một replay số học exact FP32 Hann/product giữ ngưỡng: **23/24 frames pass**,
+  synthetic tone còn `1,12271e-5`. Hai D3 pass replay; **tổng numerical NOT PASS**.
+  Không nới threshold, gọi all-pass, hoặc tiếp tục replay chọn output đẹp.
+- D3 process **8,219 s**, cap60 s, exit0; synthetic failure **8,875 s/exit1** và
+  hai control còn lại **7,687 s/exit0** giữ riêng. 5 dummy interceptions là
+  preprocessing, **0 model inference/ASR/OCR/VAD mới, 0 app tests**.
+  Qwen tổng14, SenseVoice tổng1, Whisper mới0. Không app invocation/snapshot mới.
+- Verify **7.969 prior hashes**, bảo vệ **8.020 file**, baseline764 tracked.
+  Giữ model/raw, sáu câu Việt/recipe B, hai stash. Không cache/temp mới cần dọn,
+  0 delete attempt; không retry cleanup cũ. Không playback/holdout exposure mới.
+- Warning tokenizer giữ trong log, không sửa vì prompt IDs khớp lịch sử.
+  `asr-beam-20260917-183523/effective-config.txt` được handoff cũ nhắc nhưng thiếu;
+  config/overrides có trong `worker-raw/generation-01.json`, không dựng lại file.
+
+Đọc locked plan/amendment, runtime manifest, traces/NPZ, process receipts/logs,
+hai verification và numerical plan, `D3-assessment.json`, coverage/phase,
+cleanup/preservation/publication. **D3 content FAIL/P2 unresolved** vẫn giữ;
+frontend trace không cung cấp candidate mới để chạy ASR. Không lặp trace/VAD,
+context/prefix, SenseVoice, beam5 hoặc chunk7s đã hết cap; không sửa raw theo caption.
+Bước mới cần evidence độc lập khác cho acoustic/lexical mechanism. Không đòi user
+chép tiếng Trung hoặc lặp native D2 vừa pass. Alignment/native mới/holdout/whole-video/
+full offline/EXE/TTS NOT RUN. Giữ toàn bộ quyền/giới hạn Git và phạm vi bên dưới.
+
 ## Bàn giao mới nhất — D3 temporal transfer/VAD cặp chưa đủ căn cứ sửa audio
 
 Audit **`.tools/asr-d3-transfer-20260917-232009/`**, từ `724906e`; đọc

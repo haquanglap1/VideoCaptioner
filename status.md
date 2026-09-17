@@ -1,5 +1,26 @@
 # Project Status
 
+## 2026-09-18 (ASR D3: frontend giữ đủ frame; kiểm số học còn một ca fail)
+
+- Audit `.tools/asr-frontend-20260918-005832/`, từ `f84d5cb` sạch/khớp remote.
+  Verify **7.969 prior hashes**, bảo vệ **8.020 file**, baseline **764 tracked file**;
+  không chạy app, tạo snapshot hoặc sửa production/default/parser/OCR/runtime.
+- Khóa **3 synthetic + 2 retained CPU preprocessing cases**, chặn trước decoder,
+  không nạp weights. Cả hai D3 giữ **304.000 samples / 1.900 active feature frames /
+  247 audio tokens**; prompt 265 IDs khớp record beam5 cũ. Record không bật penalty
+  từ lặp hoặc token suppression. Đây không phải parity tensor lịch sử/GPU.
+- Harness đầu fail vì đòi feature mask int64 thay vì int32; sửa phép kiểm từ tensor
+  đã lưu, không lặp input. **36/39 verification checks pass**; 3 ca DFT vượt ngưỡng
+  `1e-5`. Bổ sung exact FP32 Hann/product, giữ ngưỡng: **23/24 frame pass**, synthetic
+  tone còn sai lệch `1,12271e-5`. Hai D3 pass phép bổ sung; tổng numerical gate
+  **NOT PASS**, không nới ngưỡng hoặc tiếp tục replay để chọn kết quả.
+- Hai D3 process **8,219 s**, cap60 s; **0 model loads/forwards/generation,
+  ASR/OCR/VAD mới, 0 app tests**. Qwen tổng14/SenseVoice tổng1 giữ. Chưa có căn cứ
+  cho candidate nhận dạng mới; **D3 content FAIL/P2 unresolved**.
+- Alignment/native mới/holdout/whole-video/full offline/EXE/TTS NOT RUN; không
+  exposure mới. Không cache/temp mới cần dọn; model/raw, sáu câu Việt/recipe B,
+  hai stash giữ. [Chi tiết](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-17 (ASR D3: kiểm suy giảm cục bộ và VAD cặp, chưa đủ căn cứ sửa audio)
 
 - Audit `.tools/asr-d3-transfer-20260917-232009/`, từ `724906e` sạch/khớp

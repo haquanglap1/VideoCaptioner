@@ -1,5 +1,72 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-18 — D3: frontend không bỏ frame; numerical verifier chưa pass toàn bộ
+
+Audit `.tools/asr-frontend-20260918-005832/`, bắt đầu `f84d5cb` sạch/khớp remote.
+Verify **7.969 prior hashes**, bảo vệ **8.020 file**, baseline **764 tracked file**.
+App implementation vẫn `724906e`; không chạy app/tạo snapshot, sửa production,
+default, parser, OCR hoặc installed runtime. Đọc đúng source/runtime đã ghim.
+
+Hypothesis độc lập kiểm layer **feature extraction → mask/audio placeholders →
+decoder constraints**, vì các audit PCM/raw token trước chưa lưu feature tensors.
+Khóa input/worker/runtime/budget trước khi chạy: ba synthetic controls và hai WAV
+D3 19 s cũ, một lần/case, cap60 s/process. Dùng processor CPU thật và SDK
+`Qwen3ASRModel.transcribe`; object thay thế model chặn tại lời gọi `generate`, trước
+mọi model forward. Không constructor model/weights, không output nhận dạng giả,
+không context/caption hoặc đổi audio. Đây là **preprocessing**, không ASR inference.
+
+Cả original/filtered giữ **304.000 samples, 1.900 active feature frames, 247 audio
+tokens**; input IDs/text mask là int64, feature mask là int32, features chuyển BF16.
+Không frame bị mask, không NaN/Inf; prompt **265 IDs** khớp record beam5 đã lưu.
+Record lịch sử có repetition penalties =1, no-repeat n-gram =0 và không suppression,
+bad-word, sequence-bias hoặc forced-word constraints; `num_beams=5` nằm trong
+effective overrides, không nhầm với giá trị 1 của base config.
+
+Giới hạn: chưa lưu feature tensors ở lượt recognition lịch sử nên **historical
+tensor equality unknown**. CPU reconstruction không chứng minh GPU parity, encoder
+attention, BF16 speech accuracy hoặc nội dung lời nói. Warning `mistral-regex` của
+Transformers được giữ trong log; không tự sửa tokenizer vì prompt IDs hiện khớp
+record. Handoff cũ nhắc `asr-beam-20260917-183523/effective-config.txt` nhưng file đó
+không có; dùng config/overrides sẵn trong `worker-raw/generation-01.json`, không dựng lại.
+
+### Verification và failure được giữ
+
+- Synthetic đầu fail vì harness đòi mọi mask int64. NPZ chứng minh feature mask
+  int32 và các kiểm equality trước/sau cast đã pass. Amendment sửa assertion thành
+  integral dtype, kiểm lại **dữ liệu đã lưu**, rồi chạy hai control còn lại. Không
+  lặp silence hoặc thay plan/raw cũ. Tổng vẫn **3 synthetic + 2 retained traces**.
+- Verification đầu **36/39 checks pass**. NumPy DFT với ideal FP64 Hann trên các
+  frame khóa trước khác frontend FP32 quá `1e-5` ở ba ca; max `2,39482e-5`.
+- Khóa một phép kiểm số học bổ sung dùng exact FP32 Hann/product của implementation,
+  NumPy FFT độc lập, retained mel matrix/global clipping floor và **cùng ngưỡng**.
+  **23/24 frames pass**; synthetic tone còn `1,12271e-5`. D3 original max
+  `1,52090e-6`, filtered `9,85374e-6`. Đây chỉ là partial numerical parity;
+  **overall numerical verifier NOT PASS**. Không tune threshold, chạy lại processor
+  hoặc gọi các failure là pass. Hai verifier đều giữ đủ outputs/logs.
+- BF16 rounding được so độc lập bằng integer round-to-nearest-even từ FP32 bits;
+  masks/IDs/tensor hashes giữ. Tổng 3.072 mel-bin comparisons mỗi verifier không
+  được cộng thành app tests hoặc model inference.
+
+Process synthetic đầu **8,875 s/exit1** do assertion; hai control còn lại
+**7,687 s/exit0**; hai D3 **8,219 s/exit0**, đều cap60 s. **0 ASR/OCR/VAD mới,
+0 weights loads/model forwards/real generation batches, 0 app tests**. Five dummy
+`generate` interceptions không phải model requests. Qwen tổng **14**, SenseVoice
+tổng **1**, Whisper mới **0**; không install/download/upload hoặc recognition retry.
+
+Kết quả không cung cấp candidate acoustic/decoder có căn cứ để nhận dạng tiếp.
+**D3 content FAIL/P2 unresolved giữ**, không promote hoặc gọi speech accuracy pass.
+D1 onset, D2 coverage/native saved-data giữ evidence cũ. Speech ground truth unknown,
+không CER/WER. Không playback/annotation/holdout exposure mới; giữ contamination
+H1 và lịch sử Whisper H1/H2. Alignment/native mới/holdout/whole-video/full offline/
+EXE/translation/TTS NOT RUN. Không file cache/temp mới cần dọn hoặc delete attempt;
+giữ model/raw, sáu câu Việt/recipe B và hai stash, không retry cleanup cũ.
+
+Đọc `plan-locked.json`, `plan-amendment.json`, `runtime-manifest.json`,
+`*-trace.json`, `*-tensors.npz`, receipts/logs, `verification.json`,
+`numerical-verification-plan.json`, `numerical-verification.json`,
+`D3-assessment.json`, coverage/phase/cleanup/preservation và `publication.json`.
+Không lặp frontend traces hoặc nới numerical tolerance để tạo candidate.
+
 ## 2026-09-17 — D3: suy giảm cục bộ có thật, chưa chứng minh separator làm mất lời
 
 Audit `.tools/asr-d3-transfer-20260917-232009/`, bắt đầu ở `724906e` sạch/khớp
