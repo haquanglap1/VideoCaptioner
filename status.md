@@ -5,7 +5,7 @@
 - User chọn gộp các nhánh `codex` hiện tại vào `master`, giữ nhánh lịch sử/
   upstream nguyên trạng. Sau fetch, `master` ở `62abaca`; pilot `e2e7863` đi
   trước 23 commit và không phân kỳ. S1, S2, S3 và VieNeu đã là ancestor của
-  master; chỉ cần fast-forward phần pilot cùng hai commit chốt của lượt này.
+  master; chỉ cần fast-forward phần pilot cùng các commit chốt của lượt này.
 - Commit `6a6fcd1` giữ `.libs` trong builder portable và regression cho native
   DLL của scikit-learn/NumPy; chốt đúng 4 file còn chưa commit từ 21–23/09.
   Không thay EXE, weights, runtime đã cài hoặc dữ liệu của user.
@@ -21,6 +21,15 @@
 - Lượt targeted đầu: 28 passed / 4 skipped; có cảnh báo ACL của `.pytest_cache`.
   Full suite dùng cache riêng trong audit và không còn cảnh báo ACL. Skip,
   deselect và fake provider không được tính là online/native acceptance.
+- Checkout Windows ban đầu không unlink được 3 file plan; đối chiếu blob cho
+  thấy chúng vẫn khớp commit mới. Đưa index về đúng nội dung đã commit, quay về
+  pilot rồi fast-forward master bằng local fetch không force; không mất dữ liệu.
+- Kiểm SHA sau checkout phát hiện `paddle_vl_worker.py` bị đổi LF → CRLF.
+  `.gitattributes` nay ghim worker LF và recipe `paddle-vl.json` CRLF đúng bytes
+  checkpoint lịch sử; không sửa worker/recipe/model hoặc hash trong checkpoint.
+  **6/6 byte checks** pass ở working tree và checkout `core.autocrlf=true/false`;
+  OCR/UI bổ sung **362 passed / 7 skipped**, 63,60 s, không runtime inference.
+  Lượt gọi test đầu sai đường dẫn CLI dừng trước collection, được giữ log riêng.
 - Không build, chạy GUI native, recognition/GPU/API/TTS thật hoặc whole-video
   mới. Giữ hai stash và các worktree khác; không merge nhánh lịch sử, force-push
   hoặc xóa nhánh. Audit/check logs nằm ở `.tools/git-standardize-20260927/`.
