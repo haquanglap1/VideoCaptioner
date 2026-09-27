@@ -1,5 +1,9 @@
 # Hoàn thiện ASR theo mục tiêu speech-to-text
 
+Rà soát 2026-09-27: phạm vi R6 bên dưới đã khép; trạng thái các plan và nhánh
+hiện tại nằm ở [mục lục plan](README.md). Các chỉ dẫn “yêu cầu hiện tại”, nhánh
+và quyền Git bên dưới thuộc từng session lịch sử, không mở lại việc đã hoàn tất.
+
 ## Hoàn tất các session triển khai và GUI của lượt tiếp tục
 
 [Báo cáo cuối](../dev/dubbing-review-resume-2026-09.md) và

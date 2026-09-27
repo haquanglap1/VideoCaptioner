@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-09-27 (Rà soát plan và chuẩn hóa các nhánh codex về master)
+
+- User chọn gộp các nhánh `codex` hiện tại vào `master`, giữ nhánh lịch sử/
+  upstream nguyên trạng. Sau fetch, `master` ở `62abaca`; pilot `e2e7863` đi
+  trước 23 commit và không phân kỳ. S1, S2, S3 và VieNeu đã là ancestor của
+  master; chỉ cần fast-forward phần pilot cùng hai commit chốt của lượt này.
+- Commit `6a6fcd1` giữ `.libs` trong builder portable và regression cho native
+  DLL của scikit-learn/NumPy; chốt đúng 4 file còn chưa commit từ 21–23/09.
+  Không thay EXE, weights, runtime đã cài hoặc dữ liệu của user.
+- Thêm [mục lục plan hiện tại](docs/plans/README.md), đối chiếu đủ 8 plan trong
+  `docs/plans/` và lộ trình ASR S1–S6; sửa nhãn PLAN ONLY đã cũ và đánh dấu các
+  chỉ dẫn branch/quyền của session trước là lịch sử. Giữ nguyên evidence và
+  gate **P1/P2 unresolved, D3 FAIL**; đồng bộ Git không phải nghiệm thu model.
+- Validation bằng Python 3.12/.venv sẵn có, không cài/sync dependency: full
+  offline **2.092 passed / 5 skipped / 58 deselected**, 220,73 s, 10 deprecation
+  warnings. Suite gồm CLI/OCR/UI/portable/VieNeu; Qt offscreen, app data/log/cache
+  được cô lập. Ruff app/tests/builder pass; Pyright **0 errors / 0 warnings**;
+  translation sync, 14 local plan links và diff check pass.
+- Lượt targeted đầu: 28 passed / 4 skipped; có cảnh báo ACL của `.pytest_cache`.
+  Full suite dùng cache riêng trong audit và không còn cảnh báo ACL. Skip,
+  deselect và fake provider không được tính là online/native acceptance.
+- Không build, chạy GUI native, recognition/GPU/API/TTS thật hoặc whole-video
+  mới. Giữ hai stash và các worktree khác; không merge nhánh lịch sử, force-push
+  hoặc xóa nhánh. Audit/check logs nằm ở `.tools/git-standardize-20260927/`.
+
 ## 2026-09-23 (Faster-Whisper portable: phục hồi DLL NumPy và scikit-learn)
 
 - Tái hiện `faster-whisper-xxl.exe --help` exit 1 do thiếu OpenBLAS trong

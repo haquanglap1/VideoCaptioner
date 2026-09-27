@@ -1,5 +1,9 @@
 # Kế hoạch thực thi ASR tiếng Trung → phụ đề tiếng Việt
 
+Rà soát 2026-09-27: tài liệu này giữ lịch sử S1–S6. Phạm vi ASR/OmniVoice R6
+và OCR/ASR quality-first được cập nhật sau đó trong [mục lục plan](../plans/README.md).
+Các nhãn “mới nhất”, branch và quyền Git bên dưới thuộc từng mốc lịch sử.
+
 **Ưu tiên hiện tại:** hoàn tất ASR trước OCR. User đã chọn AliMeeting Eval công khai
 cùng clip hiện có để làm S6; bỏ nghiệm thu Scribe. Đã đo 32 clip / 66,9079 phút;
 **chưa đạt nghiệm thu sản phẩm**. Xem [kết quả S6](asr-s6-results-2026-09.md), gồm

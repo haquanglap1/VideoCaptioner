@@ -1,0 +1,47 @@
+# Trạng thái các plan của VideoCaptioner
+
+Rà soát ngày **2026-09-27**. Dùng trang này để chọn plan đang áp dụng;
+[status.md](../../status.md) giữ lịch sử thay đổi và validation theo ngày.
+Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó,
+không phải nghiệm thu lại trong lần đồng bộ Git này.
+
+## Các plan và phần còn mở
+
+| Plan | Trạng thái đã ghi nhận | Phần còn mở / tài liệu tiếp tục |
+| --- | --- | --- |
+| [OCR/ASR quality-first](ocr-asr-quality-first-2026-09.md) | Đã triển khai một phần, không còn PLAN ONLY. Tracking v2/v3, consensus punctuation-v2, candidate PaddleOCR-VL và sửa UI checkpoint đã có; chưa đổi mặc định nhận dạng. | **P1/P2 unresolved; D3 content FAIL**, D1 onset unresolved. D2 saved-data native pass chỉ chứng minh luồng dữ liệu đã lưu. P3 chưa có nghiệm thu native đầy đủ với kết quả mới; P4 holdout/whole-video/EXE và P5 translation/TTS chưa mở từ pilot này. |
+| [Bàn giao OCR/ASR](ocr-asr-quality-next-session-2026-09.md) | Bản bàn giao đang áp dụng cho nhánh chất lượng; kết quả chẩn đoán mới nhất là audio conditioning ngày 18/09. | Numerical frontend **NOT PASS**, real-model cache parity **UNKNOWN**. Giữ attempt cap và các kết quả thất bại; không chạy lại nhận dạng chỉ vì chuyển sang master. Xem [kết quả](../dev/ocr-asr-quality-first-results-2026-09.md). |
+| [Tích hợp OCR video](video-subtitle-ocr-integration-plan.md) | Luồng CLI/GUI, checkpoint, direct export, cache/resume, v6 medium và chọn dòng đã triển khai. | Đánh giá chất lượng tiếp tục ở quality-first phía trên. Auto-accept chưa hiệu chuẩn, downloader và mở rộng vision chưa được coi là hoàn thành. Các đoạn yêu cầu review bắt buộc ở lịch sử đã được thay bằng direct export. |
+| [Hoàn thiện ASR/OmniVoice](asr-completion-2026-09.md) | Phạm vi bài giảng và các session R6 đã được chốt; Qwen + Whisper fallback, OmniVoice, review/resume và handoff GUI đã có. | Không mở lại bản bài giảng đã được chấp nhận. Chất lượng/RTF trên corpus khó, speaker/xưng hô, gated model và nghiệm thu rộng trên máy khác còn giới hạn; xem [báo cáo R6](../dev/dubbing-review-resume-2026-09.md). |
+| [Session ASR/OmniVoice](asr-completion-sessions-2026-09.md) | Bốn session triển khai đã hoàn thành trong phạm vi R6. | Đây là bảng closeout lịch sử; không tiếp tục theo chỉ dẫn Git của nhánh cũ. Không suy fixture/cache thành fresh online inference. |
+| [Natural Dubbing](natural-dubbing-end-to-end-plan.md) | P-1 đến P8 machine complete theo biên bản 21/08; review/resume và sequential timing được bổ sung trong tháng 9. | Subjective listening, chất lượng provider và video đa dạng không tự thành pass từ test offline. Danh sách CapCap follow-up là backlog lịch sử, phải đối chiếu tính năng đã có trước khi triển khai. |
+| [Video Editor](video-editor-tab-integration-plan.md) | E0–E7 machine complete; style/preset/nền bo góc và handoff đã có trong code hiện tại. | UX chủ quan, âm thanh provider thật và tập video đa dạng có ranh giới nghiệm thu riêng. Giữ schema, stable IDs, CommandStack và cùng filter graph cho preview/export. |
+| [VieNeu one-app](vieneu-one-app-integration-plan.md) | V0–V5 implemented/machine-validated. Bản sửa portable tháng 9 giữ native DLL trong `.libs` cho scikit-learn/NumPy. | Giữ subjective listening riêng; giant single self-extracting EXE vẫn deferred. Xem [runtime/build/update](../dev/vieneu-one-app.md) và status 21–23/09; smoke runtime không đóng gate chất lượng OCR/ASR. |
+| [Lộ trình ASR S1–S6](../dev/asr-implementation-2026-09.md) | Các bước triển khai và smoke S1–S5.2, phép đo S6 đã được ghi nhận; câu “chưa triển khai” trong [nghiên cứu ban đầu](../dev/asr-provider-plan-2026-09.md) là lịch sử. | S6 chưa đạt nghiệm thu sản phẩm; native online, phồn thể strict, speaker/xưng hô và corpus khó giữ giới hạn trong báo cáo. Các yêu cầu thực dụng sau đó nằm trong plan ASR/OmniVoice và quality-first. |
+
+## Chuẩn hóa nhánh về master
+
+Phạm vi user chọn: gộp các nhánh `codex` hiện tại vào `master`, giữ nguyên các
+nhánh lịch sử/upstream. Đối chiếu sau `git fetch origin --no-prune`:
+
+| Nhánh nguồn | Tip trước đồng bộ | Quan hệ với master trước đồng bộ |
+| --- | --- | --- |
+| `codex/asr-s1-api-profiles` | `43bb76f` | Đã là ancestor của `62abaca`; không còn commit riêng cần gộp. |
+| `codex/asr-s2-alignment` | `d21251a` | Đã là ancestor của `62abaca`. |
+| `codex/asr-s3-native` | `bed964e` | Đã là ancestor của `62abaca`; worktree riêng sạch và được giữ nguyên. |
+| `codex/vieneu-one-app-editor-ui` | `3bef9fe` | Đã là ancestor của `62abaca`. |
+| `codex/ocr-asr-quality-pilot` | `e2e7863` | Đi trước `62abaca` đúng 23 commit; master không có commit riêng. Bổ sung commit sửa portable `6a6fcd1` và mục lục plan trước khi fast-forward master. |
+
+`master` là điểm bắt đầu chung sau đồng bộ. Các nhánh nguồn vẫn giữ lịch sử;
+không cần ép tất cả branch tip bằng nhau để đưa toàn bộ công việc vào master.
+Hai stash và các worktree khác được giữ nguyên. Không merge nhánh lịch sử,
+không force-push, xóa nhánh hoặc áp/pop/drop stash trong lần này.
+
+## Tiếp tục công việc
+
+1. Đọc trang này, mục mới nhất của `status.md`, rồi báo cáo domain tương ứng.
+2. Kiểm tra Git live; các SHA, branch và quyền của session cũ chỉ là mốc lịch sử.
+3. Với OCR/ASR, bắt đầu từ bàn giao quality-first mới nhất; giữ riêng OCR text,
+   speech text và translation. Thiếu listening reference vẫn ghi unknown.
+4. Bản đồng bộ Git chỉ bổ sung regression/static validation. Không dùng nó để
+   đóng gate native GUI, packaged EXE, real GPU/provider hoặc chất lượng nội dung.

@@ -1,8 +1,9 @@
 # Plan ưu tiên OCR và speech-to-text trước lồng tiếng
 
-Ngày lập: 2026-09-16. Trạng thái: **PLAN ONLY — chưa triển khai các phase dưới đây**.
+Ngày lập: 2026-09-16. Trạng thái rà soát 2026-09-27: **đã triển khai một phần;
+P1/P2 unresolved**, chưa đạt quality gate. Xem [mục lục hiện tại](README.md).
 
-> Ghi chú bàn giao sau triển khai: nhãn `PLAN ONLY` và các câu giới hạn phiên lập
+> Ghi chú bàn giao sau triển khai: nhãn `PLAN ONLY` cũ và các câu giới hạn phiên lập
 > plan bên dưới là trạng thái lịch sử. Commit `5ba151a` đã triển khai một phần;
 > P1/P2 chưa đạt quality gate, P3 còn gate native, P4 chưa chạy. Tiếp tục theo
 > [kết quả thực tế](../dev/ocr-asr-quality-first-results-2026-09.md) và

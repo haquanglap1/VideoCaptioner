@@ -1,5 +1,8 @@
 # Hoàn thiện ASR/OmniVoice theo session — 2026-09-09
 
+Closeout lịch sử R6. Từ lần đồng bộ 2026-09-27, dùng `master` làm baseline chung;
+các chỉ dẫn nhánh/quyền Git bên dưới chỉ mô tả session cũ. Xem [mục lục plan](README.md).
+
 Yêu cầu hiện tại: hoàn thành phần còn lại của [plan ASR](asr-completion-2026-09.md),
 chia thành session nhỏ, sau đó commit và push `origin/codex/asr-s3-native`.
 Quyền commit/push mới thay các ghi chú chưa có quyền trong lịch sử bàn giao.

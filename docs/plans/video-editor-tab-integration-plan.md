@@ -1,5 +1,8 @@
 # Video Editor Tab Integration Plan
 
+Plan index reviewed on 2026-09-27: [current status and remaining gates](README.md).
+The acceptance evidence below belongs to its recorded artifact and date.
+
 Current status: COMPLETED on 2026-08-21. E0-E7 and every machine-verifiable acceptance criterion below
 passed; subjective UX, real-provider audio quality and diverse user-video evaluation remain outside the
 machine acceptance boundary.

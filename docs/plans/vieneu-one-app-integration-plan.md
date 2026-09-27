@@ -1,5 +1,9 @@
 # VieNeu-TTS One-App Integration and Model Auto-Update Plan
 
+Plan index reviewed on 2026-09-27: [current status and remaining gates](README.md).
+For the later portable DLL repair, see [runtime notes](../dev/vieneu-one-app.md)
+and the 2026-09-21/23 entries in [status.md](../../status.md).
+
 Current status: IMPLEMENTED AND MACHINE-VALIDATED on 2026-08-21. V0-V5 are included in the feature-branch
 delivery. The read-only `F:\CppClone\VieNeu-TTS` checkout was used only as the pinned build source;
 production source/package defaults have no dependency on that path.

@@ -1,5 +1,9 @@
 # Kế hoạch OCR phụ đề trong video → phụ đề tiếng Việt
 
+Rà soát 2026-09-27: đây là lịch sử tích hợp OCR. Phần chất lượng đang tiếp tục
+ở [OCR/ASR quality-first](ocr-asr-quality-next-session-2026-09.md), với P1/P2
+unresolved; xem [mục lục plan](README.md) trước các snapshot bên dưới.
+
 **Chọn dòng trong app, 2026-09-13 (yêu cầu mới của user):** đã thêm tùy chọn
 vạch ngang trong ROI và `--line-anchors` cho scan mới. Chọn nguyên box cắt
 vạch, giữ dấu câu rời ở gần; raw và chỉ số dòng được lưu riêng. JSON cũ giữ

@@ -1,5 +1,9 @@
 # Natural Dubbing End-to-End Plan
 
+Plan index reviewed on 2026-09-27: [current status and remaining gates](README.md).
+The delivery record and next-session prompt below are historical; check the index
+before starting follow-up work already implemented in later sessions.
+
 Current status: MACHINE COMPLETE — P-1 through P8 implemented and verified; subjective/live-provider
 acceptance remains with the user.
 

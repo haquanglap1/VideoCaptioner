@@ -2,6 +2,9 @@
 
 VideoCaptioner là công cụ xử lý phụ đề video bằng AI, hỗ trợ nhận dạng giọng nói, tối ưu phụ đề, dịch phụ đề và ghép phụ đề vào video.
 
+Trạng thái triển khai và các gate còn mở: [mục lục plan hiện tại](docs/plans/README.md).
+Lịch sử thay đổi và validation: [status.md](status.md).
+
 ## Tính năng chính
 
 - Chuyển âm thanh/video thành phụ đề SRT, ASS, VTT hoặc TXT.

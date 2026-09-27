@@ -1,5 +1,13 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Mốc Git sau rà soát plan — 2026-09-27
+
+Baseline chung chuyển về `master`, gồm lịch sử pilot đến `e2e7863` và sửa DLL
+portable `6a6fcd1`. Xem [mục lục plan](README.md) và Git live trước khi tiếp tục;
+branch/SHA/phạm vi quyền trong các bàn giao bên dưới là lịch sử của từng lượt.
+Lần đồng bộ này không chạy recognition, không mở lại attempt cap và không đóng
+gate P1/P2/P3/P4. App OCR/ASR, worker hash, defaults và kết quả chẩn đoán giữ nguyên.
+
 ## Bàn giao mới nhất — audio conditioning pretrained có tác dụng; D3 chưa đạt
 
 Audit **`.tools/asr-conditioning-20260918-022835/`**, từ `4ea3a0a`; đọc

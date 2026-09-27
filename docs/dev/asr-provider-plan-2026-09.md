@@ -1,5 +1,9 @@
 # Nghiên cứu và kế hoạch mở rộng speech-to-text
 
+Rà soát 2026-09-27: đây là nghiên cứu ban đầu ngày 07/09. Các bước ASR đã được
+triển khai sau đó; dùng [mục lục plan hiện tại](../plans/README.md) để chọn
+báo cáo tiếp tục và giữ riêng các gate chất lượng/online chưa đạt.
+
 Ngày kiểm tra: 2026-09-07. Trạng thái: user đã chấp nhận hướng triển khai; chưa triển khai
 hoặc benchmark engine mới tại thời điểm bàn giao task đầu.
 
