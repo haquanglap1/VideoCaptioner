@@ -29,7 +29,9 @@ def digest(path: Path) -> str:
 def copy_payload(source: Path, target: Path, *, skip_site_packages: bool = False) -> None:
     source = source.resolve(strict=True)
     for parent, directories, files in os.walk(source, followlinks=False):
-        directories[:] = [name for name in directories if name not in EXCLUDED and not name.startswith(".")
+        # scikit-learn preloads DLLs from .libs; it is runtime data, not a hidden cache.
+        directories[:] = [name for name in directories if name not in EXCLUDED
+                          and (not name.startswith(".") or name == ".libs")
                           and not (skip_site_packages and name == "site-packages")]
         for name in directories:
             path = Path(parent) / name

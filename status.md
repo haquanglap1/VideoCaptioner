@@ -1,5 +1,48 @@
 # Project Status
 
+## 2026-09-23 (Faster-Whisper portable: phục hồi DLL NumPy và scikit-learn)
+
+- Tái hiện `faster-whisper-xxl.exe --help` exit 1 do thiếu OpenBLAS trong
+  `_xxl_data/numpy/.libs`; bản tool nguồn giữ lại chạy exit 0. Cùng lỗi đóng gói
+  bỏ thư mục ẩn, nhưng lần phục hồi VieNeu trước chưa bao phủ runtime XXL riêng.
+- Bổ sung đúng 3 DLL đã cài (36.462.572 bytes/gói): OpenBLAS của NumPy và
+  `msvcp140.dll`/`vcomp140.dll` của scikit-learn. Kiểm SHA và cập nhật inventory
+  cho bản cài đang dùng cùng `dist/VideoCaptioner-20260920-e2e7863`; không đổi EXE,
+  settings/cookie hoặc tải/cài thêm model/package.
+- Builder đã giữ `.libs` từ bản sửa 21/09. Mở rộng regression cho layout
+  `_xxl_data/numpy/.libs` và `_xxl_data/sklearn/.libs`: **7 portable tests pass**;
+  Ruff scoped và diff check pass. Cả hai tool được sửa đều chạy `--help` exit 0.
+- Chính EXE, dữ liệu app/cache/output cô lập: `large-v3`, CUDA, Auto, Silero v5
+  và thư mục model như GUI, nhận dạng một WAV tổng hợp có sẵn 2,56 s; exit 0,
+  31,187 s, tạo SRT 1 cue. Bảy file model giữ SHA. Không dùng smoke này làm
+  nghiệm thu chất lượng ASR trên video của user hoặc whole-video/native GUI.
+- Giữ lỗi probe CLI đầu: thiếu `--fw-model-dir` nên tìm cache Hugging Face và
+  fail offline trước inference. `TaskFactory` của GUI vốn truyền `MODEL_PATH`;
+  probe sau dùng đúng cấu hình đó, không sửa app hoặc settings để né lỗi.
+- Audit `.tools/whisper-fix-20260923-151028/`. Giữ nguyên thay đổi chưa commit
+  của lần sửa VieNeu trước; không commit/push và không chạy lại OCR/ASR pilot cũ.
+
+## 2026-09-21 (Portable runtime: giữ DLL trong sklearn/.libs; phục hồi VieNeu update)
+
+- Bản đóng gói `VideoCaptioner-20260920-e2e7863` thiếu `sklearn/.libs` vì
+  `copy_payload` loại mọi thư mục bắt đầu bằng dấu chấm. VieNeu dừng ở import
+  Transformers/scikit-learn với `vcomp140.dll` thiếu; cả model mới và cũ đều lỗi.
+- Builder nay giữ `.libs`, tiếp tục loại cache/thư mục ẩn khác. Bổ sung đúng
+  6 DLL đã có vào VieNeu/Qwen/OmniVoice của bản cài và gói dist gốc, kiểm SHA
+  và cập nhật inventory; không thay weights, EXE hoặc cài/tải package.
+- Regression tái hiện thiếu DLL trước sửa; **41 tests pass** sau sửa (portable
+  models + VieNeu). Ruff scoped và diff check pass. Qwen/OmniVoice import thật
+  scikit-learn và Transformers từ runtime đã chuyển thư mục đều exit 0.
+- Bridge thật của gói, dùng cache chẩn đoán riêng: model mới `5f2a3e93092e...`
+  và model cũ `2da0efab622a...` đều có 20 giọng, tạo WAV mono 48 kHz không im lặng
+  (2,56 s / 2,48 s), đóng exit 0. Không dùng kết quả này làm nghiệm thu nghe/chất lượng.
+- Chính EXE chạy `vieneu update --revision ... --retry-rejected` offline,
+  exit 0 / 30,328 s: mới active, cũ previous; candidate/rejection/last_error được
+  xóa qua updater sau health/voices/WAV gate. Không sửa tay model state.
+- Năm file settings/cookie được bảo vệ giữ hash; EXE giữ SHA
+  `da2e9044ca9f7758ab4d6edcdeb060bfb7de66aa452b370bf920a00d1a4417e6`.
+  Audit `.tools/vieneu-fix-20260921-004115/`; không commit/push hoặc ASR/OCR mới.
+
 ## 2026-09-18 (ASR D3: pretrained decoder sử dụng audio; chưa có bản sửa nội dung)
 
 - Audit `.tools/asr-conditioning-20260918-022835/`, từ `4ea3a0a` sạch/khớp remote.

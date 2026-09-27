@@ -69,6 +69,20 @@ VideoCaptioner-VieNeu-OneApp-<label>/
 Model seed và mọi model update là dữ liệu mutable bên ngoài one-file EXE. Chỉ có một shortcut
 `VideoCaptioner`; không có shortcut/server console cho sidecar.
 
+### DLL trong runtime portable
+
+Các wheel có thể chứa native DLL trong thư mục ẩn `Lib/site-packages/sklearn/.libs`.
+`scripts/package_test_models.py` phải giữ thư mục này khi đóng gói: scikit-learn
+preload `vcomp140.dll` và `msvcp140.dll` trước khi Transformers nạp model. Chỉ kiểm
+`find_spec()` hoặc mở GUI không phát hiện được DLL bị thiếu; cần import dependency
+thật và chạy bridge/voices/WAV từ runtime đã chuyển thư mục.
+
+Bản ngày 2026-09-20 đã gặp lỗi này và được bổ sung đúng DLL từ runtime đã cài,
+kèm cập nhật inventory. Nếu lỗi startup khiến một revision bị rejected, sau khi
+sửa runtime có thể dùng `vieneu update --revision <sha> --retry-rejected` để chạy
+lại validation qua updater. Model chỉ được activate sau health/voices/WAV; model
+cũ vẫn được giữ để rollback. Không xóa weights hoặc bỏ validation để hết lỗi.
+
 ## Build tái lập
 
 Runtime dùng Python 3.12 do `uv` quản lý, source VieNeu ở commit ghi trong manifest, và lock có hash cho

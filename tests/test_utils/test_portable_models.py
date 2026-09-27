@@ -77,3 +77,30 @@ def test_copy_refuses_to_overwrite_unrelated_payload(tmp_path):
     with pytest.raises(ValueError, match="Conflicting"):
         copy_payload(source, target)
     assert (target / "model.bin").read_bytes() == b"existing"
+
+
+@pytest.mark.parametrize(
+    "library_path, filenames",
+    [
+        ("Lib/site-packages/sklearn/.libs", ("vcomp140.dll", "msvcp140.dll")),
+        ("_xxl_data/numpy/.libs", ("libopenblas.native.dll",)),
+        ("_xxl_data/sklearn/.libs", ("vcomp140.dll", "msvcp140.dll")),
+    ],
+)
+def test_runtime_copy_preserves_vendored_native_libraries(tmp_path, library_path, filenames):
+    source, target = tmp_path / "runtime", tmp_path / "relocated"
+    libraries = source / library_path
+    libraries.mkdir(parents=True)
+    for name in filenames:
+        (libraries / name).write_bytes(b"required native runtime")
+    for name in (".cache", ".credentials"):
+        directory = source / name
+        directory.mkdir()
+        (directory / "private.txt").write_text("must not ship")
+
+    copy_payload(source, target)
+
+    for name in filenames:
+        assert (target / library_path / name).read_bytes() == (libraries / name).read_bytes()
+    assert not (target / ".cache").exists()
+    assert not (target / ".credentials").exists()
