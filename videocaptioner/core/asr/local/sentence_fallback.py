@@ -71,7 +71,7 @@ class WhisperSentenceFallback:
             response = self._request(engine, binary, check)
         if not isinstance(response, str):
             raise AlignmentError("Malformed Whisper fallback result.")
-        data = ASRData.from_srt(response)
+        data = ASRData.from_srt(response, detect_bilingual=False)
         previous = 0
         if not data.segments:
             raise AlignmentError("Whisper fallback returned no speech for a region with Qwen text.")

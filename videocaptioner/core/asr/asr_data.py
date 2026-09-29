@@ -708,7 +708,7 @@ class ASRData:
         return ASRData(segments)
 
     @staticmethod
-    def from_srt(srt_str: str) -> "ASRData":
+    def from_srt(srt_str: str, *, detect_bilingual: bool = True) -> "ASRData":
         """Create ASRData from SRT format string.
 
         Uses language detection to distinguish between bilingual subtitles
@@ -716,6 +716,8 @@ class ASRData:
 
         Args:
             srt_str: SRT format subtitle string
+            detect_bilingual: Guess original/translation pairs for imported subtitles.
+                Disable for raw ASR responses, where every line is recognized speech.
 
         Returns:
             Parsed ASRData instance
@@ -738,7 +740,8 @@ class ASRData:
 
         all_four_lines = all(len(b.splitlines()) == 4 for b in blocks)
         is_bilingual = (
-            all_four_lines and sum(map(is_different_lang, blocks[:50])) / min(len(blocks), 50) >= 0.7
+            detect_bilingual and all_four_lines
+            and sum(map(is_different_lang, blocks[:50])) / min(len(blocks), 50) >= 0.7
         )
 
         # Process all blocks based on detected mode

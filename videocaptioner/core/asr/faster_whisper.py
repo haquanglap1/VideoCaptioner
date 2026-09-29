@@ -234,7 +234,7 @@ class FasterWhisperASR(BaseASR):
         return cmd
 
     def _make_segments(self, resp_data: str) -> List[ASRDataSeg]:
-        asr_data = ASRData.from_srt(resp_data)
+        asr_data = ASRData.from_srt(resp_data, detect_bilingual=False)
 
         # Reject before filtering: native sentence mode can also emit zero-length cues.
         if any(seg.start_time >= seg.end_time for seg in asr_data):

@@ -1,5 +1,75 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Mốc chốt và ưu tiên phiên sau — 2026-09-29
+
+User đã yêu cầu commit/push bản sửa raw ASR SRT bên dưới. Dùng Git live và
+`.tools/asr-srt-publish-20260929-094926/publication.json` để xác định SHA cuối;
+những câu "chưa commit/push" ở mục trước là snapshot lúc validation. Quyền Git
+lần này chỉ chốt bản sửa SRT và tài liệu bàn giao; thay đổi mới cần yêu cầu riêng.
+
+User chọn chuyển công việc kế tiếp sang **TTS trên phụ đề đã có**: đọc hết câu
+trước rồi mới đọc câu sau, giữ tốc độ tự nhiên, cho phép câu bắt đầu trễ khoảng
+1 giây so với subtitle. Đây **không phải nghỉ1 giây giữa mọi câu**. Ưu tiên mới
+cho phép làm phần TTS độc lập, không cần chờ lexical OCR/ASR được nghiệm thu;
+các quality gate và cap recognition cũ vẫn giữ nguyên, không tự mở whole-video.
+
+Code đã có `sequential_slots`, `_apply_sequential_policy` và GUI "Nhịp đọc đều,
+không chồng lời". Bắt đầu kiểm contract với `unresolved=sequential`, provider
+speed1.0, `natural_max_speed=1.0`, `max_start_delay_ms=1000`, `rewrite_enabled=False`.
+Không tạo scheduler mới trước khi đo đường này. Khoảng nghỉ hiện tại80ms và
+timeline subtitle gốc giữ nguyên; không tự thay cài đặt thật của user.
+
+Điểm phải kiểm: scheduler dùng thời lượng WAV thật, không chồng lời/cắt đuôi/
+atempo/tự rút gọn; GUI và CLI truyền đủ options; cache/resume giữ đúng wording;
+mix/export không mất lời ở cuối. Nếu nhiều câu dài khiến trễ vượt1s hoặc hết
+video, giới hạn này có thể không khả thi ở1x: giữ review/audio và báo rõ, không
+tự nâng budget trễ, kéo dài video hoặc rút lời. Chỉ sửa phần thiếu có regression.
+Đọc `docs/dev/natural-dubbing.md`, `core/dubbing/{scheduling,orchestrator,config,
+audio_mixer,review,presets}.py`, GUI/CLI và `tests/test_dubbing/test_sequential.py`.
+Không sửa Editor/VieNeu/runtime/ASR hoặc mở lại toàn bộ R6.
+
+Prompt copy-ready với SHA sau push nằm trong audit publication mới ở
+`NEXT_SESSION.md`. Phiên chốt này chỉ đọc code TTS, chưa test hay thay hành vi TTS.
+
+## Bàn giao mới — 2026-09-29: raw ASR SRT không đoán bản dịch
+
+Live baseline `master`/`origin/master` = `69803d7d639543722a2a64d665dca729638ad19a`,
+tree/index sạch trước sửa. Hai sửa coverage/merger đã publish; sửa SRT bên dưới
+**chưa commit/push**, không có quyền Git mới. Kiểm live, giữ hai stash đã ghi.
+
+- Audit mới `.tools/asr-srt-20260929-093753/`: `reproduction.json`, `scope.json`,
+  `baseline.json`, `RESULT.md`, `red-corrected.log/xml`, `targeted-final.log/xml`,
+  `verification.json`, `preservation-final.json`. Giữ các log fail ban đầu.
+- `ASRData.from_srt` có keyword-only `detect_bilingual=True`; Faster-Whisper,
+  whisper.cpp và raw Whisper sentence fallback truyền `False`. Không chuyển
+  dòng lời thứ hai vào `translated_text` vì auto language detection. Giữ raw
+  cache/key, text/ms/lặp; mặc định import SRT của user tiếp tục đoán song ngữ.
+- Sửa đúng4 production files và thêm `tests/test_asr/test_srt_speech_coverage.py`,
+  cộng4 docs hiện tại. Không sửa splitter/merger hoặc hai bộ coverage test cũ.
+- Reproduction dùng detector thật trên text tổng hợp en/zh-cn. Regression khóa
+  quyết định detector để kiểm cả code-switching lẫn nhầm ngôn ngữ: baseline
+  **10 fail/2 pass**, sau sửa **83 pass/0 skip**, gồm16 ca mới. Fresh/cache đều
+  là fake provider. Ruff/Pyright scoped pass; không chạy full hoặc suites59/55.
+- Lượt red đầu gồm6 lỗi nội dung và4 lỗi fake cache (`dict.get` không nhận
+  keyword `default`). Đã sửa fixture; baseline replay đọc đúng4 source modules
+  từ Git `69803d7` trong audit, không rollback live. Kết quả red-corrected mới
+  là10 ca fail đúng nội dung. Không cộng lượt fail thành tests mới/pass.
+
+Giới hạn: đây là app parsing/data-flow, không sửa lexical Qwen D1/D3. P1/P2
+unresolved; D3 content FAIL; D1 lexical onset unresolved; numerical frontend
+NOT PASS; real-model cache parity UNKNOWN. Speech truth unknown, không CER/WER.
+D2 native saved-data giữ phạm vi cũ; P3 với kết quả mới chưa nghiệm thu; P4/P5
+chưa mở. Qwen recognition tổng15/SenseVoice tổng1, không inference mới.
+
+Bước tiếp: review diff SRT chưa commit; chỉ chọn lỗi data-flow tiếp theo khi
+tái hiện được. Bracket/keyword filtering và heuristic overlap chưa đổi, không
+được coi là đã sửa toàn bộ mất/lặp lời. Không lặp diagnostic/candidate hết cap;
+inference mới vẫn cần evidence độc lập, khóa input/config/hash/attempt/time/stop
+và một câu xin budget trước chạy. Không chép caption vào ASR/reference hoặc
+đòi user chép tiếng Trung. Không install/download/whole-video/EXE/translation/TTS,
+mở lại R6/Dubbing/Editor/VieNeu hoặc sửa Pages. CI/Docs của `69803d7` chưa được
+refresh trong phiên này; kiểm read-only đúng SHA nếu cần, không tự rerun deploy.
+
 ## Mốc chốt Git — 2026-09-29
 
 User yêu cầu commit/push hai bản sửa coverage27/09 và merger28/09. Hai sửa và

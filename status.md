@@ -1,5 +1,42 @@
 # Project Status
 
+## 2026-09-29 (Chốt sửa ASR SRT; bàn giao TTS tuần tự)
+
+- User yêu cầu commit/push bản sửa SRT đã đạt83 tests; production/test giữ đúng
+  SHA đã kiểm, không lặp test hoặc recognition để xuất bản. Receipt tại
+  `.tools/asr-srt-publish-20260929-094926/publication.json` ghi SHA/trạng thái cuối.
+- User xác nhận yêu cầu tiếp theo: đọc hết câu rồi mới sang câu sau, tốc độ tự
+  nhiên, cho phép bắt đầu trễ khoảng1s so với sub; không phải nghỉ1s mỗi câu.
+  Có thể triển khai TTS độc lập trên sub đã có, giữ quality gate OCR/ASR chưa đạt.
+- Read-only code review xác nhận `sequential` đã xếp theo WAV thật; còn ràng buộc
+  trễ/cuối video và có thể tăng tốc khi trần>1x. Contract tiếp theo dùng1x/1000ms,
+  không tự rewrite; giữ review nếu không thể đáp ứng, không âm thầm cắt lời.
+  Chưa sửa hoặc chạy TTS/FFmpeg/provider/native trong phiên chốt này.
+- [Bàn giao chi tiết](docs/plans/ocr-asr-quality-next-session-2026-09.md).
+
+## 2026-09-29 (ASR SRT: giữ mọi dòng lời nói trong text gốc)
+
+- Live `master`/`origin/master` ở `69803d7`, tree/index sạch trước sửa; hai sửa
+  coverage/merger đã publish. Giữ hai stash, không dùng lại quyền commit/push cũ.
+- Tái hiện bằng SRT tổng hợp và language detector đã cài: Faster-Whisper và
+  whisper.cpp chuyển dòng lời thứ hai sang `translated_text` khi parser đoán
+  song ngữ. Cùng lỗi routing tồn tại ở raw Whisper sentence fallback.
+- Thêm `ASRData.from_srt(..., detect_bilingual=False)` tại đúng ba nơi đọc raw
+  ASR SRT; mọi dòng giữ trong `text`, đúng ms và số lần lặp. Import SRT của user
+  giữ auto-detection mặc định. Raw cache/key, model/runtime, splitter/merger không đổi.
+- Regression baseline đã sửa fake-cache fixture: **10 failed,2 passed** đúng
+  lỗi mất dòng. Sau sửa **83 passed,0 skipped,1 warning,0,95s**, gồm16 ca mới và
+  parser/timing/fallback liên quan; Ruff/Pyright scoped pass. Log đầu có lỗi
+  fixture được giữ và phân loại, không cộng vào evidence lỗi app.
+- Audit mới `.tools/asr-srt-20260929-093753/`: reproduction, scope, baseline,
+  red-corrected/targeted-final logs/XML, preservation và verification. Không lặp
+  suites59/55 lịch sử, inference/diagnostic đã hết cap hoặc full offline.
+- **P1/P2 unresolved; D3 content FAIL; D1 lexical onset unresolved; numerical
+  frontend NOT PASS; real-model cache parity UNKNOWN** giữ. Qwen tổng15,
+  SenseVoice tổng1; không nhận dạng mới. P3 mới chưa nghiệm thu, P4/P5 chưa mở.
+  Không native/EXE/online/whole-video/translation/TTS, install/download hoặc
+  commit/push. [Evidence và giới hạn](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-28 (ASR merger: giữ lời giống nhau ở các mốc riêng)
 
 - Từ live master `ee972d1`, giữ sáu file coverage chưa commit và hai stash;

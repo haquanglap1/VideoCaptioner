@@ -1,5 +1,74 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-29 — Raw ASR SRT giữ mọi dòng lời nói trong text gốc
+
+Audit `.tools/asr-srt-20260929-093753/`. Live master/origin/master ở `69803d7`,
+tree/index sạch trước sửa. Receipt publication xác nhận hai sửa coverage/merger
+đã publish; không sửa lại hoặc chạy lại suites59/55. Hai stash giữ nguyên;
+thay đổi mới chưa commit/push.
+
+### Evidence và sửa nhỏ nhất
+
+`ASRData.from_srt()` có heuristic import song ngữ: nếu mọi cue có hai dòng text
+và ít nhất70% cặp bị detector gán khác ngôn ngữ, dòng thứ hai được đưa vào
+`translated_text`. Ba call site đọc raw recognition SRT dùng chung mặc định này:
+`FasterWhisperASR._make_segments`, `WhisperCppASR._make_segments` và
+`WhisperSentenceFallback.__call__`.
+
+Reproduction dùng SRT tổng hợp, cue125–2.875ms có một dòng tiếng Anh và một
+dòng tiếng Trung; detector đã cài trả en/zh-cn. Cả hai adapter chuyển dòng thứ
+hai khỏi `text`. Không có bước dịch nhưng output mang dữ liệu như đã có bản
+dịch; export chỉ nguyên ngữ mất dòng lời đó. Đây là bằng chứng parsing độc lập
+với model/caption, không phải reference lời nói của D1/D3.
+
+Thêm keyword-only `detect_bilingual=True` vào parser, truyền `False` ở đúng ba
+call site raw ASR. Mọi dòng recognition giữ trong `text`; timing và số lần lặp
+giữ nguyên. Default/user-import vẫn auto-detect song ngữ. Cache chứa raw SRT
+được parse lại bằng đường mới, không cần đổi key, xóa cache hoặc nhận dạng lại.
+Không tự sửa các JSON đã xuất trước đó hoặc suy ngược ownership từ bản dịch.
+
+### Validation và failure được giữ
+
+- `reproduction.json`: input synthetic, detector thật và output lỗi của hai
+  adapter; không gọi executable/model hoặc dùng media riêng tư.
+- `red.log/xml`:10 failed/2 passed ban đầu gồm6 lỗi nội dung và4 lỗi fixture
+  vì fake cache dùng `dict.get` không nhận keyword `default`. `targeted.log/xml`
+  sau sửa production có4 failed/79 passed, cùng lỗi fixture. Giữ cả hai logs.
+- Sửa fake cache tương thích API thật và tên enum ở assertion export chưa
+  tới trong lượt red. `red-corrected.log/xml` dùng đúng4 baseline modules từ
+  Git `69803d7` qua import overlay trong audit; live worktree không rollback.
+  **10 failed/2 passed/4 deselected**, cả10 fail đúng assertion nội dung.
+- `targeted-final.log/xml`: **83 passed/0 skipped,1 warning,0,95s**;16 ca mới,
+  67 parser/timing/fallback có sẵn. Kiểm fake fresh/cache hai adapter, fallback
+  fresh/cache, mixed language và same-language misclassification, text/ms/lặp,
+  JSON roundtrip, TXT/SRT only-original, default bilingual import, empty/single/
+  multiline/CRLF và không gọi detector ở raw mode. Không cộng các lượt fail
+  hoặc suites59/55 lịch sử vào83 pass.
+- Ruff scoped pass; Pyright4 production files:0 errors/0 warnings; notice
+  phiên bản mới giữ trong log, không install. Diff/link/preservation checks
+  ghi trong `verification.json` và `preservation-final.json`.
+- Baseline767 tracked hashes,55 historical SHA/settings và12.989 protected
+  entries (size/mtime, không rehash toàn bộ weights). Giữ ngoài allowlist,
+  refs/hai stash, hai sửa app cũ, raw/media/models/runtime/audit/checkpoint,
+  worker LF/recipe CRLF, tracking v3/punctuation-v2 và log/settings user.
+
+### Gate và bước tiếp
+
+Đây là offline parser/fake-provider data-flow proof. **P1/P2 unresolved, D3
+content FAIL, D1 lexical onset unresolved, numerical frontend NOT PASS,
+real-model cache parity UNKNOWN** không đổi. Speech truth unknown, không CER/WER.
+Qwen recognition tổng15/SenseVoice tổng1;0 ASR/OCR/VAD/model diagnostic mới.
+D2 native chỉ chứng minh dữ liệu đã lưu; P3 mới chưa nghiệm thu, P4/P5 chưa mở.
+
+Không full suite, CLI suite, translation sync (resources không đổi), native GUI,
+GPU/API thật, alignment, holdout, whole-video, EXE, translation/TTS hoặc
+install/download. Không kiểm lại CI/Docs/Pages, đổi settings hoặc rerun deploy.
+Default import SRT vẫn có heuristic mơ hồ; bracket/keyword filtering và matcher
+overlap thật không thuộc sửa này. Review diff chưa commit; tiếp tục lỗi data-flow
+có reproduction hoặc candidate lexical có evidence độc lập/budget mới được cấp,
+không chạy lại conditioning/SDPA/frontend/cache/RoPE/VAD/context/prefix/SenseVoice/
+beam5/chunk7s. Không lấy caption làm speech truth hoặc prompt đáp án.
+
 ## 2026-09-28 — Giữ lời lặp ở các mốc riêng khi merge chunk
 
 Audit `.tools/asr-merge-20260928/`, từ live `master` ở `ee972d1`; index sạch,

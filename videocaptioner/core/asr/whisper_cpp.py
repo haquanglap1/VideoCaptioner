@@ -68,7 +68,7 @@ class WhisperCppASR(BaseASR):
         self.process = None
 
     def _make_segments(self, resp_data: str) -> List[ASRDataSeg]:
-        asr_data = ASRData.from_srt(resp_data)
+        asr_data = ASRData.from_srt(resp_data, detect_bilingual=False)
         # Drop pure music markers
         filtered_segments = []
         for seg in asr_data.segments:
