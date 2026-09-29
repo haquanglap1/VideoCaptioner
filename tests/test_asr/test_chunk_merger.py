@@ -72,7 +72,7 @@ class TestSentenceLevelMerging:
 
     def test_chinese_podcast_perfect_overlap(self, merger):
         """中文播客：模糊匹配场景（略有差异）"""
-        # Chunk 1: 0-30s 音频
+        # Synthetic sentence durations define the shared span below.
         chunk1_sentences = [
             "大家好，欢迎收听今天的节目",
             "今天我们要聊一聊人工智能",
@@ -81,7 +81,7 @@ class TestSentenceLevelMerging:
         ]
         chunk1 = ASRData(create_sentence_segments(chunk1_sentences, start_time=0))
 
-        # Chunk 2: 20-50s 音频（10s 重叠区域，文本略有差异，相似度0.94）
+        # The second chunk starts at the first repeated sentence.
         chunk2_sentences = [
             "人工智能已经渗透到我们生活的方方面面",  # 重叠（多了"已经"）
             "比如语音识别、图像识别",  # 重叠（完全匹配）
@@ -90,10 +90,16 @@ class TestSentenceLevelMerging:
         ]
         chunk2 = ASRData(create_sentence_segments(chunk2_sentences, start_time=0))
 
+        # Recognition spelling differs, but the two shared utterances occupy the same audio.
+        offset = chunk1.segments[2].start_time
+        for left, right in zip(chunk1.segments[2:], chunk2.segments[:2]):
+            right.start_time = left.start_time - offset
+            right.end_time = left.end_time - offset
+
         result = merger.merge_chunks(
             chunks=[chunk1, chunk2],
-            chunk_offsets=[0, 20000],
-            overlap_duration=10000,
+            chunk_offsets=[0, chunk1.segments[2].start_time],
+            overlap_duration=chunk1.segments[-1].end_time - chunk1.segments[2].start_time,
         )
 
         # 验证：中点切分，取 left[:3] + right[1:]
@@ -176,8 +182,9 @@ class TestSentenceLevelMerging:
 
         result = merger.merge_chunks(
             chunks=[chunk1, chunk2, chunk3],
-            chunk_offsets=[0, 20000, 40000],
-            overlap_duration=10000,
+            chunk_offsets=[0, chunk1.segments[2].start_time,
+                           chunk1.segments[2].start_time + chunk2.segments[2].start_time],
+            overlap_duration=chunk1.segments[-1].end_time - chunk1.segments[2].start_time,
         )
 
         actual = "".join([s.text for s in result.segments])
@@ -373,13 +380,13 @@ class TestWordLevelMerging:
         # Chunk 2: "我们去公园看看风景拍照"（重叠 "我们去公园"）
         chunk2_text = "我们去公园看看风景拍照"
         chunk2 = ASRData(
-            create_word_level_segments(chunk2_text, start_time=1500, is_chinese=True)
+            create_word_level_segments(chunk2_text, start_time=0, is_chinese=True)
         )
 
         result = merger.merge_chunks(
             chunks=[chunk1, chunk2],
-            chunk_offsets=[0, 1500],
-            overlap_duration=1500,
+            chunk_offsets=[0, chunk1.segments[6].start_time],
+            overlap_duration=chunk1.segments[-1].end_time - chunk1.segments[6].start_time,
         )
 
         actual = "".join([s.text for s in result.segments])
@@ -399,13 +406,13 @@ class TestWordLevelMerging:
         # Chunk 2: "is a test of the system"（重叠 "is a test"）
         chunk2_text = "is a test of the system"
         chunk2 = ASRData(
-            create_word_level_segments(chunk2_text, start_time=1200, is_chinese=False)
+            create_word_level_segments(chunk2_text, start_time=0, is_chinese=False)
         )
 
         result = merger.merge_chunks(
             chunks=[chunk1, chunk2],
-            chunk_offsets=[0, 1200],
-            overlap_duration=1000,
+            chunk_offsets=[0, chunk1.segments[3].start_time],
+            overlap_duration=chunk1.segments[-1].end_time - chunk1.segments[3].start_time,
         )
 
         actual = " ".join([s.text for s in result.segments])
@@ -645,18 +652,21 @@ class TestLongSequences:
                 sentences[1] = f"这是第{i-1}段的第5句话"
 
             chunk = ASRData(create_sentence_segments(sentences, start_time=0))
+            # Chunk-local timestamps; overlap the previous chunk's last two sentences.
+            chunk_offsets.append(chunk_offsets[-1] + chunks[-1].segments[3].start_time if chunks else 0)
             chunks.append(chunk)
-            chunk_offsets.append(i * 20000)
 
         result = merger.merge_chunks(
             chunks=chunks,
             chunk_offsets=chunk_offsets,
-            overlap_duration=10000,
+            overlap_duration=chunks[0].segments[-1].end_time - chunks[0].segments[3].start_time,
         )
 
-        # 验证：中点切分算法会移除重叠部分
-        # 实际输出约17句（中点切分更激进）
-        assert 15 <= len(result.segments) <= 20
+        # Five initial sentences plus three new sentences per subsequent chunk.
+        expected = [(s.text, s.start_time, s.end_time) for s in chunks[0].segments]
+        for chunk, offset in zip(chunks[1:], chunk_offsets[1:]):
+            expected.extend((s.text, s.start_time + offset, s.end_time + offset) for s in chunk.segments[2:])
+        assert [(s.text, s.start_time, s.end_time) for s in result.segments] == expected
 
         # 验证首尾句子存在
         texts = [s.text for s in result.segments]
@@ -786,14 +796,14 @@ class TestStrictMode:
         )
         chunk2 = ASRData(
             create_sentence_segments(
-                ["S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"], start_time=5000
+                ["S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10"], start_time=0
             )
         )
 
         result = strict_merger.merge_chunks(
             chunks=[chunk1, chunk2],
-            chunk_offsets=[0, 5000],
-            overlap_duration=8000,
+            chunk_offsets=[0, chunk1.segments[2].start_time],
+            overlap_duration=chunk1.segments[-1].end_time - chunk1.segments[2].start_time,
         )
 
         actual = "".join([s.text for s in result.segments])

@@ -1,5 +1,171 @@
 # OCR/ASR quality-first — kết quả triển khai 2026-09-16
 
+## 2026-09-28 — Giữ lời lặp ở các mốc riêng khi merge chunk
+
+Audit `.tools/asr-merge-20260928/`, từ live `master` ở `ee972d1`; index sạch,
+năm file modified và một file mới của coverage được giữ. Hai stash vẫn là
+`6a1e12d...` và `e61dd7e...`. Không commit/push hoặc đổi refs.
+
+### Coverage review và phần còn mở
+
+Đã đọc diff/scope/red/targeted/verification/preservation của audit27/09,
+call site trong `transcribe.py`, splitter và merger. Giữ nguyên bytes của
+`chunked_asr.py` và `test_chunked_coverage.py`: đuôi được đưa vào trước encode,
+offset/overlap/số request không đổi. Call site dùng600/1.200s, không thấy guard
+local cắt ở đúng độ dài danh nghĩa; extension <1s chưa có nghiệm thu provider
+online. Không chạy lại toàn bộ59 tests cũ. Ca MP3→fake provider cuối đuôi được
+chạy lại vì sửa merger downstream; không coi MP3 là lossless.
+
+Đọc lại conditioning plan/receipt/verification/publication18/09: bác bỏ complete
+audio disconnection trên input đã đo; không tạo candidate sửa lexical. Không
+chạy inference, tokenizer decode, frontend, ablation hoặc cache/RoPE probe.
+
+| Hạng mục | Evidence | Phần thiếu | Hành động tiếp | Điều kiện kết thúc |
+| --- | --- | --- | --- | --- |
+| Coverage audio | Bản sửa27/09 và59 tests lịch sử | Provider thật | Giữ bản sửa, không lặp vô cớ | Offline đã đạt trong phạm vi cũ; online vẫn riêng |
+| Merger làm mất lời | Regression disjoint time fail trước sửa | Guard thời gian | Đã thêm guard,55 tests pass | Đủ mọi text/ms trên ca lỗi, control overlap thật vẫn pass |
+| D1/D3 lexical | D1 onset unresolved; D3 content FAIL | Speech reference và cơ chế sửa có căn cứ | Chỉ tiếp tục candidate độc lập, khóa cap mới nếu cần inference | Không dùng caption/likelihood làm speech truth |
+| Frontend/cache | Numerical NOT PASS; real-model parity UNKNOWN | Chứng minh ngoài phạm vi cũ | Giữ kết luận và cap | Không replay để chọn kết quả |
+| P1/P3 | Tracking v3/punctuation-v2; D2 saved-data native pass | Chất lượng và native với kết quả mới | Giữ gate mở | Nghiệm thu trên đúng kết quả mới |
+| P4/P5 | P1/P2 unresolved | Điều kiện mở phase | Chưa mở holdout/whole-video/EXE/translation/TTS | Chỉ mở theo quality gate |
+
+### Nguyên nhân và sửa nhỏ nhất
+
+`ChunkMerger._extract_overlap_segments()` lấy đoạn quanh câu cuối bên trái và
+câu đầu bên phải. Các vùng so chữ này vẫn có thể giống nhau khi timestamp tuyệt
+đối hoàn toàn rời nhau, ví dụ lời ở0–2s và20–22s. Matcher từng ghép bốn segment
+`go / now / go / now` thành hai segment ở0–1s và21–22s, âm thầm làm mất hai lần
+xuất hiện. Đây là transcript synthetic, không phải transcript riêng của user.
+
+Thêm guard trước matcher: khi **max end_time của left ≤ first start_time của
+right**, nối nguyên hai dãy. Dùng max để không bỏ qua segment dài chứa segment
+khác. Giữ từng text/translation/ms; không xóa từ lặp, sửa raw hoặc dịch lại.
+Các span còn overlap tiếp tục dùng thuật toán cũ; guard metadata native vẫn đứng
+trước bước merge. Chưa giải quyết các heuristic mơ hồ bên trong overlap thật
+hoặc timestamp provider sai. Qwen không đi qua merger này; không nâng gate D1/D3.
+
+### Validation và fixture compatibility
+
+- `red.log/xml`: **7 failed,2 passed** trước sửa production. Sáu ca word/sentence
+  với gap0/1/8.000ms và một ca fake provider có chunk rỗng tái hiện mất lời.
+- `first.log/xml`: guard mới làm cả9 ca trên pass; **6 failed,28 passed** tổng
+  vì fixture cũ gọi là overlap nhưng offset20s lớn hơn span lời, hoặc cộng offset
+  hai lần. Giữ failure; sửa đúng sáu fixture này, không đổi threshold matcher.
+  `fixtures.log/xml` giữ tiếp **1 failed,33 passed**: hai spelling khác nhau
+  được helper gán duration theo số ký tự; đã đưa về cùng span audio shared.
+- Giữ các kỳ vọng text của fixture; ca10 chunk được tăng kiểm tra từ khoảng
+ 15–20 câu thành **đúng32 câu và mọi timestamp** (5 câu đầu +9×3 câu mới).
+- `targeted.log/xml`: **55 passed,0 skipped,1 warning,21,24s**. Gồm12 ca mới,
+ 25 merger cũ,16 caller `ChunkedASR`,1 metadata guard và1 coverage MP3/fake-provider.
+  Positive controls kiểm overlap thật với offsets tường minh/suy ra; luồng
+  concurrent fake provider giữ lời qua chunk rỗng hoặc ba chunk có lời, SRT roundtrip
+  đúng text/ms. Không cộng các lượt fail hoặc59 tests lịch sử vào55 pass này.
+- Ruff scoped pass; Pyright production scoped **0 errors/0 warnings**. Không cài
+  phiên bản mới được nhắc trong notice. Diff/local-link/preservation checks ở
+  `verification.json`; raw logs và baseline được giữ trong audit mới.
+- Giữ55 historical SHA, settings hash, refs/stashes, tracked ngoài allowlist và
+  hai source/test coverage cũ. Inventory bảo vệ12.925 evidence/runtime/model/audit
+  entries kiểm size/mtime, **không phải rehash weights**. Worker LF, recipe CRLF,
+  tracking v3, punctuation-v2 và checkpoint identity không đổi.
+- **0 model inference/recognition mới**, Qwen tổng15/SenseVoice tổng1; speech
+  reference unknown, không CER/WER. Không full suite, native GUI, real GPU/API,
+  alignment, holdout, whole-video, EXE, translation/TTS hoặc install/download.
+  CI/Pages chỉ giữ evidence27/09; không kiểm mạng lại, đổi settings hay deploy.
+
+**Bước tiếp:** review diff merger và coverage đang chưa commit; giữ cả hai.
+P1/P2 unresolved, D3 FAIL, D1 lexical onset unresolved, numerical NOT PASS,
+real-model cache parity UNKNOWN; P3 với kết quả mới chưa nghiệm thu. Chưa có
+candidate lexical mới đủ căn cứ. Không lặp conditioning/mask/frontend/cache/
+VAD/context/prefix/SenseVoice/beam5/chunk7s, không tự cấp budget mới.
+
+## 2026-09-27 — Sửa mất đuôi audio của ChunkedASR, không inference mới
+
+Audit `.tools/asr-coverage-20260927/`. Git live local/remote master và pilot ở
+`ee972d1`, working tree sạch trước sửa; giữ hai stash và mọi nhánh. Tiếp tục từ
+master, không dùng app snapshot hoặc quyền commit của prompt lịch sử.
+
+### Phân loại và quyết định
+
+| Hạng mục | Evidence hiện có | Phần thiếu | Hành động tiếp / điều kiện kết thúc |
+| --- | --- | --- | --- |
+| Coverage của chunk ASR | Code bỏ remainder <1.000 ms; synthetic PCM tái hiện mất đuôi | Giữ toàn bộ input tới provider | Đã sửa; 59 targeted tests pass, gate offline đóng trong phạm vi này. |
+| D1/D3 speech text | D1 acoustic cut evidence, D3 content FAIL; conditioning phản bác complete disconnection | Lexical onset, nguyên nhân mất/thêm/lặp lời và speech reference còn unknown | Chỉ candidate có evidence độc lập và cap mới được user cấp; không chấm accuracy từ caption. |
+| Numerical frontend/cache | Numerical NOT PASS; synthetic cache parity pass hẹp | Real-model cache parity UNKNOWN | Giữ kết luận/cap, không replay probe để nâng pass. |
+| P1/P3 | OCR đã có tracking v3/punctuation-v2; D2 native saved-data pass | Chất lượng và nghiệm thu kết quả mới | Không mở lại saved-data gate đã pass; P1/P2/P3 chưa đóng toàn bộ. |
+| P4/P5 | Gate nhận dạng chưa đạt | Holdout/whole-video/EXE và translation/TTS của pilot | Chưa mở. Natural Dubbing/Editor/VieNeu/R6 đã hoàn tất trong phạm vi cũ không làm lại. |
+| CI/docs | CI success; docs build/upload success, deploy404 | Repo chưa có Pages site | User quyết định bật Pages; không chặn sửa ASR độc lập. |
+
+Đọc lại locked plan, assessment, coverage ledger, verification và publication của
+conditioning ngày18/09, đối chiếu 55 SHA receipt/input/worker. Không chạy lại model,
+token decode, frontend hoặc ablation. Evidence này chưa biện minh cho sửa lexical D3.
+
+### Nguyên nhân và hành vi đã sửa
+
+`transcribe.py` đưa Faster-Whisper, whisper.cpp, Bijian, JianYing và Whisper API
+có timestamp qua `ChunkedASR`. `_split_audio()` đã export chunk đầy rồi `break`
+khi phần audio còn lại ngắn hơn1.000 ms, dựa trên giả định đó là padding MP3.
+Giả định độ dài không phân biệt được padding với lời nói; với input20,5 s,
+chunk10 s/overlap0, chỉ0–20 s tới provider, mất500 ms cuối.
+
+Regression dùng WAV PCM tổng hợp có tín hiệu ở đuôi, không transcript/media riêng:
+1/30/500/999 ms, overlap0/2s, control đuôi0/1.000 ms và7 sample lẻ sau mốc ms.
+Trước sửa **9 failed /4 passed**; giữ `red.log`/`red.xml`. Sau sửa, nhập phần đuôi
+ngắn vào chunk cuối **trước encode**, cắt đến sample cuối nguồn thay vì rounded ms.
+Số chunk, start offsets và overlap giữ nguyên; chunk cuối có thể dài hơn giá trị
+danh nghĩa **dưới1 giây**. Đuôi từ1.000 ms trở lên vẫn theo lịch chia cũ.
+
+Đây là sửa coverage ở tầng app, không phải candidate model. Qwen dùng splitter
+riêng, không thay code/default/parser/runtime hoặc policy cache của Qwen.
+Các D1/D3 ngắn trong pilot không được chứng minh bị lỗi đuôi này; không suy sửa
+trên audio tổng hợp thành lấy lại lời thực tế hoặc nghiệm thu nhận dạng.
+
+### Validation và bảo toàn
+
+- **59 passed /0 skipped**, 28,04 s,1 warning: `test_chunked_coverage.py`
+  (14 regression mới), `test_chunked_asr.py`, `test_chunking.py`, `test_chunk_merger.py`.
+  Không cộng13 lượt red thành pass; không chạy lại full offline.
+- PCM trước encode giữ exact bytes/samples trên các ca đã kiểm. Một ca chạy
+  FFmpeg encode/decode MP3 thật, provider giả phát hiện tín hiệu cuối; output1 cue
+  đúng offset20–20,5 s. Đây là data-flow/codec test, không speech accuracy hoặc
+  model/provider thật, cũng không khẳng định MP3 lossless.
+- Ruff scoped pass; Pyright scoped0 errors/0 warnings (có thông báo phiên bản
+  mới, không cài). Diff/local-link checks ghi trong audit. Translation resources
+  không đổi; không chạy lại translation sync trong phiên này.
+- 765 tracked file có baseline hash; file ngoài allowlist giữ hash. **55 SHA**
+  historical receipt/input/worker và settings hash giữ nguyên; refs/hai stash và
+  log user không đổi. **12.859 entry** evidence/runtime/model giữ size/mtime;
+  không gọi đây là rehash toàn bộ weights. Không sửa checkpoint, tracking v3,
+  punctuation-v2, `.gitattributes`, LF worker hoặc CRLF recipe.
+- Không download/install, recognition/GPU/API/native GUI/alignment/holdout/
+  whole-video/EXE/translation/TTS; không xóa artifact cũ, commit hoặc push.
+  **P1/P2 unresolved, D3 FAIL, D1 lexical onset unresolved, numerical NOT PASS,
+  real-model cache parity UNKNOWN** giữ. P3 với kết quả mới còn mở, P4/P5 chưa mở.
+
+### Lỗi Deploy Documentation được kiểm riêng
+
+Đã đọc `.github/workflows/deploy-docs.yml`: có `pages: write`, `id-token: write`,
+upload artifact, job deploy phụ thuộc build và environment `github-pages`.
+[CI36331752246](https://github.com/haquanglap1/VideoCaptioner/actions/runs/36331752246)
+success tại ee972d1;
+[docs36331752245](https://github.com/haquanglap1/VideoCaptioner/actions/runs/36331752245)
+build/upload success, fail tại `actions/deploy-pages@v5` với
+`Failed to create deployment (status: 404)`.
+
+Authenticated repository API trả `has_pages=false`, public, admin=true;
+`GET /repos/haquanglap1/VideoCaptioner/pages` trả404. Kết hợp log deployment,
+nguyên nhân cấu hình đang thấy là **Pages chưa được bật**; không phải docs build
+hoặc bằng chứng action version hỏng. Receipt lưu ở `repository.json`, `pages.json`,
+`pages-stderr.txt`, `ci.json`, `docs-run.json`, `deploy-failed.log`.
+
+Thay đổi ngoài repo để user quyết định nếu muốn publish: tại
+[Settings → Pages](https://github.com/haquanglap1/VideoCaptioner/settings/pages),
+chọn **Build and deployment → Source → GitHub Actions**, rồi mới rerun workflow
+và kiểm URL thực tế. Repo đã có workflow nên không cần thêm template khác;
+[hướng dẫn chính thức](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+Chưa bật Pages, đổi settings/workflow hoặc rerun trong phiên này. Trước publish
+cũng cần rà base/canonical URL của VitePress: config hiện còn trỏ upstream,
+nhưng điều đó không giải thích lỗi deployment404 đã quan sát.
+
 ## 2026-09-18 — D3: đo conditioning audio trên decoder pretrained
 
 Audit `.tools/asr-conditioning-20260918-022835/`, bắt đầu `4ea3a0a` sạch,

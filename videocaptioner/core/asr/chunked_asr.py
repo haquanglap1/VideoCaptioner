@@ -24,7 +24,7 @@ MS_PER_SECOND = 1000
 DEFAULT_CHUNK_LENGTH_SEC = 60 * 10  # 10 minutes
 DEFAULT_CHUNK_OVERLAP_SEC = 10  # 10秒重叠
 DEFAULT_CHUNK_CONCURRENCY = 3  # 3个并发
-MIN_TAIL_CHUNK_MS = 1000  # 尾块短于此长度就不再单独切块（见 _split_audio）
+MIN_TAIL_CHUNK_MS = 1000  # Include shorter tails in the preceding chunk.
 
 
 class ChunkedASR:
@@ -107,13 +107,14 @@ class ChunkedASR:
         return merged_result
 
     def _split_audio(self) -> List[Tuple[bytes, int]]:
-        """使用 pydub 将音频切割为重叠的块
+        """Split audio into overlapping chunks, retaining short final tails.
+
+        The final chunk may exceed the nominal length by less than one second
+        to avoid a separate tiny request without discarding decoded audio.
 
         Returns:
-            List[(chunk_bytes, offset_ms), ...]
-            每个元素包含音频块的字节数据和时间偏移（毫秒）
+            Encoded chunk bytes and their source offsets in milliseconds.
         """
-        # 从字节数据加载音频
         if self.file_binary is None:
             raise ValueError("file_binary is None, cannot split audio")
 
@@ -121,9 +122,9 @@ class ChunkedASR:
         total_duration_ms = len(audio)
 
         logger.debug(
-            f"音频总时长: {total_duration_ms/1000:.1f}s, "
-            f"分块长度: {self.chunk_length_ms/1000:.1f}s, "
-            f"重叠: {self.chunk_overlap_ms/1000:.1f}s"
+            f"Audio duration: {total_duration_ms/1000:.1f}s, "
+            f"chunk length: {self.chunk_length_ms/1000:.1f}s, "
+            f"overlap: {self.chunk_overlap_ms/1000:.1f}s"
         )
 
         chunks = []
@@ -131,7 +132,13 @@ class ChunkedASR:
 
         while start_ms < total_duration_ms:
             end_ms = min(start_ms + self.chunk_length_ms, total_duration_ms)
-            chunk = audio[start_ms:end_ms]
+            # Duration alone cannot distinguish encoder padding from real speech.
+            if total_duration_ms - end_ms < MIN_TAIL_CHUNK_MS:
+                end_ms = total_duration_ms
+            # Millisecond rounding must not drop the final fractional-ms samples.
+            stop_sample = (int(audio.frame_count()) if end_ms == total_duration_ms
+                           else end_ms * audio.frame_rate // MS_PER_SECOND)
+            chunk = audio.get_sample_slice(start_ms * audio.frame_rate // MS_PER_SECOND, stop_sample)
 
             buffer = io.BytesIO()
             chunk.export(buffer, format="mp3")
@@ -139,27 +146,16 @@ class ChunkedASR:
 
             chunks.append((chunk_bytes, start_ms))
             logger.debug(
-                f"切割 chunk {len(chunks)}: "
+                f"Split chunk {len(chunks)}: "
                 f"{start_ms/1000:.1f}s - {end_ms/1000:.1f}s ({len(chunk_bytes)} bytes)"
             )
 
-            # 如果已到末尾，停止
             if end_ms >= total_duration_ms:
                 break
 
-            # 剩余未覆盖的音频太短就停止：mp3 编码器会把时长补齐到帧边界
-            # （10s 的音频实际可能是 10.03s），照原样继续会多切出一个几十毫秒
-            # 的尾块，白白多发一次 ASR 请求，还要在合并阶段去重。
-            if total_duration_ms - end_ms < MIN_TAIL_CHUNK_MS:
-                logger.debug(
-                    f"剩余 {total_duration_ms - end_ms}ms 太短，不再切块"
-                )
-                break
-
-            # 下一个块的起始位置（有重叠）
+            # Keep the configured overlap and source timebase.
             start_ms += self.chunk_length_ms - self.chunk_overlap_ms
 
-        # logger.debug(f"音频切割完成，共 {len(chunks)} 个块")
         return chunks
 
     def _transcribe_chunks(

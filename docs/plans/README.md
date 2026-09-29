@@ -1,16 +1,41 @@
 # Trạng thái các plan của VideoCaptioner
 
-Rà soát ngày **2026-09-27**. Dùng trang này để chọn plan đang áp dụng;
+Rà soát ngày **2026-09-29**. Dùng trang này để chọn plan đang áp dụng;
 [status.md](../../status.md) giữ lịch sử thay đổi và validation theo ngày.
-Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó,
-không phải nghiệm thu lại trong lần đồng bộ Git này.
+Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó;
+không suy validation offline thành nghiệm thu chất lượng nhận dạng.
+
+## Tiến triển mới nhất — giữ lời ở các mốc riêng khi merge
+
+- `ChunkMerger` từng xóa lần nói khác thời điểm vì text trùng ở rìa hai chunk.
+  Guard mới nối nguyên các span không overlap; giữ matcher cho overlap thật.
+  **7 fail/2 pass trước sửa;55 targeted pass sau sửa**, gồm12 regression mới.
+  Sửa sáu fixture có timestamp sai, tăng ca10 chunk thành kiểm đủ32 câu/ms.
+- Giữ nguyên bản sửa coverage27/09. User yêu cầu chốt hai sửa vào master29/09;
+  xem [mốc Git và prompt tiếp theo](ocr-asr-quality-next-session-2026-09.md).
+  Audit sửa merger `.tools/asr-merge-20260928/`. Không inference, không chứng minh lexical D1/D3
+  đã sửa, không mở lại cap. [Evidence và gate](../dev/ocr-asr-quality-first-results-2026-09.md).
+
+## Mốc 2026-09-27 — coverage audio và kiểm tra Pages
+
+- Sửa `ChunkedASR` bỏ đuôi audio dưới 1 giây: giữ phần đuôi trong chunk cuối
+  trước khi encode, gồm sample lẻ dưới 1 ms. Giữ số chunk/offset/overlap;
+  chunk cuối có thể dài hơn mức danh nghĩa dưới 1 giây. **59 targeted tests pass**,
+  có FFmpeg thật + fake provider, không nhận dạng mới. Đây là sửa coverage ở
+  tầng app, **không sửa lỗi nội dung Qwen D1/D3**. [Evidence và gate](../dev/ocr-asr-quality-first-results-2026-09.md).
+- CI `36331752246` tại `ee972d1` **success**. Docs run `36331752245` build/upload
+  **success**, deploy **fail 404**. Kiểm read-only xác nhận repo `has_pages=false`,
+  Pages API 404 với quyền admin: Pages chưa được bật. Chưa đổi workflow/settings
+  hoặc rerun. Nếu muốn xuất bản, user quyết định bật Pages với source **GitHub Actions**.
+- Bắt đầu lần tiếp theo từ Git live trên `master`; bản sửa coverage hiện chưa
+  commit/push. Audit `.tools/asr-coverage-20260927/`, không mở lại attempt cap.
 
 ## Các plan và phần còn mở
 
 | Plan | Trạng thái đã ghi nhận | Phần còn mở / tài liệu tiếp tục |
 | --- | --- | --- |
 | [OCR/ASR quality-first](ocr-asr-quality-first-2026-09.md) | Đã triển khai một phần, không còn PLAN ONLY. Tracking v2/v3, consensus punctuation-v2, candidate PaddleOCR-VL và sửa UI checkpoint đã có; chưa đổi mặc định nhận dạng. | **P1/P2 unresolved; D3 content FAIL**, D1 onset unresolved. D2 saved-data native pass chỉ chứng minh luồng dữ liệu đã lưu. P3 chưa có nghiệm thu native đầy đủ với kết quả mới; P4 holdout/whole-video/EXE và P5 translation/TTS chưa mở từ pilot này. |
-| [Bàn giao OCR/ASR](ocr-asr-quality-next-session-2026-09.md) | Bản bàn giao đang áp dụng cho nhánh chất lượng; kết quả chẩn đoán mới nhất là audio conditioning ngày 18/09. | Numerical frontend **NOT PASS**, real-model cache parity **UNKNOWN**. Giữ attempt cap và các kết quả thất bại; không chạy lại nhận dạng chỉ vì chuyển sang master. Xem [kết quả](../dev/ocr-asr-quality-first-results-2026-09.md). |
+| [Bàn giao OCR/ASR](ocr-asr-quality-next-session-2026-09.md) | Sửa coverage27/09 và disjoint-time merger28/09 đã kiểm offline; chẩn đoán model mới nhất vẫn là audio conditioning18/09. | Numerical frontend **NOT PASS**, real-model cache parity **UNKNOWN**. Giữ attempt cap và các kết quả thất bại; không chạy lại nhận dạng chỉ vì chuyển sang master. Xem [kết quả](../dev/ocr-asr-quality-first-results-2026-09.md). |
 | [Tích hợp OCR video](video-subtitle-ocr-integration-plan.md) | Luồng CLI/GUI, checkpoint, direct export, cache/resume, v6 medium và chọn dòng đã triển khai. | Đánh giá chất lượng tiếp tục ở quality-first phía trên. Auto-accept chưa hiệu chuẩn, downloader và mở rộng vision chưa được coi là hoàn thành. Các đoạn yêu cầu review bắt buộc ở lịch sử đã được thay bằng direct export. |
 | [Hoàn thiện ASR/OmniVoice](asr-completion-2026-09.md) | Phạm vi bài giảng và các session R6 đã được chốt; Qwen + Whisper fallback, OmniVoice, review/resume và handoff GUI đã có. | Không mở lại bản bài giảng đã được chấp nhận. Chất lượng/RTF trên corpus khó, speaker/xưng hô, gated model và nghiệm thu rộng trên máy khác còn giới hạn; xem [báo cáo R6](../dev/dubbing-review-resume-2026-09.md). |
 | [Session ASR/OmniVoice](asr-completion-sessions-2026-09.md) | Bốn session triển khai đã hoàn thành trong phạm vi R6. | Đây là bảng closeout lịch sử; không tiếp tục theo chỉ dẫn Git của nhánh cũ. Không suy fixture/cache thành fresh online inference. |

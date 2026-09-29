@@ -1,5 +1,59 @@
 # Project Status
 
+## 2026-09-28 (ASR merger: giữ lời giống nhau ở các mốc riêng)
+
+- Từ live master `ee972d1`, giữ sáu file coverage chưa commit và hai stash;
+  review compatibility splitter/call site, không sửa lại coverage. Chưa có
+  candidate lexical D1/D3 từ conditioning đã lưu; không chạy inference mới.
+- Tái hiện merger so chữ ở hai span rời nhau và làm mất lời: **7 failed,2 passed**
+  trước sửa. Thêm guard max end(left) ≤ first start(right) để nối nguyên dữ liệu;
+  giữ thuật toán khi span overlap thật, không xóa từ lặp hoặc sửa raw Qwen.
+- Sửa sáu fixture overlap cũ có offset sai/cộng hai lần; giữ kỳ vọng nội dung.
+  Ca10 chunk kiểm đủ32 câu và toàn bộms, thay kỳ vọng15–20 câu bị thiếu trước đó.
+  Giữ logs các lượt fail trong `.tools/asr-merge-20260928/`.
+- **55 passed,0 skipped,1 warning,21,24s**, gồm12 regression mới, merger/caller,
+  metadata guard và MP3→fake provider giữ đuôi. Ruff/Pyright scoped pass;
+  không cộng59 tests lịch sử hoặc chạy lại full suite. Đây là offline data-flow,
+  chưa phải speech accuracy/native GUI/real provider/EXE acceptance.
+- Audit lưu allowlist, baseline trước sửa production, red/targeted logs/XML,
+  preservation và verification;55 historical SHA giữ nguyên,12.925 protected
+  entries kiểm size/mtime. Giữ settings, models/runtime/checkpoint/raw, worker LF,
+  recipe CRLF, tracking v3/punctuation-v2, refs/stashes và hai file coverage cũ.
+- P1/P2 unresolved; D3 FAIL; D1 lexical onset unresolved; numerical NOT PASS;
+  real-model cache parity UNKNOWN. Qwen tổng15/SenseVoice tổng1, không inference
+  mới; P3 mới còn mở, P4/P5 chưa mở. Không install/download/build/commit/push
+  hoặc đổi Pages. [Evidence và bước tiếp](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
+## 2026-09-27 (ASR coverage: giữ đuôi ngắn của chunk; xác minh lỗi Pages)
+
+- Git live local/remote `master` và pilot cùng `ee972d1`, tree sạch trước sửa;
+  làm việc trực tiếp từ master, không reset/merge nhánh lịch sử. Đọc lại receipts
+  conditioning; chưa có căn cứ sửa lexical D3 hoặc cấp thêm inference.
+- Tái hiện lỗi `ChunkedASR._split_audio()` bỏ phần audio còn lại dưới 1.000 ms
+  sau chunk đầy, do coi đuôi ngắn là MP3 padding. Regression trước sửa:
+  **9 failed / 4 passed**; đuôi có tín hiệu thật vẫn bị mất trước khi tới provider.
+- Đưa phần đuôi vào chunk cuối trước encode, giữ sample cuối kể cả phần lẻ ms.
+  Giữ số chunk, offset và overlap; chunk cuối có thể vượt độ dài danh nghĩa dưới
+  1 giây. Áp dụng các engine qua `ChunkedASR`; Qwen splitter/parser/default/runtime
+  không đổi. Không phải nguyên nhân đã chứng minh của D1/D3 ngắn trong pilot.
+- Validation **59 passed / 0 skipped**, 28,04 s, 1 warning; gồm 14 regression mới,
+  PCM coverage exact trước encode và FFmpeg MP3 thật → fake provider → cue đúng
+  offset. Ruff scoped pass; Pyright scoped **0 errors / 0 warnings**. Không chạy
+  lại full offline; không GPU/API, native GUI, whole-video, EXE, translation/TTS.
+- CI `36331752246` tại `ee972d1` success. Docs `36331752245` build/upload success,
+  `deploy-pages@v5` fail404. Read-only repository API: `has_pages=false`, admin
+  true; Pages API 404. Pages chưa bật, không sửa action version để né cấu hình.
+  Chưa đổi settings/workflow hoặc rerun; user quyết định bật Pages/source GitHub Actions.
+- Audit `.tools/asr-coverage-20260927/`: 55 SHA của receipt/input/worker lịch sử
+  khớp; tracked ngoài allowlist/settings hash, refs/hai stash và log user giữ
+  nguyên. 12.859 entry evidence/runtime/model giữ size/mtime; không gọi phép
+  kiểm metadata này là rehash toàn bộ model. Tracking v3, punctuation-v2,
+  worker LF/recipe CRLF và checkpoint không đổi. Chưa commit/push.
+- **P1/P2 unresolved, D3 content FAIL, D1 lexical onset unresolved**, numerical
+  frontend NOT PASS, real-model cache parity UNKNOWN giữ. D2 saved-data native
+  pass không đóng P3 với kết quả mới; P4/P5 chưa mở. Chi tiết và bước tiếp theo
+  trong [báo cáo quality-first](docs/dev/ocr-asr-quality-first-results-2026-09.md).
+
 ## 2026-09-27 (Rà soát plan và chuẩn hóa các nhánh codex về master)
 
 - User chọn gộp các nhánh `codex` hiện tại vào `master`, giữ nhánh lịch sử/

@@ -121,6 +121,10 @@ class ChunkMerger:
         if not right:
             return left
 
+        # Repeated text at disjoint times is distinct speech, not chunk overlap.
+        if max(seg.end_time for seg in left) <= right[0].start_time:
+            return left + right
+
         left_len = len(left)
 
         # 提取重叠区域用于匹配

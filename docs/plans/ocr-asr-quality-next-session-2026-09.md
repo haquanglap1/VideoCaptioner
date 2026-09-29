@@ -1,5 +1,125 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Mốc chốt Git — 2026-09-29
+
+User yêu cầu commit/push hai bản sửa coverage27/09 và merger28/09. Hai sửa và
+tests/docs được chốt cùng commit `fix(asr): preserve audio tails and repeated speech across chunks`
+trên `master`. Dùng Git live và receipt `.tools/asr-publish-20260929/publication.json`
+để xác định SHA/remote cuối, không reset về `ee972d1` nếu HEAD đã tiến lên.
+Các câu “chưa commit”, “7 modified +2 untracked” và quyền Git ở mục28/09 trở về
+trước là snapshot lịch sử. Quyền commit/push29/09 chỉ áp dụng phần việc đã chốt;
+thay đổi mới của phiên tiếp theo cần user yêu cầu riêng trước commit/push.
+
+Prompt tiếp tục:
+
+1. Làm việc tại repository hiện tại bằng PowerShell7, trả lời tiếng Việt. Đọc
+   AGENTS.md, README.md, phần mới nhất status.md, mục lục plan, plan quality-first,
+   báo cáo domain và hai mục bàn giao27/28 bên dưới. Kiểm Git status/diff/index/
+   refs/stashes live; giữ mọi dirty work mới. Không merge nhánh lịch sử/động stash.
+2. Đọc audit `.tools/asr-coverage-20260927/` và `.tools/asr-merge-20260928/`:
+   RESULT/scope/verification/preservation cùng red/targeted logs. Hai sửa app đã
+   hoàn thành trong phạm vi offline; không triển khai lại hoặc lặp59/55 tests
+   chỉ để cộng evidence. Phiên chốt Git kiểm SHA trùng bản đã test, không inference.
+3. Ưu tiên speech-to-text, mất/thêm/lặp lời. Chọn lỗi code/saved-data có căn cứ,
+   tìm symbol/call site, tái hiện, ghi allowlist rồi sửa nhỏ nhất và test liên quan.
+   Merger vẫn có heuristic trong span overlap thật; không đổi vì phỏng đoán hoặc
+   tự xóa lời lặp/token đuôi. Chưa có candidate lexical D1/D3 mới đủ căn cứ.
+4. Giữ P1/P2 unresolved, D3 content FAIL, D1 lexical onset unresolved,
+   numerical frontend NOT PASS, real-model cache parity UNKNOWN. D2 native chỉ
+   với dữ liệu đã lưu; P3 với kết quả mới chưa nghiệm thu, P4/P5 chưa mở.
+5. Model evidence mới nhất ở `.tools/asr-conditioning-20260918-022835/`.
+   Conditioning chỉ bác bỏ complete audio disconnection trên input đã đo.
+   Qwen recognition tổng15, SenseVoice tổng1. Không lặp conditioning/SDPA mask/
+   frontend/cache/RoPE/VAD/context/prefix/SenseVoice/beam5/chunk7s đã hết cap.
+   Nếu inference thật sự cần thiết: evidence độc lập và hypothesis khác biệt,
+   khóa input/config/hash/attempt/time/stop trước; hỏi đúng một câu xin budget
+   bổ sung và tiếp tục phần offline trong lúc chờ. Không tự cấp attempt mới.
+6. Giữ riêng OCR text/speech text/translation. Không lấy caption làm speech
+   truth hoặc prompt đáp án; AI visual reference phải có provenance. Thiếu
+   listening reference vẫn unknown; không CER/WER giả hoặc yêu cầu chép tiếng Trung.
+7. Giữ settings/cookies/models/runtime/weights/raw/checkpoint/media/audit cũ,
+   tracking v3/punctuation-v2, worker LF và recipe CRLF. Không install/download,
+   whole-video/EXE/translation/TTS; không mở lại Dubbing/Editor/VieNeu/R6.
+   CI/Pages độc lập: kiểm run đúng SHA nếu cần, không tự bật Pages/đổi settings.
+8. Artifact mới chỉ trong audit MỚI dưới `.tools/`. Khi có thay đổi bền vững,
+   cập nhật plan index/status/báo cáo domain. Bàn giao hành vi/file/evidence,
+   pass/fail/skip/not-run, blocker/bước tiếp và Git status cuối. Nếu chưa đủ căn
+   cứ sửa lexical, nói rõ giới hạn; không chạy diagnostic đã hết cap thay tiến triển.
+
+## Bàn giao hiện tại — 2026-09-28: sửa merger mất lời ở các mốc riêng
+
+Làm từ **master live**, hiện `ee972d1`; **chưa có quyền commit/push** cho thay đổi
+mới. Đọc AGENTS/README/status, mục lục plan và báo cáo domain; kiểm status/diff/
+index/refs/stashes. Không dùng quyền hoặc nhánh trong prompt lịch sử bên dưới.
+
+- Audit mới `.tools/asr-merge-20260928/`: `scope.json`, `RESULT.md`, `red.log`,
+  `first.log`, `fixtures.log`, `targeted.log`, `verification.json`,
+  `preservation-final.json`. Audit coverage27/09 giữ nguyên.
+- Giữ `chunked_asr.py`/`test_chunked_coverage.py` đúng bytes bàn giao27/09.
+  Review call site không thấy guard local cắt đuôi <1s vượt chunk danh nghĩa;
+  chưa xác minh provider online. Không triển khai lại bản sửa này.
+- `chunk_merger.py` thêm guard **max end(left) ≤ first start(right)**: lời giống
+  nhau ở hai span rời nhau được giữ cả hai. Qwen không đi qua merger này.
+  Positive-overlap matcher không đổi; không suy thành sửa lexical D1/D3.
+- Test mới `test_chunk_merger_coverage.py`; sáu fixture trong `test_chunk_merger.py`
+  được sửa về chunk-local timestamp và overlap thật, giữ kỳ vọng text. Ca10 chunk
+  kiểm đủ32 câu/ms. **7 fail/2 pass trước sửa;55 pass/0 skip sau sửa**, gồm12 ca mới.
+  Fake provider/SRT và một ca codec thật không chứng minh speech accuracy.
+  Ruff/Pyright scoped pass; không lặp59/full suite chỉ để cộng evidence.
+- Có **7 modified +2 untracked** cuối phiên: bốn docs, `chunked_asr.py`,
+  `chunk_merger.py`, `test_chunk_merger.py`; hai file mới là các coverage tests
+  nêu trên. Kiểm live trước sửa; không stage wildcard/ghi đè/xóa thay đổi cũ.
+- 55 historical SHA/settings hash và12.925 protected size/mtime entries giữ nguyên;
+  không rehash toàn bộ weights. Hai stash `6a1e12d...`/`e61dd7e...`, refs,
+  worker LF/recipe CRLF/checkpoint/tracking v3/punctuation-v2 giữ nguyên.
+
+**Phần còn mở:** P1/P2 unresolved; D3 content FAIL; D1 lexical onset unresolved;
+numerical frontend NOT PASS; real-model cache parity UNKNOWN. D2 saved-data native
+pass giữ phạm vi cũ, P3 với kết quả mới chưa nghiệm thu, P4/P5 chưa mở. Chưa có
+candidate lexical mới đủ căn cứ; Qwen recognition tổng15/SenseVoice tổng1.
+
+Tiếp tục lỗi code/saved-data khi có regression cụ thể. Merger còn heuristic bên
+trong span overlap thật; không tự diễn giải việc giữ lời rời nhau là giải quyết
+mọi mất/lặp lời. Không lặp conditioning/SDPA/frontend/cache/VAD/context/prefix/
+SenseVoice/beam5/chunk7s; inference mới cần evidence độc lập, khóa input/config/
+hash/attempt/time/stop và user cấp đúng budget bổ sung trước chạy. Không đòi user
+chép tiếng Trung, không dùng OCR/AI visual reference làm speech truth hoặc prompt.
+Không whole-video/EXE/translation/TTS hoặc mở lại Dubbing/Editor/VieNeu/R6.
+CI/Pages giữ evidence27/09; chưa kiểm mạng lại hoặc đổi settings/deploy.
+
+## Bàn giao hiện tại — 2026-09-27: đã sửa mất đuôi chunk ở tầng app
+
+Làm việc từ **master hiện tại**, kiểm Git live trước sửa. Lần này bắt đầu ở
+`ee972d1`, khớp origin/master và pilot; bản sửa dưới đây **chưa commit/push**.
+Không áp quyền commit/push trong các prompt lịch sử vào thay đổi mới.
+
+- Audit `.tools/asr-coverage-20260927/`: đọc `scope.json`, `red.log`, `targeted.log`,
+  `RESULT.md`, `verification.json`, `preservation-final.json` và Git live.
+- `ChunkedASR._split_audio()` từng bỏ đuôi <1.000 ms sau một chunk đầy. Nay đưa
+  đuôi vào chunk cuối trước encode, giữ sample lẻ ms; số chunk/offset/overlap không
+  đổi, độ dài cuối có thể vượt danh nghĩa <1 giây. Không sửa Qwen splitter/model/
+  parser, không dùng sửa này giải thích hoặc nâng pass D1/D3.
+- **9 fail / 4 pass trước sửa; 59 pass sau sửa**, gồm 14 regression mới và các
+  test chunking/merger hiện có. PCM pre-encode exact; FFmpeg MP3 thật nhưng provider
+  giả, chỉ chứng minh routing/offset. Ruff/Pyright scoped pass; không full suite
+  hoặc inference mới. Giữ nguyên Qwen tổng15/SenseVoice tổng1 và mọi cap đã hết.
+- CI `36331752246` success tại ee972d1. Docs `36331752245` build/upload success,
+  deploy fail404; repo `has_pages=false`, Pages API404 dù có admin. Không đổi
+  workflow/settings/rerun; nếu user muốn publish, cần bật Pages/source GitHub Actions.
+- 55 historical SHA và tracked ngoài allowlist/settings giữ nguyên; 12.859
+  evidence/runtime entries kiểm size/mtime, không rehash weights. Hai stash/refs,
+  log user, tracking v3, punctuation-v2, worker/recipe/checkpoint được giữ.
+
+**Bước tiếp theo:** xem diff coverage hiện có trước khi sửa thêm. D1 lexical
+onset/P1/P2 vẫn unresolved, D3 FAIL, numerical frontend NOT PASS, real-model cache
+parity UNKNOWN. Chưa có recognition candidate lexical mới được chứng minh; không
+lặp conditioning/mask/frontend/cache/VAD/context/prefix/SenseVoice/beam5/chunk7s.
+Inference mới cần evidence độc lập, input/config/hash/cap khóa trước và user cấp
+attempt bổ sung. Có thể tiếp tục lỗi app/data khác nếu tái hiện được offline;
+không chép caption vào speech ground truth, không yêu cầu user chép tiếng Trung.
+D2 saved-data native giữ phạm vi cũ; chưa nghiệm thu P3 với kết quả mới, chưa mở
+P4/P5/whole-video/EXE/translation/TTS hoặc mở lại các plan đã hoàn tất.
+
 ## Mốc Git sau rà soát plan — 2026-09-27
 
 Baseline chung chuyển về `master`, gồm lịch sử pilot đến `e2e7863` và sửa DLL
