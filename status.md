@@ -1,5 +1,29 @@
 # Project Status
 
+## 2026-10-01 (Whisper EXE: cập nhật bản cài và kiểm GUI hai lượt)
+
+- User cho phép cập nhật EXE đang dùng và commit/push. Commit sửa source
+  `4b8f84c`; bốn file khớp hash bản đã đạt58 tests, không chạy lại chỉ để publish.
+- Build từ snapshot source bằng `VideoCaptioner.spec`, PyInstaller exit0,
+  181,0s, 6 WARNING/0 ERROR; artifact `dist/VideoCaptioner-20261001-whisper`.
+  EXE31.543.279 bytes, SHA256 `b827bbcc98a185e06f81b51758f18ebe51486f0ec0f7ae7327ea79538e22b2ce`.
+- Inventory bản cài chỉ lệch `vieneu/state.json`, có public snapshots mới nên
+  dùng builder hiện có để stage bộ đang cài, bỏ bytecode/cache. Không đổi bản
+  cài hoặc tải thêm model.99.313 file model/runtime và68 resources trong gói
+  mới được kiểm SHA; giữ active VieNeu `61b85e3...` và previous `5f2a3e9...`.
+- Frozen CLI hai đầu vào:184/183 cues, SRT giống từng byte với source. GUI
+  native mở ở chế độ cửa sổ bình thường: chọn01 →02 trong cùng process,
+  cả hai hiện hoàn tất, SRT đúng bytes và đóng exit0. Dùng bản sao media,
+  settings/cache riêng và raw Whisper thật đã lưu; không inference mới,
+  nghe/lexical, translation/TTS/online hoặc mở lại pilot OCR/Qwen.
+- Cập nhật đúng đường dẫn EXE cũ để giữ shortcut. Toàn bộ588 file payload
+  đối chiếu SHA; chỉ EXE và `_internal/base_library.zip` khác cần thay.
+  Backup593 file cũ trong audit, không xóa file thừa hoặc dữ liệu của user.
+- Sau cập nhật,1.283 file bảo vệ giữ SHA/size/mtime,102.422 file trong models
+  giữ metadata; hai stash và source ngoài phạm vi nguyên vẹn. Receipt tại
+  `.tools/whisper-deploy-20261001/REPORT.txt`, `deployment-result.json`,
+  `gui-verification.json`, `preservation.json` và `publication.json`.
+
 ## 2026-10-01 (Whisper: không mất toàn bộ SRT vì mẩu câu duration bằng 0)
 
 - Baseline `master`/`origin/master` `12db69a8`, tree/index sạch, giữ hai stash.
