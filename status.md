@@ -1,5 +1,25 @@
 # Project Status
 
+## 2026-09-29 (TTS sequential: đủ lời 1×, trễ tối đa 1000 ms)
+
+- Baseline `master`/`origin/master` `03ac8907`, tree/index sạch; giữ hai stash.
+  Thực hiện TTS độc lập trên subtitle có sẵn, không mở lại OCR/ASR/R6/Editor/VieNeu.
+- Reproduce → allowlist → narrow patch: giữ prefix lặp chủ ý khi gom cue trong
+  sequential; mixer keep/reduce không cắt giọng theo audio gốc ngắn hơn video;
+  sequential đo video stream thực, chặn trường hợp audio/container dài hơn hình.
+- Dùng scheduler cũ với provider speed1, natural_max_speed1, trễ1000ms,
+  rewrite=False và gap80ms. Vượt giới hạn giữ review/WAV và báo số đo cụ thể;
+  no-cache giữ audio kiểm tra riêng, resume vẫn tôn trọng tắt cache. Không tự
+  rút lời/tăng tốc/truncate/kéo video, không đổi default/settings của user.
+- Baseline **9 fail/10 pass** sau sửa fixture so object; thêm **1 fail** chứng
+  minh lỗi duration container. Final **201 pass/0 skip**, gồm30 ca mới; Ruff
+  scoped pass, Pyright 0/0. Kiểm fake TTS, exact text/order/timing, cache/resume,
+  provider failure, UI/CLI readback và FFmpeg thật với tone đuôi MP4/Matroska.
+- Audit `.tools/tts-sequential-20260929/` giữ mọi log red/green, scope, hash/Git
+  baseline và receipts. Chưa nghe thật/provider thật, native GUI/EXE, build,
+  whole-video, install/download, Pages hoặc commit/push. Gate OCR/ASR giữ nguyên.
+  [Chi tiết và giới hạn](docs/dev/sequential-dubbing-2026-09.md).
+
 ## 2026-09-29 (Chốt sửa ASR SRT; bàn giao TTS tuần tự)
 
 - User yêu cầu commit/push bản sửa SRT đã đạt83 tests; production/test giữ đúng

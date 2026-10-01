@@ -91,6 +91,7 @@ def plan_dubbing_groups(
     silence_guard_ms: int = 80,
     max_group_duration: float = 8.0,
     target_language: str = "",
+    preserve_tts_text: bool = False,
 ) -> list[DubbingGroup]:
     """Group adjacent cues and assign real timeline capacity without side effects."""
     ordered = sorted((replace(cue) for cue in cues), key=lambda cue: (cue.start_time, cue.original_index))
@@ -136,8 +137,11 @@ def plan_dubbing_groups(
             cue.group_id = group_id
         source_text = _join_text([cue.source_text for cue in group_cues])
         subtitle_text = _join_text([cue.subtitle_text for cue in group_cues])
-        tts_text, removed_overlaps = _join_tts_text(
-            [cue.tts_text for cue in group_cues]
+        spoken_parts = [cue.tts_text for cue in group_cues]
+        # Sequential speech must preserve intentional repetitions; text alone
+        # cannot establish that a shared boundary came from a splitter.
+        tts_text, removed_overlaps = (
+            (_join_text(spoken_parts), []) if preserve_tts_text else _join_tts_text(spoken_parts)
         )
         predicted = predict_spoken_duration(tts_text, target_language)
         available_duration = max(0.0, available_end - start_time)

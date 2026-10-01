@@ -1,5 +1,26 @@
 # Prompt tiếp tục triển khai OCR/ASR quality-first
 
+## Cập nhật 29/09 — TTS sequential đã kiểm phần machine-verifiable
+
+Đã làm handoff `.tools/asr-srt-publish-20260929-094926/NEXT_SESSION.md` trên
+baseline `03ac8907`, chưa commit/push thay đổi mới. Audit mới
+`.tools/tts-sequential-20260929/`; không lặp nhận dạng hoặc sửa các gate OCR/ASR.
+
+Đường sequential giữ tốc độ provider/postprocess 1×, trễ 1000 ms và gap 80 ms,
+rewrite tắt. Sửa mất từ lặp khi gom cue; sửa mixer mất đuôi nếu audio gốc ngắn
+hơn video; dùng duration video stream thay vì audio/container dài hơn. Vượt
+giới hạn giữ review/audio, kể cả tắt cache; không xuất thiếu lời. Không thay
+mặc định toàn app hoặc settings thật. GUI/CLI readback đúng cấu hình đã kiểm.
+
+**201 tests pass/0 skip**, gồm 30 ca mới; fake TTS, cache/resume và FFmpeg tone
+đuôi ngắn, Ruff/Pyright scoped pass. Xem
+[báo cáo](../dev/sequential-dubbing-2026-09.md) và
+[cấu hình](../dev/natural-dubbing.md#đọc-lần-lượt-không-chồng-lời).
+Nghe thật/provider/native GUI/EXE chưa nghiệm thu. Chưa xác định lại bản chạy,
+provider/voice để demo; không tự gọi dịch vụ hoặc whole-video. Nếu tiếp tục,
+review diff/evidence và Git live trước, giữ hai stash/dirty mới; không dùng
+lại quyền publish ASR để commit TTS. Các chỉ dẫn bên dưới là lịch sử trước sửa.
+
 ## Mốc chốt và ưu tiên phiên sau — 2026-09-29
 
 User đã yêu cầu commit/push bản sửa raw ASR SRT bên dưới. Dùng Git live và

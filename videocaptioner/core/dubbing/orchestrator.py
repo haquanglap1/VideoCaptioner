@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -77,7 +78,16 @@ class DubbingOrchestrator:
         if review is None:
             self.engine.last_report = {}
             self.engine.last_review = None
-        work_dir = Path(tempfile.mkdtemp(prefix="vc_dub_"))
+        cache = PersistentTTSCache(self.engine.cache_root, enabled=config.cache_enabled)
+        review_root = None
+        if (config.timing_mode == DubbingTimingMode.NATURAL
+            and config.unresolved_policy.value == "sequential" and not config.cache_enabled):
+            # A failed no-cache job still needs durable audio for inspection.
+            # Resume keeps honoring cache=False and never executes report paths.
+            review_root = cache.root / "review-audio"
+            review_root.mkdir(parents=True, exist_ok=True)
+        work_dir = Path(tempfile.mkdtemp(prefix="vc_dub_", dir=review_root))
+        keep_audio = False
         plan = None
         try:
             callback(5, "Đang đọc phụ đề...")
@@ -95,9 +105,6 @@ class DubbingOrchestrator:
             self._write_report(plan, "", output_created=False)
 
             callback(12, "Đang kiểm tra TTS cache...")
-            cache = PersistentTTSCache(
-                self.engine.cache_root, enabled=config.cache_enabled
-            )
             provider = self.engine._create_tts_provider(config)
             if config.tts_config:
                 config.tts_config.use_cache = config.cache_enabled
@@ -174,6 +181,14 @@ class DubbingOrchestrator:
             return output_path
         except Exception:
             if plan is not None:
+                keep_audio = review_root is not None and any(
+                    group.audio_path and Path(group.audio_path).is_file() for group in plan.groups
+                )
+                if keep_audio:
+                    logger.warning("Sequential review audio retained: %s", work_dir)
+                    for group in plan.groups:
+                        if group.audio_path:
+                            group.warnings.append(f"Audio retained in review-audio/{work_dir.name}")
                 for group in plan.groups:
                     if group.fit_status in {DubbingFitStatus.PENDING, DubbingFitStatus.FAILED}:
                         group.needs_review = True
@@ -187,14 +202,18 @@ class DubbingOrchestrator:
                         logger.warning("Could not save dubbing review; retained in memory")
             raise
         finally:
-            shutil.rmtree(work_dir, ignore_errors=True)
+            if not keep_audio:
+                shutil.rmtree(work_dir, ignore_errors=True)
 
     def _prepare_plan(
         self, video_path: str, subtitle_path: str, display_subtitle_path: str | None,
         config: "DubbingConfig", callback: Callable[[int, str], None],
     ) -> DubbingPlan:
         asr_data = self._load_dubbing_source(subtitle_path)
-        duration = self._video_duration(video_path, asr_data)
+        duration = self._video_duration(
+            video_path, asr_data,
+            config.timing_mode == DubbingTimingMode.NATURAL and config.unresolved_policy.value == "sequential",
+        )
         plan = self._build_dubbing_plan(asr_data, subtitle_path, duration, config)
         plan.resume_metadata = bind_sources(
             video_path, subtitle_path, display_subtitle_path, duration, config, callback
@@ -221,7 +240,31 @@ class DubbingOrchestrator:
         return ASRData.from_subtitle_file(subtitle_path)
 
     @staticmethod
-    def _video_duration(video_path: str, asr_data: ASRData) -> float:
+    def _video_duration(video_path: str, asr_data: ASRData, require_video: bool = False) -> float:
+        if require_video:
+            # Container duration can belong to a longer original audio stream;
+            # using it would let -shortest silently cut approved speech.
+            try:
+                result = subprocess.run(
+                    ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                     "stream=duration:stream_tags=DURATION", "-of", "json", video_path],
+                    env=child_environment(), capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", creationflags=_CREATE_FLAGS, timeout=30,
+                )
+                if result.returncode == 0:
+                    stream = json.loads(result.stdout)["streams"][0]
+                    raw = stream.get("duration")
+                    if raw in (None, "N/A"):
+                        # Matroska commonly records per-stream duration as a tag.
+                        hours, minutes, seconds = stream.get("tags", {})["DURATION"].split(":")
+                        duration = float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+                    else:
+                        duration = float(raw)
+                    if math.isfinite(duration) and duration > 0:
+                        return duration
+            except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, IndexError, TypeError):
+                pass
+            raise ValueError("Cannot determine video stream duration; sequential dubbing stopped before TTS")
         video_info = get_video_info(video_path)
         duration = video_info.duration_seconds if video_info else 0.0
         if duration <= 0 and asr_data.segments:
@@ -248,6 +291,7 @@ class DubbingOrchestrator:
             silence_guard_ms=config.silence_guard_ms if natural else 0,
             max_group_duration=config.max_group_duration,
             target_language=config.target_language,
+            preserve_tts_text=natural and config.unresolved_policy.value == "sequential",
         )
         tts = config.tts_config
         return DubbingPlan(
@@ -353,7 +397,7 @@ class DubbingOrchestrator:
                 continue
             group.audio_path = audio_path
             group.measured_duration = measure_audio_duration(audio_path)
-            cache.put(
+            entry = cache.put(
                 group.cache_key,
                 audio_path,
                 provider=tts_provider_key(config.tts_provider),
@@ -362,6 +406,8 @@ class DubbingOrchestrator:
                 sample_rate=config.tts_config.sample_rate,
                 runtime_identity=config.managed_tts_identity,
             )
+            if entry is not None:
+                group.audio_path = entry.audio_path
             for duplicate in duplicates.get(group.cache_key, []):
                 duplicate.audio_path = group.audio_path
                 duplicate.measured_duration = group.measured_duration
@@ -569,8 +615,6 @@ class DubbingOrchestrator:
         return result
 
     def _apply_sequential_policy(self, groups, config, adjusted_dir, video_duration):
-        import math
-
         provider_speed = config.tts_config.speed if config.tts_config else 1.0
         ceiling = max(1.0, min(config.natural_max_speed, config.natural_max_speed / max(provider_speed, 0.01)))
         gap = max(0.02, config.silence_guard_ms / 1000.0)
@@ -604,7 +648,16 @@ class DubbingOrchestrator:
             if group.start_delay > delay_limit + 0.000001 or end > video_duration + 0.000001:
                 group.needs_review = True
                 group.fit_status = DubbingFitStatus.NEEDS_REVIEW
-                group.warnings.append("Sequential speech exceeds the start-delay limit or video end; shorten this passage")
+                if group.start_delay > delay_limit + 0.000001:
+                    group.warnings.append(
+                        f"Sequential start delay {group.start_delay * 1000:.3f} ms exceeds "
+                        f"limit {config.max_start_delay_ms} ms"
+                    )
+                if end > video_duration + 0.000001:
+                    group.warnings.append(
+                        f"Sequential speech ends at {end:.3f}s, beyond video end "
+                        f"{video_duration:.3f}s by {end - video_duration:.3f}s"
+                    )
             elif group.fit_status not in (DubbingFitStatus.SPEED_ADJUSTED, DubbingFitStatus.REWRITTEN, DubbingFitStatus.CACHED):
                 group.fit_status = DubbingFitStatus.FIT
             group.action_taken = "+".join(filter(None, (group.action_taken, f"sequential_delay_{round(group.start_delay * 1000)}ms")))
@@ -633,6 +686,15 @@ class DubbingOrchestrator:
     @staticmethod
     def _review_failure_reason(groups: list["DubbingGroup"]) -> str:
         review = [group for group in groups if group.needs_review]
+        if any(group.playback_start_time is not None for group in review):
+            details = "; ".join(
+                f"{group.group_id}: {warning}" for group in review[:3]
+                for warning in group.warnings if warning.startswith("Sequential ")
+            )
+            return (
+                f"Có {len(review)} nhóm không thể đọc đủ trong giới hạn hiện tại. {details}. "
+                "Đã giữ lời đọc và audio để xem lại; chưa xuất video."
+            )
         worst = max(review, key=lambda group: group.fit_ratio)
         return (
             f"Có {len(review)} nhóm chưa khớp thời gian. Tệ nhất {worst.group_id}: "

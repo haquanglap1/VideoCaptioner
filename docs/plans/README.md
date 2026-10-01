@@ -5,7 +5,19 @@ Rà soát ngày **2026-09-29**. Dùng trang này để chọn plan đang áp d�
 Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó;
 không suy validation offline thành nghiệm thu chất lượng nhận dạng.
 
-## Tiến triển mới nhất — giữ các dòng raw ASR SRT trong text gốc
+## Tiến triển mới nhất — TTS tuần tự giữ đủ lời ở 1×
+
+- Đã kiểm/sửa đường Natural sequential hiện có với speed/cap 1×, trễ 1000 ms,
+  rewrite tắt, gap 80 ms. Giữ lời lặp có chủ ý; sửa export mất đuôi khi audio gốc
+  ngắn hơn video và đo đúng video stream khi audio dài hơn. Vượt giới hạn giữ
+  review/audio, không tự rút lời/tăng tốc/kéo dài video; cache/resume giữ contract.
+- **201 targeted pass/0 skip**, 30 ca mới, fake TTS và FFmpeg fixture ngắn;
+  Ruff/Pyright scoped pass. Nghe thật/native/EXE chưa nghiệm thu. Không nhận
+  dạng mới, không đổi các gate OCR/ASR, commit/push hoặc settings/Pages.
+  [Báo cáo và evidence](../dev/sequential-dubbing-2026-09.md),
+  [cách chọn cấu hình](../dev/natural-dubbing.md#đọc-lần-lượt-không-chồng-lời).
+
+## Mốc 29/09 — giữ các dòng raw ASR SRT trong text gốc
 
 - Parser import SRT tự đoán song ngữ từng chuyển dòng lời thứ hai sang
   `translated_text`. Đã tái hiện bằng SRT tổng hợp; ba đường raw ASR (Faster-Whisper,
@@ -19,11 +31,9 @@ không suy validation offline thành nghiệm thu chất lượng nhận dạng.
   [Bàn giao](ocr-asr-quality-next-session-2026-09.md) và
   [evidence/gate](../dev/ocr-asr-quality-first-results-2026-09.md).
 
-Ưu tiên phiên sau theo user: **TTS đọc tuần tự hết lời, tốc độ1x, cho phép bắt
-đầu trễ khoảng1s so với sub**, trên phụ đề đã có. Kiểm đường `sequential` hiện
-hữu và chỉ sửa phần thiếu; tắt tự rút lời, không tự tăng tốc/cắt đuôi. Đây là
-công việc TTS độc lập, không đóng gate OCR/ASR hoặc mở whole-video. Xem
-[contract và prompt tiếp theo](ocr-asr-quality-next-session-2026-09.md).
+Ưu tiên TTS độc lập đã được thực hiện ở mục mới nhất phía trên; còn nghiệm thu
+nghe bằng provider/voice đã chọn. Không đóng gate OCR/ASR hoặc mở whole-video.
+Xem [contract và bàn giao](ocr-asr-quality-next-session-2026-09.md).
 
 ## Mốc 2026-09-28 — giữ lời ở các mốc riêng khi merge
 

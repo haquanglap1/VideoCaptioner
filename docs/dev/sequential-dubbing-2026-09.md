@@ -1,5 +1,51 @@
 # Đọc tuần tự và rút gọn riêng lời vượt khung — 2026-09-09
 
+## 2026-09-29 — đọc đủ lời ở 1×, giới hạn trễ 1000 ms
+
+Ưu tiên mới của user thay cấu hình gợi ý trong các mốc lịch sử bên dưới:
+Natural + sequential, provider speed 1.0, natural_max_speed 1.0,
+max_start_delay_ms 1000, rewrite_enabled False. Giữ gap 80 ms, không phải nghỉ
+1 giây mỗi câu. Thực hiện trên subtitle có sẵn, độc lập với gate OCR/ASR.
+
+- Đường scheduling hiện có đã đáp ứng thứ tự/không overlap ở 1×; không viết
+  scheduler mới. Thời lượng WAV được đo và kiểm lại cả fresh/cache/resume.
+- Tái hiện mất prefix lặp có chủ ý trong group (`Go now` + `now please.`).
+  Sequential nay nối nguyên text; giữ grouping, cue IDs, source/display/timing.
+  Các policy khác giữ heuristic và mặc định cũ. Cache key theo lời đầy đủ nên
+  không dùng nhầm WAV đã mất từ. Review cũ có `original_tts_text` khác bị chặn
+  mismatch thay vì âm thầm coi nội dung cũ là đủ; giữ checkpoint để đối chiếu.
+- Tái hiện video 3 s/audio gốc 1 s bị mux thành video 0,9 s, mất tone đuôi.
+  Keep/reduce nay dùng `amix duration=longest`; `-shortest` vẫn giới hạn theo
+  video. Không audio stream tiếp tục mute fallback.
+- Ca video 3 s/audio gốc 5 s từng được coi là khung 5 s, cho xuất lời tới 4 s.
+  Sequential nay đọc duration của video stream `v:0`, hỗ trợ tag Matroska và
+  từ chối duration không xác định trước TTS; không đoán từ subtitle.
+- Vượt trễ/cuối video giữ review với số đo cụ thể. Khi cache tắt, WAV hoàn tất
+  được giữ tại `review-audio/vc_dub_*` dưới cache root; resume vẫn synthesize
+  lại theo lựa chọn không cache. Cache bật dùng lại đúng WAV, đo lại timing.
+  Provider lỗi không xuất output thiếu lời; resume chỉ tạo group thiếu khi có cache.
+- GUI/CLI đã có đủ controls/flags; regression xác nhận readback đủ 1×/1000 ms/
+  no rewrite/80 ms. Không sửa settings thật hoặc mặc định toàn app, không thêm preset.
+
+Audit `.tools/tts-sequential-20260929/` giữ reproduction, scope, Git/hash baseline,
+logs/XML fail và pass. Baseline đã sửa assertion so object trong fixture:
+**9 failed/10 passed**; một ca bổ sung về audio gốc dài hơn video **fail trước sửa**.
+Lượt đầu có một lỗi test so object thay vì fields; giữ log, không tính là lỗi app.
+Validation cuối: **201 passed/0 skipped**, gồm **30 ca mới**, 1 warning dependency;
+Ruff scoped pass, Pyright scoped 0 error/0 warning. Không cộng các lượt chạy lặp.
+FFmpeg thật kiểm tone đuôi tới 2,98 s của video 3 s, keep/reduce/mute, nguồn có
+audio ngắn/không audio, và toàn engine export MP4/Matroska tới cuối video ở 1×.
+
+Đây là machine verification với fake TTS/tín hiệu tổng hợp, không chứng minh
+provider thật đã đọc từng từ hoặc giọng nghe tự nhiên. Chưa nghe thật, native
+GUI/EXE/whole-video, GPU/API hoặc build mới. Không install/download, ASR/OCR
+inference, đổi Pages, commit/push. TTS không đóng P1/P2, D3, D1, numerical
+frontend hoặc real-model cache parity đang mở. Baseline HEAD/origin/master
+`03ac8907c4f0987a4d6ef216536066f0184df376`; hai stash được giữ.
+
+Hướng dẫn chọn cấu hình: [Natural Dubbing](natural-dubbing.md#đọc-lần-lượt-không-chồng-lời).
+Phần dưới là lịch sử, không phải chỉ dẫn tự nâng trễ/tốc độ hay rút lời cho job này.
+
 ## Chỉ đạo mới: giữ nhịp đọc đều
 
 User phản hồi preview tăng tốc từng nhóm nghe lúc nhanh lúc chậm, không tự nhiên.

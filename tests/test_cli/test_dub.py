@@ -64,6 +64,20 @@ def test_builds_core_config():
     assert result.report_path == "report.json"
 
 
+def test_full_text_sequential_options_reach_core():
+    args = build_parser().parse_args([
+        "dub", "video.mp4", "--subtitle", "spoken.srt", "--timing-mode", "natural",
+        "--unresolved", "sequential", "--tts-speed", "1.0", "--natural-max-speed", "1.0",
+        "--max-start-delay-ms", "1000", "--no-timing-rewrite",
+    ])
+    config = build_dubbing_config(build_config(cli_overrides=_build_cli_overrides(args)))
+    assert config.tts_config.speed == config.natural_max_speed == 1.0
+    assert config.max_start_delay_ms == 1000 and config.silence_guard_ms == 80
+    assert config.unresolved_policy.value == "sequential"
+    assert config.timing_mode == DubbingTimingMode.NATURAL
+    assert config.rewrite_enabled is False
+
+
 def command_args(video, subtitle, **overrides):
     values = {
         "video": str(video),

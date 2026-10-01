@@ -295,11 +295,12 @@ def mix_audio_tracks(
         ]
     elif mix_mode == AudioMixMode.REDUCE_ORIGINAL:
         vol = max(0.0, min(1.0, original_volume))
-        # normalize=0: giữ nguyên âm lượng từng input (không bị chia đôi).
+        # Original audio may end before the video. Keep the full voice track;
+        # -shortest still bounds the export to the existing video stream.
         filter_complex = (
             f"[0:a]volume={vol:.3f}[orig];"
             f"{voice_chain};"
-            f"[orig][voice]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed];"
+            f"[orig][voice]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mixed];"
             f"{limiter}"
         )
         cmd = [
@@ -315,10 +316,10 @@ def mix_audio_tracks(
             output_path,
         ]
     else:
-        # KEEP_ORIGINAL: giữ nguyên audio gốc, trộn với giọng lồng
+        # Keep both audio streams through the full voice track.
         filter_complex = (
             f"{voice_chain};"
-            f"[0:a][voice]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed];"
+            f"[0:a][voice]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mixed];"
             f"{limiter}"
         )
         cmd = [

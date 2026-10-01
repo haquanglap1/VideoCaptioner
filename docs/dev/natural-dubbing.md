@@ -8,8 +8,8 @@ song ngữ/đơn ngữ mà user đã chọn.
 
 1. `DubbingTextSource` chọn text rõ ràng. `AUTO` ưu tiên `translated_text`; `TRANSLATED` fail nếu thiếu.
 2. Planner thuần sắp cue theo timeline, group câu liền nhau và mượn silence có `silence_guard_ms`.
-   Khi các cue được merge có overlap 1-4 token ở biên, planner bỏ phần overlap khỏi `tts_text`, giữ nguyên
-   từng display cue và ghi warning vào report. Cue lặp hoàn toàn được giữ vì có thể là lời thoại có chủ ý.
+   Với `sequential`, giữ mọi từ khi nối cue, kể cả lời lặp ở biên. Các policy khác giữ heuristic cũ:
+   bỏ overlap 1-4 token khỏi `tts_text`, giữ display cue và ghi warning; cue lặp hoàn toàn vẫn giữ.
 3. Persistent cache tra SHA-256 theo normalized text, provider host, model, voice, speed và sample rate.
 4. TTS chạy ở provider-native speed. Duration từ WAV thật quyết định fit; prediction chỉ dùng routing.
 5. Group vượt `fit_ratio_limit` mới được rewrite và synthesize lại, tối đa `max_rewrite_attempts`.
@@ -85,18 +85,43 @@ thay layout đầu ra và giữ timing/nội dung.
 
 ## Đọc lần lượt, không chồng lời
 
-Chọn **Tự nhiên → Nhịp đọc đều, không chồng lời**. Gợi ý giữ **1,00×**, hoặc trần
-nhẹ **1,05×**, với giới hạn trễ bắt đầu **2500 ms**. Bật **LLM rút gọn riêng lời
-đọc vượt khung** nếu đã cấu hình LLM; prompt rút lời nói, giữ tên/số/phủ định và ý
-nghĩa, không sửa phụ đề hiển thị hoặc các câu đã vừa khung.
+Để đọc hết lời với tốc độ **1,00×**, chọn **Tự nhiên → Nhịp đọc đều, không chồng
+lời**, đặt **Tốc độ giọng = 1,00×**, **Tốc độ Natural tối đa = 1,00×**, **Độ trễ
+bắt đầu tối đa = 1000 ms**, và **tắt LLM rút gọn riêng lời đọc vượt khung**.
+Đây là cấu hình theo job; mặc định toàn app và settings đã lưu không tự đổi.
+Giữ provider/voice đã chọn. Nguồn TTS phải đúng bản muốn đọc; tắt lọc CJK khi
+đọc Trung/Nhật/Quảng hoặc lời có CJK cần giữ.
 
-Scheduler ưu tiên tốc độ bình thường; nếu cần tăng nhẹ, chọn một hệ số nhỏ nhất
+`playback_start = max(subtitle_start, previous_playback_end + 0.08)`.
+Giới hạn 1000 ms là trễ so với subtitle, **không phải nghỉ 1 giây giữa câu**.
+Planner vẫn gom các cue liền nhau thành group; giới hạn trễ được kiểm theo mốc
+đầu group, không tạo alignment từng từ/cue bên trong một WAV đã gom.
+Nối group giữ đầy đủ text, số lần lặp, thứ tự, display text và cue membership.
+Với cấu hình trên, không rewrite/atempo/truncate; WAV thật quyết định timing.
+
+Nếu nhiều câu dài làm vượt 1000 ms hoặc lời kết thúc sau video, job giữ review
+và audio, báo group cùng giá trị/giới hạn vượt, và không xuất video. Không tự
+nới trễ, tăng tốc, rút lời hoặc kéo dài video. Sequential dùng thời lượng video
+stream `v:0` (kể cả tag duration của Matroska), không dùng thời lượng audio gốc
+dài hơn hay đoán từ subtitle; không xác định được thì dừng trước TTS.
+Khi tắt cache, audio của job lỗi vẫn nằm dưới `review-audio/vc_dub_*` trong
+WAV cache root đã chọn; report/log ghi vị trí tương đối để kiểm tra. Resume
+vẫn tôn trọng cache tắt và tổng hợp lại, không tự lấy đường dẫn từ report.
+Khi bật cache, WAV đã hoàn tất được tái sử dụng và đo lại; lỗi provider giữ
+trạng thái incomplete, không xuất bản kết quả thiếu group.
+
+Mixer giữ voice track khi audio gốc kết thúc sớm hơn video ở cả keep/reduce;
+video không audio stream vẫn dùng mute fallback. Export giữ giới hạn cuối video.
+Chi tiết bằng chứng và giới hạn tại [báo cáo sequential](sequential-dubbing-2026-09.md).
+
+Với cấu hình khác có trần lớn hơn 1×, scheduler ưu tiên tốc độ bình thường;
+nếu cần tăng nhẹ, chọn một hệ số nhỏ nhất
 áp dụng thống nhất cả job. LLM nhận thêm câu trước/sau từ subtitle gốc để rút
 gọn có mạch nối; context chỉ đọc, không phụ thuộc output LLM trong cache key.
 Câu sau bắt đầu sau khi WAV câu trước đọc xong và có
 khoảng nghỉ (mặc định 80 ms, tối thiểu 20 ms). Sau atempo, đo lại WAV và xếp lượt
 theo thời lượng thật. Không vượt giới hạn trễ hoặc cuối video; nếu vẫn không thể
-xếp được thì xuất report cần review để rút gọn thêm, không công bố video thiếu lời.
+xếp được thì giữ report cần review, không công bố video thiếu lời.
 
 `start_time`/`subtitle_end_time` giữ mốc gốc. Report thêm `playback_start_time`,
 `playback_end_time`, `start_delay`, `applied_speed`; GUI báo giờ đọc, độ trễ và
@@ -107,8 +132,11 @@ provider đã yêu cầu. Video/subtitle gốc giữ nguyên; giọng có thể 
 ```powershell
 uv run --frozen videocaptioner dub video.mp4 --subtitle translated.vi.srt `
   --tts-provider omnivoice-local --voice auto --unresolved sequential `
-  --natural-max-speed 1.0 --max-start-delay-ms 2500
+  --timing-mode natural --tts-speed 1.0 --natural-max-speed 1.0 `
+  --max-start-delay-ms 1000 --no-timing-rewrite --report review.json
 ```
+
+Provider/voice trong ví dụ chỉ minh họa; giữ đúng lựa chọn đã dùng cho job.
 
 ## CLI
 
