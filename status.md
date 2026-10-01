@@ -1,5 +1,31 @@
 # Project Status
 
+## 2026-10-01 (Whisper: không mất toàn bộ SRT vì mẩu câu duration bằng 0)
+
+- Baseline `master`/`origin/master` `12db69a8`, tree/index sạch, giữ hai stash.
+  Xác nhận EXE user dùng còn SHA `da2e9044ca9f...`; không có process app chạy
+  lúc bắt đầu. Log bản cài dùng Faster-Whisper large-v3/CUDA/Auto/Silero v5.
+- CRC audio đối chiếu video 01 với raw cache: chunk thứ hai có cue 10 tại
+  145.900–145.900 ms, chạm đúng cuối cue trước. Guard timing dừng cả job trước
+  save SRT; cache hit cũng lỗi. Đây là lỗi phụ thuộc output, chưa thấy lỗi state
+  khi đổi video. Chính bytes EXE cũ, data/cache cô lập, tái hiện qua CLI exit5.
+- Sửa đúng `_make_segments`: ở sentence mode, ghép đủ text của mẩu duration0
+  chạm cuối câu hợp lệ liền trước, giữ nguyên biên ms và raw/cache key, có warning.
+  Word mode, interval đảo ngược, cue không có điểm nối hoặc qua cue bị lọc vẫn
+  từ chối; không bịa duration, xóa lời/lặp, hay sửa parser song ngữ/TTS.
+- Regression trước sửa **3 fail/16 pass**; cuối **58 pass/0 skip**, gồm GUI
+  offscreen chọn hai video, cache miss/hit, failure → next job và join QThread.
+  Ruff/Pyright scoped và diff check pass. Lỗi thu log của fixture ở lượt green
+  đầu đã sửa, giữ log riêng; không tính là lỗi app.
+- Hai video thật cùng phiên Qt/worker: trước sửa 02 xuất183 cues rồi 01 fail;
+  sau sửa 01 xuất184 cues rồi 02 xuất183 cues, không interval non-positive.
+  SRT02 trước/sau giống bytes. Tổng3 request Whisper mới, không retry: hai chunk
+  của02 và đuôi01; hai chunk đầu01 dùng raw thật đã lưu. Chưa nghe/đo lexical.
+- GUI native chưa nghiệm thu: bản sao EXE không tạo cửa sổ; source diagnostic
+  kẹt tại `QApplication`. Không build/deploy/đổi bản cài, install/download hoặc
+  commit/push. Gate OCR/ASR pilot cũ giữ nguyên. Audit, SRT, receipts và giới hạn:
+  `.tools/whisper-session-20261001/REPORT.txt`, `final-verification.json`.
+
 ## 2026-09-29 (TTS sequential: đủ lời 1×, trễ tối đa 1000 ms)
 
 - Baseline `master`/`origin/master` `03ac8907`, tree/index sạch; giữ hai stash.

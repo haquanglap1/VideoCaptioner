@@ -236,10 +236,6 @@ class FasterWhisperASR(BaseASR):
     def _make_segments(self, resp_data: str) -> List[ASRDataSeg]:
         asr_data = ASRData.from_srt(resp_data, detect_bilingual=False)
 
-        # Reject before filtering: native sentence mode can also emit zero-length cues.
-        if any(seg.start_time >= seg.end_time for seg in asr_data):
-            raise MissingTimingError("Faster-Whisper returned a non-positive native interval; review required.")
-
         # Keywords that mark hallucinated text
         hallucination_keywords = [
             "请不吝点赞 订阅 转发",
@@ -247,19 +243,37 @@ class FasterWhisperASR(BaseASR):
         ]
         # Drop music markers and hallucinated text
         filtered_segments = []
+        previous_segment = None
+        joined_fragments = 0
         for seg in asr_data.segments:
             text = seg.text.strip()
+            excluded = text.startswith(("【", "[", "(", "（")) or any(
+                keyword in text for keyword in hallucination_keywords
+            )
 
-            # Skip music markers
-            if text.startswith(("【", "[", "(", "（")):
-                continue
+            if seg.start_time >= seg.end_time:
+                # Sentence formatting can leave a suffix at the preceding end.
+                # Keep its speech on that measured span; never invent word timing.
+                if (seg.start_time == seg.end_time and not self.need_word_time_stamp
+                        and not excluded and previous_segment is not None
+                        and previous_segment.end_time == seg.start_time):
+                    previous_segment.text += "\n" + seg.text
+                    joined_fragments += 1
+                    continue
+                raise MissingTimingError("Faster-Whisper returned a non-positive native interval; review required.")
 
-            # Skip text containing hallucination keywords
-            if any(keyword in text for keyword in hallucination_keywords):
+            if excluded:
+                previous_segment = None
                 continue
 
             filtered_segments.append(seg)
+            previous_segment = seg
 
+        if joined_fragments:
+            logger.warning(
+                "Joined %d zero-duration sentence boundary fragment(s) to the preceding cue; "
+                "text and measured interval retained.", joined_fragments,
+            )
         return filtered_segments
 
     def _run(
