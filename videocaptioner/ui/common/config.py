@@ -385,6 +385,9 @@ class Config(QConfig):
         OptionsValidator(["review", "allow-overlap", "sequential"]),
     )
     dubbing_max_start_delay_ms = RangeConfigItem("Dubbing", "MaxStartDelayMs", 2000, RangeValidator(0, 10000))
+    dubbing_voice_tempo = RangeConfigItem("Dubbing", "VoiceTempo", 100, RangeValidator(100, 120))
+    dubbing_video_speed = RangeConfigItem("Dubbing", "VideoSpeed", 100, RangeValidator(50, 100))
+    dubbing_subtitle_mode = OptionsConfigItem("Dubbing", "PlaybackSubtitles", "none", OptionsValidator(["none", "soft", "hard"]))
     dubbing_tts_sample_rate = OptionsConfigItem(
         "Dubbing", "TTSSampleRate", 32000,
         OptionsValidator([16000, 24000, 32000, 44100, 48000]),

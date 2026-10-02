@@ -125,6 +125,7 @@ class DubbingThread(QThread):
             raise DubbingCancelled("dubbing interrupted")
 
     def _capture_review(self, engine):
+        self.task.playback_subtitle_path = getattr(engine, "last_subtitle_path", "") or None
         self.task.report_path = engine.last_report_path
         self.task.dubbing_report = engine.last_report
         if self.task.dubbing_report:

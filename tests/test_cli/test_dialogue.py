@@ -3,8 +3,25 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from videocaptioner.cli.main import main
 from videocaptioner.core.translate.dialogue import DialogueDocument
+
+
+@pytest.mark.parametrize("command", ["dub", "process"])
+def test_playback_cli_flags_are_distinct_from_native_tts_speed(command):
+    from videocaptioner.cli.main import _build_cli_overrides, build_parser
+
+    arguments = [command, "video.mp4", "--voice-tempo", "1.2", "--video-speed", ".77",
+                 "--dubbing-subtitles", "hard", "--tts-speed", "1"]
+    if command == "dub":
+        arguments += ["--subtitle", "speech.srt"]
+    config = _build_cli_overrides(build_parser().parse_args(arguments))
+    assert config["dubbing"]["voice_tempo"] == 1.2
+    assert config["dubbing"]["video_speed"] == .77
+    assert config["dubbing"]["subtitle_mode"] == "hard"
+    assert config["dubbing"]["tts_speed"] == 1
 
 
 def test_cli_dialogue_translates_and_exports_without_changing_input(tmp_path, monkeypatch):

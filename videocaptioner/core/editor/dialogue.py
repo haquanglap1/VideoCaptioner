@@ -1,11 +1,43 @@
 """Keep parent dialogue ownership while editing display cues independently."""
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
 from videocaptioner.core.translate.dialogue import DialogueCue, DialogueDocument, SpeechBlock
 
 from .models import EditorProject
+
+
+def playback_export_project(project: EditorProject, report: dict, duration_ms: int) -> EditorProject:
+    """Render a detached view; do not rewrite editable source cues or saved projects."""
+    from videocaptioner.core.dubbing.review import DubbingReview
+
+    from .models import EditorCue
+
+    plan = DubbingReview.from_report(report).plan
+    result = deepcopy(project)
+    speed = plan.video_speed
+    result.duration_ms = duration_ms
+    result.selection_start_ms = round(project.selection_start_ms / speed) if project.selection_start_ms is not None else None
+    result.selection_end_ms = round(project.selection_end_ms / speed) if project.selection_end_ms is not None else None
+    result.playhead_ms = round(project.playhead_ms / speed)
+    for layer in result.layers:
+        layer.start_ms = round(layer.start_ms / speed)
+        layer.end_ms = round(layer.end_ms / speed)
+    for track in result.tracks:
+        for clip in track.clips:
+            clip.start_ms = round(clip.start_ms / speed)
+            clip.end_ms = min(duration_ms, round(clip.end_ms / speed))
+    result.cues = []
+    for group in plan.groups:
+        if group.playback_start_time is None or group.playback_end_time is None:
+            raise ValueError("Editor export requires measured playback captions")
+        result.cues.append(EditorCue(id=group.group_id, source_text=group.source_text,
+            display_text=group.tts_text, tts_text=group.tts_text,
+            start_ms=round(group.playback_start_time * 1000), end_ms=round(group.playback_end_time * 1000)))
+    result.dialogue_document = None  # This view is rendered, never saved as a source project.
+    return result
 
 
 def attach_dialogue(project: EditorProject, document: DialogueDocument) -> None:

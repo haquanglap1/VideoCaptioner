@@ -5,11 +5,14 @@ Hỗ trợ 2 chế độ:
 - Thủ công: người dùng chọn video + SRT rồi bấm "Lồng tiếng"
 """
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, QUrl, pyqtSignal
+from PyQt5.QtGui import QDesktopServices
 from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -20,6 +23,7 @@ from PyQt5.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     ComboBox,
+    DoubleSpinBox,
     EditableComboBox,
     FlowLayout,
     InfoBar,
@@ -35,7 +39,7 @@ from qfluentwidgets import (
     SwitchButton,
 )
 
-from videocaptioner.config import MODEL_PATH
+from videocaptioner.config import MODEL_PATH, WORK_PATH
 from videocaptioner.core.dubbing import presets
 from videocaptioner.core.dubbing.review import DubbingReview
 from videocaptioner.core.entities import DubbingTask
@@ -350,11 +354,48 @@ class DubbingInterface(QWidget):
         self.start_delay_spinbox.setSingleStep(100)
         self.start_delay_spinbox.setValue(cfg.dubbing_max_start_delay_ms.value)
         row5f.addWidget(self.start_delay_spinbox)
-        start_delay_hint = BodyLabel(self.tr("Gợi ý: 2500 ms, tốc độ 1.00–1.05×; ưu tiên LLM rút lời dài"))
+        start_delay_hint = BodyLabel(self.tr("Trễ tính từ mốc nguồn sau đổi tốc độ video; không cộng khoảng nghỉ này cho từng câu."))
         start_delay_hint.setWordWrap(True)
         row5f.addWidget(start_delay_hint)
         row5f.addStretch()
         settings_layout.addLayout(row5f)
+        playback_row = QHBoxLayout()
+        playback_row.addWidget(BodyLabel(self.tr("Tempo giọng sau TTS:")))
+        self.voice_tempo_spinbox = DoubleSpinBox()
+        self.voice_tempo_spinbox.setRange(1.0, 1.2)
+        self.voice_tempo_spinbox.setSingleStep(.01)
+        self.voice_tempo_spinbox.setDecimals(2)
+        self.voice_tempo_spinbox.setFixedWidth(160)
+        self.voice_tempo_spinbox.setValue(cfg.dubbing_voice_tempo.value / 100)
+        playback_row.addWidget(self.voice_tempo_spinbox)
+        playback_row.addWidget(BodyLabel(self.tr("Tốc độ video:")))
+        self.video_speed_spinbox = DoubleSpinBox()
+        self.video_speed_spinbox.setRange(.5, 1.0)
+        self.video_speed_spinbox.setSingleStep(.01)
+        self.video_speed_spinbox.setDecimals(2)
+        self.video_speed_spinbox.setFixedWidth(160)
+        self.video_speed_spinbox.setValue(cfg.dubbing_video_speed.value / 100)
+        playback_row.addWidget(self.video_speed_spinbox)
+        self.balanced_preset_btn = PushButton(self.tr("Cân bằng 1,20× / 0,77×"))
+        self.balanced_preset_btn.clicked.connect(self._use_balanced_preset)
+        playback_row.addStretch()
+        settings_layout.addLayout(playback_row)
+        caption_row = QHBoxLayout()
+        caption_row.addWidget(BodyLabel(self.tr("Phụ đề theo lời đọc:")))
+        self.playback_subtitle_combo = ComboBox()
+        self.playback_subtitle_combo.addItems([self.tr("Không gắn"), self.tr("Gắn mềm"), self.tr("Ghi vào hình")])
+        self.playback_subtitle_combo.setCurrentIndex(["none", "soft", "hard"].index(cfg.dubbing_subtitle_mode.value))
+        caption_row.addWidget(self.playback_subtitle_combo)
+        caption_row.addWidget(self.balanced_preset_btn)
+        caption_row.addStretch()
+        settings_layout.addLayout(caption_row)
+        self.playback_hint = BodyLabel(self.tr(
+            "Đổi tempo/video dùng WAV gốc 1×, giữ đủ lời và không tự tăng thêm tốc độ. "
+            "Video dưới 1× sẽ dài hơn; audio nền và phụ đề được căn lại. Kiểu chữ dùng tab Kiểu phụ đề."))
+        self.playback_hint.setWordWrap(True)
+        settings_layout.addWidget(self.playback_hint)
+        self.voice_tempo_spinbox.valueChanged.connect(self._update_timing_controls)
+        self.video_speed_spinbox.valueChanged.connect(self._update_timing_controls)
 
         # Mix Mode
         row6 = QHBoxLayout()
@@ -611,8 +652,11 @@ class DubbingInterface(QWidget):
         self.import_review_btn.clicked.connect(self._import_review)
         self.resume_btn = PrimaryPushButton(self.tr("Tiếp tục lời đã duyệt"))
         self.resume_btn.clicked.connect(self._resume_review)
+        self.preview_btn = PushButton(self.tr("Xem trước lời đã duyệt"))
+        self.preview_btn.clicked.connect(self._preview_review)
         for button in (self.prepare_review_btn, self.review_btn, self.save_review_btn, self.open_review_btn, self.import_review_btn, self.resume_btn):
             review_row.addWidget(button)
+        review_row.addWidget(self.preview_btn)
         layout.addLayout(review_row)
         self.review_label = BodyLabel(self.tr("Chưa có kế hoạch lời đọc."))
         self.review_label.setWordWrap(True)
@@ -655,6 +699,9 @@ class DubbingInterface(QWidget):
         if self._job_busy:
             raise RuntimeError("Lồng tiếng đang bận; chờ worker kết thúc trước khi đổi task")
         self._task = task
+        if task.dubbing_config:
+            task.dubbing_config = deepcopy(task.dubbing_config)
+            task.dubbing_config.subtitle_mode = "none"  # The pipeline synthesis stage owns rendering.
         if task.cache_root is None:
             task.cache_root = self.cache_root_edit.text().strip() or None
         self.cache_root_edit.setText(task.cache_root or "")
@@ -907,6 +954,7 @@ class DubbingInterface(QWidget):
         self.review_btn.setEnabled(bool(review) and not self._job_busy)
         self.save_review_btn.setEnabled(bool(review) and not self._job_busy)
         self.resume_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
+        self.preview_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
         self.open_review_btn.setEnabled(not self._job_busy)
         self.import_review_btn.setEnabled(not self._job_busy)
         self.prepare_review_btn.setEnabled(not self._job_busy)
@@ -915,7 +963,7 @@ class DubbingInterface(QWidget):
             task = self._task
             self.review_label.setText(self.tr(
                 "{groups} nhóm | {review} cần review | {provider} / {model} / {voice}\n"
-                "Nguồn: {video} + {subtitle}. Tiếp tục dùng cấu hình đã chụp của job; "
+                "Nguồn: {video} + {subtitle}. Tiếp tục giữ giọng/lời đã duyệt, áp tempo/video/trễ đang chọn; "
                 "kiểm tra nguồn và giọng trước khi tạo audio.\nCache của job: {cache}\n{provenance}"
             ).format(groups=len(plan.groups), review=sum(g.needs_review for g in plan.groups),
                      provider=plan.provider, model=plan.model, voice=plan.voice,
@@ -942,7 +990,40 @@ class DubbingInterface(QWidget):
     def _resume_review(self):
         if self._job_busy or not self._task or not self._task.dubbing_review:
             return
+        self._task = self._task_with_playback(self._task)
+        if self._is_pipeline_mode and self._task.dubbing_config:
+            self._task.dubbing_config.subtitle_mode = "none"
         self._run_dubbing(self._task, resume=True)
+
+    def _use_balanced_preset(self):
+        self.voice_tempo_spinbox.setValue(1.2)
+        self.video_speed_spinbox.setValue(.77)
+        self.start_delay_spinbox.setValue(2000)
+        self.playback_subtitle_combo.setCurrentIndex(2)
+
+    def _task_with_playback(self, task: DubbingTask) -> DubbingTask:
+        cfg.set(cfg.dubbing_voice_tempo, round(self.voice_tempo_spinbox.value() * 100))
+        cfg.set(cfg.dubbing_video_speed, round(self.video_speed_spinbox.value() * 100))
+        cfg.set(cfg.dubbing_subtitle_mode, ["none", "soft", "hard"][self.playback_subtitle_combo.currentIndex()])
+        updated = task
+        updated.dubbing_config = deepcopy(task.dubbing_config)
+        if updated.dubbing_config:
+            updated.dubbing_config.voice_tempo = self.voice_tempo_spinbox.value()
+            updated.dubbing_config.video_speed = self.video_speed_spinbox.value()
+            updated.dubbing_config.max_start_delay_ms = self.start_delay_spinbox.value()
+            updated.dubbing_config.subtitle_mode = ["none", "soft", "hard"][self.playback_subtitle_combo.currentIndex()]
+            updated.dubbing_config.subtitle_style = TaskFactory.get_ass_style(cfg.subtitle_style_name.value)
+        return updated
+
+    def _preview_review(self):
+        if self._job_busy or not self._task or not self._task.dubbing_review:
+            return
+        task = self._task_with_playback(replace(self._task))
+        directory = WORK_PATH / "dubbing-previews"
+        directory.mkdir(parents=True, exist_ok=True)
+        task.output_path = str(directory / f"preview-{uuid4().hex[:12]}.mp4")
+        task.preview_only = True
+        self._run_dubbing(task, resume=True)
 
     def _save_review(self):
         if self._job_busy or not self._task or not self._task.dubbing_review:
@@ -1497,11 +1578,16 @@ class DubbingInterface(QWidget):
         )
         self._refresh_report_button()
 
+        if task.preview_only:
+            self.status_label.setText(self.tr("Đã tạo bản xem trước; WAV được giữ để xuất lại."))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(task.output_path or ""))
+            return
+
         # In pipeline mode: emit dubbed video for synthesis
         if self._is_pipeline_mode:
             self.finished.emit(
                 task.output_path or task.video_path or "",
-                task.display_subtitle_path or task.subtitle_path or "",
+                task.playback_subtitle_path or task.display_subtitle_path or task.subtitle_path or "",
             )
 
     def _open_in_video_editor(self):
@@ -1556,6 +1642,9 @@ class DubbingInterface(QWidget):
             presets.UNRESOLVED_POLICY_KEYS[self.unresolved_combo.currentIndex()],
         )
         cfg.set(cfg.dubbing_max_start_delay_ms, self.start_delay_spinbox.value())
+        cfg.set(cfg.dubbing_voice_tempo, round(self.voice_tempo_spinbox.value() * 100))
+        cfg.set(cfg.dubbing_video_speed, round(self.video_speed_spinbox.value() * 100))
+        cfg.set(cfg.dubbing_subtitle_mode, ["none", "soft", "hard"][self.playback_subtitle_combo.currentIndex()])
 
         sr_idx = self.sample_rate_combo.currentIndex()
         if 0 <= sr_idx < len(self._sample_rates):
@@ -1566,6 +1655,18 @@ class DubbingInterface(QWidget):
 
     def _update_timing_controls(self):
         natural = self.timing_mode_combo.currentIndex() == 0
+        balanced = self.voice_tempo_spinbox.value() != 1 or self.video_speed_spinbox.value() != 1
+        if balanced:
+            self.natural_speed_slider.setEnabled(False)
+            self.max_speed_slider.setEnabled(False)
+            self.rewrite_switch.setEnabled(False)
+            self.unresolved_combo.setEnabled(False)
+            self.speed_slider.setEnabled(False)
+            self.timing_mode_combo.setEnabled(False)
+            self.start_delay_spinbox.setEnabled(True)
+            return
+        self.speed_slider.setEnabled(True)
+        self.timing_mode_combo.setEnabled(True)
         self.natural_speed_slider.setEnabled(natural)
         self.natural_speed_label.setEnabled(natural)
         self.max_speed_slider.setEnabled(not natural)

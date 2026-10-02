@@ -92,6 +92,7 @@ class DubbingEngine:
         self.last_report_path = ""
         self.last_report: dict = {}
         self.last_review: DubbingReview | None = None
+        self.last_subtitle_path = ""
 
     def dub(
         self,

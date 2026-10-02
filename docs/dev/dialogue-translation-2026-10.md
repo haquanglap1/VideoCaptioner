@@ -24,7 +24,9 @@ review để sửa/tiếp tục. Pipeline tự động cũng dừng ở điểm 
 kịch bản vừa sinh bởi LLM là lời đã được user chấp nhận.
 
 Chọn `.dialogue.json` trong Lồng tiếng áp dụng **preset riêng cho job**:
-Natural/sequential, native1.00×, cap1.00×, delay2000ms, gap80ms, rewrite tắt.
+Natural/sequential, native1.00×, không tự tăng tốc, gap80ms, rewrite tắt.
+Tempo WAV, tốc độ video và độ trễ theo cấu hình job (mặc định1×/1×/2000ms).
+Các control mới và preview được mô tả tại [Điều chỉnh playback](dubbing-playback-2026-10.md).
 Settings toàn app không bị đổi. Giá trị speed1.00 là nhịp của model/reference,
 không phải cam kết thời lượng bằng thoại gốc. Wording resume không gọi lại LLM.
 

@@ -1,4 +1,5 @@
 import datetime
+from copy import deepcopy
 from pathlib import Path
 
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -132,6 +133,7 @@ class SubtitlePipelineThread(QThread):
 
             # 3. Dubbing / lồng tiếng (optional)
             video_for_synthesis = self.task.file_path  # default: video gốc
+            subtitle_for_synthesis = subtitle_task.output_path
             if dubbing_enabled:
                 self.progress.emit(d_start, self.tr("Bắt đầu lồng tiếng"))
 
@@ -149,11 +151,14 @@ class SubtitlePipelineThread(QThread):
                     video_path=self.task.file_path,
                     subtitle_path=subtitle_task.dubbing_subtitle_path,
                     output_path=dubbed_video_path,
-                    dubbing_config=self.task.dubbing_config,
+                    dubbing_config=deepcopy(self.task.dubbing_config),
+                    display_subtitle_path=subtitle_task.output_path,
                     queued_at=self.task.queued_at,
                     started_at=self.task.started_at,
                     completed_at=self.task.completed_at,
                 )
+                if dubbing_task.dubbing_config:
+                    dubbing_task.dubbing_config.subtitle_mode = "none"
                 dubbing_thread = DubbingThread(dubbing_task)
                 self._active_worker = dubbing_thread
                 d_range = d_end - d_start
@@ -168,6 +173,7 @@ class SubtitlePipelineThread(QThread):
                     return
                 elif Path(dubbed_video_path).is_file():
                     video_for_synthesis = dubbed_video_path
+                    subtitle_for_synthesis = dubbing_task.playback_subtitle_path or subtitle_for_synthesis
                     logger.info("Dubbing thành công, dùng video dubbed cho synthesis")
                 else:
                     handle_error("Dubbing không tạo artifact đầu ra")
@@ -179,7 +185,7 @@ class SubtitlePipelineThread(QThread):
             # 创建合成任务
             synthesis_task = SynthesisTask(
                 video_path=video_for_synthesis,
-                subtitle_path=subtitle_task.output_path,
+                subtitle_path=subtitle_for_synthesis,
                 output_path=self.task.output_path,
                 synthesis_config=self.task.synthesis_config,
                 queued_at=self.task.queued_at,

@@ -46,6 +46,40 @@ def test_editor_rejects_stale_membership_after_cue_deletion(tmp_path):
         dialogue_from_project(project)
 
 
+def test_playback_export_view_scales_layers_without_mutating_source(tmp_path, monkeypatch):
+    from copy import deepcopy
+
+    from videocaptioner.core.dubbing.config import DubbingConfig
+    from videocaptioner.core.dubbing.engine import DubbingEngine
+    from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+    from videocaptioner.core.editor.dialogue import playback_export_project
+    from videocaptioner.core.editor.models import EditorLayer, EditorLayerKind
+    from videocaptioner.core.tts import TTSConfig
+
+    source = tmp_path / "speech.dialogue.json"
+    DialogueDocument((DialogueCue("a", "Nguồn", "Lời đọc", 1000, 2000),),
+                     (SpeechBlock(("a",), "Lời đọc"),), "vi").save(source)
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"synthetic")
+    project = EditorProjectStore().create_from_media(str(video), str(source), duration_ms=5000)
+    project.layers.append(EditorLayer(id="title", kind=EditorLayerKind.TEXT, start_ms=1000, end_ms=2000))
+    before = deepcopy(project.to_dict())
+    monkeypatch.setattr(DubbingOrchestrator, "_validate", staticmethod(lambda *a: None))
+    monkeypatch.setattr(DubbingOrchestrator, "_video_duration", staticmethod(lambda *a: 5.0))
+    engine = DubbingEngine()
+    config = DubbingConfig(tts_config=TTSConfig("fake", "", ""), voice_tempo=1.2, video_speed=.5)
+    report = engine.prepare_review(str(video), str(source), config).to_dict()
+    report["groups"][0].update(playback_start_time=2.1, playback_end_time=3.4)
+    exported = playback_export_project(project, report, 10000)
+    assert project.to_dict() == before
+    assert exported.duration_ms == 10000
+    assert exported.selection_start_ms is None and exported.selection_end_ms is None
+    assert (exported.layers[0].start_ms, exported.layers[0].end_ms) == (2000, 4000)
+    assert (exported.cues[0].start_ms, exported.cues[0].end_ms) == (2100, 3400)
+    assert exported.cues[0].display_text == "Lời đọc"
+    assert exported.subtitle_style == project.subtitle_style
+
+
 def test_dialogue_audio_is_played_once_with_actual_duration_and_preview_offset(tmp_path):
     import wave
 

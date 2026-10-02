@@ -149,11 +149,20 @@ def run(args: Namespace, config: dict) -> int:
             quiet=quiet,
             suppress_result=True,
         )
+        from copy import deepcopy
+
         from videocaptioner.cli.commands.dub import run as dub_run
-        ret = dub_run(dub_args, config)
+        dub_config = deepcopy(config)
+        if not no_synthesize:
+            dub_config.setdefault("dubbing", {})["subtitle_mode"] = "none"
+        ret = dub_run(dub_args, dub_config)
         if ret != 0:
             return ret
         video_for_synthesis = dubbed_path
+        if getattr(dub_args, "playback_subtitle_path", ""):
+            from videocaptioner.core.entities import SubtitleLayoutEnum
+            subtitle_path = dub_args.playback_subtitle_path
+            input_subtitle_layout = SubtitleLayoutEnum.ONLY_ORIGINAL
 
     # Step 3: Synthesize
     if not no_synthesize:

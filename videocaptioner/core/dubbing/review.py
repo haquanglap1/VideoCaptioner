@@ -84,6 +84,9 @@ def settings_fingerprint(config: DubbingConfig) -> str:
     Cache enablement, concurrency, timeouts, mixing volumes and report paths may
     change without changing speech. Resume never invokes automatic rewriting.
     """
+    playback = {} if config.voice_tempo == config.video_speed == 1 else {
+        "voice_tempo": config.voice_tempo, "video_speed": config.video_speed,
+    }
     return _digest({
         "synthesis_key": synthesis_cache_key("", config),
         "normalization_version": NORMALIZATION_VERSION,
@@ -95,6 +98,7 @@ def settings_fingerprint(config: DubbingConfig) -> str:
         "unresolved_policy": config.unresolved_policy.value,
         "max_start_delay_ms": config.max_start_delay_ms,
         "response_format": config.tts_config.response_format if config.tts_config else "",
+        **playback,
     })
 
 
@@ -259,7 +263,16 @@ class DubbingReview:
         if any(not isinstance(key, str) or type(value) not in (str, int, float, bool)
                or (type(value) is float and not math.isfinite(value)) for key, value in identity.items()):
             raise DubbingResumeError("Invalid provider identity")
+        voice_tempo = _number(data.get("voice_tempo", 1.0), "voice_tempo")
+        video_speed = _number(data.get("video_speed", 1.0), "video_speed")
+        from .playback import validate_rates
+        validate_rates(voice_tempo, video_speed)
+        delay_limit = data.get("max_start_delay_ms", 2000)
+        if type(delay_limit) is not int or not 0 <= delay_limit <= 10000:
+            raise DubbingResumeError("Invalid max_start_delay_ms")
         return cls(DubbingPlan(**values, timing_mode=timing, groups=groups, provider_identity=identity,
+                              voice_tempo=voice_tempo, video_speed=video_speed,
+                              max_start_delay_ms=delay_limit,
                               schema_version=data["plan_schema_version"],
                               summary=_object(data.get("summary", {}), "summary"),
                               resume_metadata=_metadata(data.get("resume_metadata"))))
@@ -356,7 +369,12 @@ class DubbingReview:
             if not math.isclose(old.video_duration, new.video_duration, abs_tol=1e-6):
                 raise DubbingResumeError("Review video duration mismatch")
             if not allow_config_change and old.settings_sha256 != new.settings_sha256:
-                raise DubbingResumeError("Review settings mismatch; explicitly apply configuration changes to resume")
+                previous_playback = deepcopy(config)
+                previous_playback.voice_tempo = saved.voice_tempo
+                previous_playback.video_speed = saved.video_speed
+                previous_playback.max_start_delay_ms = saved.max_start_delay_ms
+                if settings_fingerprint(previous_playback) != old.settings_sha256:
+                    raise DubbingResumeError("Review settings mismatch; explicitly apply configuration changes to resume")
             new.provenance = old.provenance
         if not allow_config_change or legacy_import:
             for name in ("provider", "model", "voice", "provider_identity", "target_language", "timing_mode"):

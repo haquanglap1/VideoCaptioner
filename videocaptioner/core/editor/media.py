@@ -661,11 +661,13 @@ def export_editor_video(
         if dubbing_enabled:
             assert dubbing_config is not None
             dubbing_config = deepcopy(dubbing_config)
+            # The shared editor visual graph owns font/layout and subtitle visibility.
+            dubbing_config.subtitle_mode = "none"
             audio_track = next((track for track in project.tracks if track.id == "track-a1"), None)
             if audio_track and audio_track.muted:
                 dubbing_config.mix_mode = AudioMixMode.MUTE_ORIGINAL
-            tts_srt = run_dir / "tts.srt"
-            EditorProjectStore._atomic_write(tts_srt, project_to_tts_asr(project).to_srt())
+            tts_srt = run_dir / "tts.json"
+            project_to_tts_asr(project).save(str(tts_srt))
             from .dialogue import dialogue_from_project
             dialogue = dialogue_from_project(project)
             if dialogue is not None:
@@ -688,6 +690,10 @@ def export_editor_video(
                 **review_options,
             )
             source_video = str(dubbed_video)
+            if dubbing_config.voice_tempo != 1 or dubbing_config.video_speed != 1:
+                from .dialogue import playback_export_project
+                project = playback_export_project(project, dubbing_engine.last_report,
+                                                  round(probe_media(source_video).duration_ms))
         _raise_if_cancelled(should_cancel)
         existing_voice = [] if dubbing_enabled else _existing_voice_segments(
             project, 0, project.duration_ms

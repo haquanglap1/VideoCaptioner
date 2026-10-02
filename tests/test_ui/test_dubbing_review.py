@@ -150,6 +150,31 @@ def test_dialog_cancel_and_empty_wording_preserve_original(session):
         dialog.close()
 
 
+def test_balanced_preset_and_preview_keep_job_voice_and_review(session, monkeypatch):
+    from videocaptioner.ui.common.config import cfg
+
+    view, task = session.view, session.task
+    before = task.dubbing_review.to_dict()
+    before_voice = task.dubbing_config.tts_config.voice
+    before_output = task.output_path
+    launched = []
+    monkeypatch.setattr(view, "_run_dubbing", lambda job, **kwargs: launched.append((job, kwargs)))
+    monkeypatch.setattr(cfg, "set", lambda *args, **kwargs: None)
+    view.balanced_preset_btn.click()
+    assert view.voice_tempo_spinbox.value() == 1.2
+    assert view.voice_tempo_spinbox.maximum() == 1.2
+    assert view.video_speed_spinbox.value() == .77
+    assert not view.speed_slider.isEnabled()
+    view.preview_btn.click()
+    preview, options = launched[0]
+    assert preview.preview_only and options == {"resume": True}
+    assert preview.output_path != before_output
+    assert preview.dubbing_config.tts_config.voice == before_voice
+    assert preview.dubbing_config.subtitle_mode == "hard"
+    assert task.output_path == before_output
+    assert task.dubbing_review.to_dict() == before
+
+
 @pytest.mark.parametrize("mismatch", ["video", "display", "voice"])
 def test_resume_mismatch_keeps_review_and_never_synthesizes(session, qapp, mismatch):
     s = session

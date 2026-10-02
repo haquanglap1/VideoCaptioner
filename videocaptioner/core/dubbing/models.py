@@ -143,6 +143,9 @@ class DubbingPlan:
     summary: dict[str, Any] = field(default_factory=dict)
     schema_version: str = "dubbing-plan-v1"
     resume_metadata: DubbingResumeMetadata | None = None
+    voice_tempo: float = 1.0
+    video_speed: float = 1.0
+    max_start_delay_ms: int = 2000
 
     def __post_init__(self) -> None:
         self.source_path = Path(self.source_path).name
@@ -200,7 +203,8 @@ def resolve_dubbing_text(segment: Any, source_mode: DubbingTextSource) -> str:
     return text
 
 
-def calculate_report_summary(groups: Iterable[DubbingGroup], output_created: bool) -> dict[str, Any]:
+def calculate_report_summary(groups: Iterable[DubbingGroup], output_created: bool,
+                             video_speed: float = 1.0) -> dict[str, Any]:
     items = list(groups)
     ratios = sorted(group.fit_ratio for group in items if math.isfinite(group.fit_ratio))
     p95_index = max(0, math.ceil(len(ratios) * 0.95) - 1) if ratios else 0
@@ -227,6 +231,6 @@ def calculate_report_summary(groups: Iterable[DubbingGroup], output_created: boo
         "shifted_groups": sum(group.start_delay > 0.001 for group in items),
         "max_start_delay_ms": round(max((group.start_delay for group in items), default=0.0) * 1000),
         "p95_start_delay_ms": round(delays[delay_index] * 1000) if delays else 0,
-        "max_end_overrun_ms": round(max((max(0.0, group.playback_end_time - group.subtitle_end_time)
+        "max_end_overrun_ms": round(max((max(0.0, group.playback_end_time - group.subtitle_end_time / video_speed)
                                          for group in items if group.playback_end_time is not None), default=0) * 1000),
     }

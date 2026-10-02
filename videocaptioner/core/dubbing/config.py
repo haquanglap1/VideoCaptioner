@@ -63,6 +63,11 @@ class DubbingConfig:
     timing_mode: DubbingTimingMode = DubbingTimingMode.NATURAL
     natural_max_speed: float = 1.08
     max_start_delay_ms: int = 2000
+    # Playback changes are applied to native WAVs, never to the provider request.
+    voice_tempo: float = 1.0
+    video_speed: float = 1.0
+    subtitle_mode: str = "none"
+    subtitle_style: str = ""
     fit_ratio_limit: float = 1.05
     borrow_gap_ms: int = 350
     silence_guard_ms: int = 80
@@ -98,6 +103,8 @@ class DubbingConfig:
             if self.mix_mode == AudioMixMode.REDUCE_ORIGINAL:
                 lines.append(f"Original Volume: {self.original_volume:.0%}")
             lines.append(f"Voice Volume: {self.voice_volume:.0%}")
+            lines.append(f"Voice Tempo: {self.voice_tempo:.2f}x; Video Speed: {self.video_speed:.2f}x")
+            lines.append(f"Playback Subtitles: {self.subtitle_mode}")
             lines.append(f"TTS Concurrency: {self.tts_concurrency}")
             lines.append(f"Max Speed: {self.max_speed}x")
             lines.append(f"Text Source: {self.text_source.value}")

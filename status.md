@@ -1,5 +1,46 @@
 # Project Status
 
+## 2026-10-02 (Tempo giọng, video chậm và phụ đề playback trong app)
+
+- User duyệt video giọng1,20×/video0,77× có phụ đề và yêu cầu đưa các tùy chỉnh
+  vào app. Thêm tempo sau TTS1,00–1,20×, video0,50–1,00×, nút preset1,20/0,77,
+  lựa chọn phụ đề none/soft/hard và Xem trước lời đã duyệt. Mặc định cũ giữ
+ 1×/1×; không tự migrate settings/API key của bản cài.
+- Core giữ native WAV/cache key và timing nguồn. Derived tempo cache theo SHA
+  audio+tốc độ; review chỉ nhận thay đổi playback khi nguồn/giọng/lời còn khớp.
+  Lịch phát đo WAV thật trên timeline video đã đổi tốc độ; giữ gate trễ/biên/
+  cuối video. Pipeline nhận SRT mới; Editor export dùng bản sao retimed, không
+  sửa project/CommandStack hoặc style người dùng. Chức năng xem trước playback
+  nằm ở tab Lồng tiếng; Fast Preview của Editor vẫn theo timeline nguồn.
+- Reproduction6 tests mới fail trước sửa; core/dialogue12 pass. Lượt rộng đầu
+  47 failed/330 passed phát hiện ảnh hưởng tới identity config/task và UI quá
+  rộng; đã sửa,68 regression pass. FFmpeg thật phát hiện29/30 frame ở ca video
+  có audio sau retime; pad audio trước `-shortest` giữ đủ frame, không hạ assertion.
+- Full offline **2293 passed/5 skipped/58 deselected**, exit0; UI sau chỉnh layout
+  27 pass. Sau visual QA sửa default caption fallback từ xanh/đậm sang trắng,
+  11 playback tests pass, gồm no-audio, soft/hard, đổi tốc độ/cache và cancellation.
+  Ruff toàn app/tests pass; Pyright0/0; translations in sync. Các suite overlap
+  không cộng dồn. Giữ log helper/collection lỗi trong audit.
+- Video thật qua core mới:60 WAV cache hit/0 TTS/0 rewrite/0 review; trễ lớn nhất
+ 1591ms,p95972ms. Video380,188s/8782frames, lời cuối nằm trong video. Đây là reuse
+  audio đã có, không phải ASR/LLM/TTS inference mới hoặc nghiệm thu nghe mới.
+- Audit `.tools/dialogue-speed-integration-20261002/`; hướng dẫn tại
+  `docs/dev/dubbing-playback-2026-10.md`. Bản EXE đầu đã build/smoke20s/exit0,
+  frozen60 cache/0 TTS và99.315 model files size-verified; visual QA default
+  caption khiến build lại tên `playback-final`, không ghi đè artifact đầu.
+- EXE cuối `VideoCaptioner-20261002-playback-final`: build exit0/172,610s,
+  6 WARNING/0 ERROR,31.638.371 bytes,SHA256
+  `f55db3be199a2bd75fdbe0b5892a3fc04df6cfb7e6c5f932183a539d08b06268`.
+  Frozen cuối60 cache/0 TTS/0 review,max1591ms;99.315 model/runtime files
+  size-verified. Video380,188s/8782frames, decode/visual đầu-giữa-cuối pass;
+  GUI20s/exit0, không còn owned children. Style chọn tường minh được giữ nguyên.
+- Đã cập nhật payload bản chính tại E, giữ tên EXE cũ để shortcut tiếp tục
+  dùng được:602 file đối chiếu SHA,2 file thay (EXE và base_library.zip),
+  backup delta trong `rollback-payload/`.1.329 file dữ liệu/settings/cookies/
+  voices/manifest giữ nguyên SHA, không chép/thay model trên E. CLI help trực
+  tiếp tại E pass. GUI smoke dùng artifact cùng SHA với AppData cô lập để giữ
+  byte settings thật. Triển khai xong trước bước publish; hai stash giữ nguyên.
+
 ## 2026-10-02 (Cập nhật trực tiếp bản chạy thật, giữ cấu hình và dọn bản trùng)
 
 - User yêu cầu commit/push, cập nhật trực tiếp thư mục chạy thật, giữ nguyên

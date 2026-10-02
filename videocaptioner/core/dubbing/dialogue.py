@@ -26,6 +26,8 @@ def load_dialogue(path: str) -> DialogueDocument | None:
 
 
 def source_config(path: str, config: DubbingConfig) -> DubbingConfig:
+    from .playback import playback_config
+    config = playback_config(config)
     document = load_dialogue(path)
     if document is None:
         return config
@@ -39,7 +41,6 @@ def dialogue_preset(config: DubbingConfig, target_language: str) -> DubbingConfi
     result.text_source = DubbingTextSource.AUTO
     result.target_language = target_language
     result.natural_max_speed = 1.0
-    result.max_start_delay_ms = 2000
     result.silence_guard_ms = 80
     result.rewrite_enabled = False
     result.strip_cjk = False

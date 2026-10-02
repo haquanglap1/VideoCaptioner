@@ -877,6 +877,8 @@ class DubbingTask:
     dubbing_review: Optional["DubbingReview"] = None
     # Explicit GUI selection; never restored from a review document.
     cache_root: Optional[str] = None
+    playback_subtitle_path: Optional[str] = None
+    preview_only: bool = False
 
 
 @dataclass

@@ -349,6 +349,12 @@ Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
 ## Lồng tiếng Natural
 
+Tab Lồng tiếng có **Tempo giọng sau TTS** tối đa1,20× và **Tốc độ video**
+0,50–1,00×. Nút **Cân bằng 1,20× / 0,77×** dùng giọng nguồn1×, giữ đủ lời,
+gap80ms và trễ tối đa2s; tempo/video có thể chỉnh riêng. **Xem trước lời đã duyệt**
+tạo video riêng, dùng lại WAV gốc khi đổi timing. Chọn **Phụ đề theo lời đọc**
+để gắn mềm/ghi vào hình với timing đã đo. [Cách dùng, CLI và giới hạn](docs/dev/dubbing-playback-2026-10.md).
+
 **Dịch cho lời thoại (LLM)** trong Cài đặt → Dịch dùng chung model, API Base,
 API key và timeout LLM của app. Chế độ này tạo bản dịch hiển thị theo cue và
 các nhóm lời đọc liền mạch, lưu kèm file `.dialogue.json`. Bản tiếng Việt có
@@ -358,7 +364,8 @@ gốc trong video. CLI: `videocaptioner subtitle input.srt --dialogue
 
 Trong tab Lồng tiếng, chọn `.dialogue.json`, **Chuẩn bị lời đọc trước TTS**,
 duyệt/sửa rồi **Tiếp tục lời đã duyệt**. Kịch bản dùng preset riêng cho job:
-1×, sequential, gap80ms, trễ bắt đầu tối đa2s, không tự rút lời hoặc tăng tốc.
+Giọng nguồn1×, sequential, gap80ms, mặc định trễ bắt đầu2s; tempo/video/trễ theo
+cấu hình job, không tự rút lời hoặc tăng tốc vượt mức đã chọn.
 Khi lời đọc dài hơn khả năng của video, app giữ audio/review; giới hạn2s không
 bảo đảm mọi bản dịch đều vừa. Video Editor giữ mapping và đặt lời đọc ở cue
 đầu mỗi nhóm; các cue còn lại vẫn hiển thị phụ đề. [Cách dùng và validation](docs/dev/dialogue-translation-2026-10.md).

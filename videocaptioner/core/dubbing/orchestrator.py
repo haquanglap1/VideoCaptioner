@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -72,9 +73,12 @@ class DubbingOrchestrator:
         allow_config_change: bool = False,
     ) -> str:
         self._validate(video_path, subtitle_path, config)
+        if Path(output_path).resolve() in {Path(video_path).resolve(), Path(subtitle_path).resolve()}:
+            raise ValueError("Dubbing output must not overwrite a source file")
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         report_path = self._report_path(config)
         self.engine.last_report_path = ""
+        self.engine.last_subtitle_path = ""
         if review is None:
             self.engine.last_report = {}
             self.engine.last_review = None
@@ -99,7 +103,7 @@ class DubbingOrchestrator:
             # Do not replace the retained review until every binding has passed.
             plan = prepared
             assert plan.resume_metadata is not None
-            total_duration = plan.resume_metadata.video_duration
+            total_duration = plan.resume_metadata.video_duration / config.video_speed
             if not plan.groups:
                 raise ValueError("Phụ đề trống, không có gì để lồng tiếng")
             self._write_report(plan, "", output_created=False)
@@ -110,7 +114,7 @@ class DubbingOrchestrator:
                     group.action_taken = "dialogue_wording_preview"
                 self._write_report(plan, report_path, output_created=False)
                 raise DubbingReviewRequired(report_path=report_path,
-                    reason="Duyệt lời thoại trước TTS, rồi tiếp tục lời đã duyệt. Preset: 1x, trễ tối đa 2 giây.")
+                    reason="Duyệt lời thoại trước TTS, rồi tiếp tục lời đã duyệt với tempo/video đã chọn.")
 
             callback(12, "Đang kiểm tra TTS cache...")
             provider = self.engine._create_tts_provider(config)
@@ -144,6 +148,14 @@ class DubbingOrchestrator:
                 )
 
             callback(67, "Đang áp dụng chính sách timing...")
+            from .playback import (
+                apply_voice_tempo,
+                playback_captions,
+                publish_captions,
+                render_captions,
+                retime_video,
+            )
+            apply_voice_tempo(plan.groups, config, cache, work_dir / "tempo", callback)
             segment_infos = self._apply_fit_policy(
                 plan.groups, config, work_dir / "adjusted", video_duration=total_duration
             )
@@ -159,6 +171,17 @@ class DubbingOrchestrator:
                     reason=self._review_failure_reason(plan.groups),
                 )
 
+            render_video = retime_video(video_path, work_dir / "retimed.mp4", config.video_speed, callback)
+            if config.video_speed != 1:
+                actual_duration = self._video_duration(render_video, ASRData([]), True)
+                if any((g.playback_end_time or 0) > actual_duration + .000001 for g in plan.groups):
+                    for group in plan.groups:
+                        if (group.playback_end_time or 0) > actual_duration + .000001:
+                            group.needs_review = True
+                            group.warnings.append("Measured retimed video is shorter than the complete speech")
+                    raise DubbingReviewRequired(report_path=report_path, reason="Video sau đổi tốc độ không đủ chứa toàn bộ lời đọc.")
+                total_duration = actual_duration
+
             callback(76, "Đang ghép voice track...")
             voice_track_path = str(work_dir / "voice_track.wav")
             sample_rate = config.tts_config.sample_rate if config.tts_config else 24000
@@ -172,18 +195,40 @@ class DubbingOrchestrator:
                 raise RuntimeError("Ghép voice track thất bại")
 
             callback(87, "Đang mix audio vào video...")
+            mixed_output = work_dir / ("mixed" + (Path(output_path).suffix or ".mp4"))
             if not mix_audio_tracks(
-                video_path,
+                render_video,
                 voice_track_path,
-                output_path,
+                str(mixed_output),
                 mix_mode=config.mix_mode,
                 original_volume=config.original_volume,
                 voice_volume=config.voice_volume,
                 normalize_voice=False,
             ):
                 raise RuntimeError("Mix audio thất bại")
-            if not Path(output_path).is_file():
+            final_output = mixed_output
+            captions = None
+            if config.subtitle_mode != "none" or config.voice_tempo != 1 or config.video_speed != 1:
+                captions = work_dir / "playback.srt"
+                playback_captions(plan).save(str(captions))
+                if config.subtitle_mode != "none":
+                    final_output = work_dir / ("captioned" + (Path(output_path).suffix or ".mp4"))
+                    render_captions(str(mixed_output), final_output, captions, config, callback)
+            if not final_output.is_file():
                 raise RuntimeError("Dubbing không tạo artifact đầu ra")
+            callback(99, "Đang lưu video hoàn chỉnh...")
+            # Staging can live on another volume; publish from the destination volume.
+            with tempfile.NamedTemporaryFile(dir=Path(output_path).parent, suffix=Path(output_path).suffix,
+                                             delete=False) as staged:
+                staged_path = Path(staged.name)
+            try:
+                shutil.copyfile(final_output, staged_path)
+                callback(99, "Đang lưu video hoàn chỉnh...")
+                os.replace(staged_path, output_path)
+            finally:
+                staged_path.unlink(missing_ok=True)
+            if captions is not None:
+                self.engine.last_subtitle_path = publish_captions(captions, output_path)
             self._write_report(plan, report_path, output_created=True)
             callback(100, "Lồng tiếng hoàn tất!")
             return output_path
@@ -231,6 +276,8 @@ class DubbingOrchestrator:
         plan.resume_metadata = bind_sources(
             video_path, subtitle_path, display_subtitle_path, duration, config, callback
         )
+        plan.voice_tempo, plan.video_speed = config.voice_tempo, config.video_speed
+        plan.max_start_delay_ms = config.max_start_delay_ms
         return plan
 
     @staticmethod
@@ -637,12 +684,13 @@ class DubbingOrchestrator:
         ceiling = max(1.0, min(config.natural_max_speed, config.natural_max_speed / max(provider_speed, 0.01)))
         gap = max(0.02, config.silence_guard_ms / 1000.0)
         delay_limit = config.max_start_delay_ms / 1000.0
-        slots = sequential_slots(groups, video_duration=video_duration, max_speed=ceiling,
+        timeline_groups = [replace(g, start_time=g.start_time / config.video_speed) for g in groups]
+        slots = sequential_slots(timeline_groups, video_duration=video_duration, max_speed=ceiling,
                                  max_delay=delay_limit, gap=gap)
         result, previous_end = [], -gap
         for group, slot in zip(groups, slots):
             group.needs_review = False
-            group.applied_speed = slot.speed
+            group.applied_speed = slot.speed * config.voice_tempo
             if slot.speed > 1.001:
                 output = adjusted_dir / f"{group.group_id}-sequential.wav"
                 if not adjust_audio_speed(group.audio_path, str(output), slot.speed):
@@ -658,12 +706,13 @@ class DubbingOrchestrator:
                 group.action_taken = "+".join(filter(None, (group.action_taken, f"speed_adjust_{slot.speed:.3f}x")))
                 group.fit_status = DubbingFitStatus.SPEED_ADJUSTED
             # Recompute from the actual WAV, never from the ideal duration/speed ratio.
-            group.fit_ratio = group.measured_duration / max(group.available_duration, 0.001)
-            start = math.ceil(max(group.start_time, previous_end + gap) * 1000) / 1000
+            group.fit_ratio = group.measured_duration / max(group.available_duration / config.video_speed, 0.001)
+            source_start = group.start_time / config.video_speed
+            start = math.ceil(max(source_start, previous_end + gap) * 1000) / 1000
             end = start + group.measured_duration
             group.playback_start_time, group.playback_end_time = start, end
-            group.start_delay = max(0.0, start - group.start_time)
-            hard_end = min(video_duration, group.hard_end_time) if group.hard_end_time is not None else video_duration
+            group.start_delay = max(0.0, start - source_start)
+            hard_end = min(video_duration, group.hard_end_time / config.video_speed) if group.hard_end_time is not None else video_duration
             if group.start_delay > delay_limit + 0.000001 or end > hard_end + 0.000001:
                 group.needs_review = True
                 group.fit_status = DubbingFitStatus.NEEDS_REVIEW
@@ -731,7 +780,7 @@ class DubbingOrchestrator:
         *,
         output_created: bool,
     ) -> None:
-        plan.summary = calculate_report_summary(plan.groups, output_created)
+        plan.summary = calculate_report_summary(plan.groups, output_created, plan.video_speed)
         report = DubbingReport(plan=plan, report_path=report_path)
         report_data = report.to_dict()
         self.engine.last_report = report_data

@@ -59,6 +59,9 @@ def build_dubbing_config(config: dict, report_path: str = "") -> DubbingConfig:
         timing_mode=DubbingTimingMode(get(config, "dubbing.timing_mode", "natural")),
         natural_max_speed=float(get(config, "dubbing.natural_max_speed", 1.08)),
         max_start_delay_ms=int(get(config, "dubbing.max_start_delay_ms", 2000)),
+        voice_tempo=float(get(config, "dubbing.voice_tempo", 1.0)),
+        video_speed=float(get(config, "dubbing.video_speed", 1.0)),
+        subtitle_mode=str(get(config, "dubbing.subtitle_mode", "none")),
         max_speed=float(get(config, "dubbing.legacy_max_speed", 1.5)),
         fit_ratio_limit=float(get(config, "dubbing.fit_ratio_limit", 1.05)),
         borrow_gap_ms=int(get(config, "dubbing.borrow_gap_ms", 350)),
@@ -162,6 +165,7 @@ def run(args: Namespace, config: dict) -> int:
             callback=callback,
             **review_args,
         )
+        args.playback_subtitle_path = engine.last_subtitle_path
         if progress:
             progress.finish(f"Done -> {output_path}")
         if quiet and not getattr(args, "suppress_result", False):

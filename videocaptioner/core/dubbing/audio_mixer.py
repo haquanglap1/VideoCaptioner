@@ -272,7 +272,9 @@ def mix_audio_tracks(
     loudnorm = f"{_loudnorm_filter(voice_track_path)}," if normalize_voice else ""
     voice_chain = f"[1:a]{loudnorm}volume={vv:.3f}[voice]"
     # Limiter cuối để chống clipping khi giọng + nền cộng dồn.
-    limiter = "[mixed]alimiter=limit=0.95[aout]"
+    # AAC packet rounding can end a fraction of a frame early after retiming.
+    # Pad audio so -shortest is bounded by video, never by an encoded audio tail.
+    limiter = "[mixed]alimiter=limit=0.95,apad[aout]"
 
     if mix_mode == AudioMixMode.MUTE_ORIGINAL:
         # Thay hoàn toàn audio bằng voice track (đã chuẩn hóa + limiter).
