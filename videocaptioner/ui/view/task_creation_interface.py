@@ -21,6 +21,7 @@ from qfluentwidgets import (
     InfoBarPosition,
     LineEdit,
     ProgressBar,
+    PushButton,
     ToolButton,
 )
 
@@ -49,11 +50,13 @@ class TaskCreationInterface(QWidget):
     """
 
     finished = pyqtSignal(str)  # 该信号用于在任务创建完成后通知主窗口
+    playlist_files_ready = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.task = None
         self.log_window = None
+        self._playlist_dialog = None
 
         self.setObjectName("TaskCreationInterface")
         self.setAttribute(Qt.WA_StyledBackground, True)  # type: ignore
@@ -137,7 +140,26 @@ class TaskCreationInterface(QWidget):
         self.search_layout.addWidget(self.start_button)
         self.search_layout.setSpacing(10)
         self.main_layout.addLayout(self.search_layout)
-        self.main_layout.addSpacing(100)
+        self.playlist_button = PushButton(self.tr("Tải playlist /合集 / nhiều phần P"), self)
+        self.playlist_button.clicked.connect(self._open_playlist)
+        self.main_layout.addWidget(self.playlist_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.main_layout.addSpacing(50)
+
+    def _open_playlist(self):
+        from videocaptioner.ui.components.playlist_dialog import PlaylistDialog
+
+        if self._playlist_dialog is not None:
+            self._playlist_dialog.show()
+            self._playlist_dialog.raise_()
+            self._playlist_dialog.activateWindow()
+            self._playlist_dialog._closing = False
+            return
+        url = self.search_input.text().strip()
+        dialog = PlaylistDialog(url if self._is_valid_url(url) else "", str(cfg.work_dir.value),
+                                str(APPDATA_PATH / "cookies.txt"), self)
+        self._playlist_dialog = dialog
+        dialog.files_ready.connect(self.playlist_files_ready.emit)
+        dialog.show()
 
     def setup_status_layout(self):
         self.status_layout = QVBoxLayout()

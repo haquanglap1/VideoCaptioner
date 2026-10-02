@@ -117,7 +117,16 @@ class MainWindow(FluentWindow):
             self.openInVideoEditor
         )
         interface.dubbingInterfaceReady.connect(self._start_vieneu_runtime_thread)
+        interface.playlistFilesReady.connect(self._receive_playlist_files)
         return interface
+
+    def _receive_playlist_files(self, paths):
+        from videocaptioner.ui.view.batch_process_interface import BatchProcessInterface
+
+        interface = self.batchProcessInterface.load()
+        if isinstance(interface, BatchProcessInterface):
+            interface.add_files(paths, preserve_order=True)
+            self.switchTo(self.batchProcessInterface)
 
     def _start_vieneu_runtime_thread(self, dubbing_interface) -> None:
         if self._dubbing_interface is not None:

@@ -192,7 +192,7 @@ class BatchProcessInterface(QWidget):
         files = [url.toLocalFile() for url in event.mimeData().urls()]
         self.add_files(files)
 
-    def add_files(self, file_paths):
+    def add_files(self, file_paths, *, preserve_order=False):
         task_type = self._current_task_type()
 
         # 展开文件夹为其中的文件（最多 3 层深度）
@@ -234,7 +234,8 @@ class BatchProcessInterface(QWidget):
             return
 
         # 对有效文件按文件名排序
-        valid_files.sort(key=lambda x: os.path.basename(x).lower())
+        if not preserve_order:
+            valid_files.sort(key=lambda x: os.path.basename(x).lower())
 
         # 如果表格为空，自动检测文件类型并设置任务类型
         if self.task_table.rowCount() == 0 and self.task_type_combo.currentIndex() == 0:

@@ -11,6 +11,7 @@ from videocaptioner.core.llm.context import generate_task_id
 class HomeInterface(QWidget):
     openInVideoEditorRequested = pyqtSignal(str, str)
     dubbingInterfaceReady = pyqtSignal(object)
+    playlistFilesReady = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -75,6 +76,7 @@ class HomeInterface(QWidget):
 
             interface = TaskCreationInterface(self)
             interface.finished.connect(self.switch_to_transcription)
+            interface.playlist_files_ready.connect(self.playlistFilesReady.emit)
         elif route_key == "TranscriptionInterface":
             from videocaptioner.ui.view.transcription_interface import TranscriptionInterface
 

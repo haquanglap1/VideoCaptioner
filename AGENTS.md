@@ -190,6 +190,19 @@ Sau build phải báo riêng từng gate:
 Build thành công không đồng nghĩa ASR, translation, TTS, FFmpeg synthesis hoặc auto-update đã pass
 end-to-end. Không gọi task hoàn tất vượt quá bằng chứng thực tế.
 
+## Cập nhật bản chạy thật
+
+- Theo yêu cầu thường trực của user từ 2026-10-02, mỗi lần cập nhật chức năng/sửa lỗi app, sau khi
+  source và EXE đã qua các gate phù hợp, mặc định cập nhật bản chạy thật tại
+  `E:\Game\Translate video`. Không cần hỏi lại riêng quyền deploy cho mỗi lần cập nhật đã kiểm.
+- Kiểm tra live EXE/shortcut và process trước khi ghi; giữ tên EXE cũ nếu shortcut đang dùng tên đó.
+  Đối chiếu payload, backup các file cần thay trong audit của repo rồi chỉ cập nhật file app đã kiểm.
+  Giữ nguyên settings/API key/cookies/giọng riêng, media, cache, model/runtime và dữ liệu của user.
+- Không ghi đè khi app/job còn chạy hoặc gate chưa đạt; báo rõ trở ngại và giữ artifact/backup.
+  Sau cập nhật kiểm lại hash payload và dữ liệu được bảo vệ, báo gate chạy thật riêng với gate kế thừa.
+- Quyền deploy thường trực không tự mở rộng thành quyền xóa dữ liệu, commit/push hoặc tạo release;
+  các thao tác đó vẫn theo yêu cầu cụ thể của user.
+
 ## Quản lý artifact và trạng thái
 
 - Mọi file phát sinh do agent (tools, backup, snapshot, cache, temp, log và output) phải nằm

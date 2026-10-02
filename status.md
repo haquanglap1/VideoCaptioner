@@ -1,5 +1,63 @@
 # Project Status
 
+## 2026-10-02 (Deploy playlist, công bố và quy tắc cập nhật bản E)
+
+- User yêu cầu từ nay mỗi lần cập nhật app thì cập nhật luôn bản chạy thật
+  ở E sau các gate phù hợp. Ghi cùng quy tắc trong AGENTS.md/CLAUDE.md: xác
+  minh live installation, backup delta và giữ dữ liệu; quyền deploy này không
+  tự mở rộng thành quyền commit/push/xóa dữ liệu. Lượt này user yêu cầu rõ
+  commit/push và prompt next session.
+- Đối chiếu16 file playlist với closeout đều khớp SHA; giữ runtime code đã
+  kiểm. Bản E nhận đúng artifact playlist, giữ tên EXE cũ cho shortcut:
+ 31.685.941bytes,SHA256 `571d41b80f50ad650db45ac57c01ffef809e8936f2a5895409cfd1930ec30df4`.
+ 602 file app khớp; chỉ EXE/base_library.zip thay, backup hai file cũ được
+  kiểm trước khi ghi.1601 file dữ liệu/settings/cookies/voices/manifest giữ
+  nguyên SHA; không chép lại model hoặc thêm script/handoff vào thư mục E.
+- CLI `download --help` trực tiếp tại E exit0; kế thừa GUI20s/exit0 và frozen
+  list31/reuse1 từ artifact cùng SHA. Không mở GUI E để giữ byte settings;
+  whole-playlist31/native queue interaction vẫn chưa nghiệm thu đầy đủ.
+- Phạm vi công bố18 file:16 implementation/tests/docs và2 hướng dẫn bền vững.
+  Full2333 pass/5 skip/58 deselected, Ruff/Pyright/sync và real/frozen receipts
+  giữ nguyên; không chạy lại inference/build chỉ để publish. Hai stash giữ.
+- Audit `.tools/bilibili-playlist-publish-20261002/`; prompt bàn giao
+  `NEXT_SESSION.txt` trong audit, baseline/remote được ghi sau push.
+
+## 2026-10-02 (Tải playlist/合集 Bilibili theo selection)
+
+- Thêm cửa sổ **Tải playlist /合集 / nhiều phần P** tại Tạo tác vụ: đọc danh
+  sách, chọn tất cả/một số tập, chọn thư mục, tải tuần tự, dừng/tiếp tục và
+  trạng thái từng mục. Link video trong合集 được nhận diện từ page metadata;
+  có phạm vi riêng cho phần P, không nhầm合集 với anthology của một BV.
+- Core typed + worker QThread giữ UI responsive; mỗi entry tải một video,
+  lỗi không làm mất mục hoàn tất. File hoàn tất có receipt URL/size/SHA và
+  resume không mạng; giữ `.part` khi lỗi mạng/hủy. Cookies dùng bản sao tạm,
+  không bị yt-dlp ghi đè. Không tự ASR/dịch/TTS hoặc tải danh sách con ngoài
+  selection. Handoff Batch giữ thứ tự, chờ user chọn bắt đầu xử lý.
+- CLI opt-in `--playlist`, `--list-playlist`, `--playlist-items`,
+  `--playlist-scope`, `--cookies`; đường một-video cũ giữ no-playlist. Playlist
+  dùng library có sẵn, không thêm dependency/cài Deno hoặc thay config.
+- User link BV1addWBtEem →合集 UE5干货分享,31 mục. API ẩn danhHTTP412; page qua
+  cookies hiện có đọc đầy đủ. Tải thử mục1 bị ngắt sau2 retries, giữ raw/log/
+  `.part`; lượt resume hữu hạn từ46.884.991bytes hoàn tất20,657s. VideoAV1
+  3840×2160/244,200s + audioAAC244,204717s; lượt sau SHA-hit không tải lại,
+  cookies gốc giữ nguyên. Chưa tải cả31 video, không chạy ASR/dịch/TTS.
+- Full offline **2333 pass/5 skip/58 deselected**,exit0/203,35s. Focused45 pass;
+  sau sửa nền dark dialog22 pass, Pyright0/0, Ruff/sync pass. Suite overlap
+  không cộng. Yt-dlp thật qua HTTP loopback có byte parity và zero-network
+  resume; GUI worker thật đọc31 mục/kiểm cache, native screenshots đã đọc lại.
+- Audit `.tools/bilibili-playlist-20261002/`; contract/files/gates tại
+  `docs/dev/bilibili-playlist-2026-10.md`. Build/frozen receipt riêng; không
+  commit/push hoặc deploy E trong lượt này. Giữ hai stash và settings thật.
+- EXE riêng `dist/VideoCaptioner-20261002-playlist/`: buildexit0/175,015s,
+  6 WARNING/0 ERROR cấp build,31.685.941bytes,SHA256
+  `571d41b80f50ad650db45ac57c01ffef809e8936f2a5895409cfd1930ec30df4`.
+  9 runtime modules bytecode-match source,99.315 model/runtime files khớp
+  size inventory; không tải/cài model. GUI20s/exit0/zero owned children.
+- Frozen CLI help/list/reuse exit0; đọc31 mục thật,1 SHA-hit/0 tải media mới,
+  cookies giữ nguyên. Online **PARTIAL** vì chưa tải cả31 hoặc mọi loại URL;
+  GUI EXE chưa nghiệm thu thao tác queue trọn luồng.16 file source/docs/test
+  uncommitted, index sạch, bản E chưa thay; closeout ghi hash và hai stash.
+
 ## 2026-10-02 (Cập nhật bản chạy thật và công bố Auto timing)
 
 - User yêu cầu cập nhật EXE chạy thật rồi commit/push. Đối chiếu17 file source

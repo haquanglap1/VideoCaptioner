@@ -83,6 +83,8 @@ hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.
 # ONNX/OpenCV/NumPy stay in models/ocr/env, never inside the Qt executable.
 # PaddleOCR-VL recipe/worker are resource data; Torch stays in its explicit GPU runtime.
 hiddenimports += collect_submodules("videocaptioner")
+hiddenimports += ["videocaptioner.core.playlist", "videocaptioner.ui.thread.playlist_thread",
+                  "videocaptioner.ui.components.playlist_dialog"]
 hiddenimports += ["videocaptioner.core.dubbing.auto_timing",
                   "videocaptioner.ui.thread.auto_timing_thread",
                   "videocaptioner.ui.components.auto_timing_dialog"]

@@ -428,6 +428,11 @@ def _build_download_parser(subparsers) -> None:
     p.add_argument("url", help="Video URL")
     _add_common_options(p)
     p.add_argument("-o", "--output", metavar="DIR", help="Output directory (default: current directory)")
+    p.add_argument("--playlist", action="store_true", help="Download a playlist/Bilibili collection as separate videos")
+    p.add_argument("--list-playlist", action="store_true", help="List playlist entries as JSON without downloading")
+    p.add_argument("--playlist-items", default="", metavar="1,3-5", help="Select 1-based playlist entries")
+    p.add_argument("--playlist-scope", choices=("auto", "parts"), default="auto", help="Bilibili collection or video parts")
+    p.add_argument("--cookies", metavar="FILE", help="Cookies file (read-only snapshot; defaults to app cookies.txt)")
     p.set_defaults(func=_run_download)
 
 

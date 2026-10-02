@@ -1,5 +1,6 @@
 """download command — download online video via yt-dlp."""
 
+import json
 import shutil
 from argparse import Namespace
 from pathlib import Path
@@ -13,6 +14,12 @@ def run(args: Namespace, config: dict) -> int:
     url = args.url
     out_dir = getattr(args, "output", None) or "."
     quiet = getattr(args, "quiet", False)
+
+    if getattr(args, "playlist", False) or getattr(args, "list_playlist", False):
+        return _run_playlist(args)
+    if getattr(args, "playlist_items", "") or getattr(args, "cookies", None) or getattr(args, "playlist_scope", "auto") != "auto":
+        output.error("Playlist options require --playlist or --list-playlist")
+        return EXIT.USAGE_ERROR
 
     if not shutil.which("yt-dlp"):
         output.error("yt-dlp not found on PATH")
@@ -87,4 +94,36 @@ def run(args: Namespace, config: dict) -> int:
             progress.fail(str(e))
         else:
             output.error(str(e))
+        return EXIT.RUNTIME_ERROR
+
+
+def _run_playlist(args: Namespace) -> int:
+    from dataclasses import asdict
+
+    from videocaptioner.config import APPDATA_PATH
+    from videocaptioner.core.playlist import (
+        discover_playlist,
+        download_playlist,
+        friendly_error,
+        selection,
+    )
+
+    cookies = Path(args.cookies) if args.cookies else APPDATA_PATH / "cookies.txt"
+    if args.cookies and not cookies.is_file():
+        output.error("Cookies file does not exist")
+        return EXIT.USAGE_ERROR
+    try:
+        info = discover_playlist(args.url, cookies=cookies, scope=args.playlist_scope)
+        entries = selection(info, args.playlist_items)
+        if args.list_playlist:
+            print(json.dumps({"title": info.title, "kind": info.kind, "entries": [asdict(e) for e in entries]}, ensure_ascii=False))
+            return EXIT.SUCCESS
+        result = download_playlist(info, entries, Path(args.output or "."), cookies=cookies)
+        print(json.dumps(asdict(result), ensure_ascii=False))
+        return EXIT.SUCCESS if all(item.status in ("downloaded", "existing") for item in result.items) else EXIT.RUNTIME_ERROR
+    except KeyboardInterrupt:
+        output.error("Playlist download cancelled; completed files and partial downloads retained")
+        return EXIT.RUNTIME_ERROR
+    except Exception as exc:
+        output.error(friendly_error(exc))
         return EXIT.RUNTIME_ERROR
