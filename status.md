@@ -1,5 +1,49 @@
 # Project Status
 
+## 2026-10-02 (Cho phép công bố OmniVoice; bàn giao nâng cấp tiếp)
+
+- User yêu cầu commit/push đúng phần OmniVoice đã kiểm chứng và chuẩn bị prompt
+  cho session sau. Đối chiếu receipt26 file: toàn bộ code/assets vẫn khớp SHA;
+  chỉ tài liệu có thêm khảo sát BetterBox tại commit `1192005fdd15`.
+- Kế thừa các gate357/43/15 tests và kiểm worker riêng, GPU/EXE/cache/GUI đã ghi
+  bên dưới; không cộng dồn các suite overlap, không inference/build lại để publish.
+- Lộ trình tiếp theo: preset chất lượng và cache reference prompt giữa các job;
+  lời đọc tiếng Việt có preview; pitch/ngắt nghỉ theo timeline; tiện ích chép lời
+  mẫu, thu giọng và xuất audio/SRT. Khảo sát chưa phải phần đã triển khai.
+- Giữ hai stash, runtime/model/evidence và bản cài hiện tại. Quyền commit/push
+  lượt này không tự chuyển thành quyền deploy hoặc publish các nâng cấp về sau.
+  Receipt công bố nằm trong `.tools/omnivoice-publish-20261002/` sau khi thực hiện.
+
+## 2026-10-02 (OmniVoice: bốn giọng AI cố định và thư viện giọng riêng)
+
+- Baseline `master`/`origin/master` `a5394b9`, tree sạch. Xác nhận app người dùng
+  chạy từ bản cài trên ổ E; làm source/artifact riêng trong repo, không deploy.
+- `female`/`male` trước chỉ là voice-design instruction từng câu. Thêm Nữ 01/02,
+  Nam 01/02 với bốn reference AI gốc, WAV mono24k PCM16 dài4,90–5,16s. Alias cũ
+  chọn mẫu cố định; `auto` vẫn tự sinh từng câu và được ghi rõ trên UI.
+- Giữ cùng clone prompt trong job, bind audio/transcript/profile vào cache;
+  thêm danh sách/nghe mẫu/lưu giọng riêng, nhập TXT cùng tên, bỏ transcript cũ
+  khi đổi audio. Import bằng QThread/FFmpeg, bản sao3–10s không crop/đổi tốc độ;
+  CLI và GUI không để manual reference cũ ghi đè lựa chọn giọng cố định.
+- Regression voice trước sửa1 fail; suite liên quan357 pass, kiểm OmniVoice
+  sau chỉnh cuối43 pass. Ruff toàn app/tests pass, Pyright0/0, sync pass. Các
+  lượt có overlap, không cộng dồn; test worker stub cô lập logging của host.
+- Source GPU thật: hai câu mới/giọng, tổng8 WAV1x, worker/lease đóng sau mỗi job.
+  Frozen CLI trên video tổng hợp18s:2 WAV mới/0 cache rồi2 cache/0 TTS; hai MP4
+  giống SHA, không rewrite/tăng tốc/trễ/lỗi, không còn owned child processes.
+- Frozen đã bắt lỗi builder loại hai `.gitattributes` thuộc recipe OmniVoice.
+  Sửa allowlist đúng tên file; red1 fail → packaging15 pass; không đổi weights.
+  Bộ stage99.315 files/42.353.432.041 bytes, đầy đủ các component đang cài,
+  không có Community-1 riêng, không download/install dependency.
+- Build cuối `dist/VideoCaptioner-20261002-omni-voices`, exit0/182,59s,
+  6 WARNING/0 ERROR; EXE31.555.520 bytes, SHA256
+  `d7727ff563d71a85130cf5a506f7769cb111dd4e62c40a5ccc87c1454bf001cc`.
+  GUI mở20s, đóng exit0/không child; resources giọng khớp SHA. Giữ log lỗi ACL
+  build cũ, helper stdout GBK, CLI argument và thiếu metadata trong audit.
+- Chưa nghiệm thu nghe/chất giọng/GUI playback hoặc video thật dài, không mở
+  lại OCR/ASR/online gates. Không commit/push. Audit `.tools/omnivoice-voices-20261002/`;
+  [nghiên cứu BetterBox, file thay đổi và toàn bộ gate](docs/dev/omnivoice-voices-2026-10.md).
+
 ## 2026-10-01 (Whisper EXE: cập nhật bản cài và kiểm GUI hai lượt)
 
 - User cho phép cập nhật EXE đang dùng và commit/push. Commit sửa source

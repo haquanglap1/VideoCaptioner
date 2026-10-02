@@ -20,6 +20,12 @@ cache.disable_cache()
 
 
 @pytest.fixture(autouse=True)
+def isolated_omnivoice_library(monkeypatch, tmp_path):
+    """Voice imports and UI enumeration must not touch the developer's private voices."""
+    monkeypatch.setattr("videocaptioner.core.tts.omnivoice.voices.library_root", lambda: tmp_path / "voices")
+
+
+@pytest.fixture(autouse=True)
 def isolated_ocr_cache(monkeypatch, tmp_path):
     """OCR CLI/GUI tests must never populate or clear the developer's real cache."""
     monkeypatch.setattr("videocaptioner.core.ocr.cache.cache_directory", lambda: tmp_path / "ocr-cache")

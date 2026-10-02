@@ -38,7 +38,9 @@ def copy_payload(source: Path, target: Path, *, skip_site_packages: bool = False
             if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
                 raise ValueError("Runtime directory links must be materialized before packaging")
         for name in files:
-            if name in EXCLUDED or name.startswith(".") or name.endswith((".pyc", ".log", ".part")):
+            # OmniVoice's pinned recipe verifies model .gitattributes as well as weights.
+            if (name in EXCLUDED or (name.startswith(".") and name != ".gitattributes")
+                    or name.endswith((".pyc", ".log", ".part"))):
                 continue
             src = Path(parent) / name
             if not src.resolve().is_relative_to(source):

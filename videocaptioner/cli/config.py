@@ -281,6 +281,16 @@ def load_gui_settings(path: Optional[Path] = None) -> dict:
     provider = _get_nested(overrides, "dubbing.tts_provider")
     if isinstance(provider, str):
         _set_nested(overrides, "dubbing.tts_provider", provider.replace("_", "-"))
+    omni = raw.get("OmniVoice")
+    selected = omni.get("VoiceId") if isinstance(omni, dict) else None
+    if isinstance(selected, str) and selected:
+        if selected != "reference":
+            # The GUI retains manual inputs when a library voice is selected.
+            # They must not silently override that voice in a later CLI job.
+            overrides.get("omnivoice", {}).pop("reference_audio", None)
+            overrides.get("omnivoice", {}).pop("reference_text", None)
+        if provider == "omnivoice-local":
+            _set_nested(overrides, "dubbing.voice", selected)
     return overrides
 
 

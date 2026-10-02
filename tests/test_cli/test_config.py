@@ -24,6 +24,16 @@ def _write_gui_settings(path, **groups):
     return path
 
 
+@pytest.mark.parametrize("selected", ["vi-female-2", "saved-example", "auto", "reference"])
+def test_gui_omnivoice_choice_controls_whether_manual_reference_is_active(tmp_path, selected):
+    path = _write_gui_settings(tmp_path / "settings.json",
+        Dubbing={"TTSProvider": "omnivoice-local", "Voice": "female"},
+        OmniVoice={"VoiceId": selected, "ReferenceAudio": "old.wav", "ReferenceText": "old words"})
+    config = load_gui_settings(path)
+    assert config["dubbing"]["voice"] == selected
+    assert bool(config.get("omnivoice", {}).get("reference_audio")) == (selected == "reference")
+
+
 class TestDeepMerge:
     def test_flat_override(self):
         assert _deep_merge({"a": 1}, {"a": 2}) == {"a": 2}

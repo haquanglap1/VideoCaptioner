@@ -1,0 +1,56 @@
+{
+  "schema": "omnivoice-voices-v1",
+  "code_revision": "08be0b4ccbac3e13e374e86fbfead4b4cac343e2",
+  "model_revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+  "generation": {"date": "2026-10-02", "steps": 32, "speed": 1.0, "dtype": "float16", "sample_rate": 24000},
+  "voices": [
+    {
+      "voice_id": "vi-female-1",
+      "name": "Nữ 01",
+      "language": "vi",
+      "transcript": "Xin chào bạn. Hôm nay chúng ta cùng khám phá những câu chuyện thú vị trong cuộc sống.",
+      "file": "vi-female-1.wav",
+      "sha256": "2b10e5fd93595d884f90376d951e89b85335d08d14a45d96284c0218b847791f",
+      "instruct": "female",
+      "seed": 101,
+      "duration": 5.11,
+      "provenance": "OmniVoice synthetic voice"
+    },
+    {
+      "voice_id": "vi-female-2",
+      "name": "Nữ 02",
+      "language": "vi",
+      "transcript": "Xin chào bạn. Hôm nay chúng ta cùng khám phá những câu chuyện thú vị trong cuộc sống.",
+      "file": "vi-female-2.wav",
+      "sha256": "ed6cda75bfffdfdab6fd16fca16eac09abaa675b5b4ef8ecf5914e41246b1733",
+      "instruct": "female, low pitch",
+      "seed": 202,
+      "duration": 5.12,
+      "provenance": "OmniVoice synthetic voice"
+    },
+    {
+      "voice_id": "vi-male-1",
+      "name": "Nam 01",
+      "language": "vi",
+      "transcript": "Xin chào bạn. Hôm nay chúng ta cùng khám phá những câu chuyện thú vị trong cuộc sống.",
+      "file": "vi-male-1.wav",
+      "sha256": "370eda14cf5102d0975296463efbbbaf2b83f184d38234672cd35fe0e3100ca1",
+      "instruct": "male",
+      "seed": 303,
+      "duration": 5.16,
+      "provenance": "OmniVoice synthetic voice"
+    },
+    {
+      "voice_id": "vi-male-2",
+      "name": "Nam 02",
+      "language": "vi",
+      "transcript": "Xin chào bạn. Hôm nay chúng ta cùng khám phá những câu chuyện thú vị trong cuộc sống.",
+      "file": "vi-male-2.wav",
+      "sha256": "ca8c31faa4efcaff6e00d91f4ecff7a1da319801a5d2386cfc7ae797b5217d05",
+      "instruct": "male, low pitch",
+      "seed": 404,
+      "duration": 4.9,
+      "provenance": "OmniVoice synthetic voice"
+    }
+  ]
+}

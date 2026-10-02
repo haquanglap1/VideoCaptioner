@@ -417,11 +417,16 @@ class TaskFactory:
 
         from videocaptioner.core.tts.omnivoice.config import OmniVoiceOptions
 
+        omni_reference = cfg.omnivoice_voice_id.value in ("", "reference")
+        if tts_provider == TTSProviderEnum.OMNIVOICE_LOCAL and cfg.omnivoice_voice_id.value:
+            tts_config.voice = cfg.omnivoice_voice_id.value
+
         return DubbingConfig(
             tts_provider=tts_provider,
             tts_config=tts_config,
             omnivoice=OmniVoiceOptions(runtime=cfg.omnivoice_runtime.value,
-                reference_audio=cfg.omnivoice_reference_audio.value, reference_text=cfg.omnivoice_reference_text.value,
+                reference_audio=cfg.omnivoice_reference_audio.value if omni_reference else "",
+                reference_text=cfg.omnivoice_reference_text.value if omni_reference else "",
                 language=cfg.omnivoice_language.value) if tts_provider == TTSProviderEnum.OMNIVOICE_LOCAL else OmniVoiceOptions(),
             mix_mode=mix_mode,
             original_volume=cfg.dubbing_original_volume.value / 100.0,

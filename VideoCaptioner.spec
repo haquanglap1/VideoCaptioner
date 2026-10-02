@@ -49,7 +49,9 @@ hiddenimports += ["videocaptioner.core.dubbing.scheduling", "videocaptioner.core
                   "videocaptioner.ui.components.dubbing_review_dialog",
                   "videocaptioner.core.subtitle.synthesis"]
 hiddenimports += ["videocaptioner.core.tts.omnivoice.provider", "videocaptioner.core.tts.omnivoice.runtime",
+                  "videocaptioner.core.tts.omnivoice.voices", "videocaptioner.ui.thread.omnivoice_voice_thread",
                   "videocaptioner.ui.components.omnivoice_panel"]
+# resources/omnivoice/voices includes the fixed AI reference WAVs and catalog.
 # S5 recipes/current bridge are data, including reuse of compatible old runtimes.
 # GPU imports stay in the separate worker interpreter.
 hiddenimports += ["videocaptioner.core.asr.local.pipeline", "videocaptioner.core.asr.local.review",

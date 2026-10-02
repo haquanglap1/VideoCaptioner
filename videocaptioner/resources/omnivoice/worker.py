@@ -37,6 +37,7 @@ def main():
                 request = json.loads(line)
                 operation = request["operation"]
                 if operation == "configure":
+                    prompt = None
                     ref_audio, ref_text = request.get("reference_audio"), request.get("reference_text")
                     if bool(ref_audio) != bool(ref_text):
                         raise ValueError("Both reference audio and transcript are required")
@@ -52,11 +53,11 @@ def main():
                 if not destination.is_relative_to(scratch) or destination.suffix != ".wav":
                     raise ValueError("Output must be an owned WAV file")
                 voice = request.get("voice", "auto")
-                if voice not in ("auto", "male", "female"):
-                    raise ValueError("Select auto, male or female for OmniVoice")
+                if prompt is None and voice != "auto":
+                    raise ValueError("A fixed voice requires its reference audio and transcript")
                 torch.manual_seed(request["seed"])
                 audio = model.generate(text=request["text"], language=request["language"],
-                    voice_clone_prompt=prompt, instruct=voice if prompt is None and voice != "auto" else None,
+                    voice_clone_prompt=prompt,
                     speed=request["speed"], num_step=request["steps"])[0]
                 if not len(audio) or not np.isfinite(audio).all():
                     raise ValueError("OmniVoice produced invalid audio")

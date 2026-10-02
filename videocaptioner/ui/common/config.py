@@ -337,6 +337,7 @@ class Config(QConfig):
     omnivoice_reference_audio = ConfigItem("OmniVoice", "ReferenceAudio", "")
     omnivoice_reference_text = ConfigItem("OmniVoice", "ReferenceText", "")
     omnivoice_language = ConfigItem("OmniVoice", "Language", "vi")
+    omnivoice_voice_id = ConfigItem("OmniVoice", "VoiceId", "")
     dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
     dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
     dubbing_tts_api_base = ConfigItem(

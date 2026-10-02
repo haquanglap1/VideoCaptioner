@@ -138,6 +138,56 @@ def test_worker_imports_do_not_load_gpu_into_app():
     assert "omnivoice" not in sys.modules
 
 
+def test_female_uses_one_fixed_reference_for_every_group(fake_runtime):
+    service, _ = fake_runtime
+    config = DubbingConfig(tts_provider=TTSProviderEnum.OMNIVOICE_LOCAL,
+        tts_config=TTSConfig("", "", "", voice="female"))
+    requests = []
+    original = service.request
+
+    def record(payload):
+        requests.append(dict(payload))
+        return original(payload)
+
+    service.request = record
+    with service.acquire(config):
+        configured = next(item for item in requests if item["operation"] == "configure")
+        assert configured["reference_audio"], "female must pin a speaker, not redesign each sentence"
+        assert configured["reference_text"]
+        assert len(config.managed_tts_identity["reference_sha256"]) == 64
+
+
+def test_voice_changes_cache_identity_and_cannot_switch_mid_job(fake_runtime):
+    from videocaptioner.core.dubbing.review import synthesis_cache_key
+
+    service, _ = fake_runtime
+    keys = []
+    for voice in ("vi-female-1", "vi-female-2", "vi-female-1"):
+        config = DubbingConfig(tts_provider=TTSProviderEnum.OMNIVOICE_LOCAL,
+            tts_config=TTSConfig("", "", "", voice=voice))
+        with service.acquire(config):
+            keys.append(synthesis_cache_key("Same text", config))
+            with pytest.raises(ValueError, match="one selected voice"):
+                service.synthesize("words", "unused.wav", voice="vi-male-1")
+    assert keys[0] == keys[2] and keys[0] != keys[1]
+
+
+def test_reference_transcript_and_audio_both_invalidate_cache(tmp_path, fake_runtime):
+    from videocaptioner.core.dubbing.review import synthesis_cache_key
+
+    service, _ = fake_runtime
+    audio = tmp_path / "reference.wav"
+    keys = []
+    for content, transcript in ((b"audio1", "words1"), (b"audio1", "words2"), (b"audio2", "words2")):
+        audio.write_bytes(content)
+        config = DubbingConfig(tts_provider=TTSProviderEnum.OMNIVOICE_LOCAL,
+            tts_config=TTSConfig("", "", "", voice="auto"),
+            omnivoice=OmniVoiceOptions(reference_audio=str(audio), reference_text=transcript))
+        with service.acquire(config):
+            keys.append(synthesis_cache_key("Same text", config))
+    assert len(set(keys)) == 3
+
+
 def test_installed_model_integrity_is_checked(tmp_path, monkeypatch):
     python = tmp_path / "env" / ("Scripts/python.exe" if prepare.os.name == "nt" else "bin/python")
     python.parent.mkdir(parents=True)

@@ -218,7 +218,9 @@ class DubbingInterface(QWidget):
         settings_layout.addWidget(self.omnivoice_panel)
 
         # Voice
-        row2 = QHBoxLayout()
+        self.voice_row = QWidget(self.settings_widget)
+        row2 = QHBoxLayout(self.voice_row)
+        row2.setContentsMargins(0, 0, 0, 0)
         row2.addWidget(BodyLabel(self.tr("Giọng nói:")))
         self.voice_combo = EditableComboBox()
         self.voice_combo.setPlaceholderText(self.tr("Chọn hoặc nhập tên giọng nói..."))
@@ -235,7 +237,7 @@ class DubbingInterface(QWidget):
         row2.addWidget(self.voice_combo)
         row2.addWidget(self.fetch_voice_btn)
         row2.addStretch()
-        settings_layout.addLayout(row2)
+        settings_layout.addWidget(self.voice_row)
 
         # API Key
         row3 = QHBoxLayout()
@@ -1059,6 +1061,7 @@ class DubbingInterface(QWidget):
         self.vieneu_widget.setVisible(managed)
         omni = 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.TTS_PROVIDER_KEYS[index] == "omnivoice-local"
         self.omnivoice_panel.setVisible(omni)
+        self.voice_row.setVisible(not omni)
         for editor in (self.api_key_edit, self.api_base_edit, self.model_edit):
             editor.setEnabled(not (managed or omni))
         self.sample_rate_combo.setEnabled(not (managed or omni))
@@ -1518,7 +1521,9 @@ class DubbingInterface(QWidget):
     def _save_settings(self):
         """Lưu settings hiện tại vào persistent config."""
         self.omnivoice_panel.save()
-        cfg.set(cfg.dubbing_tts_voice, self.voice_combo.text())
+        voice = (self.omnivoice_panel.selected_voice()
+                 if cfg.dubbing_tts_provider.value == "omnivoice-local" else self.voice_combo.text())
+        cfg.set(cfg.dubbing_tts_voice, voice)
         cfg.set(cfg.dubbing_tts_api_key, self.api_key_edit.text())
         cfg.set(cfg.dubbing_tts_api_base, self.api_base_edit.text())
         cfg.set(cfg.dubbing_tts_model, self.model_edit.text())

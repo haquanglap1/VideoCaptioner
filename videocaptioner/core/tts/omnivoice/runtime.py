@@ -18,6 +18,7 @@ from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, StreamReader
 
 from .config import CODE_REVISION, MODEL_REVISION, POLICY, resources, runtime_root
 from .prepare import digest, verify
+from .voices import ALIASES, resolve_voice
 
 
 class OmniVoiceRuntime:
@@ -32,6 +33,7 @@ class OmniVoiceRuntime:
         self.check = lambda: None
         self.timeout = 300
         self.options = None
+        self.voice = ""
 
     def _receive(self):
         deadline = time.monotonic() + self.timeout
@@ -80,6 +82,9 @@ class OmniVoiceRuntime:
             if options.language.lower().startswith(("zh", "ja", "ko", "yue", "cmn", "chinese", "japanese", "korean")):
                 config.strip_cjk = False
             self.options, self.timeout = options, options.timeout
+            self.voice = settings.voice or "auto"
+            if self.voice == "reference" and not options.reference_audio:
+                raise ValueError("Chọn audio giọng mẫu và nhập đúng lời mẫu trước khi lồng tiếng.")
             self.check = lambda: callback(10, "OmniVoice: preparing / synthesizing") if callback else None
             root = runtime_root(options.runtime)
             verify(root, self.check)
@@ -88,14 +93,20 @@ class OmniVoiceRuntime:
             scratch = Path(self.scratch.name)
             reference = ""
             reference_hash = ""
-            if options.reference_audio:
-                path = Path(options.reference_audio)
+            reference_audio, reference_text = options.reference_audio, options.reference_text
+            profile = None if reference_audio else resolve_voice(self.voice)
+            if profile:
+                reference_audio, reference_text = str(profile.audio_path), profile.transcript
+            if reference_audio:
+                path = Path(reference_audio)
                 if not path.is_file() or path.stat().st_size > 50 * 1024 * 1024:
                     raise ValueError("Choose a reference audio file smaller than 50 MiB")
                 snapshot = scratch / ("reference" + path.suffix)
                 shutil.copyfile(path, snapshot)
                 reference = str(snapshot)
                 reference_hash = digest(snapshot, self.check)
+                if profile and reference_hash != profile.sha256:
+                    raise ValueError("OmniVoice reference changed while starting the job")
             self.lease.acquire()
             self.log = (scratch / "worker.log").open("wb")
             env = child_environment({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
@@ -112,13 +123,15 @@ class OmniVoiceRuntime:
             ready = self._receive()
             if ready.get("status") != "ready" or ready.get("sample_rate") != 24000:
                 raise RuntimeError("Unexpected OmniVoice worker format")
-            self.request({"operation": "configure", "reference_audio": reference, "reference_text": options.reference_text})
+            self.request({"operation": "configure", "reference_audio": reference, "reference_text": reference_text})
             settings.model, settings.sample_rate, settings.response_format = f"omnivoice:{MODEL_REVISION}", 24000, "wav"
             config.managed_tts_identity = {"provider": "omnivoice-local", "policy": POLICY,
                 "code_revision": CODE_REVISION, "model_revision": MODEL_REVISION, "steps": options.steps,
                 "bridge_sha256": digest(resources() / "worker.py"),
                 "seed": options.seed, "language": options.language, "reference_sha256": reference_hash,
-                "reference_text_sha256": hashlib.sha256(options.reference_text.encode()).hexdigest()}
+                "reference_text_sha256": hashlib.sha256(reference_text.encode()).hexdigest()}
+            if profile:
+                config.managed_tts_identity["voice_profile_id"] = profile.voice_id
             yield self
         finally:
             self.close()
@@ -133,6 +146,8 @@ class OmniVoiceRuntime:
         with self.request_lock:
             if self.scratch is None or self.options is None:
                 raise RuntimeError("OmniVoice is not acquired")
+            if ALIASES.get(voice, voice) != ALIASES.get(self.voice, self.voice):
+                raise ValueError("OmniVoice uses one selected voice per job; start a separate job to change voice.")
             temporary = Path(self.scratch.name) / (uuid4().hex + ".wav")
             try:
                 result = self.request({"operation": "synthesize", "text": text, "output": str(temporary),
@@ -169,6 +184,7 @@ class OmniVoiceRuntime:
             self.scratch = None
         self.lease.close()
         self.options = None
+        self.voice = ""
         self.check = lambda: None
 
 

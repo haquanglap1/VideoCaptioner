@@ -349,6 +349,14 @@ Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
 ## Lồng tiếng Natural
 
+**OmniVoice Local** có bốn giọng AI cố định: **Nữ 01, Nữ 02, Nam 01, Nam 02**,
+kèm nút **Nghe mẫu**. Chọn **Dùng / thêm audio giọng mẫu riêng**, nhập đúng lời
+trong audio sạch 3–10 giây và **Lưu giọng riêng** để thêm một người đọc vào danh
+sách. App giữ bản sao mẫu để dùng chung cho mọi câu và cho video tiếp theo.
+Lựa chọn `female`/`male` cũ dùng mẫu cố định tương ứng; `auto` vẫn có thể đổi
+giọng giữa các câu. CLI dùng `--tts-provider omnivoice-local --voice vi-female-1`.
+[Cách hoạt động, nghiên cứu BetterBox và kiểm chứng](docs/dev/omnivoice-voices-2026-10.md).
+
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.
 Natural là mặc định mới: engine group các cue liên tiếp, tính sức chứa đến cue kế tiếp với silence guard,
 tổng hợp ở tốc độ provider đã chọn, đo WAV thật rồi chỉ rewrite/re-synthesize group vượt ngưỡng. Nếu vẫn
