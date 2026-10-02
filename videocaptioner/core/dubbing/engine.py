@@ -105,6 +105,7 @@ class DubbingEngine:
         review: DubbingReview | None = None,
         display_subtitle_path: str | None = None,
         allow_config_change: bool = False,
+        timing_plan=None,
     ) -> str:
         """Thực hiện toàn bộ pipeline dubbing.
 
@@ -124,6 +125,11 @@ class DubbingEngine:
         """
         from videocaptioner.core.dubbing.dialogue import source_config
         config = source_config(subtitle_path, config)
+        if timing_plan is not None:
+            from .auto_timing import auto_config
+            selected = config.voice_tempo, config.video_speed
+            config = auto_config(config)
+            config.voice_tempo, config.video_speed = selected
         if callback is None:
             callback = _noop_progress
 
@@ -140,7 +146,14 @@ class DubbingEngine:
                 video_path, subtitle_path, output_path, config, callback,
                 review=review, display_subtitle_path=display_subtitle_path,
                 allow_config_change=allow_config_change,
+                timing_plan=timing_plan,
             )
+
+    def propose_timing(self, video_path: str, subtitle_path: str, config: DubbingConfig,
+                       review: DubbingReview, callback=None, **kwargs):
+        """Propose and validate playback using existing native WAVs only."""
+        from .auto_timing import propose
+        return propose(self, video_path, subtitle_path, config, review, callback or _noop_progress, **kwargs)
 
     def prepare_review(
         self, video_path: str, subtitle_path: str, config: DubbingConfig,

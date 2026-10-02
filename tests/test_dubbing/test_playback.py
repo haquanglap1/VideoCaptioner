@@ -168,7 +168,8 @@ def test_playback_default_caption_style_is_white_and_explicit_style_is_preserved
 
     captions = tmp_path / "playback.srt"
     captions.write_text("1\n00:00:00,000 --> 00:00:01,000\nTiếng Việt đầy đủ.\n", encoding="utf-8")
-    monkeypatch.setattr(playback, "run_media", lambda *a, **k: None)
+    commands = []
+    monkeypatch.setattr(playback, "run_media", lambda command, *a, **k: commands.append(command))
     monkeypatch.setattr("videocaptioner.core.utils.video_utils.check_cuda_available", lambda: False)
     monkeypatch.setattr("videocaptioner.core.utils.video_utils.auto_wrap_ass_file", lambda p: p)
     config = DubbingConfig(subtitle_mode="hard")
@@ -180,3 +181,8 @@ def test_playback_default_caption_style_is_white_and_explicit_style_is_preserved
     config.subtitle_style = custom
     playback.render_captions("source.mp4", tmp_path / "other.mp4", captions, config, lambda *a: None)
     assert custom in captions.with_suffix(".ass").read_text(encoding="utf-8")
+    for command in commands:
+        effect = command[command.index("-vf") + 1]
+        assert "BorderStyle=3" in effect and "OutlineColour=&H00000000" in effect
+        assert "BackColour=&H00000000" in effect and "Shadow=0" in effect
+        assert "Fontsize=" not in effect and "Alignment=" not in effect

@@ -1,5 +1,70 @@
 # Project Status
 
+## 2026-10-02 (Cập nhật bản chạy thật và công bố Auto timing)
+
+- User yêu cầu cập nhật EXE chạy thật rồi commit/push. Đối chiếu17 file source
+  với closeout: toàn bộ khớp SHA; chỉ bổ sung tài liệu triển khai trước publish.
+  Giữ nguyên các gate đã đo bên dưới, không chạy lại inference/build để công bố.
+- Bản E nhận đúng artifact Auto timing đã kiểm; vẫn dùng tên
+  `VideoCaptioner-20260920-e2e7863.exe` để shortcut cũ hoạt động. EXE31.659.456
+  bytes,SHA256 `e94a8daa2a838215e972ae3ffdc575b2fc15ef2cd11be3c1cad9a69fc6f0bf3b`.
+  602 file app khớp artifact; chỉ2 file thay (EXE và base_library.zip), cả hai
+  đã có backup delta được kiểm hash trước khi ghi.
+- 1601 file dữ liệu/cấu hình/shortcut/manifest giữ nguyên SHA. Không thay
+  settings/API key/cookies/giọng riêng hoặc chép lại model. CLI help trực tiếp
+  tại E exit0; GUI startup20s dùng receipt artifact cùng SHA. Không mở GUI E
+  trong probe để giữ nguyên byte settings; Auto GUI/nghe vẫn còn gate riêng.
+- Phạm vi công bố đúng17 file Auto timing/nền đen/tests/docs. Giữ hai stash,
+  raw evidence, native WAVs và artifact khác. Audit triển khai/publish tại
+  `.tools/auto-timing-publish-20261002/`; receipt commit/remote ghi riêng sau push.
+
+## 2026-10-02 (Auto timing có LLM hỗ trợ và phụ đề nền đen)
+
+- Triển khai MVP source từ baseline `15ae806`: solver tìm một tempo giọng
+  1,00–1,20× và video0,50–1,00× trên WAV nguồn1×, lưới0,01×, ưu tiên video
+  ít chậm rồi tempo thấp. Giữ lời/group/cue IDs, gap80ms, trễ mặc định2000ms.
+  LLM chỉ chọn candidate ID và phân tích nội dung; fallback solver rõ ràng.
+- Tab Lồng tiếng có Auto, switch LLM/giảm video, bảng Dự báo/Đã đo, Áp dụng /
+  Xem trước và chỉnh tay. Auto cache-only, thiếu WAV dừng không sinh giọng;
+  measured validation hữu hạn, binding source/config/text/native SHA trước
+  apply/export, preview/export dùng chung core. Plan Auto giữ RAM, review JSON
+  giữ contract cũ. Không đổi CLI flags/Editor schema hoặc tốc độ từng đoạn.
+- User bổ sung yêu cầu nền đen: burn-in playback ép hộp đen đặc/padding6,
+  giữ font/cỡ/màu chữ/vị trí đã chọn; không sửa style/settings nguồn. Soft
+  subtitle còn tùy player, dùng Ghi vào hình (nền đen) để giữ giao diện cố định.
+- Full offline cuối **2311 pass/5 skip/58 deselected**, exit0/210,54s.
+  Lượt trước teardown WinError145 tại Windows Temp; giữ log lỗi, suite đó
+  kiểm lại8 pass rồi full chạy với temp trong repo. Focused cuối55 pass;
+  Ruff toàn app/tests pass, Pyright0/0, translations sync. Không cộng suite overlap.
+- LLM thật đúng cấu hình app `gpt-5.6-terra`/300s: receipt khóa trước lượt,
+  **1 request hợp lệ**, chọn giọng1,18×/video0,76×. Đo retimed video385,164875s,
+  max delay1652ms,p951013ms,0 vượt hard boundary/cuối video,0 review.
+- Xuất lại nền đen từ video gốc, cùng lựa chọn:60 cache hit/0 TTS/0 rewrite,
+  8782frames,video385,182482s/audio385,149002s; đủ lời cuối, decode exit0.
+  Video48.284.805 bytes,SHA256 `fc70df433cae565ec0b502f8afeeb5bc869884ead3d7d224dc6c363be4eb9be3`.
+  `max_end_overrun_ms=2138` của report cũ là vượt cue end, không phải video end.
+- GUI source có real QThread regression và native Qt visual readback;
+  QThread/core thật với LLM tắt chọn1,20×/0,78×, đo max1718ms/p951112ms,
+  0 review/0 request LLM,23,61s; không phải video xuất hoàn chỉnh thứ hai.
+  chưa nghiệm thu thao tác/nghe bằng người dùng. Giữ nguyên7 cụm nguồn chưa
+  nghe độc lập; không nâng ASR/lexical gates. Không commit/push/deploy E.
+- Audit `.tools/auto-timing-20261002/`; contract/files/gates tại
+  `docs/dev/auto-timing-2026-10.md`. Build và frozen receipts ghi riêng sau
+  source gates; không lấy kết quả của playback-final cũ làm gate tính năng mới.
+- Artifact riêng `dist/VideoCaptioner-20261002-auto-timing/`: buildexit0/
+  203,563s,6 WARNING cấp build/0 ERROR; EXE31.659.456bytes,SHA256
+  `e94a8daa2a838215e972ae3ffdc575b2fc15ef2cd11be3c1cad9a69fc6f0bf3b`.
+  GUI20s/exit0/zero owned children;3 Auto modules có trong PYZ. Model payload
+  dùng lại stage đã có; không download/install. Auto GUI/LLM trong EXE vẫn
+  cần nghiệm thu riêng, không suy từ startup hoặc lựa chọn source.
+- Frozen CLI help/prepare/render exit0,60 cache hit/0 TTS/0 rewrite/0 review,
+  zero owned children. Video nền đen byte-identical với source (SHA trên),
+  99.315 model/runtime files size-verified. Giữ cache/corpus trong audit qua
+  runtime-view riêng, không vào artifact phát hành hoặc bản E.
+- Closeout: solver/LLM/FFmpeg **PASS trong phạm vi đã đo**; GUI/EXE **PARTIAL**
+  (chưa kiểm thao tác Auto/LLM GUI EXE đầy đủ); nghe **OPEN**.17 file allowlist
+  uncommitted, index sạch; hai stash, EXE/settings E và60 WAV gốc giữ nguyên.
+
 ## 2026-10-02 (Tempo giọng, video chậm và phụ đề playback trong app)
 
 - User duyệt video giọng1,20×/video0,77× có phụ đề và yêu cầu đưa các tùy chỉnh

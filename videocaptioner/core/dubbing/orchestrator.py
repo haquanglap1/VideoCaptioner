@@ -38,7 +38,7 @@ from videocaptioner.core.dubbing.rewrite_service import (
     TimingRewriteService,
     request_for_group,
 )
-from videocaptioner.core.dubbing.scheduling import sequential_slots
+from videocaptioner.core.dubbing.scheduling import measured_slot, sequential_slots
 from videocaptioner.core.tts import TTSData, TTSDataSeg
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import get_video_info
@@ -71,6 +71,7 @@ class DubbingOrchestrator:
         review: DubbingReview | None = None,
         display_subtitle_path: str | None = None,
         allow_config_change: bool = False,
+        timing_plan=None,
     ) -> str:
         self._validate(video_path, subtitle_path, config)
         if Path(output_path).resolve() in {Path(video_path).resolve(), Path(subtitle_path).resolve()}:
@@ -121,6 +122,9 @@ class DubbingOrchestrator:
             if config.tts_config:
                 config.tts_config.use_cache = config.cache_enabled
             self._resolve_cache_hits(plan.groups, config, cache)
+            if timing_plan is not None:
+                from .auto_timing import validate_application
+                validate_application(timing_plan, plan, config, callback)
             callback(18, "Đang tổng hợp giọng nói...")
             self._synthesize_missing_groups(
                 plan.groups, config, provider, cache, work_dir / "tts", callback
@@ -216,6 +220,10 @@ class DubbingOrchestrator:
                     render_captions(str(mixed_output), final_output, captions, config, callback)
             if not final_output.is_file():
                 raise RuntimeError("Dubbing không tạo artifact đầu ra")
+            if timing_plan is not None:
+                actual_duration = self._video_duration(str(final_output), ASRData([]), True)
+                if any((g.playback_end_time or 0) > actual_duration + .000001 for g in plan.groups):
+                    raise DubbingReviewRequired(reason="Video xuất thực tế không đủ chứa toàn bộ lời đọc.")
             callback(99, "Đang lưu video hoàn chỉnh...")
             # Staging can live on another volume; publish from the destination volume.
             with tempfile.NamedTemporaryFile(dir=Path(output_path).parent, suffix=Path(output_path).suffix,
@@ -708,12 +716,13 @@ class DubbingOrchestrator:
             # Recompute from the actual WAV, never from the ideal duration/speed ratio.
             group.fit_ratio = group.measured_duration / max(group.available_duration / config.video_speed, 0.001)
             source_start = group.start_time / config.video_speed
-            start = math.ceil(max(source_start, previous_end + gap) * 1000) / 1000
-            end = start + group.measured_duration
+            hard_end = min(video_duration, group.hard_end_time / config.video_speed) if group.hard_end_time is not None else video_duration
+            measured = measured_slot(source_start, previous_end, group.measured_duration,
+                                     gap=gap, hard_end=hard_end, max_delay=delay_limit)
+            start, end = measured.start, measured.end
             group.playback_start_time, group.playback_end_time = start, end
             group.start_delay = max(0.0, start - source_start)
-            hard_end = min(video_duration, group.hard_end_time / config.video_speed) if group.hard_end_time is not None else video_duration
-            if group.start_delay > delay_limit + 0.000001 or end > hard_end + 0.000001:
+            if measured.needs_review:
                 group.needs_review = True
                 group.fit_status = DubbingFitStatus.NEEDS_REVIEW
                 if group.start_delay > delay_limit + 0.000001:

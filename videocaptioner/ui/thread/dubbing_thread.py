@@ -82,6 +82,8 @@ class DubbingThread(QThread):
                 resume_args["review"] = self.task.dubbing_review
             if self.task.display_subtitle_path:
                 resume_args["display_subtitle_path"] = self.task.display_subtitle_path
+            if self.task.auto_timing_plan is not None:
+                resume_args["timing_plan"] = self.task.auto_timing_plan
             engine.dub(
                 video_path=video_path,
                 subtitle_path=subtitle_path,

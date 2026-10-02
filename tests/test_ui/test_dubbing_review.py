@@ -530,3 +530,68 @@ def test_json_cache_path_cannot_override_default_cache_selection(session, tmp_pa
     assert s.engine_roots[-1] == s.default_root[0]
     assert s.view._task.dubbing_report["summary"]["cache_hits"] == 0
     assert s.calls == ["A long sentence.", "Keep this.", "A long sentence.", "Keep this."]
+
+
+def test_auto_worker_apply_preview_manual_and_context(session, qapp, monkeypatch):
+    from dataclasses import replace
+
+    from videocaptioner.core.dubbing.auto_timing import AutoTimingPlan, evaluate
+    from videocaptioner.core.llm.context import get_task_context
+    from videocaptioner.ui.thread import auto_timing_thread
+
+    s = session
+    candidate = evaluate(list(s.task.dubbing_review.groups), 20, 1.2, .8, 2000, measured=True)
+    candidate = replace(candidate, review_groups=0)
+    proposal = AutoTimingPlan("a" * 64, (), candidate, "solver", "Fixture measured proposal", 2000, True)
+    calls, previews = [], []
+
+    class Engine:
+        def propose_timing(self, video, subtitle, config, review, callback, **kwargs):
+            assert QThread.currentThread() != qapp.thread()
+            assert get_task_context().stage == "auto-timing"
+            calls.append((video, subtitle, kwargs["use_llm"], kwargs["allow_video_slowdown"]))
+            callback(60, "fixture")
+            return proposal
+
+    monkeypatch.setattr(auto_timing_thread, "_engine_for_task", lambda _: Engine())
+    monkeypatch.setattr(dubbing_interface.AutoTimingDialog, "exec_", lambda self: self._preview() or QDialog.Accepted)
+    monkeypatch.setattr(s.view, "_preview_review", lambda: previews.append(s.view._task.auto_timing_plan))
+    assert calls == [] and s.view.auto_timing_btn.isEnabled()
+    s.view.auto_llm_switch.setChecked(False)
+    s.view.auto_timing_btn.click()
+    settle(s.view._auto_thread, qapp)
+    assert calls == [(str(s.video), str(s.subtitle), False, True)]
+    assert previews == [proposal] and s.view._task.auto_timing_plan == proposal
+    assert s.view.voice_tempo_spinbox.value() == 1.2 and s.view.video_speed_spinbox.value() == .8
+    assert not s.view._job_busy
+    s.view.video_speed_spinbox.setValue(.75)
+    changed = s.view._task_with_playback(s.view._task)
+    assert changed.auto_timing_plan is None
+
+
+def test_auto_dialog_rejects_prediction_and_worker_cancel(session, qapp, monkeypatch):
+    from dataclasses import replace
+
+    from videocaptioner.core.dubbing.auto_timing import AutoTimingPlan, solve
+    from videocaptioner.ui.components.auto_timing_dialog import AutoTimingDialog
+    from videocaptioner.ui.thread import auto_timing_thread
+
+    s = session
+    candidate = solve(list(s.task.dubbing_review.groups), 40)[0]
+    proposal = AutoTimingPlan("a" * 64, (candidate,), candidate, "solver", "Only prediction", 2000, True)
+    dialog = AutoTimingDialog(proposal)
+    assert not dialog.apply_button.isEnabled() and not dialog.preview_button.isEnabled()
+    assert dialog.table.item(0, 0).text() == "Dự báo"
+    dialog.close()
+    unavailable = replace(proposal, selected=None, candidates=())
+    dialog = AutoTimingDialog(unavailable)
+    assert not dialog.apply_button.isEnabled()
+    dialog.close()
+    monkeypatch.setattr(auto_timing_thread, "_engine_for_task", lambda _: pytest.fail("Cancelled before engine"))
+    worker = auto_timing_thread.AutoTimingThread(s.task, use_llm=True, allow_video_slowdown=True)
+    results = []
+    worker.cancelled.connect(lambda: results.append("cancelled"))
+    monkeypatch.setattr(worker, "isInterruptionRequested", lambda: True)
+    worker.start()
+    settle(worker, qapp)
+    assert results == ["cancelled"]

@@ -144,7 +144,10 @@ def render_captions(source: str, output: Path, subtitles: Path, config: DubbingC
                                                         video_width=1920, video_height=1080)
         rendered = Path(auto_wrap_ass_file(str(rendered)))
         escaped = rendered.as_posix().replace(":", r"\:").replace("'", r"\'")
-        command += ["-map", "0:v:0", "-map", "0:a?", "-vf", f"ass='{escaped}'", "-c:a", "copy"]
+        # Opaque black boxes cover source captions without changing the user's font/placement.
+        box = "BorderStyle=3,OutlineColour=&H00000000,BackColour=&H00000000,Outline=6,Shadow=0"
+        command += ["-map", "0:v:0", "-map", "0:a?", "-vf",
+                    f"subtitles='{escaped}':force_style='{box}'", "-c:a", "copy"]
         if check_cuda_available():
             command += ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-b:v", "0"]
         else:

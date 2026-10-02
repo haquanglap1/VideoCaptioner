@@ -349,6 +349,13 @@ Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
 ## Lồng tiếng Natural
 
+**Tự căn timing/tốc độ** dùng WAV nguồn đã có để tìm cặp tempo/video phù hợp;
+LLM đang cấu hình có thể chọn nhịp nghe trong các phương án solver. Xem bảng
+dự báo/đã đo rồi **Áp dụng / Xem trước**; thiếu key/lỗi LLM có fallback solver.
+Giữ đủ lời, giọng tối đa1,20×, gap80ms, trễ mặc định2s; không sinh lại giọng
+khi Auto. **Ghi vào hình (nền đen)** đặt hộp đen đặc phía sau chữ để dễ đọc trên
+video có sẵn phụ đề. [Contract, cách dùng và gate](docs/dev/auto-timing-2026-10.md).
+
 Tab Lồng tiếng có **Tempo giọng sau TTS** tối đa1,20× và **Tốc độ video**
 0,50–1,00×. Nút **Cân bằng 1,20× / 0,77×** dùng giọng nguồn1×, giữ đủ lời,
 gap80ms và trễ tối đa2s; tempo/video có thể chỉnh riêng. **Xem trước lời đã duyệt**

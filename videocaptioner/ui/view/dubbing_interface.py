@@ -41,17 +41,20 @@ from qfluentwidgets import (
 
 from videocaptioner.config import MODEL_PATH, WORK_PATH
 from videocaptioner.core.dubbing import presets
+from videocaptioner.core.dubbing.auto_timing import auto_config
 from videocaptioner.core.dubbing.review import DubbingReview
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.tts.vieneu.model_updater import VieNeuUpdateCheck
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.components.auto_timing_dialog import AutoTimingDialog
 from videocaptioner.ui.components.dubbing_review_dialog import DubbingReviewDialog
 from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
 from videocaptioner.ui.components.omnivoice_panel import OmniVoicePanel
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.audio_merge_thread import AudioMergeThread
+from videocaptioner.ui.thread.auto_timing_thread import AutoTimingThread
 from videocaptioner.ui.thread.dubbing_thread import DubbingReviewFileThread, DubbingThread
 from videocaptioner.ui.thread.vieneu_runtime_thread import VieNeuRuntimeThread
 
@@ -126,6 +129,8 @@ class DubbingInterface(QWidget):
         self._task: DubbingTask | None = None
         self._thread: DubbingThread | None = None
         self._review_thread: DubbingReviewFileThread | None = None
+        self._auto_thread: AutoTimingThread | None = None
+        self._auto_result = None
         self._job_busy = False
         self._closing = False
         self._job_result: DubbingTask | None = None
@@ -383,7 +388,7 @@ class DubbingInterface(QWidget):
         caption_row = QHBoxLayout()
         caption_row.addWidget(BodyLabel(self.tr("Phụ đề theo lời đọc:")))
         self.playback_subtitle_combo = ComboBox()
-        self.playback_subtitle_combo.addItems([self.tr("Không gắn"), self.tr("Gắn mềm"), self.tr("Ghi vào hình")])
+        self.playback_subtitle_combo.addItems([self.tr("Không gắn"), self.tr("Gắn mềm"), self.tr("Ghi vào hình (nền đen)")])
         self.playback_subtitle_combo.setCurrentIndex(["none", "soft", "hard"].index(cfg.dubbing_subtitle_mode.value))
         caption_row.addWidget(self.playback_subtitle_combo)
         caption_row.addWidget(self.balanced_preset_btn)
@@ -658,6 +663,20 @@ class DubbingInterface(QWidget):
             review_row.addWidget(button)
         review_row.addWidget(self.preview_btn)
         layout.addLayout(review_row)
+        auto_row = FlowLayout()
+        self.auto_timing_btn = PushButton(self.tr("Tự căn timing/tốc độ"))
+        self.auto_timing_btn.clicked.connect(self._start_auto_timing)
+        self.auto_llm_switch = SwitchButton()
+        self.auto_llm_switch.setOnText(self.tr("LLM hỗ trợ: Bật"))
+        self.auto_llm_switch.setOffText(self.tr("LLM hỗ trợ: Tắt"))
+        self.auto_llm_switch.setChecked(True)
+        self.auto_video_switch = SwitchButton()
+        self.auto_video_switch.setOnText(self.tr("Giảm tốc video: Cho phép"))
+        self.auto_video_switch.setOffText(self.tr("Giảm tốc video: Không"))
+        self.auto_video_switch.setChecked(True)
+        for control in (self.auto_timing_btn, self.auto_llm_switch, self.auto_video_switch):
+            auto_row.addWidget(control)
+        layout.addLayout(auto_row)
         self.review_label = BodyLabel(self.tr("Chưa có kế hoạch lời đọc."))
         self.review_label.setWordWrap(True)
         layout.addWidget(self.review_label)
@@ -955,6 +974,7 @@ class DubbingInterface(QWidget):
         self.save_review_btn.setEnabled(bool(review) and not self._job_busy)
         self.resume_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
         self.preview_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
+        self.auto_timing_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
         self.open_review_btn.setEnabled(not self._job_busy)
         self.import_review_btn.setEnabled(not self._job_busy)
         self.prepare_review_btn.setEnabled(not self._job_busy)
@@ -985,6 +1005,7 @@ class DubbingInterface(QWidget):
         dialog = DubbingReviewDialog(self._task.dubbing_review, self.window())
         if dialog.exec_() == QDialog.Accepted:
             self._task.dubbing_review = dialog.review
+            self._task.auto_timing_plan = None
             self._refresh_review_actions()
 
     def _resume_review(self):
@@ -1013,7 +1034,72 @@ class DubbingInterface(QWidget):
             updated.dubbing_config.max_start_delay_ms = self.start_delay_spinbox.value()
             updated.dubbing_config.subtitle_mode = ["none", "soft", "hard"][self.playback_subtitle_combo.currentIndex()]
             updated.dubbing_config.subtitle_style = TaskFactory.get_ass_style(cfg.subtitle_style_name.value)
+            proposal = updated.auto_timing_plan
+            if proposal and proposal.selected and (
+                updated.dubbing_config.voice_tempo, updated.dubbing_config.video_speed,
+                updated.dubbing_config.max_start_delay_ms
+            ) != (proposal.selected.voice_tempo, proposal.selected.video_speed, proposal.max_start_delay_ms):
+                updated.auto_timing_plan = None
         return updated
+
+    def _start_auto_timing(self):
+        if self._job_busy or not self._task or not self._task.dubbing_review or not self._task.dubbing_config:
+            return
+        task = deepcopy(self._task)
+        task.cache_root = self.cache_root_edit.text().strip() or None
+        task.dubbing_config.max_start_delay_ms = self.start_delay_spinbox.value()
+        # Read the current LLM selection without changing voice/settings or making a request on open.
+        current = TaskFactory.create_dubbing_config()
+        if current:
+            for name in ("rewrite_model", "rewrite_timeout", "rewrite_api_key", "rewrite_api_base"):
+                setattr(task.dubbing_config, name, getattr(current, name))
+        self._auto_result = None
+        self._job_error = ""
+        self._job_cancelled = False
+        self._set_job_busy(True)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.status_label.setVisible(True)
+        worker = AutoTimingThread(task, use_llm=self.auto_llm_switch.isChecked(),
+                                  allow_video_slowdown=self.auto_video_switch.isChecked(), parent=self)
+        self._auto_thread = worker
+        worker.result.connect(self._on_auto_result)
+        worker.error.connect(self._on_error)
+        worker.cancelled.connect(self._on_cancelled)
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_auto_stopped)
+        worker.start()
+
+    def _on_auto_result(self, proposal):
+        self._auto_result = proposal
+
+    def _on_auto_stopped(self):
+        worker = self._auto_thread
+        if worker is None:
+            return
+        worker.wait()
+        self._set_job_busy(False)
+        self.progress_bar.setVisible(False)
+        if self._closing:
+            return
+        if self._job_cancelled:
+            self.status_label.setText(self.tr("Đã hủy Auto; giữ lời và cấu hình trước đó."))
+        elif self._job_error:
+            self._show_job_error(self._job_error)
+        elif self._auto_result:
+            proposal = self._auto_result
+            dialog = AutoTimingDialog(proposal, self.window())
+            if dialog.exec_() == QDialog.Accepted and proposal.can_apply and proposal.selected:
+                self._task = worker.task
+                assert self._task.dubbing_config is not None
+                self._task.dubbing_config = auto_config(self._task.dubbing_config)
+                self._task.auto_timing_plan = proposal
+                self.voice_tempo_spinbox.setValue(proposal.selected.voice_tempo)
+                self.video_speed_spinbox.setValue(proposal.selected.video_speed)
+                self.start_delay_spinbox.setValue(proposal.max_start_delay_ms)
+                self.status_label.setText(self.tr("Đã áp dụng phương án đo thực. Chọn Xem trước hoặc Tiếp tục để xuất."))
+                if dialog.preview_requested:
+                    self._preview_review()
 
     def _preview_review(self):
         if self._job_busy or not self._task or not self._task.dubbing_review:
@@ -1258,7 +1344,7 @@ class DubbingInterface(QWidget):
     def request_stop(self) -> None:
         """Ask a running dubbing job to stop at its next progress report."""
         self.omnivoice_panel.stop()
-        for thread in (self._thread, self._review_thread, getattr(self, "_merge_thread", None)):
+        for thread in (self._thread, self._review_thread, self._auto_thread, getattr(self, "_merge_thread", None)):
             if thread is not None and thread.isRunning():
                 thread.requestInterruption()
         if self._job_busy:
@@ -1274,7 +1360,7 @@ class DubbingInterface(QWidget):
         "cannot schedule new futures" or a Qt abort instead of a clean stop.
         """
         stopped = True
-        for thread in (self._thread, self._review_thread, getattr(self, "_merge_thread", None)):
+        for thread in (self._thread, self._review_thread, self._auto_thread, getattr(self, "_merge_thread", None)):
             if thread is not None:
                 if thread.isRunning():
                     thread.requestInterruption()

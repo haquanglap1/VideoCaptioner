@@ -12,6 +12,25 @@ class ReadingSlot:
     speed: float
 
 
+@dataclass(frozen=True)
+class PlaybackSlot:
+    start: float
+    end: float
+    delay: float
+    overrun: float
+    needs_review: bool
+
+
+def measured_slot(source_start: float, previous_end: float, duration: float, *,
+                  gap: float, hard_end: float, max_delay: float) -> PlaybackSlot:
+    """Shared millisecond rounding and hard bounds for prediction and rendering."""
+    start = math.ceil(max(source_start, previous_end + gap) * 1000) / 1000
+    end = start + duration
+    delay = max(0.0, start - source_start)
+    return PlaybackSlot(start, end, delay, max(0.0, end - hard_end),
+                        delay > max_delay + .000001 or end > hard_end + .000001)
+
+
 def sequential_slots(groups: list[DubbingGroup], *, video_duration: float,
                      max_speed: float, max_delay: float, gap: float) -> list[ReadingSlot]:
     """Prefer native tempo, otherwise use one minimal shared acceleration.

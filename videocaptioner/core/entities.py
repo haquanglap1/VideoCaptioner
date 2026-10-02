@@ -10,6 +10,7 @@ from videocaptioner.core.asr.native_profiles import NativeASRConfig
 
 if TYPE_CHECKING:
     from videocaptioner.core.asr.asr_data import ASRData
+    from videocaptioner.core.dubbing.auto_timing import AutoTimingPlan
     from videocaptioner.core.dubbing.config import DubbingConfig
     from videocaptioner.core.dubbing.review import DubbingReview
     from videocaptioner.core.ocr.document import OcrDocument
@@ -879,6 +880,7 @@ class DubbingTask:
     cache_root: Optional[str] = None
     playback_subtitle_path: Optional[str] = None
     preview_only: bool = False
+    auto_timing_plan: Optional["AutoTimingPlan"] = None
 
 
 @dataclass
