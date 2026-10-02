@@ -141,3 +141,85 @@ quy tắc được ghi đồng bộ trong AGENTS.md/CLAUDE.md. Lượt công b�
 (16 file tính năng và2 hướng dẫn); runtime code không thay đổi so với artifact
 đã kiểm. Commit/remote/stashes và prompt next session nằm trong audit publish.
 Không nâng gate tải cả31 hoặc native GUI queue chỉ vì đã deploy.
+
+## Kiểm native GUI sau bàn giao
+
+Audit `.tools/playlist-native-queue-20261002/`, baseline `8ed4187`. Kiểm SHA
+và shortcut bản E trước probe. Dùng EXE cùng SHA nêu trên với AppData test
+riêng và runtime/model hiện có; không sửa code hoặc build/deploy lại.
+
+Thao tác trực tiếp qua native Windows UI đã kiểm đường từ **Tạo tác vụ** đến
+dialog: đọc đúng31 mục Bilibili, bỏ chọn toàn bộ, chặn tải khi selection rỗng,
+chọn riêng mục1 và trả `Đã có (SHA khớp)`. **Đưa video đã tải sang Xử lý hàng
+loạt** đưa đúng file vào Batch ở trạng thái chờ. Không tải thêm video Bilibili
+hoặc bắt đầu ASR/dịch/TTS.
+
+Nút **Dừng tải** được kiểm riêng bằng HTTP loopback có giới hạn tốc độ, phục
+vụ lại video audit đã có qua hai URL. Dừng giữ `.part`8.856.702bytes, mục2
+chưa được tải và handoff bị khóa. Đóng/mở dialog rồi **Tiếp tục** gửi
+`Range: bytes=8856702-`; cả hai file hoàn tất, size/SHA khớp nguồn. Tắt server
+rồi bấm tải lại vẫn nhận2 SHA-hit. Handoff nối hai file theo đúng thứ tự sau
+file Bilibili đã có trong Batch; cả3 hàng chờ, chưa xử lý.
+
+`validation.json` ghi gate và giới hạn; accessibility snapshots và
+`batch-final.png` giữ evidence native.1605 file được bảo vệ giữ nguyên SHA,
+bao gồm1601 file dữ liệu bản E trong inventory trước, EXE, settings source và
+media/receipt gốc. GUI test/server đã đóng, không còn owned process. Windows
+observer không trả exit code GUI trong lượt này; không gọi teardown exit0.
+
+Native EXE discovery/selection/reuse/handoff và loopback cancel/resume PASS
+trong phạm vi đã đo. Online vẫn **PARTIAL**: chưa kiểm nút Dừng giữa tải
+Bilibili qua Internet hoặc tải cả31, playlist riêng tư/quyền khác. Loopback
+không thay gate đó. Không chạy lại full suite/build hay thay trạng thái
+ASR/LLM/TTS/nghe/CI vì runtime code không đổi.
+
+## Khắc phục lỗi kết nối khi tải nhiều video
+
+User báo1 video hoàn tất/30 lỗi. Kiểm bản E đúng SHA đã phát hành và thư mục
+tải có1 media hoàn tất cùng30 `.part`. Lỗi thực tế gồm short read, server đóng
+kết nối và SSL EOF; không đủ bằng chứng để quy tất cả thành lỗi cookies/quyền.
+
+Tải media Bilibili dùng HTTP Range tối đa1 MiB/request và ngân sách10 retries
+hữu hạn của yt-dlp cho mỗi stream. Discovery vẫn giữ2 retries; các dịch vụ
+khác giữ policy cũ. Không giảm chất lượng, thay cookies/gateway, tắt kiểm tra
+certificate hoặc bỏ qua đoạn lỗi. File dở tiếp tục được giữ để resume; chỉ
+ghi `completed.json` sau khi media hoàn tất và SHA đã tính xong. Dừng vẫn
+được kiểm ở progress/network boundaries, không phải chờ dùng hết retries.
+
+Sửa riêng phân loại lỗi: chỉ nhận `HTTP Error 403/412/429` hoặc `HTTP 403/412/429`
+thật trong thông báo, không tìm các chữ số đó trong số byte tải dở. Trước sửa,
+hai regression short-read bị báo nhầm hạn chế truy cập; sau sửa giữ đúng lỗi.
+
+Audit `.tools/playlist-network-20261002/`: chỉ chia Range1 MiB với2 retries
+vẫn lỗi ở mục2; CDN dự phòng chưa hoàn tất khi chạm budget240s và đã hủy.
+Không đưa lựa chọn CDN dự phòng vào bản sửa. Policy cuối tải/merge mục2 từ
+bản sao `.part` thành công85,797s: AV1/3456×2160/210,200s và AAC/210,210658s,
+full decode exit0/stderr trống. Không sửa media/receipt/cookies/settings thật.
+
+Regression HTTP loopback thực sự ngắt kết nối bốn lần: phục hồi đủ byte/SHA,
+resume không mất prefix, lặp lại không mạng. Server lỗi liên tục dừng sau
+11 attempts; hủy dừng ở request đầu; dịch vụ khác vẫn dừng sau3 attempts.
+Focused32 pass, CLI160 pass (có overlap); Ruff pass với warning cache ACL,
+Pyright0 errors/0 warnings, translations in sync. Không chạy lại full suite
+vì thay đổi chỉ ở policy tải và phân loại lỗi; EXE/deploy có receipts riêng.
+
+EXE `dist/VideoCaptioner-20261002-playlist-network/`: build exit0/208,344s,
+6 WARNING/0 ERROR,31.686.057bytes,SHA256
+`34119fa4b767d3af57cbdfd883a95edd8f398cbcb409b4220c5c29a3a89ec590`.
+Core bytecode khớp source;99.315 file model/runtime khớp size manifest,
+inventory giữ nguyên, không tải/cài thêm. GUI startup20s/exit0, không còn
+owned children. Mục3 từ bản sao `.part` tải/merge bằng EXE exit0/177,312s;
+AV1/3456×2160/206,966625s + AAC/206,983084s, full decode exit0/stderr trống.
+Lặp lại exit0/1,484s, SHA-hit; cookies giữ nguyên. Không tự chạy toàn31.
+
+Sau khi bản E đã đóng và các gate trên đạt, đã backup delta rồi cập nhật
+602 file app khớp SHA; chỉ EXE và `base_library.zip` thay. Giữ tên EXE cũ
+cho shortcut;1601 file dữ liệu/settings/cookies/voices/manifest giữ nguyên,
+không chép lại model. CLI help trực tiếp tại E exit0; GUI/media gates kế thừa
+artifact cùng SHA. Backup ở audit `rollback-payload/`. Không commit/push.
+
+Mở lại app, đọc cùng danh sách và chọn cùng thư mục đích, rồi bấm **Tải /
+Tiếp tục các tập đã chọn**. Video hoàn tất được kiểm SHA, các `.part` dùng
+lại theo hỗ trợ Range của server. Hai lượt media mới chỉ ghi vào audit;
+file tải của user được giữ nguyên. Đây là cải thiện khả năng phục hồi kết
+nối, không bảo đảm server luôn sẵn sàng hoặc toàn31 đã được nghiệm thu.

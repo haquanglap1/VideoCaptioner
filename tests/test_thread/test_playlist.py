@@ -163,6 +163,101 @@ def test_cookie_file_is_snapshotted_and_never_written_back(tmp_path, monkeypatch
     assert original.read_text() == "fixture secret" and not snapshot.exists()
 
 
+@pytest.mark.parametrize("message", [
+    "ERROR: [download] Got error: 1403429 bytes read, 41200987 more expected",
+    "ERROR: [download] Got error: 403 bytes read, 429 more expected",
+    "ERROR: [download] Got error: [SSL: UNEXPECTED_EOF_WHILE_READING]",
+])
+def test_transport_errors_are_not_misreported_as_http_access_denied(message):
+    assert core.friendly_error(RuntimeError(message)) == message
+
+
+@pytest.mark.parametrize("status", [403, 412, 429])
+def test_http_access_errors_are_recognized(status):
+    assert "hạn chế truy cập" in core.friendly_error(RuntimeError(f"HTTP Error {status}: service error"))
+
+
+@pytest.mark.parametrize("bilibili,disconnects,expected,max_requests", [
+    (True, 4, "downloaded", None),
+    (False, 4, "failed", 3),
+    (True, 99, "failed", 11),
+    (True, 99, "cancelled", 1),
+])
+def test_bilibili_transport_recovers_repeated_short_reads_without_resetting_bytes(
+    tmp_path, monkeypatch, bilibili, disconnects, expected, max_requests,
+):
+    import hashlib
+    import http.server
+    import threading
+
+    # Transport-only bytes: the real yt-dlp downloader must resume after four disconnects.
+    payload = bytes(range(256)) * 10000
+    requests = []
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            value = self.headers.get("Range", "bytes=0-")
+            first, last = value.removeprefix("bytes=").split("-")
+            start, end = int(first), min(int(last) if last else len(payload) - 1, len(payload) - 1)
+            requests.append((start, end))
+            self.send_response(206)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(payload)}")
+            self.end_headers()
+            sent_end = min(end + 1, start + 65536) if len(requests) <= disconnects else end + 1
+            self.wfile.write(payload[start:sent_end])
+            self.wfile.flush()
+            self.close_connection = True
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{server.server_port}/fixture.mp4"
+    original = core._downloader
+
+    @contextmanager
+    def downloader(options, cookies, check):
+        with original(options, cookies, check) as ydl:
+            # Isolate website metadata from the transport being exercised.
+            monkeypatch.setattr(ydl, "extract_info", lambda *a, **k: {
+                "id": "fixture", "title": "Fixture", "url": url, "ext": "mp4"})
+            yield ydl
+
+    monkeypatch.setattr(core, "_downloader", downloader)
+    entry_url = "https://www.bilibili.com/video/BVfixture" if bilibili else url
+    entry = core.PlaylistEntry(1, "fixture", "Fixture", entry_url)
+    source = core.PlaylistInfo(entry_url, "Fixture", (entry,))
+    cancelled = [False]
+    def progress(item, percent):
+        if expected == "cancelled" and percent > 0:
+            cancelled[0] = True
+    try:
+        result = core.download_playlist(source, source.entries, tmp_path / "output",
+                                        cancelled=lambda: cancelled[0], progress=progress)
+        assert result.items[0].status == expected, result
+        if expected != "downloaded":
+            assert len(requests) == max_requests
+            assert result.cancelled == (expected == "cancelled")
+            assert list((tmp_path / "output").rglob("*.part"))
+            assert not list((tmp_path / "output").rglob("completed.json"))
+            return
+        assert Path(result.paths[0]).read_bytes() == payload
+        assert len(requests) > 4 and requests[1][0] > 0
+        assert all(end - start + 1 <= 1024 * 1024 for start, end in requests)
+        receipt = json.loads((Path(result.paths[0]).parent / "completed.json").read_text())
+        assert receipt["sha256"] == hashlib.sha256(payload).hexdigest()
+        before = len(requests)
+        assert core.download_playlist(source, source.entries, tmp_path / "output").items[0].status == "existing"
+        assert len(requests) == before
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(5)
+
+
 def test_real_ytdlp_local_media_completion_and_zero_network_resume(tmp_path):
     import functools
     import http.server

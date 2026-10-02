@@ -1,5 +1,57 @@
 # Project Status
 
+## 2026-10-02 (Phục hồi playlist khi kết nối media bị ngắt nhiều lần)
+
+- User thực tế tải1/31; bản E đúng SHA, có30 `.part`, lỗi short read/SSL EOF/
+  remote disconnect. Sửa policy tải media Bilibili: Range tối đa1 MiB và10
+  retries hữu hạn mỗi stream; giữ discovery2 retries, không đổi dịch vụ khác,
+  chất lượng hoặc cookies. Chỉ hoàn tất mới ghi receipt; cancel giữ file dở.
+- Sửa lỗi phân loại số byte chứa403/412/429 thành hạn chế truy cập; chỉ nhận
+  mã có tiền tố HTTP. Regression trước sửa tái hiện2 lỗi phân loại và1 lỗi
+  phục hồi transport; sau sửa focused32 pass. CLI160 pass (overlap), Ruff pass
+  với warning cache ACL, Pyright0/0, translations in sync; không full suite.
+- Audit `.tools/playlist-network-20261002/`. Candidate chỉ chia nhỏ request
+  vẫn fail; CDN backup chạm budget240s rồi hủy, không đưa vào production.
+  Policy cuối resume/merge bản sao file dở mục2 trong85,797s; videoAV1
+  3456×2160/210,200s + audioAAC/210,210658s, full decode exit0/stderr trống.
+  Media/receipt/cookies/settings user giữ nguyên. EXE và deploy kiểm riêng;
+  chưa tải toàn31 hoặc nâng gate ASR/dịch/TTS/nghe.
+- EXE mới build exit0/208,344s,6 WARNING/0 ERROR,31.686.057bytes,SHA256
+  `34119fa4b767d3af57cbdfd883a95edd8f398cbcb409b4220c5c29a3a89ec590`.
+  Core bytecode khớp source,99.315 model/runtime files khớp inventory size;
+  GUI20s/exit0/zero owned children. Frozen mục3 tải/merge exit0/177,312s,
+  AV1/3456×2160/206,966625s + AAC/206,983084s, full decode exit0/stderr trống;
+  lặp lại SHA-hit/exit0/1,484s. Cả hai lượt dùng bản sao file dở trong audit.
+- Bản E đã đóng trước deploy: backup delta,602 file app khớp SHA, thay2 file
+  EXE/base_library.zip, giữ tên EXE cho shortcut.1601 file dữ liệu được bảo vệ
+  không đổi SHA, không chép lại models; live CLI help exit0. GUI/media dùng
+  artifact cùng SHA đã kiểm. Giữ các file user để tiếp tục từ cùng thư mục;
+  chưa kiểm toàn31, không commit/push. Receipts tại audit trên.
+
+## 2026-10-02 (Kiểm native GUI playlist trên EXE đã phát hành)
+
+- Baseline `master = origin/master = 8ed4187`, working tree/index sạch, hai
+  stash giữ nguyên. Kiểm shortcut và SHA bản E khớp artifact playlist; không
+  có app/job đang chạy trước probe. Không đổi code app, build hoặc deploy lại.
+- Dùng EXE cùng SHA với AppData test riêng, thao tác qua native Windows UI:
+  mở từ Tạo tác vụ, đọc đúng31 mục Bilibili, bỏ chọn/chặn selection rỗng,
+  chọn riêng mục1 và nhận `Đã có (SHA khớp)`. Handoff đưa đúng file sang Batch
+  ở trạng thái chờ; không bắt đầu ASR/dịch/TTS hoặc tải thêm video Bilibili.
+- Kiểm Dừng/Tiếp tục riêng bằng HTTP loopback giới hạn tốc độ, phục vụ lại
+  media audit đã có qua hai URL. Dừng giữ `.part`8.856.702bytes, mục2 chưa tải,
+  handoff bị khóa. Đóng/mở dialog rồi tiếp tục gửi `Range: bytes=8856702-`;
+  hai file hoàn tất khớp SHA/size nguồn. Tắt server rồi tải lại vẫn có2 SHA-hit.
+  Handoff giữ thứ tự hai mục, nối sau file cũ trong Batch; cả3 hàng đều chờ.
+- Audit `.tools/playlist-native-queue-20261002/validation.json`, accessibility
+  snapshots, HTTP request metadata và `batch-final.png`. Kiểm trước/sau1605
+  file được bảo vệ không đổi SHA, gồm1601 file bản E từ inventory cũ, EXE,
+  settings source và media/receipt gốc. App test và server đã đóng, không còn
+  owned process; Windows observer không trả exit code GUI nên không ghi exit0.
+- Native EXE discovery/selection/reuse/handoff và loopback cancel/resume đã
+  PASS trong phạm vi trên. Online vẫn PARTIAL: chưa kiểm nút Dừng giữa tải
+  Bilibili thật hoặc tải toàn31; không nâng gate nghe/ASR/CI. Không chạy lại
+  full suite/build vì runtime code không đổi; chỉ cập nhật tài liệu validation.
+
 ## 2026-10-02 (Deploy playlist, công bố và quy tắc cập nhật bản E)
 
 - User yêu cầu từ nay mỗi lần cập nhật app thì cập nhật luôn bản chạy thật

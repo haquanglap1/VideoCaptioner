@@ -91,8 +91,9 @@ def selection(info: PlaylistInfo, expression: str = "") -> tuple[PlaylistEntry, 
 
 def friendly_error(error: Exception) -> str:
     text = str(error)
-    if any(code in text for code in ("412", "403", "429")):
-        return "Bilibili/dịch vụ đang hạn chế truy cập (403/412/429). Kiểm tra cookies/quyền truy cập hoặc thử lại sau."
+    status = re.search(r"\bHTTP(?:\s+Error)?\s+(403|412|429)\b", text, re.IGNORECASE)
+    if status:
+        return f"Bilibili/dịch vụ đang hạn chế truy cập (HTTP {status[1]}). Kiểm tra cookies/quyền truy cập hoặc thử lại sau."
     return text[:700]
 
 
@@ -260,6 +261,10 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
                "outtmpl": str(folder / "%(title).100s [%(id)s].%(ext)s"), "windowsfilenames": True,
                "progress_hooks": [hook], "postprocessor_hooks": [lambda _: check()],
                "post_hooks": [after_move], "merge_output_format": "mp4/mkv"}
+    if urlsplit(entry.url).hostname in ("bilibili.com", "www.bilibili.com"):
+        # Bilibili media connections can end early. Bound each Range request and
+        # retain yt-dlp's normal finite retry budget instead of the discovery cap.
+        options.update(http_chunk_size=1024 * 1024, retries=10)
     with _downloader(options, cookies, check) as ydl:
         info = ydl.extract_info(entry.url, download=False, process=False)
         check()
