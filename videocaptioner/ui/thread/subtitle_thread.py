@@ -56,6 +56,7 @@ def create_translator_from_config(
         model=config.llm_model or "",
         custom_prompt=custom_prompt,
         is_reflect=config.need_reflect,
+        dialogue=config.dialogue_translation,
         update_callback=callback,
         deeplx_endpoint=config.deeplx_endpoint or "",
         request_timeout=config.llm_request_timeout,
@@ -239,7 +240,17 @@ class SubtitleThread(QThread):
                 )
                 outputs.append(SubtitleOutput(str(save_srt_path), subtitle_config.subtitle_layout))
 
-            if not publish_subtitles(asr_data, outputs, self.cancelled, self._publication_lock):
+            dialogue = self.translator.dialogue_document if subtitle_config.dialogue_translation and self.translator is not None else None
+            if dialogue is not None:
+                from videocaptioner.core.translate.dialogue import available_dialogue_path
+                dialogue_path = available_dialogue_path(self.task.output_path or self.task.subtitle_path)
+                published = publish_subtitles(asr_data, outputs, self.cancelled, self._publication_lock,
+                                              dialogue=(dialogue, dialogue_path))
+                if published:
+                    self.task.dubbing_subtitle_path = str(dialogue_path)
+            else:
+                published = publish_subtitles(asr_data, outputs, self.cancelled, self._publication_lock)
+            if not published:
                 return
 
             self.progress.emit(100, self.tr("优化完成"))

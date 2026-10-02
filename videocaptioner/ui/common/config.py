@@ -134,6 +134,7 @@ class Config(QConfig):
         OptionsValidator(TranslatorServiceEnum),
         EnumSerializer(TranslatorServiceEnum),
     )
+    dialogue_translation = ConfigItem("Subtitle", "DialogueTranslation", False, BoolValidator())
     need_reflect_translate = ConfigItem(
         "Translate", "NeedReflectTranslate", False, BoolValidator()
     )
@@ -338,6 +339,11 @@ class Config(QConfig):
     omnivoice_reference_text = ConfigItem("OmniVoice", "ReferenceText", "")
     omnivoice_language = ConfigItem("OmniVoice", "Language", "vi")
     omnivoice_voice_id = ConfigItem("OmniVoice", "VoiceId", "")
+    omnivoice_quality_preset = OptionsConfigItem("OmniVoice", "QualityPreset", "balanced",
+        OptionsValidator(["balanced", "more-steps"]))
+    omnivoice_batch_size = OptionsConfigItem("OmniVoice", "BatchSize", 1, OptionsValidator([1, 2, 4]))
+    omnivoice_pitch = RangeConfigItem("OmniVoice", "PitchSemitones", 0.0, RangeValidator(-6, 6))
+    omnivoice_pause_ms = RangeConfigItem("OmniVoice", "PunctuationPauseMs", 0, RangeValidator(0, 500))
     dubbing_tts_voice = ConfigItem("Dubbing", "Voice", "alloy")
     dubbing_tts_api_key = ConfigItem("Dubbing", "TTSApiKey", "")
     dubbing_tts_api_base = ConfigItem(

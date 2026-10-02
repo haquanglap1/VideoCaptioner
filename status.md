@@ -1,5 +1,132 @@
 # Project Status
 
+## 2026-10-02 (Cập nhật trực tiếp bản chạy thật, giữ cấu hình và dọn bản trùng)
+
+- User yêu cầu commit/push, cập nhật trực tiếp thư mục chạy thật, giữ nguyên
+  cấu hình/API key và dọn bản trùng. Dùng nguyên artifact dialogue-final đã
+  kiểm; không rebuild, tải model hoặc cài dependency.
+- EXE bản chính giữ tên `VideoCaptioner-20260920-e2e7863.exe` để tương thích
+  lối mở cũ, nhưng nội dung nay là bản cuối31.623.841 bytes, SHA256
+  `df4a013f04124c721efc00a37e7580c493dee5c57fc889da883d219e40997e70`.
+  602 file app khớp artifact,12 file cần thay;99.315 model/runtime files đã
+  đối chiếu SHA và tái sử dụng nguyên vẹn. Manifest cũ có122 metadata entries
+  khác/stale, được giữ nguyên; dữ liệu model thực tế khớp bộ đã kiểm.
+- Hai settings JSON, cookies và1.297 file dữ liệu hiện có giữ nguyên;
+  cấu hình LLM/model/API key không đổi. Chuyển30 file của6 giọng riêng từ bản
+  phụ sang bản chính, catalog đọc lại10 giọng. Không ghi credential vào Git.
+- Xóa đúng thư mục `VideoCaptioner-20261002-omni-final` trùng:103.419 files,
+  42.884.572.839 bytes. Trước đó đã giữ126 file mutable và1 file ngoài inventory
+  trong audit; sửa đổi payload cũ có backup delta. Shortcut `VideoCaptioner.lnk`
+  trỏ về EXE bản chính; lối mở/hướng dẫn bản test cũ được lưu lại trong audit.
+- CLI help chạy trực tiếp từ EXE bản chính pass. GPU relocation sử dụng
+  runtime/model thật của bản chính, tạo WAV2,010s; GUI20s/exit0 và zero owned
+  children. Hai probe dùng AppData cô lập để không làm thay đổi cấu hình thật.
+  Đây không phải lượt chạy lại toàn workflow trên video user.
+- Quyền publish áp dụng đúng65 file implementation/docs đã đối chiếu receipts
+  của OmniVoice và dialogue. Kế thừa2278 pass/5 skip/58 deselected và183 tests
+  sau sửa CLI, Ruff/Pyright/sync, GPU/EXE từ phiên triển khai; không cộng suite
+  overlap hoặc nâng gate nghe/whole-video. Hai stash giữ nguyên.
+- Audit `.tools/dialogue-release-20261002/`; prompt bàn giao ở `NEXT_SESSION.txt`
+  trong audit và `NEXT_SESSION_ASR_LLM_OMNIVOICE.txt` cạnh EXE. Phiên sau dùng
+  MP4 gốc → ASR mới → dịch LLM theo cấu hình app → duyệt lời → OmniVoice;
+  không dùng SRT tiếng Việt cũ làm speech truth hoặc nguồn để dịch lại.
+
+## 2026-10-02 (Dịch lời thoại LLM, review và preset trễ2s)
+
+- User cho phép triển khai plan và chọn thử trễ bắt đầu tối đa2s. Thêm
+  **Dịch cho lời thoại (LLM)** bằng đúng model/base/key/timeout của app;
+  CLI `--dialogue`. Typed `.dialogue.json` giữ cue/source/timing và tách lời
+  đọc; context chỉ tham khảo, coverage/order/biên nhóm được kiểm trước cache.
+- GUI/CLI nhận kịch bản, dừng để duyệt trước TTS; preset chỉ áp cho job:
+  Natural/sequential1x/gap80ms/delay2000ms/no rewrite. Save/resume giữ lời đã
+  duyệt. Editor giữ mapping, đặt lời ở cue đầu nhóm và không phát lặp WAV.
+  Giữ schema editor-v1; thêm reader cho `dubbing-plan-dialogue-v1`.
+- Mẫu thực tế66/140 cue trong0–150s của video user: gateway được user chọn,
+  `gpt-5.6-terra`,6 responses158,203s →45 block. Cặp tiếp câu9,664s cho thấy
+  cap8s cắt chủ ngữ/vị ngữ; thêm ngoại lệ12s chỉ cho nguồn chưa kết câu.
+  Một response riêng16,125s xác nhận gộp đúng, bản cuối44 block. Không ASR lại.
+- A:22 WAV mới/198,91s lời/max delay47,919s. B cuối:43 hit +1 WAV mới sau
+  bản B đầu/207,83s lời/max delay60,849s. Cùng Nữ01/batch1/32-step/1x.
+  **Cả hai chưa đạt timing2s**, B chưa chứng minh tốt hơn về thời lượng.
+  Giữ đủ audio/review, không xuất video thiếu lời hoặc tăng tốc/rút lời.
+- Full offline cuối2278 pass/5 skip/58 deselected/exit0; không cộng với
+  các suite overlap. Full run đầu lộ fixture CLI dùng lại cache, đã cô lập.
+  Frozen bắt CLI từ chối JSON, sửa validator và thêm regression:183 CLI/
+  dialogue tests pass sau sửa. Ruff pass, Pyright0/0, translations sync.
+- Build mới `dist/VideoCaptioner-20261002-dialogue-final/`, exit0/169,562s,
+  6 WARNING/0 ERROR; EXE31.623.841 bytes, SHA256
+  `df4a013f04124c721efc00a37e7580c493dee5c57fc889da883d219e40997e70`.
+  Dùng lại models đã verify; không tải/cài. Frozen loopback dịch +preview pass,
+  prompt SHA khớp,99.315 model/runtime files khớp size. Frozen GPU video tổng
+  hợp10s:1 fresh rồi1 hit/0 TTS, output byte parity; GUI20s/exit0, zero owned
+  children. Giữ artifact/log failed đầu, không vá trực tiếp EXE.
+- Chưa nghiệm thu nghe, mọi thao tác native hoặc whole-video; P5 speed0.95/
+  pause nội bộ vẫn tùy chọn sau feedback. Không đổi bản đang dùng ở E,
+  private voices/keys/settings hoặc các gate OCR/ASR; không commit/push.
+  [Cách dùng và evidence](docs/dev/dialogue-translation-2026-10.md);
+  audit `.tools/dialogue-implementation-20261002/`.
+
+## 2026-10-02 (Giao bộ test OmniVoice sang E, giữ bản cũ)
+
+- User yêu cầu EXE và file cần thiết trong `E:\Game\Translate video` cùng
+  prompt phiên sau. Tạo bộ độc lập `VideoCaptioner-20261002-omni-final/`
+  dưới thư mục đó và shortcut `Test OmniVoice 20261002.lnk` ở gốc.
+- Dùng đúng artifact đã verify, không rebuild/download/install. Source36 file
+  vẫn khớp receipt trước giao.99.917 files/42.786.740.700 bytes được kiểm SHA256
+  sau copy; gồm601 file app và99.315 file model/runtime cùng manifest.
+  EXE vẫn SHA `63bd50187338e6e3940055341553b1a580c145f35a8cb35bf779891c09decb99`.
+- Settings test riêng: Nữ01/batch1/32-step FP16/1x, Natural/sequential,
+  natural_max_speed1/delay1000ms/no rewrite/pitch0/pause0; gap80ms giữ.
+  Không chuyển keys/cookies/settings cá nhân;117.036 mục bản cũ giữ metadata,
+  settings/cookies/EXE cũ giữ SHA. Không thay bản cũ ở gốc.
+- Relocation gate trên chính E:1 câu GPU fresh, model/worker đọc từ E mới,
+  audio2,640s/PCM khớp source/CLI exit0; GUI20s/exit0, zero owned children.
+  Profile được readback sau GUI. Không chạy lại benchmark hoặc ASR pilot.
+- Plan chưa nghiệm thu100%: microphone thật, native nghe/thu, video thật dài,
+  chất lượng toàn corpus vẫn mở; P3 chỉ có pause cuối nhóm, chưa có điều khiển
+  pause nội bộ nhóm. User ưu tiên batch1. Không commit/push, hai stash giữ.
+- Prompt: `.tools/omnivoice-delivery-20261002/NEXT_SESSION.txt`, đã chép thành
+  `E:\Game\Translate video\NEXT_SESSION_OMNIVOICE_20261002.txt`.
+  Hướng dẫn test và receipts trong cùng audit; xem `closeout.json`.
+
+## 2026-10-02 (OmniVoice P1 → P1b → P2–P4; batch1 được ưu tiên)
+
+- Từ `c6676cc`, triển khai tuần tự và kiểm từng phase. P1 thêm preset32/64-step
+  FP16 và prompt cache JSON theo SHA/revision; cold/warm prompt có WAV parity.
+  P1b gọi model bằng list thật, batch1/2/4, giới hạn độ dài, ánh xạ ID, kiểm WAV,
+  giữ kết quả từng câu, cancel/timeout thu hồi worker, OOM tách nhỏ có giới hạn.
+- GPU RTX5090, cùng8 câu mới sau warmup: batch1/2/4 lần lượt4,827/2,500/1,797s,
+  peak CUDA allocated2,002/2,102/2,300GiB. Có tách verify/load/prompt/warmup và
+  E2E, không dùng cache-hit để tuyên bố tăng tốc. User nghe và chọn **batch1 ổn
+  nhất**; giữ batch1 và32-step/FP16 mặc định, batch2/4 vẫn thử nghiệm.
+- P2 có prepare-review trước TTS, gợi ý lời Việt có preview/sửa, giữ nguyên
+  subtitle/source/timing. P3 pitch qua rubberband tempo1, nghỉ thêm chỉ ở cuối
+  nhóm theo dấu câu; default0 giữ byte/cache. Đo WAV sau xử lý qua scheduler cũ.
+- P4 có ASR lời mẫu bằng Faster-Whisper đã cài, transcript nháp phải duyệt;
+  recorder3–10s chỉ bật khi user bấm; text → WAV/SRT dùng đo WAV, sequential
+  slots/gap80ms và Editor ms/SRT adapter. Giữ lời lặp và audio khi lỗi/hủy,
+  không ghi đè output cũ. Chưa bật/test microphone thật.
+- Offline:446 tests liên quan pass; sau sửa cuối166 tests CLI/P4 pass;21 tests
+  TTS core pass. Không cộng suite overlap. Ruff/Pyright0/0, translations sync.
+  Giữ logs fixture QApplication lifetime và hai lỗi gọi test sai path đã sửa.
+- GPU/source/EXE mỗi phase pass trong scope corpus tổng hợp đã khóa; không
+  tăng tốc/rút lời/truncate/kéo video. P1b frozen8 fresh →8 hit/0 TTS, đúng
+  cue/timeline; P2/P3 frozen prepare →2 fresh →2 hit. Cuối ASR local trả draft,
+  text/audio2 cue/5570ms/gap80ms/SRT≤1ms, WAV source/frozen giống bytes.
+- Kiểm thực tế bắt hai lỗi P4 trước inference: native FW/source truyền absolute
+  model thay vì tên model + model_dir; CLI frozen sai chữ ký dispatcher. Đã sửa,
+  thêm test qua main(), giữ artifact/log lỗi, build tên mới.
+- Bản cuối `dist/VideoCaptioner-20261002-omni-final/`: build exit0/155,625s,
+  6 WARNING/0 ERROR; EXE31.597.917 bytes, SHA256
+  `63bd50187338e6e3940055341553b1a580c145f35a8cb35bf779891c09decb99`.
+  Dùng lại stage99.315 files model/runtime, không tải/cài mới. GUI20s/exit0,
+  zero owned children sau workflows và đóng app.
+- Chưa nghiệm thu microphone hardware, native thao tác nghe/thu, video thật dài
+  hoặc chất lượng đọc mọi câu/pitch/64-step. ASR reference là tiện ích riêng,
+  không thay các gate OCR/ASR cũ. Không deploy E, commit/push; hai stash giữ.
+  [Contract, số đo, file và giới hạn](docs/dev/omnivoice-batching-2026-10.md);
+  audit `.tools/omnivoice-upgrade-20261002/`.
+
 ## 2026-10-02 (Cho phép công bố OmniVoice; bàn giao nâng cấp tiếp)
 
 - User yêu cầu commit/push đúng phần OmniVoice đã kiểm chứng và chuẩn bị prompt

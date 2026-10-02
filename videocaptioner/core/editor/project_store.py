@@ -68,7 +68,9 @@ class EditorProjectStore:
         height: int = 0,
         fps: float = 0.0,
     ) -> EditorProject:
-        asr_data = ASRData.from_subtitle_file(subtitle_path)
+        from videocaptioner.core.dubbing.dialogue import load_dialogue
+        dialogue = load_dialogue(subtitle_path)
+        asr_data = dialogue.subtitle_data() if dialogue else ASRData.from_subtitle_file(subtitle_path)
         cues = cues_from_asr(asr_data)
         inferred_duration = max((cue.end_ms for cue in cues), default=0)
         project = EditorProject.empty(video_path, max(int(duration_ms), inferred_duration))
@@ -77,6 +79,9 @@ class EditorProjectStore:
         project.height = int(height)
         project.fps = float(fps)
         project.cues = cues
+        if dialogue is not None:
+            from .dialogue import attach_dialogue
+            attach_dialogue(project, dialogue)
         project.audio_events = list(asr_data.events)
         project.conversation_context = asr_data.conversation_context
         project.audio_identity = asr_data.audio_identity

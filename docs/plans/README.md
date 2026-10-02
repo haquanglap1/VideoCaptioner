@@ -5,6 +5,16 @@ Rà soát ngày **2026-09-29**. Dùng trang này để chọn plan đang áp d�
 Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó;
 không suy validation offline thành nghiệm thu chất lượng nhận dạng.
 
+## 2026-10-02 — kế hoạch dịch lời thoại cho OmniVoice
+
+- **Đã triển khai, nghiệm thu còn mở**: thêm cách dịch lời thoại, chuẩn bị câu đọc liền mạch sau dịch,
+  giữ mapping với phụ đề nguồn và dùng sequential timing có giới hạn trễ.
+  User ưu tiên lời nói tự nhiên, cho phép chậm hơn thoại gốc một chút.
+- [Kế hoạch, khảo sát code, contract và các phase](omnivoice-dialogue-translation-2026-10.md).
+  User đã chọn thử trễ tối đa2s; preset áp riêng cho job kịch bản, settings cũ giữ.
+  A/B trên đoạn150s cần khoảng199s/208s lời đọc, cả hai chưa đạt timing2s.
+  [Triển khai và kiểm chứng](../dev/dialogue-translation-2026-10.md).
+
 ## Tiến triển mới nhất — TTS tuần tự giữ đủ lời ở 1×
 
 - Đã kiểm/sửa đường Natural sequential hiện có với speed/cap 1×, trễ 1000 ms,

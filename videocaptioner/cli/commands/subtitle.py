@@ -90,6 +90,10 @@ def run(args: Namespace, config: dict) -> int:
             return EXIT.USAGE_ERROR
     target_lang_code = get(config, "translate.target_language", "zh-Hans")
     need_reflect = get(config, "translate.reflect", False)
+    dialogue_enabled = bool(get(config, "translate.dialogue", False) or getattr(args, "dialogue", False))
+    if dialogue_enabled and (not need_translate or translator_service != "llm"):
+        output.error("--dialogue requires translation with the LLM translator.")
+        return EXIT.USAGE_ERROR
     if need_reflect and translator_service in ("bing", "google"):
         output.warn("--reflect only works with LLM translator, ignored for " + translator_service)
         need_reflect = False
@@ -263,6 +267,7 @@ def run(args: Namespace, config: dict) -> int:
                 model=llm_model,
                 custom_prompt=custom_prompt,
                 is_reflect=need_reflect,
+                dialogue=dialogue_enabled,
                 update_callback=callback,
                 request_timeout=request_timeout,
                 credentials=LLMCredentials(llm_api_key, llm_api_base) if needs_llm else None,
@@ -282,6 +287,16 @@ def run(args: Namespace, config: dict) -> int:
             )
         asr_data.save(save_path=output_path, layout=layout)
         args.asr_data = asr_data
+        if dialogue_enabled:
+            from videocaptioner.core.translate.dialogue import available_dialogue_path
+            document = translator.dialogue_document
+            if document is None:
+                raise RuntimeError("Dialogue translation did not produce a complete speech plan.")
+            dialogue_path = available_dialogue_path(output_path)
+            document.save(dialogue_path)
+            args.dialogue_path = str(dialogue_path)
+            if not quiet:
+                output.info(f"Dialogue wording for review -> {dialogue_path}")
 
         if progress:
             n = len(asr_data.segments)

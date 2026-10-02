@@ -16,6 +16,7 @@ from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
 from videocaptioner.core.ocr.identity import VisualSourceIdentity
 from videocaptioner.core.ocr.metadata import OcrMetadata
 from videocaptioner.core.translate.conversation import ConversationContext
+from videocaptioner.core.translate.dialogue import DialogueDocument
 
 from .subtitle_style import EditorSubtitleStyle
 
@@ -268,6 +269,7 @@ class EditorProject:
     audio_identity: AudioIdentity | None = None
     pending_diarization: bool = False
     visual_source: VisualSourceIdentity | None = None
+    dialogue_document: DialogueDocument | None = None
 
     def __post_init__(self) -> None:
         if type(self.pending_diarization) is not bool:
@@ -381,6 +383,7 @@ class EditorProject:
             "conversation_context": self.conversation_context.to_dict(),
             **({"audio_identity": self.audio_identity.to_dict()} if self.audio_identity else {}),
             **({"visual_source": self.visual_source.to_dict()} if self.visual_source else {}),
+            **({"dialogue_document": self.dialogue_document.to_dict()} if self.dialogue_document else {}),
             **({"pending_diarization": True} if self.pending_diarization else {}),
             "tracks": [track.to_dict() for track in self.tracks],
             "layers": [layer.to_dict() for layer in self.layers],
@@ -412,6 +415,7 @@ class EditorProject:
             conversation_context=ConversationContext.from_dict(data.get("conversation_context")),
             audio_identity=AudioIdentity.from_dict(data.get("audio_identity")),
             visual_source=VisualSourceIdentity.from_dict(data.get("visual_source")),
+            dialogue_document=DialogueDocument.from_dict(data["dialogue_document"]) if data.get("dialogue_document") else None,
             pending_diarization=data.get("pending_diarization", False),
             tracks=[EditorTrack.from_dict(item) for item in data.get("tracks", [])],
             layers=[EditorLayer.from_dict(item) for item in data.get("layers", [])],

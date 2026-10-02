@@ -22,6 +22,9 @@ def regenerate_selected_voice(
     callback: Callable[[int, str], None] | None = None,
 ):
     dubbing_engine = engine or DubbingEngine()
+    from .dialogue import dialogue_from_project
+    dialogue = dialogue_from_project(project)
+    dialogue_options = {"dialogue_document": dialogue} if dialogue is not None else {}
     groups = dubbing_engine.regenerate_groups(
         project_to_dubbing_cues(project),
         set(cue_ids),
@@ -29,6 +32,7 @@ def regenerate_selected_voice(
         config=config,
         output_dir=output_dir,
         callback=callback,
+        **dialogue_options,
     )
     update_cues_from_groups(project, groups)
     return groups

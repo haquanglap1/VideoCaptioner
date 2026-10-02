@@ -75,6 +75,10 @@ GUI_KEY_MAP: Dict[str, str] = {
     "OmniVoice.ReferenceAudio": "omnivoice.reference_audio",
     "OmniVoice.ReferenceText": "omnivoice.reference_text",
     "OmniVoice.Language": "omnivoice.language",
+    "OmniVoice.QualityPreset": "omnivoice.quality_preset",
+    "OmniVoice.BatchSize": "omnivoice.batch_size",
+    "OmniVoice.PitchSemitones": "omnivoice.pitch_semitones",
+    "OmniVoice.PunctuationPauseMs": "omnivoice.punctuation_pause_ms",
     "Dubbing.TTSApiKey": "dubbing.tts_api_key",
     "Dubbing.TTSApiBase": "dubbing.tts_api_base",
     "Dubbing.TTSModel": "dubbing.tts_model",
@@ -139,6 +143,7 @@ DEFAULTS: Dict[str, Any] = {
         "service": "llm",
         "target_language": "zh-Hans",
         "reflect": False,
+        "dialogue": False,
         "deeplx_endpoint": "",
     },
     "synthesize": {

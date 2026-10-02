@@ -11,6 +11,7 @@ Provides functions to:
 
 import functools
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -533,6 +534,11 @@ def _render_voice_track(
         if dur <= 0:
             continue
         start = max(0.0, float(seg.get("start_time", 0.0)))
+        offset = float(seg.get("audio_offset", 0.0))
+        if not math.isfinite(offset) or offset < 0 or offset >= dur:
+            return False
+        dur -= offset
+        seek_filter = f"atrim=start={offset:.6f},asetpts=PTS-STARTPTS," if offset else ""
         delay_ms = int(round(start * 1000))
         fade = max(0.001, min(_EDGE_FADE_S, dur / 2.0))
         out_start = max(0.0, dur - fade)
@@ -541,6 +547,7 @@ def _render_voice_track(
         filters.append(
             f"[{inp_idx}:a]aresample={sample_rate},"
             f"aformat=sample_fmts=s16:channel_layouts=mono,"
+            f"{seek_filter}"
             f"afade=t=in:st=0:d={fade:.4f},"
             f"afade=t=out:st={out_start:.4f}:d={fade:.4f},"
             f"adelay={delay_ms}:all=1[s{inp_idx}]"

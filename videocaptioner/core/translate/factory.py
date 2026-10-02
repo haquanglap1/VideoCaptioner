@@ -30,6 +30,7 @@ class TranslatorFactory:
         deeplx_endpoint: str = "",
         request_timeout: int = 120,
         credentials: Optional[LLMCredentials] = None,
+        dialogue: bool = False,
     ) -> BaseTranslator:
         """Create a translator instance."""
         try:
@@ -37,8 +38,12 @@ class TranslatorFactory:
             if target_language is None:
                 target_language = TargetLanguage.SIMPLIFIED_CHINESE
 
+            if dialogue and translator_type != TranslatorType.OPENAI:
+                raise ValueError("Dịch lời thoại cần translator LLM.")
             if translator_type == TranslatorType.OPENAI:
-                return LLMTranslator(
+                from videocaptioner.core.translate.dialogue_translator import DialogueTranslator
+                translator_class = DialogueTranslator if dialogue else LLMTranslator
+                return translator_class(
                     thread_num=thread_num,
                     batch_num=batch_num,
                     target_language=target_language,

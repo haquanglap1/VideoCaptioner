@@ -50,6 +50,10 @@ hiddenimports += ["videocaptioner.core.dubbing.scheduling", "videocaptioner.core
                   "videocaptioner.core.subtitle.synthesis"]
 hiddenimports += ["videocaptioner.core.tts.omnivoice.provider", "videocaptioner.core.tts.omnivoice.runtime",
                   "videocaptioner.core.tts.omnivoice.voices", "videocaptioner.ui.thread.omnivoice_voice_thread",
+                  "videocaptioner.core.tts.omnivoice.prompt_cache", "videocaptioner.core.tts.omnivoice.effects",
+                  "videocaptioner.core.tts.omnivoice.reference", "videocaptioner.core.tts.omnivoice.text_audio",
+                  "videocaptioner.core.dubbing.vietnamese_text", "videocaptioner.cli.commands.omnivoice",
+                  "videocaptioner.ui.thread.omnivoice_tools_thread", "videocaptioner.ui.components.omnivoice_recorder",
                   "videocaptioner.ui.components.omnivoice_panel"]
 # resources/omnivoice/voices includes the fixed AI reference WAVs and catalog.
 # S5 recipes/current bridge are data, including reuse of compatible old runtimes.
@@ -79,6 +83,9 @@ hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.
 # ONNX/OpenCV/NumPy stay in models/ocr/env, never inside the Qt executable.
 # PaddleOCR-VL recipe/worker are resource data; Torch stays in its explicit GPU runtime.
 hiddenimports += collect_submodules("videocaptioner")
+# Spoken dialogue uses a separate source-bound JSON contract and bundled prompt.
+hiddenimports += ["videocaptioner.core.translate.dialogue", "videocaptioner.core.translate.dialogue_translator",
+                  "videocaptioner.core.dubbing.dialogue", "videocaptioner.core.editor.dialogue"]
 # Native settings/probe pages load lazily; explicitly retain their frozen entry points.
 hiddenimports += ["videocaptioner.core.asr.native_api",
                   "videocaptioner.ui.components.NativeASRSettingWidget",

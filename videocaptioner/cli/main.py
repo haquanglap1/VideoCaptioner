@@ -91,6 +91,13 @@ def _add_dubbing_options(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--omnivoice-reference-audio", metavar="FILE")
     group.add_argument("--omnivoice-reference-text-file", metavar="FILE")
     group.add_argument("--omnivoice-language", metavar="CODE")
+    group.add_argument("--omnivoice-quality-preset", choices=["balanced", "more-steps"])
+    group.add_argument("--omnivoice-batch-size", type=int, choices=[1, 2, 4],
+        help="Actual OmniVoice model batch size; independent of --tts-concurrency (default: 1)")
+    group.add_argument("--omnivoice-batch-max-chars", type=int, metavar="N",
+        help="OmniVoice padded character budget per batch (default: 600)")
+    group.add_argument("--omnivoice-pitch-semitones", type=float, metavar="N", help="Pitch shift at unchanged tempo (default: 0)")
+    group.add_argument("--omnivoice-punctuation-pause-ms", type=int, metavar="MS", help="Extra terminal punctuation pause base (default: 0)")
     group.add_argument("--tts-api-key", metavar="KEY")
     group.add_argument("--tts-api-base", metavar="URL")
     group.add_argument("--tts-model", metavar="NAME")
@@ -232,6 +239,8 @@ def _build_subtitle_parser(subparsers) -> None:
     )
     trans.add_argument("--reflect", action="store_true",
                        help="Enable reflective translation (LLM only, higher quality)")
+    trans.add_argument("--dialogue", action="store_true",
+                       help="Translate for spoken dialogue and save a companion .dialogue.json for wording review (LLM only)")
 
     sub = p.add_argument_group("Subtitle options")
     sub.add_argument("--max-cjk", type=int, metavar="N", help="Max characters per line for CJK text (default: 18)")
@@ -305,8 +314,38 @@ def _build_dub_parser(subparsers) -> None:
     req = p.add_argument_group("Required")
     req.add_argument("--subtitle", required=True, metavar="FILE", help="Subtitle file path")
     p.add_argument("-o", "--output", metavar="PATH", help="Output dubbed video path")
+    review = p.add_mutually_exclusive_group()
+    review.add_argument("--prepare-review", metavar="JSON", help="Save a bound wording preview without synthesizing audio")
+    review.add_argument("--review", metavar="JSON", help="Use reviewed wording; verify the source and settings before synthesis")
     _add_dubbing_options(p)
     p.set_defaults(func=_run_dub)
+
+
+def _build_omnivoice_parser(subparsers):
+    parser = subparsers.add_parser("omnivoice", help="Local reference and standalone speech utilities")
+    actions = parser.add_subparsers(dest="action", required=True)
+    speak = actions.add_parser("speak", help="Export approved text lines to a new WAV and measured SRT at 1x")
+    speak.add_argument("input", help="UTF-8 text file, one cue per nonempty line")
+    speak.add_argument("-o", "--output", required=True, help="New WAV path; its SRT must also not exist")
+    _add_common_options(speak)
+    _add_dubbing_options(speak)
+    speak.set_defaults(func=_run_omnivoice, tts_provider="omnivoice-local", voice="vi-female-1", tts_speed=1.0)
+    reference = actions.add_parser("transcribe-reference", help="Draft reference text with an installed Whisper model; no downloads")
+    reference.add_argument("input")
+    reference.add_argument("-o", "--output", required=True)
+    reference.add_argument("--program", default="")
+    reference.add_argument("--model-dir", default="")
+    reference.add_argument("--model", default="tiny")
+    reference.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
+    reference.add_argument("--language", default="vi")
+    reference.add_argument("--timeout", type=int, default=300)
+    _add_common_options(reference)
+    reference.set_defaults(func=_run_omnivoice)
+
+
+def _run_omnivoice(args):
+    from videocaptioner.cli.commands.omnivoice import run
+    return run(args, _load_config(args) if args.action == "speak" else {})
 
 
 def _build_process_parser(subparsers) -> None:
@@ -339,6 +378,7 @@ def _build_process_parser(subparsers) -> None:
                       help="Translation service (default: llm). bing and google are free")
     pipe.add_argument("--target-language", metavar="CODE", help="Target language BCP 47 code (default: zh-Hans)")
     pipe.add_argument("--reflect", action="store_true", help="Reflective translation (LLM only)")
+    pipe.add_argument("--dialogue", action="store_true", help="Create spoken dialogue with a reviewable companion JSON (LLM only)")
     pipe.add_argument("--quality", choices=["ultra", "high", "medium", "low"], help="Video quality (default: medium)")
     pipe.add_argument("--subtitle-mode", choices=["soft", "hard"], help="Subtitle mode (default: soft)")
     pipe.add_argument("--layout", choices=["target-above", "source-above", "target-only", "source-only"],
@@ -527,6 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     review.set_defaults(func=_run_asr_review)
     _build_synthesize_parser(subparsers)
     _build_dub_parser(subparsers)
+    _build_omnivoice_parser(subparsers)
     _build_process_parser(subparsers)
     _build_download_parser(subparsers)
     _build_config_parser(subparsers)
@@ -613,6 +654,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("translate.conversation_context", getattr(args, "conversation_context", None))
     if getattr(args, "reflect", False):
         _set("translate.reflect", True)
+    if getattr(args, "dialogue", False):
+        _set("translate.dialogue", True)
 
     # Synthesize / Layout / Style
     _set("synthesize.subtitle_mode", getattr(args, "subtitle_mode", None))
@@ -632,7 +675,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     _set("dubbing.tts_speed", getattr(args, "tts_speed", None))
     _set("dubbing.tts_concurrency", getattr(args, "tts_concurrency", None))
     _set("dubbing.text_source", getattr(args, "text_source", None))
-    for option in ("runtime", "reference_audio", "reference_text_file", "language"):
+    for option in ("runtime", "reference_audio", "reference_text_file", "language", "quality_preset",
+                   "batch_size", "batch_max_chars", "pitch_semitones", "punctuation_pause_ms"):
         _set("omnivoice." + option, getattr(args, "omnivoice_" + option, None))
     _set("dubbing.timing_mode", getattr(args, "timing_mode", None))
     _set("dubbing.natural_max_speed", getattr(args, "natural_max_speed", None))

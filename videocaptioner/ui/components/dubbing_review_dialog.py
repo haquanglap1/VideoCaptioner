@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
+    QPushButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -61,6 +62,12 @@ class DubbingReviewDialog(QDialog):
         self.issue_label.setWordWrap(True)
         fields.addWidget(self.issue_label)
         self.tts_text = self._text_field(fields, self.tr("Lời đọc đã duyệt (có thể sửa)"), editable=True)
+        self.suggest_button = QPushButton(self.tr("Gợi ý cách đọc số / đơn vị / viết tắt tiếng Việt"))
+        self.suggest_button.clicked.connect(self._suggest_wording)
+        fields.addWidget(self.suggest_button)
+        self.suggestion_note = QLabel(self.tr("Chỉ áp dụng lời đọc sau khi bạn duyệt. Giữ nguyên dấu câu và phụ đề gốc."))
+        self.suggestion_note.setWordWrap(True)
+        fields.addWidget(self.suggestion_note)
         splitter.addWidget(details)
         splitter.setSizes([400, 600])
         layout.addWidget(splitter)
@@ -122,3 +129,11 @@ class DubbingReviewDialog(QDialog):
                 review = review.with_group_text(edited.group_id, edited.tts_text)
         self.review = review
         super().accept()
+
+    def _suggest_wording(self):
+        from videocaptioner.core.dubbing.vietnamese_text import suggest_vietnamese
+
+        suggestion = suggest_vietnamese(self.tts_text.toPlainText())
+        self.tts_text.setPlainText(suggestion.text)
+        self.suggestion_note.setText("\n".join(suggestion.warnings) or self.tr(
+            "Đã tạo gợi ý. Hãy xem/sửa lời đọc rồi bấm Áp dụng; phụ đề gốc không đổi."))

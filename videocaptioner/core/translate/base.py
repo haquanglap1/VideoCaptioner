@@ -10,6 +10,7 @@ from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.entities import SubtitleProcessData
 from videocaptioner.core.llm.context import submit_with_context
 from videocaptioner.core.translate.conversation import ConversationSnapshot
+from videocaptioner.core.translate.dialogue import DialogueDocument
 from videocaptioner.core.translate.types import TargetLanguage
 from videocaptioner.core.utils.cache import generate_cache_key, get_translate_cache
 from videocaptioner.core.utils.logger import setup_logger
@@ -36,6 +37,7 @@ class BaseTranslator(ABC):
         self.update_callback = update_callback
         self.executor = None
         self.conversation_snapshot: Optional[ConversationSnapshot] = None
+        self.dialogue_document: Optional[DialogueDocument] = None
         self._job_lock = Lock()
         self._cache = get_translate_cache()
 
@@ -63,12 +65,14 @@ class BaseTranslator(ABC):
 
             # Convert ASRData into a SubtitleProcessData list
             translate_data_list = [
-                SubtitleProcessData(index=i, original_text=seg.text, asr_metadata=seg.metadata, cue_id=seg.cue_id)
+                SubtitleProcessData(index=i, original_text=seg.text, asr_metadata=seg.metadata, cue_id=seg.cue_id,
+                                    start_ms=seg.start_time, end_ms=seg.end_time, speaker=seg.speaker or "")
                 for i, seg in enumerate(asr_data.segments, 1)
             ]
 
             # Pre-chunk hook (e.g. build global context); no-op by default
-            full_input = [SubtitleProcessData(index=i, original_text=s.text, asr_metadata=s.metadata, cue_id=s.cue_id)
+            full_input = [SubtitleProcessData(index=i, original_text=s.text, asr_metadata=s.metadata, cue_id=s.cue_id,
+                                             start_ms=s.start_time, end_ms=s.end_time, speaker=s.speaker or "")
                           for i, s in enumerate(document, 1)]
             self._prepare(full_input)
 
@@ -88,12 +92,16 @@ class BaseTranslator(ABC):
                 [seg.clone() for seg in asr_data.segments], translated_list
             )
 
-            return asr_data.with_segments(new_segments)
+            return self._finish_translation(asr_data, new_segments, translated_list)
         except Exception as e:
             logger.error(f"Translation failed: {str(e)}")
             raise RuntimeError(f"Translation failed: {str(e)}")
         finally:
             self._job_lock.release()
+
+    def _finish_translation(self, source: ASRData, segments: List[ASRDataSeg],
+                            translated_list: List[SubtitleProcessData]) -> ASRData:
+        return source.with_segments(segments)
 
     def _prepare(self, translate_data_list: List[SubtitleProcessData]) -> None:
         """Hook run before chunking.

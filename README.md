@@ -349,6 +349,20 @@ Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
 ## Lồng tiếng Natural
 
+**Dịch cho lời thoại (LLM)** trong Cài đặt → Dịch dùng chung model, API Base,
+API key và timeout LLM của app. Chế độ này tạo bản dịch hiển thị theo cue và
+các nhóm lời đọc liền mạch, lưu kèm file `.dialogue.json`. Bản tiếng Việt có
+sẵn cũng dùng được để biên tập cách nói; không tự xác minh bản dịch với tiếng
+gốc trong video. CLI: `videocaptioner subtitle input.srt --dialogue
+--target-language vi --no-optimize --no-split -o display.srt`.
+
+Trong tab Lồng tiếng, chọn `.dialogue.json`, **Chuẩn bị lời đọc trước TTS**,
+duyệt/sửa rồi **Tiếp tục lời đã duyệt**. Kịch bản dùng preset riêng cho job:
+1×, sequential, gap80ms, trễ bắt đầu tối đa2s, không tự rút lời hoặc tăng tốc.
+Khi lời đọc dài hơn khả năng của video, app giữ audio/review; giới hạn2s không
+bảo đảm mọi bản dịch đều vừa. Video Editor giữ mapping và đặt lời đọc ở cue
+đầu mỗi nhóm; các cue còn lại vẫn hiển thị phụ đề. [Cách dùng và validation](docs/dev/dialogue-translation-2026-10.md).
+
 **OmniVoice Local** có bốn giọng AI cố định: **Nữ 01, Nữ 02, Nam 01, Nam 02**,
 kèm nút **Nghe mẫu**. Chọn **Dùng / thêm audio giọng mẫu riêng**, nhập đúng lời
 trong audio sạch 3–10 giây và **Lưu giọng riêng** để thêm một người đọc vào danh
@@ -356,6 +370,35 @@ sách. App giữ bản sao mẫu để dùng chung cho mọi câu và cho video 
 Lựa chọn `female`/`male` cũ dùng mẫu cố định tương ứng; `auto` vẫn có thể đổi
 giọng giữa các câu. CLI dùng `--tts-provider omnivoice-local --voice vi-female-1`.
 [Cách hoạt động, nghiên cứu BetterBox và kiểm chứng](docs/dev/omnivoice-voices-2026-10.md).
+
+OmniVoice có preset **32 bước/FP16** mặc định và **64 bước/FP16** thử nghiệm;
+cache prompt giọng mẫu được dùng lại giữa các job, worker vẫn đóng sau job.
+**Số câu trong một batch GPU** chọn 1/2/4, mặc định 1; đây là batch inference
+thực tế, độc lập số luồng gửi request. Câu dài hoặc thiếu VRAM được chia batch
+nhỏ hơn, giữ nguyên lời đọc. CLI dùng `--omnivoice-quality-preset balanced`
+hoặc `more-steps`, `--omnivoice-batch-size 4`; `--omnivoice-batch-max-chars`
+giới hạn độ dài sau padding (mặc định 600). Cùng seed có thể cho WAV khác khi
+đổi batch; cần nghe kiểm tra trước khi chọn mặc định khác.
+[Contract, benchmark GPU và gate nghe](docs/dev/omnivoice-batching-2026-10.md).
+
+**Chuẩn bị lời đọc trước TTS** mở kế hoạch để xem/sửa lời thực đọc; nút gợi ý
+tiếng Việt hỗ trợ số, đơn vị và một số viết tắt. Chỉ áp dụng sau khi duyệt,
+subtitle gốc được giữ. CLI: `dub ... --prepare-review plan.json`, rồi
+`dub ... --review approved.json` để dùng lời đã duyệt với cùng nguồn/cấu hình.
+Pitch và nghỉ thêm cuối nhóm mặc định **0**; đổi pitch giữ tempo1, WAV sau xử lý
+được đo lại và vẫn phải qua kiểm tra timeline. Dấu câu nội bộ do model xử lý.
+
+Trong **Giọng mẫu tùy chọn**, có thể **Thu mẫu microphone (3–10s)** hoặc
+**Chép lời mẫu bằng ASR đã cài**. ASR dùng Faster-Whisper trong Cài đặt, chỉ
+nhận model đã có tại máy; transcript là bản nháp cần duyệt/sửa trước khi lưu.
+Microphone chỉ mở khi bấm Thu mẫu. **Văn bản → WAV + SRT** nhận mỗi dòng một
+đoạn, đọc đủ ở1×, gap80ms; SRT dùng mốc millisecond từ WAV đã đo như Editor.
+Chọn tên output mới, các đoạn audio và lời đã duyệt được giữ cạnh output.
+
+```powershell
+uv run --frozen videocaptioner omnivoice speak approved.txt -o speech.wav --voice vi-female-1
+uv run --frozen videocaptioner omnivoice transcribe-reference reference.wav -o draft.txt --model large-v3 --language vi
+```
 
 Trong tab Lồng tiếng, chọn nguồn text `Auto / Translation / Original` và timing `Natural / Legacy`.
 Natural là mặc định mới: engine group các cue liên tiếp, tính sức chứa đến cue kế tiếp với silence guard,

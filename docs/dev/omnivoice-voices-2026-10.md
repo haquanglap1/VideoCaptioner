@@ -127,6 +127,10 @@ gate OCR/ASR cũ không thay đổi bởi công việc này.
 
 ## Khảo sát mở rộng BetterBox-TTS
 
+Cập nhật sau khảo sát: P1 → P1b → P2–P4 đã được triển khai và kiểm riêng trong
+[báo cáo nâng cấp](omnivoice-batching-2026-10.md). Nội dung dưới đây giữ ngữ cảnh
+khảo sát của snapshot cũ; không thay các evidence/giới hạn của artifact cũ ở trên.
+
 Ngày 2026-10-02, đọc code tại commit
 [`1192005fdd150b6383fcf0c4bf1f6d121de83d0f`](https://github.com/nowtranminh1-TTS/BetterBox-TTS/tree/1192005fdd150b6383fcf0c4bf1f6d121de83d0f).
 Đây là khảo sát source; chưa chạy BetterBox, benchmark, tải model hay triển khai

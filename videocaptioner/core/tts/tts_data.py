@@ -1,6 +1,6 @@
 """TTS 数据结构定义"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Literal, Optional
 
 
@@ -39,6 +39,7 @@ class TTSDataSeg:
     audio_duration: float = 0.0  # 实际音频时长（秒）
     voice: Optional[str] = None  # 使用的音色
     error: str = ""  # Sanitized provider failure summary
+    warnings: List[str] = field(default_factory=list)
 
     # 声音克隆相关
     clone_audio_path: Optional[str] = None  # 参考音频文件路径

@@ -38,6 +38,7 @@ _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _GROUP_BINDING = (
     "group_id", "cue_ids", "start_time", "subtitle_end_time", "available_end_time",
     "available_duration", "source_text", "subtitle_text",
+    "hard_end_time",
 )
 
 
@@ -220,6 +221,8 @@ def _group(value: Any) -> DubbingGroup:
         kwargs["fit_status"] = DubbingFitStatus(data.get("fit_status", "pending"))
     except (ValueError, TypeError) as exc:
         raise DubbingResumeError(f"Invalid {group_id}.fit_status") from exc
+    if data.get("hard_end_time") is not None:
+        kwargs["hard_end_time"] = _number(data["hard_end_time"], f"{group_id}.hard_end_time")
     return DubbingGroup(**kwargs)
 
 
@@ -232,7 +235,9 @@ class DubbingReview:
     @classmethod
     def from_report(cls, report: dict[str, Any]) -> DubbingReview:
         data = _object(deepcopy(report), "report")
-        if data.get("schema_version") != "dubbing-report-v1" or data.get("plan_schema_version") != "dubbing-plan-v1":
+        if data.get("schema_version") != "dubbing-report-v1" or data.get("plan_schema_version") not in {
+            "dubbing-plan-v1", "dubbing-plan-dialogue-v1",
+        }:
             raise DubbingResumeError("Unsupported dubbing report/plan schema")
         raw_groups = data.get("groups")
         if not isinstance(raw_groups, list) or not raw_groups:
@@ -255,6 +260,7 @@ class DubbingReview:
                or (type(value) is float and not math.isfinite(value)) for key, value in identity.items()):
             raise DubbingResumeError("Invalid provider identity")
         return cls(DubbingPlan(**values, timing_mode=timing, groups=groups, provider_identity=identity,
+                              schema_version=data["plan_schema_version"],
                               summary=_object(data.get("summary", {}), "summary"),
                               resume_metadata=_metadata(data.get("resume_metadata"))))
 

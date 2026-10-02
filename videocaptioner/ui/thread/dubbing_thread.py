@@ -143,7 +143,7 @@ class DubbingReviewFileThread(QThread):
     cancelled = pyqtSignal()
     progress = pyqtSignal(int, str)
 
-    def __init__(self, operation: Literal["open", "save", "import"], path: str,
+    def __init__(self, operation: Literal["open", "save", "import", "prepare"], path: str,
                  task: DubbingTask, parent=None):
         super().__init__(parent)
         self.operation = operation
@@ -167,6 +167,13 @@ class DubbingReviewFileThread(QThread):
                 if not self.task.dubbing_config or not self.task.video_path or not self.task.subtitle_path:
                     raise ValueError("Chọn video, phụ đề và bật cấu hình giọng trước khi mở kế hoạch")
                 engine = _engine_for_task(self.task)
+                if self.operation == "prepare":
+                    review = engine.prepare_review(self.task.video_path, self.task.subtitle_path,
+                        self.task.dubbing_config, callback=self._progress_callback,
+                        display_subtitle_path=self.task.display_subtitle_path)
+                    self._progress_callback(100, self.tr("Đã chuẩn bị lời đọc; chưa sinh audio"))
+                    self.result.emit(review)
+                    return
                 review = DubbingReview.load(self.path)
                 self._progress_callback(15, self.tr("Đã đọc kế hoạch lời đọc"))
                 if self.operation == "import":

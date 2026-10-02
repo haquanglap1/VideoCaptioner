@@ -23,6 +23,7 @@ cache.disable_cache()
 def isolated_omnivoice_library(monkeypatch, tmp_path):
     """Voice imports and UI enumeration must not touch the developer's private voices."""
     monkeypatch.setattr("videocaptioner.core.tts.omnivoice.voices.library_root", lambda: tmp_path / "voices")
+    monkeypatch.setattr("videocaptioner.core.tts.omnivoice.prompt_cache.cache_directory", lambda: tmp_path / "prompts")
 
 
 @pytest.fixture(autouse=True)

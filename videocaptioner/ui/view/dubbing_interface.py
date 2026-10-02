@@ -492,7 +492,7 @@ class DubbingInterface(QWidget):
         row_sub.addWidget(BodyLabel(self.tr("📁 File phụ đề:")))
         self.subtitle_path_edit = LineEdit()
         self.subtitle_path_edit.setPlaceholderText(
-            self.tr("Chọn file phụ đề (.srt, .ass, .vtt)")
+            self.tr("Chọn phụ đề hoặc kịch bản .dialogue.json (1x, trễ tối đa 2 giây)")
         )
         self.subtitle_path_edit.setFixedWidth(350)
         row_sub.addWidget(self.subtitle_path_edit)
@@ -599,6 +599,8 @@ class DubbingInterface(QWidget):
         self.settings_widget.setEnabled(cfg.dubbing_enabled.value)
 
         review_row = FlowLayout()
+        self.prepare_review_btn = PushButton(self.tr("Chuẩn bị lời đọc trước TTS"))
+        self.prepare_review_btn.clicked.connect(lambda: self._start_review_file("prepare", ""))
         self.review_btn = PushButton(self.tr("Duyệt / sửa lời đọc"))
         self.review_btn.clicked.connect(self._edit_review)
         self.save_review_btn = PushButton(self.tr("Lưu kế hoạch"))
@@ -609,7 +611,7 @@ class DubbingInterface(QWidget):
         self.import_review_btn.clicked.connect(self._import_review)
         self.resume_btn = PrimaryPushButton(self.tr("Tiếp tục lời đã duyệt"))
         self.resume_btn.clicked.connect(self._resume_review)
-        for button in (self.review_btn, self.save_review_btn, self.open_review_btn, self.import_review_btn, self.resume_btn):
+        for button in (self.prepare_review_btn, self.review_btn, self.save_review_btn, self.open_review_btn, self.import_review_btn, self.resume_btn):
             review_row.addWidget(button)
         layout.addLayout(review_row)
         self.review_label = BodyLabel(self.tr("Chưa có kế hoạch lời đọc."))
@@ -694,7 +696,7 @@ class DubbingInterface(QWidget):
             self,
             self.tr("Chọn file phụ đề"),
             "",
-            self.tr("Subtitle Files (*.srt *.ass *.vtt)"),
+            self.tr("Subtitle / Dialogue (*.srt *.ass *.vtt *.json)"),
         )
         if path:
             self.subtitle_path_edit.setText(path)
@@ -907,6 +909,7 @@ class DubbingInterface(QWidget):
         self.resume_btn.setEnabled(bool(review and review.can_resume) and not self._job_busy)
         self.open_review_btn.setEnabled(not self._job_busy)
         self.import_review_btn.setEnabled(not self._job_busy)
+        self.prepare_review_btn.setEnabled(not self._job_busy)
         if review:
             plan = review.plan
             task = self._task
@@ -964,7 +967,7 @@ class DubbingInterface(QWidget):
         if path:
             self._start_review_file(operation, path)
 
-    def _start_review_file(self, operation: Literal["open", "save", "import"], path: str):
+    def _start_review_file(self, operation: Literal["open", "save", "import", "prepare"], path: str):
         if self._job_busy:
             return
         task = self._task
@@ -1020,6 +1023,8 @@ class DubbingInterface(QWidget):
             self.status_label.setText(self.tr("Đã lưu kế hoạch.") if worker.operation == "save" else self.tr(
                 "Đã mở kế hoạch trong RAM. Duyệt lời đọc rồi chọn Tiếp tục; nguồn/cấu hình sẽ được xác minh."
             ))
+            if worker.operation == "prepare":
+                self._edit_review()
 
     # ==== Slots ====
 
@@ -1061,6 +1066,7 @@ class DubbingInterface(QWidget):
         self.vieneu_widget.setVisible(managed)
         omni = 0 <= index < len(presets.TTS_PROVIDER_KEYS) and presets.TTS_PROVIDER_KEYS[index] == "omnivoice-local"
         self.omnivoice_panel.setVisible(omni)
+        self.concurrency_spinbox.setEnabled(not omni)
         self.voice_row.setVisible(not omni)
         for editor in (self.api_key_edit, self.api_base_edit, self.model_edit):
             editor.setEnabled(not (managed or omni))

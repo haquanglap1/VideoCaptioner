@@ -447,6 +447,8 @@ class SubtitleInterface(QWidget):
         self.main_layout.addLayout(self.bottom_layout)
 
     def _setup_signals(self) -> None:
+        self.model.dataChanged.connect(self._invalidate_spoken_document)
+        self.model.modelReset.connect(self._invalidate_spoken_document)
         signalBus.subtitle_layout_changed.connect(self.on_subtitle_layout_changed)
         signalBus.target_language_changed.connect(self.on_target_language_changed)
         signalBus.subtitle_optimization_changed.connect(
@@ -457,6 +459,12 @@ class SubtitleInterface(QWidget):
         )
         # self.subtitle_setting_button.clicked.connect(self.show_subtitle_settings)
         # self.video_player_button.clicked.connect(self.show_video_player)
+
+    def _invalidate_spoken_document(self, *_):
+        if (self.task and self.task.subtitle_config and self.task.subtitle_config.dialogue_translation
+                and self.task.dubbing_subtitle_path):
+            self.task.dubbing_subtitle_path = None
+            self.status_label.setText(self.tr("Phụ đề đã đổi; tạo và duyệt lại kịch bản lời thoại trước TTS."))
 
     def show_prompt_dialog(self) -> None:
         dialog = PromptDialog(self)
@@ -820,6 +828,7 @@ class SubtitleInterface(QWidget):
         self.subtitle_table.clearSelection()
         try:
             self.model.update_all(editing.merge_rows(self.model._data, rows))
+            self._invalidate_spoken_document()
         except ValueError:
             InfoBar.warning(self.tr("Review required"), self.tr("Cannot merge different speakers or ASR sources."),
                             duration=4000, parent=self)
@@ -837,6 +846,7 @@ class SubtitleInterface(QWidget):
             return
         self.subtitle_table.clearSelection()
         self.model.update_all(editing.delete_rows(self.model._data, rows))
+        self._invalidate_spoken_document()
 
     def _is_processing(self) -> bool:
         """True while an optimization or re-translation worker is running."""

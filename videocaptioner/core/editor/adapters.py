@@ -103,12 +103,14 @@ def apply_dubbing_report(project: EditorProject, report: DubbingReport | dict) -
     for group in payload.get("groups", []):
         group_id = str(group.get("group_id", ""))
         warnings = [str(item) for item in group.get("warnings", [])]
-        for cue_id in group.get("cue_ids", []):
+        for member_index, cue_id in enumerate(group.get("cue_ids", [])):
             cue = cue_map.get(str(cue_id))
             if not cue:
                 continue
             cue.group_id = group_id
             cue.audio_path = str(group.get("audio_path", ""))
+            if project.dialogue_document is not None and member_index:
+                cue.audio_path = ""
             cue.fit_status = str(group.get("fit_status", "pending"))
             cue.fit_ratio = float(group.get("fit_ratio", 0.0) or 0.0)
             cue.warnings = list(warnings)
@@ -118,12 +120,14 @@ def apply_dubbing_report(project: EditorProject, report: DubbingReport | dict) -
 def update_cues_from_groups(project: EditorProject, groups: Iterable[object]) -> None:
     cue_map = {cue.id: cue for cue in project.cues}
     for group in groups:
-        for cue_id in getattr(group, "cue_ids", []):
+        for member_index, cue_id in enumerate(getattr(group, "cue_ids", [])):
             cue = cue_map.get(str(cue_id))
             if not cue:
                 continue
             cue.group_id = str(getattr(group, "group_id", ""))
             cue.audio_path = str(getattr(group, "audio_path", ""))
+            if project.dialogue_document is not None and member_index:
+                cue.audio_path = ""
             status = getattr(group, "fit_status", "pending")
             cue.fit_status = getattr(status, "value", str(status))
             cue.fit_ratio = float(getattr(group, "fit_ratio", 0.0) or 0.0)

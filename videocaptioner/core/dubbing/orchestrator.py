@@ -104,6 +104,14 @@ class DubbingOrchestrator:
                 raise ValueError("Phụ đề trống, không có gì để lồng tiếng")
             self._write_report(plan, "", output_created=False)
 
+            if plan.schema_version == "dubbing-plan-dialogue-v1" and review is None:
+                for group in plan.groups:
+                    group.needs_review = True
+                    group.action_taken = "dialogue_wording_preview"
+                self._write_report(plan, report_path, output_created=False)
+                raise DubbingReviewRequired(report_path=report_path,
+                    reason="Duyệt lời thoại trước TTS, rồi tiếp tục lời đã duyệt. Preset: 1x, trễ tối đa 2 giây.")
+
             callback(12, "Đang kiểm tra TTS cache...")
             provider = self.engine._create_tts_provider(config)
             if config.tts_config:
@@ -215,6 +223,11 @@ class DubbingOrchestrator:
             config.timing_mode == DubbingTimingMode.NATURAL and config.unresolved_policy.value == "sequential",
         )
         plan = self._build_dubbing_plan(asr_data, subtitle_path, duration, config)
+        from videocaptioner.core.dubbing.dialogue import PLAN_SCHEMA, dialogue_groups, load_dialogue
+        dialogue = load_dialogue(subtitle_path)
+        if dialogue is not None:
+            plan.groups = dialogue_groups(dialogue, duration)
+            plan.schema_version = PLAN_SCHEMA
         plan.resume_metadata = bind_sources(
             video_path, subtitle_path, display_subtitle_path, duration, config, callback
         )
@@ -237,6 +250,10 @@ class DubbingOrchestrator:
 
     @staticmethod
     def _load_dubbing_source(subtitle_path: str) -> ASRData:
+        from videocaptioner.core.dubbing.dialogue import load_dialogue
+        document = load_dialogue(subtitle_path)
+        if document is not None:
+            return document.subtitle_data()
         return ASRData.from_subtitle_file(subtitle_path)
 
     @staticmethod
@@ -386,6 +403,7 @@ class DubbingOrchestrator:
         assert config.tts_config is not None
         for group, segment in zip(unique, tts_data.segments):
             group.attempt_count += 1
+            group.warnings.extend(segment.warnings)
             audio_path = self._ensure_wav(
                 segment.audio_path, output_dir / f"{group.group_id}.wav", config
             )
@@ -645,7 +663,8 @@ class DubbingOrchestrator:
             end = start + group.measured_duration
             group.playback_start_time, group.playback_end_time = start, end
             group.start_delay = max(0.0, start - group.start_time)
-            if group.start_delay > delay_limit + 0.000001 or end > video_duration + 0.000001:
+            hard_end = min(video_duration, group.hard_end_time) if group.hard_end_time is not None else video_duration
+            if group.start_delay > delay_limit + 0.000001 or end > hard_end + 0.000001:
                 group.needs_review = True
                 group.fit_status = DubbingFitStatus.NEEDS_REVIEW
                 if group.start_delay > delay_limit + 0.000001:
@@ -658,6 +677,8 @@ class DubbingOrchestrator:
                         f"Sequential speech ends at {end:.3f}s, beyond video end "
                         f"{video_duration:.3f}s by {end - video_duration:.3f}s"
                     )
+                elif end > hard_end + 0.000001:
+                    group.warnings.append(f"Dialogue crosses a turn/scene/silence boundary at {hard_end:.3f}s")
             elif group.fit_status not in (DubbingFitStatus.SPEED_ADJUSTED, DubbingFitStatus.REWRITTEN, DubbingFitStatus.CACHED):
                 group.fit_status = DubbingFitStatus.FIT
             group.action_taken = "+".join(filter(None, (group.action_taken, f"sequential_delay_{round(group.start_delay * 1000)}ms")))

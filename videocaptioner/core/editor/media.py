@@ -666,15 +666,26 @@ def export_editor_video(
                 dubbing_config.mix_mode = AudioMixMode.MUTE_ORIGINAL
             tts_srt = run_dir / "tts.srt"
             EditorProjectStore._atomic_write(tts_srt, project_to_tts_asr(project).to_srt())
+            from .dialogue import dialogue_from_project
+            dialogue = dialogue_from_project(project)
+            if dialogue is not None:
+                tts_srt = run_dir / "tts.dialogue.json"
+                dialogue.save(tts_srt)
             dubbed_video = run_dir / "dubbed.mp4"
             dubbing_engine = engine or DubbingEngine()
             callback(5, "Đang lồng tiếng từ editor state hiện tại...")
+            review_options = {}
+            if dialogue is not None:
+                # Export is the explicit request to speak the current editable wording.
+                review_options["review"] = dubbing_engine.prepare_review(
+                    project.video_path, str(tts_srt), dubbing_config, callback)
             dubbing_engine.dub(
                 project.video_path,
                 str(tts_srt),
                 str(dubbed_video),
                 dubbing_config,
                 lambda progress, message: callback(min(70, 5 + int(progress * 0.65)), message),
+                **review_options,
             )
             source_video = str(dubbed_video)
         _raise_if_cancelled(should_cancel)
@@ -711,6 +722,9 @@ def _existing_voice_segments(
     subtitle_track = next((track for track in project.tracks if track.id == "track-ts1"), None)
     if subtitle_track and subtitle_track.muted:
         return []
+    if project.dialogue_document is not None:
+        from .dialogue import existing_dialogue_audio
+        return existing_dialogue_audio(project, start_ms, end_ms)
     return [
         {
             "audio_path": cue.audio_path,

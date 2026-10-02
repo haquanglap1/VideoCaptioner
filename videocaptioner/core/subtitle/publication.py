@@ -9,6 +9,7 @@ from typing import Callable, Iterable
 
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.entities import SubtitleLayoutEnum
+from videocaptioner.core.translate.dialogue import DialogueDocument
 
 
 @dataclass(frozen=True)
@@ -19,7 +20,7 @@ class SubtitleOutput:
 
 
 def publish_subtitles(data: ASRData, outputs: Iterable[SubtitleOutput], cancelled: Callable[[], bool],
-                      commit_lock: Lock) -> bool:
+                      commit_lock: Lock, *, dialogue: tuple[DialogueDocument, Path] | None = None) -> bool:
     staged: dict[Path, Path] = {}
     temporary: list[Path] = []
     try:
@@ -36,6 +37,10 @@ def publish_subtitles(data: ASRData, outputs: Iterable[SubtitleOutput], cancelle
         with commit_lock:
             if cancelled():
                 return False
+            if dialogue is not None:
+                # Exclusive creation prevents a new dialogue from replacing a reviewed one.
+                document, target = dialogue
+                document.save(target)
             # Cancellation and publication have one ordering point; no socket or render
             # runs under this lock. A cancel after commit does not roll back completed work.
             for target, path in staged.items():

@@ -73,6 +73,16 @@ for line in sys.stdin:
     value=json.loads(line)
     if value['operation']=='configure':
         print('VC_OMNI '+json.dumps({'status':'configured'}), flush=True)
+    elif value['operation']=='synthesize_batch':
+        for i,item in enumerate(value['items']):
+            if item['text']=='wait': time.sleep(30)
+            with wave.open(item['output'],'wb') as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000); w.writeframes(b'\\0\\1'*2400)
+            reply=dict(status='item',id=item['id'],request_id=value['request_id'],actual_batch_size=len(value['items']))
+            if item['text']=='bad': reply['error_type']='ValueError'
+            if item['text']=='wrong-id': reply['id']='unknown'
+            print('VC_OMNI '+json.dumps(reply), flush=True)
+        print('VC_OMNI '+json.dumps(dict(status='complete',count=len(value['items']),request_id=value['request_id'])), flush=True)
     else:
         if value['text']=='wait': time.sleep(30)
         with wave.open(value['output'],'wb') as w:
@@ -196,3 +206,105 @@ def test_installed_model_integrity_is_checked(tmp_path, monkeypatch):
     monkeypatch.setattr(prepare, "recipe", lambda: {"files": [{"path": "weights", "sha256": "0" * 64, "blob_id": ""}]})
     with pytest.raises(RuntimeError, match="not ready"):
         prepare.verify(tmp_path)
+
+
+@pytest.mark.parametrize("second", ["bad", "wrong-id", "wait"])
+def test_batch_keeps_completed_audio_on_item_error_protocol_error_or_timeout(tmp_path, fake_runtime, second):
+    from videocaptioner.core.tts import TTSData, TTSDataSeg
+    from videocaptioner.core.tts.omnivoice.provider import OmniVoiceTTS
+
+    service, processes = fake_runtime
+    config = DubbingConfig(tts_config=TTSConfig("", "", "", voice="auto"),
+        omnivoice=OmniVoiceOptions(batch_size=2, timeout=1))
+    data = TTSData([TTSDataSeg("first"), TTSDataSeg(second), TTSDataSeg("last")])
+    with service.acquire(config):
+        provider = OmniVoiceTTS(config.tts_config)
+        if second == "bad":
+            provider.synthesize(data, str(tmp_path / "audio"), max_workers=48)
+            assert data.segments[2].audio_path
+        else:
+            with pytest.raises(RuntimeError):
+                provider.synthesize(data, str(tmp_path / "audio"), max_workers=48)
+            assert not data.segments[2].audio_path
+        assert data.segments[0].audio_path and data.segments[0].audio_duration == 0.1
+        assert not data.segments[1].audio_path and data.segments[1].error
+    assert all(p.poll() is not None for p in processes)
+    assert service.lease.handle is None
+
+
+def test_batch_cancel_preserves_accepted_wav_and_ends_waiting_work(tmp_path, fake_runtime):
+    from videocaptioner.core.tts import TTSData, TTSDataSeg
+    from videocaptioner.core.tts.omnivoice.provider import OmniVoiceTTS
+
+    service, processes = fake_runtime
+    config = DubbingConfig(tts_config=TTSConfig("", "", "", voice="auto"),
+        omnivoice=OmniVoiceOptions(batch_size=2))
+    data = TTSData([TTSDataSeg("first"), TTSDataSeg("wait"), TTSDataSeg("never")])
+    def cancel(*args):
+        raise ValueError("cancelled")
+    with service.acquire(config):
+        with pytest.raises(ValueError, match="cancelled"):
+            OmniVoiceTTS(config.tts_config).synthesize(data, str(tmp_path / "audio"), callback=cancel)
+        assert data.segments[0].audio_path
+        assert all(not seg.audio_path and seg.error for seg in data.segments[1:])
+    assert all(p.poll() is not None for p in processes)
+    assert service.lease.handle is None
+
+
+def test_batch_policy_seed_and_character_limit_bind_wav_cache(fake_runtime):
+    from videocaptioner.core.dubbing.review import synthesis_cache_key
+
+    service, _ = fake_runtime
+    keys = []
+    for options in (OmniVoiceOptions(), OmniVoiceOptions(batch_size=2), OmniVoiceOptions(batch_size=4),
+        OmniVoiceOptions(seed=42), OmniVoiceOptions(batch_max_chars=128), OmniVoiceOptions(pitch_semitones=2),
+        OmniVoiceOptions(punctuation_pause_ms=120), OmniVoiceOptions()):
+        config = DubbingConfig(tts_config=TTSConfig("", "", "", voice="auto"), omnivoice=options)
+        with service.acquire(config):
+            keys.append(synthesis_cache_key("Keep every word.", config))
+    assert keys[0] == keys[-1] and len(set(keys)) == 7
+
+
+def test_orchestrator_batches_only_cache_misses_and_retains_cue_mapping(tmp_path, fake_runtime):
+    from videocaptioner.core.dubbing.cache import PersistentTTSCache
+    from videocaptioner.core.dubbing.models import DubbingGroup
+    from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+    from videocaptioner.core.tts.omnivoice.provider import OmniVoiceTTS
+
+    service, _ = fake_runtime
+    config = DubbingConfig(tts_provider=TTSProviderEnum.OMNIVOICE_LOCAL,
+        tts_config=TTSConfig("", "", "", voice="auto", speed=1), omnivoice=OmniVoiceOptions(batch_size=2))
+    cache = PersistentTTSCache(tmp_path / "cache")
+    orchestrator = DubbingOrchestrator(DubbingEngine())
+    requests = []
+    original = service.request
+    def record(payload, **kwargs):
+        if payload["operation"] == "synthesize_batch":
+            requests.append([item["text"] for item in payload["items"]])
+        return original(payload, **kwargs)
+    service.request = record
+    def groups():
+        return [DubbingGroup(f"g-{i}", [f"cue-{i}"], i * 5, i * 5 + 4, i * 5 + 5, 5,
+                text, text, text) for i, text in enumerate(("full first", "second", "full first", "last"))]
+    with service.acquire(config):
+        first = groups()
+        provider = OmniVoiceTTS(config.tts_config)
+        orchestrator._resolve_cache_hits(first, config, cache)
+        orchestrator._synthesize_missing_groups(first, config, provider, cache, tmp_path / "first", lambda *a: None)
+        assert requests == [["full first", "second"], ["last"]]
+        assert all(group.audio_path for group in first)
+        assert first[0].audio_path == first[2].audio_path
+        assert [group.cue_ids for group in first] == [[f"cue-{i}"] for i in range(4)]
+        second = groups()
+        orchestrator._resolve_cache_hits(second, config, cache)
+        orchestrator._synthesize_missing_groups(second, config, provider, cache, tmp_path / "second", lambda *a: None)
+        assert len(requests) == 2
+        assert [group.audio_path for group in second] == [group.audio_path for group in first]
+        assert all(group.attempt_count == 0 for group in second)
+        # A corrupt WAV is retried alone; complete peers are never synthesized again.
+        from pathlib import Path
+        Path(first[1].audio_path).write_bytes(b"corrupt")
+        third = groups()
+        orchestrator._resolve_cache_hits(third, config, cache)
+        orchestrator._synthesize_missing_groups(third, config, provider, cache, tmp_path / "third", lambda *a: None)
+        assert requests[-1] == ["second"] and len(requests) == 3

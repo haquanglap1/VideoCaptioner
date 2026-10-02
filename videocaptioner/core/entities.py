@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from videocaptioner.core.ocr.geometry import Roi
     from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
     from videocaptioner.core.ocr.models import Selection
+    from videocaptioner.core.translate.dialogue import SpeechBlock
     from videocaptioner.core.translate.types import TargetLanguage
 
 
@@ -49,6 +50,10 @@ class SubtitleProcessData:
     optimized_text: str = ""
     asr_metadata: Optional[ASRMetadata] = None
     cue_id: str = ""
+    start_ms: int = 0
+    end_ms: int = 0
+    speaker: str = ""
+    speech_block: Optional["SpeechBlock"] = None
 
 
 class SupportedAudioFormats(Enum):
@@ -669,6 +674,7 @@ class SubtitleConfig:
     need_translate: bool = False
     need_optimize: bool = False
     need_reflect: bool = False
+    dialogue_translation: bool = False
     thread_num: int = 10
     batch_size: int = 10
     # Subtitle layout and splitting

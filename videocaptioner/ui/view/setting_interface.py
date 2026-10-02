@@ -439,6 +439,13 @@ class SettingInterface(ScrollArea):
         )
 
         # DeepLX endpoint
+        self.dialogueTranslationCard = SwitchSettingCard(
+            FIF.EDIT, self.tr("Dịch cho lời thoại (LLM)"),
+            self.tr("Tạo câu đọc liền mạch và lưu kèm kịch bản .dialogue.json để duyệt trước TTS. Giữ phụ đề hiển thị."),
+            cfg.dialogue_translation, self.translate_serviceGroup,
+        )
+
+        # DeepLX endpoint
         self.deeplxEndpointCard = LineEditSettingCard(
             cfg.deeplx_endpoint,
             FIF.LINK,
@@ -481,6 +488,7 @@ class SettingInterface(ScrollArea):
         self.requestTimeoutCard.setMinimumHeight(100)
         self.translate_serviceGroup.addSettingCard(self.translatorServiceCard)
         self.translate_serviceGroup.addSettingCard(self.needReflectTranslateCard)
+        self.translate_serviceGroup.addSettingCard(self.dialogueTranslationCard)
         self.translate_serviceGroup.addSettingCard(self.deeplxEndpointCard)
         self.translate_serviceGroup.addSettingCard(self.batchSizeCard)
         self.translate_serviceGroup.addSettingCard(self.threadNumCard)

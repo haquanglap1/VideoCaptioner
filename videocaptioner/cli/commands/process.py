@@ -105,6 +105,7 @@ def run(args: Namespace, config: dict) -> int:
             translator=getattr(args, "translator", None),
             target_language=getattr(args, "target_language", None),
             reflect=getattr(args, "reflect", False),
+            dialogue=getattr(args, "dialogue", False),
             max_cjk=None, max_english=None,
             prompt=getattr(args, "prompt", None),
             prompt_file=getattr(args, "prompt_file", None),
@@ -118,6 +119,8 @@ def run(args: Namespace, config: dict) -> int:
         if ret != 0:
             return ret
         subtitle_path = processed_path
+        if getattr(sub_args, "dialogue_path", None):
+            dubbing_subtitle_path = sub_args.dialogue_path
         from videocaptioner.cli.validators import resolve_layout
 
         input_subtitle_layout = resolve_layout(get(config, "synthesize.layout", "target-above"))

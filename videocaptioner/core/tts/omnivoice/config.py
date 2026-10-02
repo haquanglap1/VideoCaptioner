@@ -1,6 +1,7 @@
 """Pinned OmniVoice runtime and explicit synthesis options."""
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,8 +41,30 @@ class OmniVoiceOptions:
     steps: int = 32
     seed: int = 0
     timeout: int = 300
+    quality_preset: str = "balanced"
+    batch_size: int = 1
+    batch_max_chars: int = 600
+    pitch_semitones: float = 0.0
+    punctuation_pause_ms: int = 0
+
+    @property
+    def effective_steps(self) -> int:
+        return 64 if self.quality_preset == "more-steps" else self.steps
 
     def __post_init__(self):
+        if (type(self.pitch_semitones) not in (int, float) or not math.isfinite(self.pitch_semitones)
+            or not -6 <= self.pitch_semitones <= 6):
+            raise ValueError("OmniVoice pitch must be between -6 and 6 semitones")
+        if type(self.punctuation_pause_ms) is not int or not 0 <= self.punctuation_pause_ms <= 500:
+            raise ValueError("OmniVoice punctuation pause must be between 0 and 500 ms")
+        if type(self.batch_size) is not int or self.batch_size not in (1, 2, 4):
+            raise ValueError("OmniVoice batch size must be 1, 2 or 4.")
+        if type(self.batch_max_chars) is not int or not 64 <= self.batch_max_chars <= 4000:
+            raise ValueError("OmniVoice batch character budget must be between 64 and 4000.")
+        if self.quality_preset not in ("balanced", "more-steps"):
+            raise ValueError("Unknown OmniVoice quality preset")
+        if type(self.seed) is not int or not 0 <= self.seed < 2**63:
+            raise ValueError("OmniVoice seed must be an integer between 0 and 2**63-1.")
         if bool(self.reference_audio) != bool(self.reference_text.strip()):
             raise ValueError("OmniVoice needs both reference audio and its transcript, or neither.")
         if not isinstance(self.language, str) or not self.language.strip():

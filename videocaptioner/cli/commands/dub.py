@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from argparse import Namespace
 from pathlib import Path
+from typing import Any
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
@@ -109,7 +110,7 @@ def run(args: Namespace, config: dict) -> int:
         validate_subtitle_input,
         validate_video_input,
     )
-    validation = validate_video_input(video_path) or validate_subtitle_input(subtitle_path)
+    validation = validate_video_input(video_path) or validate_subtitle_input(subtitle_path, allow_json=True)
     if validation is not None:
         return validation
     if not validate_ffmpeg():
@@ -140,17 +141,26 @@ def run(args: Namespace, config: dict) -> int:
     progress = None if quiet else output.ProgressLine("Dubbing video").start()
     try:
         from videocaptioner.core.dubbing.engine import DubbingEngine
+        from videocaptioner.core.dubbing.review import DubbingReview
         engine = DubbingEngine()
+        prepared_path = getattr(args, "prepare_review", None)
+        reviewed_path = getattr(args, "review", None)
+        callback = (lambda value, message: progress.update(value, message)) if progress else None
+        if prepared_path:
+            if Path(prepared_path).resolve() in (video_path.resolve(), subtitle_path.resolve()):
+                raise ValueError("Review output must not overwrite source media or subtitles")
+            engine.prepare_review(str(video_path), str(subtitle_path), dubbing_config, callback).save(prepared_path)
+            if progress:
+                progress.finish(f"Wording preview -> {prepared_path}; no audio generated")
+            return EXIT.SUCCESS
+        review_args: dict[str, Any] = {"review": DubbingReview.load(reviewed_path)} if reviewed_path else {}
         engine.dub(
             str(video_path),
             str(subtitle_path),
             str(output_path),
             dubbing_config,
-            callback=(
-                (lambda value, message: progress.update(value, message))
-                if progress
-                else None
-            ),
+            callback=callback,
+            **review_args,
         )
         if progress:
             progress.finish(f"Done -> {output_path}")

@@ -121,6 +121,8 @@ class DubbingEngine:
             ValueError: Nếu thiếu config hoặc file không tồn tại.
             RuntimeError: Nếu bất kỳ bước nào thất bại.
         """
+        from videocaptioner.core.dubbing.dialogue import source_config
+        config = source_config(subtitle_path, config)
         if callback is None:
             callback = _noop_progress
 
@@ -138,6 +140,29 @@ class DubbingEngine:
                 review=review, display_subtitle_path=display_subtitle_path,
                 allow_config_change=allow_config_change,
             )
+
+    def prepare_review(
+        self, video_path: str, subtitle_path: str, config: DubbingConfig,
+        callback: Optional[Callable[[int, str], None]] = None, *, display_subtitle_path: str | None = None,
+    ) -> DubbingReview:
+        """Prepare a source-bound plan for explicit wording approval, without generating audio."""
+        from videocaptioner.core.dubbing.dialogue import source_config
+        from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
+
+        config = source_config(subtitle_path, config)
+        callback = callback or _noop_progress
+        orchestrator = DubbingOrchestrator(self)
+        orchestrator._validate(video_path, subtitle_path, config)
+        with self._managed_runtime_context(config, callback):
+            plan = orchestrator._prepare_plan(video_path, subtitle_path, display_subtitle_path, config, callback)
+            if not plan.groups:
+                raise ValueError("Phụ đề trống, không có lời đọc để duyệt")
+            for group in plan.groups:
+                group.needs_review = True
+                group.action_taken = "wording_preview"
+            orchestrator._write_report(plan, "", output_created=False)
+        assert self.last_review is not None
+        return self.last_review
 
     def import_review(
         self,
@@ -158,6 +183,8 @@ class DubbingEngine:
         from videocaptioner.core.dubbing.orchestrator import DubbingOrchestrator
 
         callback = callback or _noop_progress
+        from videocaptioner.core.dubbing.dialogue import source_config
+        config = source_config(subtitle_path, config)
         review = DubbingReview.from_report(review.to_dict())
         self.last_review, self.last_report = review, review.to_dict()
         self.last_report_path = ""
@@ -181,6 +208,7 @@ class DubbingEngine:
         config: DubbingConfig,
         output_dir: str | Path,
         callback: Optional[Callable[[int, str], None]] = None,
+        dialogue_document=None,
     ):
         """Force-refresh only groups intersecting ``selected_cue_ids``.
 
@@ -189,6 +217,9 @@ class DubbingEngine:
         cache key, performs one provider request per unique selected key and
         returns measured groups without mixing or touching unrelated audio.
         """
+        if dialogue_document is not None:
+            from videocaptioner.core.dubbing.dialogue import dialogue_preset
+            config = dialogue_preset(config, dialogue_document.target_language)
         if (
             config.tts_provider in (TTSProviderEnum.VIENEU_LOCAL, TTSProviderEnum.OMNIVOICE_LOCAL)
             and not config.managed_tts_identity
@@ -201,6 +232,7 @@ class DubbingEngine:
                     config=config,
                     output_dir=output_dir,
                     callback=callback,
+                    dialogue_document=dialogue_document,
                 )
         if not config.tts_config:
             raise ValueError("TTS config chưa được cấu hình")
@@ -222,7 +254,11 @@ class DubbingEngine:
             silence_guard_ms=config.silence_guard_ms if natural else 0,
             max_group_duration=config.max_group_duration,
             target_language=config.target_language,
+            preserve_tts_text=natural and config.unresolved_policy.value == "sequential",
         )
+        if dialogue_document is not None:
+            from videocaptioner.core.dubbing.dialogue import dialogue_groups
+            groups = dialogue_groups(dialogue_document, video_duration)
         targets = [
             group for group in groups if selected.intersection(str(item) for item in group.cue_ids)
         ]
@@ -241,7 +277,7 @@ class DubbingEngine:
                 if first_cue.voice:
                     group_config.tts_config.voice = first_cue.voice
                 requested_speed = first_cue.metadata.get("voice_speed")
-                if requested_speed is not None:
+                if requested_speed is not None and dialogue_document is None:
                     group_config.tts_config.speed = float(requested_speed)
             group.cache_key = orchestrator._cache_key(group, group_config)
             cache.invalidate(group.cache_key)
