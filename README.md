@@ -115,7 +115,8 @@ nguồn/phụ đề, cấu hình giọng, timing, âm lượng và độ phân g
 hoặc tên gốc, playback SRT khớp đủ lời đọc và media hợp lệ được nhận diện một lần;
 bản cũ không có bằng chứng lịch sử về giọng/âm lượng đã chọn.
 
-LLM gửi tối đa 3 yêu cầu cùng lúc, giảm xuống 1 sau HTTP 429. Các nhóm câu dùng
+LLM dùng số luồng đã chọn làm giới hạn yêu cầu đồng thời: chọn 20 thì tối đa 20
+yêu cầu khi có đủ nhóm câu, chỉ giảm xuống 1 sau HTTP 429. Các nhóm câu dùng
 chung thời gian chờ, tối đa hai lượt
 thử phục hồi trong thời hạn request. Tôn trọng `Retry-After`; lỗi hết hạn mức rõ
 ràng dừng ngay. Nếu vẫn bị từ chối, Batch dừng các hàng còn chờ, giữ bản dịch đã

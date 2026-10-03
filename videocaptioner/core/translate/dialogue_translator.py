@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from dataclasses import replace
 
 import json_repair
 
 from videocaptioner.core.prompts import get_prompt
 from videocaptioner.core.translate.dialogue import (
+    MAX_CONTINUATION_MS,
     POLICY,
     DialogueBlockTimingError,
     DialogueCue,
@@ -32,6 +34,7 @@ class DialogueTranslator(LLMTranslator):
         self.dialogue_document = None
         self._source = {item.cue_id: item for item in translate_data_list}
         self._positions = {item.cue_id: i for i, item in enumerate(translate_data_list)}
+        self._wire_ids = {item.cue_id: f"c{i + 1}" for i, item in enumerate(translate_data_list)}
         self._scenes = {}
         if self.conversation_snapshot:
             for scene in self.conversation_snapshot.context.scenes:
@@ -59,13 +62,51 @@ class DialogueTranslator(LLMTranslator):
             if current and (self._boundary(current[-1], item)
                             or len(current) >= 2 * budget
                             or sum(len(c.original_text) for c in current) + len(item.original_text) > 4000
-                            or (len(current) >= budget and re.search(r"[.!?。！？][\"'”’)]*$", current[-1].original_text))):
+                            or (len(current) >= budget and (
+                                re.search(r"[.!?。！？][\"'”’)]*\s*$", current[-1].original_text)
+                                or item.end_ms - current[budget - 1].start_ms > MAX_CONTINUATION_MS))):
                 chunks.append(current)
                 current = []
             current.append(item)
         if current:
             chunks.append(current)
         return chunks
+
+    def _wire_context(self, context):
+        """Alias cue references only; character IDs and dialogue text are untouched."""
+        context = deepcopy(context)
+        for name in ("selected", "source_window"):
+            for cue in context.get(name, []):
+                cue["id"] = self._wire_ids[cue["id"]]
+        for evidence in context.get("evidence", []):
+            evidence["cue_ids"] = [self._wire_ids.get(cid, cid) for cid in evidence["cue_ids"]]
+        for character in context.get("characters", []):
+            evidence = character.get("evidence", {})
+            evidence["cue_ids"] = [self._wire_ids.get(cid, cid) for cid in evidence.get("cue_ids", [])]
+        reviews = context.get("review", {}).get("cues_by_issue", {})
+        for issue, ids in reviews.items():
+            reviews[issue] = [self._wire_ids[cid] for cid in ids]
+        return context
+
+    def _source_payload(self, payload, chunk):
+        """Reject unknown aliases before restoring stable source IDs for validation/cache."""
+        if not isinstance(payload, dict):
+            raise ValueError("Return subtitle_translations and speech_blocks only.")
+        payload = deepcopy(payload)
+        ids = {self._wire_ids[item.cue_id]: item.cue_id for item in chunk}
+        translations = payload.get("subtitle_translations")
+        if not isinstance(translations, dict) or set(translations) != set(ids):
+            raise ValueError("Use exactly the owned cue IDs in subtitle_translations.")
+        payload["subtitle_translations"] = {ids[cid]: text for cid, text in translations.items()}
+        blocks = payload.get("speech_blocks")
+        if not isinstance(blocks, list):
+            raise ValueError("speech_blocks must be a list.")
+        for block in blocks:
+            if (not isinstance(block, dict) or not isinstance(block.get("cue_ids"), list)
+                    or any(not isinstance(cid, str) or cid not in ids for cid in block["cue_ids"])):
+                raise ValueError("Use only owned cue IDs in speech_blocks.")
+            block["cue_ids"] = [ids[cid] for cid in block["cue_ids"]]
+        return payload
 
     def _get_cache_key(self, chunk):
         return "dialogue:" + fingerprint({
@@ -140,12 +181,12 @@ class DialogueTranslator(LLMTranslator):
         owned = []
         for index, item in enumerate(subtitle_chunk):
             cue = self._cue(item)
-            owned.append({"id": cue.cue_id, "text": cue.source_text, "start_ms": cue.start_ms,
+            owned.append({"id": self._wire_ids[cue.cue_id], "text": cue.source_text, "start_ms": cue.start_ms,
                           "end_ms": cue.end_ms, "speaker": cue.speaker,
                           "boundary_before": index == 0 or self._boundary(subtitle_chunk[index - 1], item)})
         context = self.conversation_snapshot.request_data(tuple(item.cue_id for item in subtitle_chunk)) if self.conversation_snapshot else {}
         messages = [{"role": "system", "content": self._prompt},
-                    {"role": "user", "content": json.dumps({"owned_cues": owned, "context_read_only": context}, ensure_ascii=False)}]
+                    {"role": "user", "content": json.dumps({"owned_cues": owned, "context_read_only": self._wire_context(context)}, ensure_ascii=False)}]
         for _ in range(self.MAX_STEPS):
             if not self.is_running:
                 raise RuntimeError("Translation cancelled.")
@@ -154,7 +195,7 @@ class DialogueTranslator(LLMTranslator):
             try:
                 # Complete translations need no second network round-trip merely
                 # because a proposed speech block spans too much source time.
-                return self._parse(payload, subtitle_chunk, repair_timing=True)
+                return self._parse(self._source_payload(payload, subtitle_chunk), subtitle_chunk, repair_timing=True)
             except ValueError as exc:
                 messages.extend([{"role": "assistant", "content": json.dumps(payload, ensure_ascii=False)},
                                  {"role": "user", "content": str(exc) + " Repair the complete JSON; keep all owned information."}])

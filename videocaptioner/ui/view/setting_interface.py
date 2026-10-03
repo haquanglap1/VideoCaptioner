@@ -496,7 +496,7 @@ class SettingInterface(ScrollArea):
             FIF.SPEED_HIGH,
             self.tr("线程数"),
             self.tr(
-                "Processing threads. LLM requests use up to 3 concurrent connections, reduced to 1 after HTTP 429."
+                "Maximum concurrent processing requests. LLM uses this thread count, reduced to 1 only after HTTP 429."
             ),
             parent=self.translate_serviceGroup,
         )

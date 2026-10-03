@@ -3,7 +3,7 @@
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event
+from threading import Event, Lock
 
 import httpx
 import pytest
@@ -62,7 +62,59 @@ def test_parallel_rejections_do_not_retry_every_chunk(monkeypatch):
         for future in futures:
             with pytest.raises(LLMRateLimitError):
                 future.result(5)
-    assert 3 <= len(observed) <= 5
+    # Up to ten initial requests, then two shared recovery probes.
+    assert 3 <= len(observed) <= 12
+
+
+@pytest.mark.parametrize("threads", [1, 3, 20])
+def test_configured_threads_reach_transport_without_hidden_cap(monkeypatch, threads):
+    import asyncio
+
+    from videocaptioner.core.entities import SubtitleConfig, TranslatorServiceEnum
+    from videocaptioner.ui.thread.subtitle_thread import create_translator_from_config
+
+    lock, wave_ready, release = Lock(), Event(), Event()
+    active = peak = requests = 0
+    async def handler(request):
+        nonlocal active, peak, requests
+        with lock:
+            active += 1
+            requests += 1
+            peak = max(peak, active)
+            if active == threads:
+                wave_ready.set()
+        try:
+            while not release.is_set():
+                await asyncio.sleep(.01)
+            body = json.loads(request.content)
+            owned = json.loads(body["messages"][1]["content"])["owned_cues"]
+            value = {"subtitle_translations": {c["id"]: "Translation." for c in owned},
+                     "speech_blocks": [{"cue_ids": [c["id"]], "text": "Translation."} for c in owned]}
+            return httpx.Response(200, json={"id": "test", "model": "fixture", "object": "chat.completion",
+                "created": 0, "choices": [{"index": 0, "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": json.dumps(value)}}]})
+        finally:
+            with lock:
+                active -= 1
+    wire_client(monkeypatch, handler)
+    engine = create_translator_from_config(SubtitleConfig(thread_num=threads, batch_size=1,
+        translator_service=TranslatorServiceEnum.OPENAI,
+        dialogue_translation=True, api_key="fixture", base_url="https://fixture.invalid/v1", llm_model="fixture"))
+    engine.reuse_cached_chunks = False
+    data = ASRData([ASRDataSeg("Synthetic source.", i * 2000, i * 2000 + 500) for i in range(40)])
+    try:
+        with ThreadPoolExecutor(1) as pool:
+            future = pool.submit(engine.translate_subtitle, data)
+            try:
+                assert wave_ready.wait(5), f"Configured {threads} workers, observed only {peak} concurrent requests"
+            finally:
+                release.set()
+            result = future.result(10)
+        assert peak == threads and requests == 40 and active == 0
+        assert len(result.segments) == 40
+    finally:
+        release.set()
+        engine.close()
 
 
 def test_cancelling_cooldown_does_not_send_retry(monkeypatch):

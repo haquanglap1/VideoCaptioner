@@ -55,7 +55,13 @@ def respond(engine, monkeypatch, value):
     calls = []
     def request(messages):
         calls.append(messages)
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(value)))])
+        wire = json.loads(json.dumps(value))
+        translations = wire.get("subtitle_translations", {})
+        wire["subtitle_translations"] = {engine._wire_ids.get(cid, cid): text for cid, text in translations.items()}
+        if isinstance(wire.get("speech_blocks"), list):
+            for block in wire["speech_blocks"]:
+                block["cue_ids"] = [engine._wire_ids.get(cid, cid) for cid in block["cue_ids"]]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(wire)))])
     monkeypatch.setattr(engine, "_request", request)
     return calls
 
@@ -80,7 +86,8 @@ def test_spoken_groups_roundtrip_preserve_source_and_display_timing(translator, 
     assert len(calls) == 1
     assert translator.dialogue_document == document
     owned = json.loads(calls[0][1]["content"])["owned_cues"]
-    assert [c["id"] for c in owned] == [s.cue_id for s in data]
+    assert [c["id"] for c in owned] == ["c1", "c2", "c3"]
+    assert [c["text"] for c in owned] == [s.text for s in data]
 
 
 @pytest.mark.parametrize("failure", ["missing", "duplicate", "reverse", "extra", "blank", "foreign", "shape"])
@@ -154,7 +161,8 @@ def test_context_is_read_only_and_cache_tracks_prompt(translator, monkeypatch):
     assert translator.dialogue_document.blocks[0].cue_ids == ("synthetic-2",)
     request = json.loads(calls[0][1]["content"])
     assert len(request["owned_cues"]) == 1
-    assert "synthetic-1" in json.dumps(request["context_read_only"])
+    assert request["owned_cues"][0]["id"] == "c2"
+    assert request["context_read_only"]["source_window"][0]["id"] == "c1"
     translator.custom_prompt = "Giữ nguyên các thuật ngữ."
     translator.translate_subtitle(selected, context_data=data)
     assert len(calls) == 2
@@ -225,3 +233,62 @@ def test_dialogue_uses_the_apps_llm_configuration():
         assert engine._credentials == LLMCredentials("synthetic-app-key", "https://configured.invalid/v1")
     finally:
         engine.close()
+
+
+def test_unpunctuated_dialogue_does_not_double_large_requests(translator, monkeypatch):
+    translator.batch_num = 30
+    data = ASRData([ASRDataSeg("Unpunctuated source", i * 4000, (i + 1) * 4000,
+                              cue_id=f"stable-source-{i:020d}") for i in range(48)])
+    before = data.to_document()
+    calls = []
+    def request(messages):
+        owned = json.loads(messages[1]["content"])["owned_cues"]
+        calls.append(owned)
+        value = {"subtitle_translations": {c["id"]: "Bản dịch đầy đủ." for c in owned},
+                 "speech_blocks": [{"cue_ids": [c["id"]], "text": "Bản dịch đầy đủ."} for c in owned]}
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(value)))])
+    monkeypatch.setattr(translator, "_request", request)
+    result = translator.translate_subtitle(data)
+    assert [len(c) for c in calls] == [32, 16]
+    assert [c["id"] for call in calls for c in call] == [f"c{i + 1}" for i in range(48)]
+    assert [s.cue_id for s in result] == [s.cue_id for s in data]
+    assert tuple(cid for block in translator.dialogue_document.blocks for cid in block.cue_ids) == tuple(s.cue_id for s in data)
+    assert data.to_document() == before
+    translator.translate_subtitle(data)
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("field", ["subtitle_translations", "speech_blocks"])
+def test_wire_response_cannot_claim_neighbor_or_guess_mistyped_id(translator, monkeypatch, field):
+    calls = []
+    def request(messages):
+        calls.append(messages)
+        value = {"subtitle_translations": {"c2": "Translated"}, "speech_blocks": [{"cue_ids": ["c2"], "text": "Translated"}]}
+        if field == "subtitle_translations":
+            value[field] = {"c1": "Neighbor"}
+        else:
+            value[field][0]["cue_ids"] = ["c1"]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(value)))])
+    monkeypatch.setattr(translator, "_request", request)
+    data = source()
+    with pytest.raises(RuntimeError, match="Malformed dialogue"):
+        translator.translate_subtitle(data.with_segments([data.segments[1].clone()]), context_data=data)
+    assert len(calls) == 3 and not translator._cache.values
+
+
+def test_wire_context_preserves_text_and_non_cue_identifiers(translator):
+    from copy import deepcopy
+    translator._wire_ids = {"source-a": "c1", "source-b": "c2"}
+    context = {"selected": [{"id": "source-a", "speaker_id": "source-b"}],
+               "source_window": [{"id": "source-a", "text": "source-b"}],
+               "characters": [{"id": "source-b", "label": "source-a", "evidence": {"cue_ids": ["source-a"]}}],
+               "evidence": [{"entry_id": "source-a", "cue_ids": ["source-b"]}],
+               "review": {"cues_by_issue": {"conflict": ["source-a"]}}}
+    before = deepcopy(context)
+    wire = translator._wire_context(context)
+    assert context == before
+    assert wire["selected"] == [{"id": "c1", "speaker_id": "source-b"}]
+    assert wire["source_window"] == [{"id": "c1", "text": "source-b"}]
+    assert wire["characters"] == [{"id": "source-b", "label": "source-a", "evidence": {"cue_ids": ["c1"]}}]
+    assert wire["evidence"] == [{"entry_id": "source-a", "cue_ids": ["c2"]}]
+    assert wire["review"]["cues_by_issue"] == {"conflict": ["c1"]}

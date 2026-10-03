@@ -54,14 +54,14 @@ def find_rate_limit(exc: BaseException | None) -> LLMRateLimitError | None:
 class RateLimitGate:
     """Share a cooldown across chunks; one probe may resume a rejected job.
 
-    At most three requests run concurrently. After a rejection, only one runs
-    at a time, with two recovery probes for the entire job, not per chunk.
+    The caller's configured worker pool controls normal concurrency. After a
+    rejection, only one runs at a time, with two recovery probes for the job.
     """
 
     def __init__(self):
         self.lock = Lock()
         self.active = 0
-        self.limit = 3
+        self.limit: int | None = None
         self.rejections = 0
         self.ready_at = 0.0
         self.failure: LLMRateLimitError | None = None
@@ -70,7 +70,8 @@ class RateLimitGate:
         with self.lock:
             if self.failure:
                 raise self.failure from None
-            if self.active >= self.limit or time.monotonic() < self.ready_at:
+            if ((self.limit is not None and self.active >= self.limit)
+                    or time.monotonic() < self.ready_at):
                 return False
             self.active += 1
             return True
@@ -82,7 +83,7 @@ class RateLimitGate:
     def reject(self, error: LLMRateLimitError, remaining: float):
         with self.lock:
             # Initial requests already in flight share the same first rejection.
-            if self.limit == 3 or time.monotonic() >= self.ready_at:
+            if self.limit is None or time.monotonic() >= self.ready_at:
                 self.rejections += 1
             self.limit = 1
             delay = max(error.retry_after, BACKOFF_SECONDS * 2 ** min(self.rejections - 1, 2))

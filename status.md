@@ -1,5 +1,39 @@
 # Project Status
 
+## 2026-10-03 (Đồng bộ số luồng LLM và sửa request thoại 48 câu)
+
+- Theo user: bỏ giới hạn cứng 3 request trong RateLimitGate; worker pool dùng
+  đúng ThreadNum đã chọn. Chọn 20 cho phép tối đa 20 request khi đủ nhóm;
+  chỉ giảm còn 1 khi thực sự nhận HTTP429. Giữ cooldown/quota-stop và không
+  tự gửi lại timeout. Tooltip Việt/README đồng bộ, không đổi settings user.
+- Log lỗi48/48: response đầu HTTP200/185,204s có48 bản dịch nhưng sai1 cue ID;
+  lượt sửa toàn JSON timeout300,063s. Không có bằng chứng20 luồng gây lỗi này:
+  lúc sửa chỉ1 request dịch. Split cũng từng timeout trước đó, chưa sửa fallback
+  split/optimize trong lượt này và không tuyên bố khắc phục độ trễ provider.
+- Dialogue dùng alias c1/c2 trong request, ánh xạ chính xác về stable source ID
+  trước validate/cache/export. Không đoán ID sai; context chỉ đổi cue references,
+  giữ text/character IDs. Sau batch budget chỉ kéo dài continuation tối đa12s,
+  tránh nguồn thiếu dấu câu dồn48 câu vào1 request; dữ liệu này thành30+18.
+- Audit `.tools/dialogue-timeout-20261003/`:505 pass/24 deselected;
+  Ruff/Pyright0/0/translations pass. Test source cấu hình1/3/20 đo đúng1/3/20
+  request đồng thời. Không full suite. Fixture đầu thiếu translator enum và
+  một lỗi sort import đã sửa; raw evidence giữ trong audit/tool history.
+- Replay provider thực cùng model/prompt/timeout:2 request HTTP200,
+  161,672s/190,954s; tổng191,015s,48/48 cue,31 speech blocks hợp lệ, không
+  cần sửa JSON. Settings nguyên hash; không log nội dung request mới. Source
+  replay từ input đã gửi trước đây, chưa phải full Batch/ASR/TTS/listening gate.
+- EXE build0/210,797s,6 WARNING/0 ERROR,31.725.022bytes,SHA256
+  `1b3916e745ae2e21cbbccf98dcda6ed3eac2597d9669d23e9271a3d6245f372b`.
+  3 module source-match;99.315 file/8 model-runtime component size-match,
+  không cài/tải mới. Frozen CLI loopback:40/40 cue, peak20 request,12,922s/exit0.
+  GUI hidden120,564s/exit0/0 survivors; CloseMainWindow không tìm cửa sổ ẩn,
+  harness đóng bằng WM_CLOSE tới HWND/PID đã xác minh, không terminate process.
+- User đã đóng app. Deploy E:602 app files SHA-match,delta4 đã backup,
+  2.502 file dữ liệu/settings/giọng/manifest nguyên hash; không chép models.
+  Giữ tên EXE/shortcut; live help0, GUI/loopback kế thừa same-SHA artifact.
+  9 file source/docs/tests thay đổi, chưa commit/push; danh sách/hashes và gate
+  trong audit `closeout.json`.
+
 ## 2026-10-03 (Phục hồi HTTP 429 và dùng lại video đã lồng tiếng)
 
 - Log bản E: split/optimize nhận429 nhưng fallback nuốt lỗi, rồi vẫn gọi dịch
