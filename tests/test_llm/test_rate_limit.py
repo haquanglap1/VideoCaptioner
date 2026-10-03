@@ -171,3 +171,66 @@ def test_split_and_optimizer_do_not_swallow_provider_rejection():
             optimizer.optimize_subtitle(ASRData([ASRDataSeg("hello", 0, 1000)]))
     finally:
         optimizer.close()
+
+
+@pytest.mark.parametrize("limit", [1, 3, 20])
+def test_independent_jobs_share_selected_total_request_limit(monkeypatch, limit):
+    import asyncio
+
+    from videocaptioner.core.llm.rate_limit import RateLimitGate, llm_admission_scope
+
+    lock, reached, release = Lock(), Event(), Event()
+    active = peak = 0
+    async def handler(_):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            if active == limit:
+                reached.set()
+        try:
+            while not release.is_set():
+                await asyncio.sleep(.01)
+            return response()
+        finally:
+            with lock:
+                active -= 1
+    observed, _ = wire_client(monkeypatch, handler)
+    shared = RateLimitGate(limit)
+    with llm_admission_scope(shared):
+        jobs = [call() for _ in range(3)]
+    assert call()._gate is not shared
+    with ThreadPoolExecutor(30) as pool:
+        futures = [pool.submit(jobs[i % 3], [], "fixture") for i in range(30)]
+        try:
+            assert reached.wait(5)
+            assert peak == limit
+        finally:
+            release.set()
+        for future in futures:
+            assert future.result(10).choices
+    assert peak == limit and active == shared.active == 0 and len(observed) == 30
+
+
+def test_shared_quota_and_cancellation_do_not_leak_between_jobs(monkeypatch):
+    from videocaptioner.core.llm.rate_limit import RateLimitGate, llm_admission_scope
+
+    cancelled = Event()
+    rejecting = Event()
+    observed, _ = wire_client(monkeypatch, lambda _: httpx.Response(429,
+        json={"error": {"code": "insufficient_quota"}}) if rejecting.is_set() else response())
+    with llm_admission_scope(RateLimitGate(1)):
+        first = OwnedLLMRequest(call().credentials, 5, cancelled.is_set)
+        second = call()
+    cancelled.set()
+    with pytest.raises(RuntimeError, match="cancelled"):
+        first([], "fixture")
+    assert second([], "fixture").choices and len(observed) == 1
+    monkeypatch.setattr(rate_limit, "BACKOFF_SECONDS", .01)
+    rejecting.set()
+    with pytest.raises(LLMRateLimitError):
+        second([], "fixture")
+    cancelled.clear()
+    with pytest.raises(LLMRateLimitError):
+        first([], "fixture")
+    assert len(observed) == 2 and first._gate.active == 0

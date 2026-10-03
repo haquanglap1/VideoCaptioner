@@ -77,6 +77,12 @@ class PlatformAwareTranscribeModelValidator(OptionsValidator):
 class Config(QConfig):
     """应用配置"""
 
+    batch_videos = RangeConfigItem("Batch", "Videos", 3, RangeValidator(1, 8))
+    batch_asr = RangeConfigItem("Batch", "ASR", 2, RangeValidator(1, 8))
+    batch_subtitle = RangeConfigItem("Batch", "Subtitle", 3, RangeValidator(1, 8))
+    batch_dubbing = RangeConfigItem("Batch", "Dubbing", 2, RangeValidator(1, 8))
+    batch_synthesis = RangeConfigItem("Batch", "Synthesis", 1, RangeValidator(1, 8))
+
     # LLM配置
     llm_service = OptionsConfigItem(
         "LLM",

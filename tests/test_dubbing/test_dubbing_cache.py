@@ -79,3 +79,22 @@ def test_disabled_cache_bypasses_reads_and_writes(tmp_path):
     assert cache.put(key(), source, provider="p", model="m", voice="v", sample_rate=8000) is None
     assert cache.get(key()) is None
     assert not cache.root.exists()
+
+
+def test_concurrent_jobs_publish_same_identity_once(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    sources = [tmp_path / f"source-{i}.wav" for i in range(8)]
+    for index, source in enumerate(sources):
+        write_wav(source, .2 + index * .1)
+    barrier = Barrier(8)
+    def publish(source):
+        cache = PersistentTTSCache(tmp_path / "cache")
+        barrier.wait(5)
+        return cache.put(key(), source, provider="openai", model="tts-1", voice="alloy", sample_rate=8000)
+    with ThreadPoolExecutor(8) as pool:
+        entries = list(pool.map(publish, sources))
+    assert len({entry.duration for entry in entries}) == 1
+    assert PersistentTTSCache(tmp_path / "cache").get(key()).duration == entries[0].duration
+    assert len(list((tmp_path / "cache").iterdir())) == 2

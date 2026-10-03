@@ -9,6 +9,7 @@ ThreadPoolExecutor 不会自动复制 contextvars，所以每个 submit 点都�
 import contextvars
 import uuid
 from concurrent.futures import Executor, Future
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -56,6 +57,16 @@ def update_stage(stage: str) -> None:
 def clear_task_context() -> None:
     """清除任务上下文"""
     _current_context.set(None)
+
+
+@contextmanager
+def task_context(task_id: str, file_name: str, stage: str):
+    """Restore the caller's context after a complete worker stage."""
+    token = _current_context.set(TaskContext(task_id, file_name, stage))
+    try:
+        yield
+    finally:
+        _current_context.reset(token)
 
 
 def submit_with_context(

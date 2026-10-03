@@ -5,6 +5,11 @@ Rà soát ngày **2026-09-29**. Dùng trang này để chọn plan đang áp d�
 Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó;
 không suy validation offline thành nghiệm thu chất lượng nhận dạng.
 
+## 2026-10-03 — Batch nhiều video đồng thời
+
+- Điều phối theo công đoạn, giới hạn video/ASR/subtitle/TTS/export, chung số luồng LLM và một suất GPU.
+- [Kế hoạch triển khai và các gate](concurrent-batch-2026-10.md).
+
 ## 2026-10-02 — kế hoạch dịch lời thoại cho OmniVoice
 
 - **Đã triển khai, nghiệm thu còn mở**: thêm cách dịch lời thoại, chuẩn bị câu đọc liền mạch sau dịch,

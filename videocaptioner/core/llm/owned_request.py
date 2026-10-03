@@ -7,7 +7,7 @@ from typing import Callable
 import openai
 
 from .client import LLMCredentials
-from .rate_limit import RateLimitGate, rate_limit_error
+from .rate_limit import RateLimitGate, rate_limit_error, request_gate
 from .request_logger import OwnedRequestLog
 from .request_policy import validate_request_timeout
 
@@ -18,7 +18,7 @@ class OwnedLLMRequest:
     timeout: int = 120
     cancelled: Callable[[], bool] = lambda: False
     log_content: bool = True
-    _gate: RateLimitGate = field(default_factory=RateLimitGate, init=False, repr=False, compare=False)
+    _gate: RateLimitGate = field(default_factory=request_gate, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         validate_request_timeout(self.timeout)

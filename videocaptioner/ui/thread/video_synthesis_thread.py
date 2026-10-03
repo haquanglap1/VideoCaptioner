@@ -12,6 +12,8 @@ from videocaptioner.core.dubbing.completed import (
     video_identity,
 )
 from videocaptioner.core.entities import SynthesisTask
+from videocaptioner.core.llm.context import task_context
+from videocaptioner.core.llm.rate_limit import llm_admission_scope
 from videocaptioner.core.subtitle.synthesis import load_synthesis_subtitles
 from videocaptioner.core.translate.dialogue import fingerprint
 from videocaptioner.core.utils.logger import setup_logger
@@ -28,11 +30,14 @@ class VideoSynthesisThread(QThread):
     def __init__(self, task: SynthesisTask):
         super().__init__()
         self.task = task
+        self.llm_gate = None
+        self.output_reservations = None
         logger.debug(f"Khoi tao VideoSynthesisThread, task: {self.task}")
 
     def run(self):
         from videocaptioner.core.utils.subprocess_helper import cancellation_scope
-        with cancellation_scope(self._check_cancelled):
+        with (cancellation_scope(self._check_cancelled), llm_admission_scope(self.llm_gate),
+              task_context(self.task.task_id, Path(self.task.video_path or "").name, "synthesis")):
             self._run()
 
     def _run(self):
@@ -72,7 +77,7 @@ class VideoSynthesisThread(QThread):
                     return
 
             from .video_title import prepare_video_title
-            prepare_video_title(self.task, self._check_cancelled, self.progress.emit)
+            prepare_video_title(self.task, self._check_cancelled, self.progress.emit, self.output_reservations)
             output_path = self.task.output_path
             assert output_path is not None
 
@@ -141,6 +146,7 @@ class VideoSynthesisThread(QThread):
             self.finished.emit(self.task)
 
         except Exception as e:
+            self.failure = e
             if self.isInterruptionRequested():
                 return
             logger.exception(f"Ghep video that bai: {e}")

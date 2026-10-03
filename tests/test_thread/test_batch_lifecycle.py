@@ -1,14 +1,22 @@
 """Batch cancellation joins native workers before handing off or restarting."""
 
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from PyQt5.QtCore import QThread, QTimer, pyqtSignal
 
+from videocaptioner.core.batch import BatchLimits
+from videocaptioner.core.dubbing.config import TTSProviderEnum
 from videocaptioner.core.entities import BatchTaskStatus as Status
 from videocaptioner.core.entities import BatchTaskType as Kind
-from videocaptioner.core.entities import SubtitleLayoutEnum
+from videocaptioner.core.entities import (
+    SubtitleLayoutEnum,
+    SynthesisConfig,
+    TranscribeConfig,
+    TranscribeModelEnum,
+)
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.thread import batch_process_thread as batch
 
@@ -22,8 +30,8 @@ def until(qapp, predicate):
 
 
 @pytest.fixture
-def queue(qapp, monkeypatch):
-    coordinator = batch.BatchProcessThread()
+def queue(qapp, monkeypatch, tmp_path):
+    coordinator = batch.BatchProcessThread(BatchLimits(videos=1))
     started, retired, workers = [], [], []
     state = {"hold": None}
 
@@ -36,6 +44,9 @@ def queue(qapp, monkeypatch):
             super().__init__()
             assert len(started) == len(retired), "The previous worker has not finished cleanup"
             self.task, self.options = task, options
+            if task.stage == "render":
+                captures.append((task.video_path, task.subtitle_path,
+                                 {"input_subtitle_layout": task.input_subtitle_layout}))
             workers.append(self)
 
         def run(self):
@@ -70,20 +81,21 @@ def queue(qapp, monkeypatch):
 
     class Factory:
         def create_transcribe_task(self, path, **kwargs):
-            return SimpleNamespace(stage="asr", output_path="source.srt", asr_data="native")
+            return SimpleNamespace(stage="asr", output_path=str(tmp_path / Path(path).stem / "subtitle/source.srt"),
+                                   asr_data="native", transcribe_config=TranscribeConfig(transcribe_model=TranscribeModelEnum.WHISPER_API))
 
         def create_subtitle_task(self, path, video, **kwargs):
             return SimpleNamespace(stage="subtitle", video_path=video, dubbing_subtitle_path="dialogue.json",
+                                   output_path=str(Path(path).with_name("translated.srt")),
                                    need_next_task=kwargs["need_next_task"],
                                    subtitle_config=SimpleNamespace(subtitle_layout=SubtitleLayoutEnum.ONLY_TRANSLATE))
 
         def create_dubbing_task(self, video, subtitle, **kwargs):
             return SimpleNamespace(stage="tts", output_path="dubbed.mp4", playback_subtitle_path="playback.srt",
-                                   dubbing_config=SimpleNamespace(subtitle_mode="hard"))
+                                   dubbing_config=SimpleNamespace(subtitle_mode="hard", tts_provider=TTSProviderEnum.OPENAI))
 
         def create_synthesis_task(self, video, subtitle, **kwargs):
-            captures.append((video, subtitle, kwargs))
-            return SimpleNamespace(stage="render")
+            return SimpleNamespace(stage="render", synthesis_config=SynthesisConfig(need_video=cfg.need_video.value))
 
     coordinator.factory = Factory()
     yield SimpleNamespace(coordinator=coordinator, started=started, retired=retired, state=state,

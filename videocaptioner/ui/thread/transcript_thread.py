@@ -13,6 +13,7 @@ from videocaptioner.core.entities import (
     TranscribeOutputFormatEnum,
     TranscribeTask,
 )
+from videocaptioner.core.llm.context import task_context
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import video2audio
 
@@ -30,6 +31,10 @@ class TranscriptThread(QThread):
         self.task = task
 
     def run(self):
+        with task_context(self.task.task_id, Path(self.task.file_path or "").name, "transcribe"):
+            self._run()
+
+    def _run(self):
         try:
             self._check_cancelled()
             self.task.started_at = datetime.datetime.now()

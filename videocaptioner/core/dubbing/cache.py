@@ -9,15 +9,27 @@ import shutil
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
+from threading import RLock
 from typing import Any
 from urllib.parse import urlparse
+from uuid import uuid4
 
 from videocaptioner.config import CACHE_PATH
 from videocaptioner.core.dubbing.audio_mixer import get_audio_duration
 from videocaptioner.core.dubbing.planner import NORMALIZATION_VERSION, normalize_tts_text
 
 CACHE_SCHEMA_VERSION = "dubbing-tts-cache-v1"
+_cache_lock = RLock()
+
+
+def _locked(operation):
+    @wraps(operation)
+    def locked(*args, **kwargs):
+        with _cache_lock:
+            return operation(*args, **kwargs)
+    return locked
 
 
 @dataclass(frozen=True)
@@ -79,6 +91,7 @@ class PersistentTTSCache:
         self.root = Path(root) if root else CACHE_PATH / "dubbing_tts" / "v1"
         self.enabled = enabled
 
+    @_locked
     def get(self, key: str) -> TTSCacheEntry | None:
         if not self.enabled:
             return None
@@ -107,6 +120,7 @@ class PersistentTTSCache:
             return None
         return TTSCacheEntry(key, str(wav_path), duration, str(metadata_path))
 
+    @_locked
     def invalidate(self, key: str) -> bool:
         """Remove exactly one cache entry and leave every other key untouched."""
         if not self.enabled or not key:
@@ -121,6 +135,7 @@ class PersistentTTSCache:
                 continue
         return removed
 
+    @_locked
     def put(
         self,
         key: str,
@@ -135,14 +150,19 @@ class PersistentTTSCache:
         if not self.enabled:
             return None
         source_path = Path(source_audio)
+        existing = self.get(key)
+        if existing is not None:
+            # A concurrent job may already have published this immutable identity.
+            return existing
         duration = measure_audio_duration(source_path)
         if duration <= 0:
             return None
         self.root.mkdir(parents=True, exist_ok=True)
         wav_path = self.root / f"{key}.wav"
         metadata_path = self.root / f"{key}.json"
-        wav_tmp = self.root / f".{key}.{os.getpid()}.wav.tmp"
-        json_tmp = self.root / f".{key}.{os.getpid()}.json.tmp"
+        write_id = uuid4().hex
+        wav_tmp = self.root / f".{key}.{write_id}.wav.tmp"
+        json_tmp = self.root / f".{key}.{write_id}.json.tmp"
         shutil.copyfile(source_path, wav_tmp)
         metadata = {
             "schema_version": CACHE_SCHEMA_VERSION,

@@ -2,6 +2,8 @@
 
 import math
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from threading import Lock
@@ -58,10 +60,10 @@ class RateLimitGate:
     rejection, only one runs at a time, with two recovery probes for the job.
     """
 
-    def __init__(self):
+    def __init__(self, limit: int | None = None):
         self.lock = Lock()
         self.active = 0
-        self.limit: int | None = None
+        self.limit = limit
         self.rejections = 0
         self.ready_at = 0.0
         self.failure: LLMRateLimitError | None = None
@@ -83,7 +85,7 @@ class RateLimitGate:
     def reject(self, error: LLMRateLimitError, remaining: float):
         with self.lock:
             # Initial requests already in flight share the same first rejection.
-            if self.limit is None or time.monotonic() >= self.ready_at:
+            if not self.rejections or time.monotonic() >= self.ready_at:
                 self.rejections += 1
             self.limit = 1
             delay = max(error.retry_after, BACKOFF_SECONDS * 2 ** min(self.rejections - 1, 2))
@@ -93,3 +95,19 @@ class RateLimitGate:
                 self.ready_at = max(self.ready_at, time.monotonic() + delay)
             if self.failure:
                 raise self.failure from None
+
+
+_batch_gate: ContextVar[RateLimitGate | None] = ContextVar("batch_llm_gate", default=None)
+
+
+def request_gate() -> RateLimitGate:
+    return _batch_gate.get() or RateLimitGate()
+
+
+@contextmanager
+def llm_admission_scope(gate: RateLimitGate | None):
+    token = _batch_gate.set(gate)
+    try:
+        yield
+    finally:
+        _batch_gate.reset(token)

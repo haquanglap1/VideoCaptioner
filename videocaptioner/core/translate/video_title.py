@@ -6,6 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 from typing import Callable
 
 from videocaptioner.core.llm.client import LLMCredentials
@@ -23,6 +24,23 @@ class VideoTitleConfig:
     timeout: int = 60
 
 
+class OutputReservations:
+    """Keep simultaneously translated titles distinct until the batch has retired."""
+
+    def __init__(self):
+        self.lock = Lock()
+        self.paths: set[str] = set()
+
+    def reserve(self, candidate: Path) -> Path:
+        with self.lock:
+            original, count = candidate, 2
+            while candidate.exists() or str(candidate.resolve()).casefold() in self.paths:
+                candidate = original.with_name(f"{original.stem} ({count}){original.suffix}")
+                count += 1
+            self.paths.add(str(candidate.resolve()).casefold())
+            return candidate
+
+
 def _safe_title(value: object) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > 1000 or "\n" in value or "\r" in value:
         raise ValueError("Invalid translated video title")
@@ -38,7 +56,8 @@ def _safe_title(value: object) -> str:
 
 
 def translated_output_path(output_path: str, config: VideoTitleConfig,
-                           cancelled: Callable[[], bool] = lambda: False) -> str:
+                           cancelled: Callable[[], bool] = lambda: False,
+                           reservations: OutputReservations | None = None) -> str:
     """One bounded request, deterministic cache, no input rename or file overwrite."""
     def check():
         if cancelled():
@@ -88,6 +107,8 @@ def translated_output_path(output_path: str, config: VideoTitleConfig,
     translated = translated.encode("utf-16-le")[:budget * 2].decode("utf-16-le", errors="ignore").rstrip(" .")
     stem = _safe_title(translated + tail)
     candidate = output.with_name(stem + output.suffix)
+    if reservations is not None:
+        return str(reservations.reserve(candidate))
     count = 2
     while candidate.exists():
         check()

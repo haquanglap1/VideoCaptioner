@@ -86,6 +86,25 @@ def test_collision_retains_existing_file_and_extension(title_service, tmp_path):
     assert proposed.read_bytes() == b"keep-existing" and not result.exists()
 
 
+def test_concurrent_title_outputs_are_reserved_before_any_file_exists(title_service, tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    reservations = titles.OutputReservations()
+    def reserve(index):
+        return titles.translated_output_path(str(tmp_path / f"{index}.mp4"), title_service.config,
+                                            reservations=reservations)
+    with ThreadPoolExecutor(4) as pool:
+        paths = list(pool.map(reserve, range(8)))
+    assert len(set(paths)) == 8 and all(not Path(path).exists() for path in paths)
+
+
+def test_title_quota_is_not_swallowed_by_optional_naming(title_service, tmp_path):
+    from videocaptioner.core.llm.rate_limit import LLMRateLimitError
+    title_service.response["error"] = LLMRateLimitError("quota")
+    task = DubbingTask(output_path=str(tmp_path / "out.mp4"), title_translation=title_service.config)
+    with pytest.raises(LLMRateLimitError):
+        prepare_video_title(task, lambda: None, lambda *_: None)
+
+
 @pytest.mark.parametrize("title", ['../../wrong:folder?\\name*', 'CON', 'NUL.txt', 'A' * 700, 'Tên hợp lệ'])
 def test_windows_names_stay_in_output_directory(title_service, tmp_path, title):
     title_service.response["title"] = title

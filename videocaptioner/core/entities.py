@@ -824,6 +824,8 @@ class SubtitleTask:
 
     subtitle_config: Optional[SubtitleConfig] = None
     asr_data: Optional["ASRData"] = field(default=None, repr=False)
+    # Read-only, source-verified checkpoint from the pre-concurrency work folder.
+    reuse_output_path: Optional[str] = None
 
 
 @dataclass

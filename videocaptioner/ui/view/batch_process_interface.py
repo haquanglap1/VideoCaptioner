@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
 )
 from qfluentwidgets import (
     Action,
+    BodyLabel,
     ComboBox,
     InfoBar,
     InfoBarPosition,
@@ -21,12 +22,14 @@ from qfluentwidgets import (
     ProgressBar,
     PushButton,
     RoundMenu,
+    SpinBox,
     TableWidget,
 )
 from qfluentwidgets import (
     FluentIcon as FIF,
 )
 
+from videocaptioner.core.batch import BatchLimits
 from videocaptioner.core.constant import (
     INFOBAR_DURATION_INFO,
     INFOBAR_DURATION_SUCCESS,
@@ -40,6 +43,7 @@ from videocaptioner.core.entities import (
     SupportedVideoFormats,
 )
 from videocaptioner.core.utils.platform_utils import open_folder
+from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.thread.batch_process_thread import (
     BatchProcessThread,
     BatchTask,
@@ -106,6 +110,26 @@ class BatchProcessInterface(QWidget):
         top_layout.addWidget(self.start_all_btn)
         top_layout.addWidget(self.stop_all_btn)
 
+        concurrency_layout = QHBoxLayout()
+        self.concurrency_controls = []
+        for label, item in (("Videos at once", cfg.batch_videos), ("ASR", cfg.batch_asr),
+                            ("Subtitle / translation", cfg.batch_subtitle), ("Dubbing", cfg.batch_dubbing),
+                            ("Export", cfg.batch_synthesis)):
+            column = QVBoxLayout()
+            column.addWidget(BodyLabel(self.tr(label)))
+            control = SpinBox()
+            control.setRange(1, 8)
+            control.setValue(item.value)
+            control.setFixedWidth(120)
+            control.valueChanged.connect(lambda value, setting=item: cfg.set(setting, value))
+            column.addWidget(control)
+            concurrency_layout.addLayout(column)
+            self.concurrency_controls.append(control)
+        concurrency_layout.addStretch()
+        concurrency_note = BodyLabel(self.tr(
+            "GPU jobs run one at a time. LLM threads are shared across this batch. Choose 1 video for sequential processing."))
+        concurrency_note.setWordWrap(True)
+
         # 创建任务表格
         self.task_table = TableWidget()
         self.task_table.setColumnCount(3)
@@ -139,6 +163,8 @@ class BatchProcessInterface(QWidget):
 
         # 添加到主布局
         main_layout.addLayout(top_layout)
+        main_layout.addLayout(concurrency_layout)
+        main_layout.addWidget(concurrency_note)
         main_layout.addWidget(self.task_table)
 
         # 连接信号
@@ -398,6 +424,7 @@ class BatchProcessInterface(QWidget):
                 progress_bar.setValue(progress)
                 # Workers may already supply translated stage descriptions.
                 item.setText(self.tr(status))
+                item.setToolTip(self.tr(status))
                 item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.STOPPING
                              if status == str(BatchTaskStatus.STOPPING) else BatchTaskStatus.RUNNING)
                 break
@@ -426,6 +453,9 @@ class BatchProcessInterface(QWidget):
                 break
 
     def start_all_tasks(self):
+        if self.batch_thread.isRunning():
+            return
+        self._configure_batch()
         # 检查是否有任务
         if self.task_table.rowCount() == 0:
             InfoBar.warning(
@@ -474,6 +504,7 @@ class BatchProcessInterface(QWidget):
     def start_task(self, file_path: str):
         if self.batch_thread.isRunning():
             return
+        self._configure_batch()
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
                 self._reset_row(row)
@@ -517,6 +548,8 @@ class BatchProcessInterface(QWidget):
         self.task_table.cellWidget(row, 1).setValue(0)
 
     def _set_busy(self, busy):
+        for control in self.concurrency_controls:
+            control.setEnabled(not busy)
         self.start_all_btn.setEnabled(not busy)
         self.stop_all_btn.setEnabled(busy)
         self.clear_btn.setEnabled(not busy)
@@ -525,6 +558,9 @@ class BatchProcessInterface(QWidget):
         if not busy and self._clear_when_idle:
             self._clear_when_idle = False
             self.task_table.setRowCount(0)
+
+    def _configure_batch(self):
+        self.batch_thread.configure(BatchLimits(*(control.value() for control in self.concurrency_controls)))
 
     def stop_all_tasks(self):
         self.batch_thread.stop_all()

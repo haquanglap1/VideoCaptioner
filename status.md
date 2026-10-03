@@ -1,5 +1,34 @@
 # Project Status
 
+## 2026-10-03 (Batch nhiều video đồng thời theo công đoạn)
+
+- Thêm giới hạn video/ASR/subtitle/dubbing/export trong Batch, mặc định3/2/3/2/1;
+  chọn1 video giữ tuần tự. GPU ASR, forced alignment và managed/local TTS chung1
+  suất trong Batch; CPU/API chạy chồng. Hiện công đoạn/Chờ GPU, tooltip đầy đủ.
+- Chụp cấu hình từng video lúc xếp hàng; LLM dùng chung tổng ThreadNum, gồm cả
+  title/rewrite. Giữ429 recovery/quota-stop/không tự gửi lại timeout. Hủy một/all,
+  retry chỉ nhả suất sau native completion, không block GUI hoặc nhận late result.
+- Workspace gắn nguồn, đọc lại checkpoint cũ qua kiểm tra nguồn; chặn input cùng
+  stem/cùng thư mục. Cache WAV ghi có khóa và giữ entry đã publish; reserve tên
+  dịch trước export. Giữ nguyên voice, batch size OmniVoice và timing đã chọn.
+- Audit `.tools/concurrent-batch-20261003/`: full2472 pass/5 skip/58 deselected;
+  focused cuối64 pass; Ruff/Pyright0/0/translations pass. Full đầu có WinError145
+  teardown TemporaryDirectory; chuyển fixture sang tmp_path, giữ assertions/wait.
+  Lỗi import enum, fake HTTP lồng transport và probe ASR gán key trước đổi endpoint
+  ban đầu đã sửa; raw failures còn trong audit. Không cài/tải dependency/model.
+- Source loopback ASR/LLM/TTS + FFmpeg thật:3 video12,282s, peak ASR2/LLM3 tổng/TTS2.
+  GPU thật: Faster-Whisper CUDA tiny + OmniVoice batch1 + LLM loopback,3 clip15s
+  hoàn tất121,485s, không chồng suất GPU. Cả6 MP4 có video/audio/subtitle và decode
+  exit0/stderr0. Chưa nghiệm thu chất lượng/độ nhanh với video dài hoặc nghe thật.
+- Build0/218,469s,6 WARNING/0 ERROR,31.738.627bytes,SHA256
+  `9135e454d0aa30547c59b666d45fe64dd1e43a89d5f9be87a560db70876dc6f9`.
+  16 module source-match;99.315 file/8 component khớp size manifest. Native CLI
+  loopback40/40 cue,peak20,12,735s/exit0; GUI30,563s/exit0/0 owned survivors.
+- Deploy E idle:602 app files SHA-match,delta4 có backup,4.258 protected files
+  nguyên hash; không chép models, giữ tên EXE/shortcut. Live help0; GUI/CLI kế
+  thừa same-SHA artifact. Chưa chạy Batch native EXE với dịch vụ thật/listening.
+  Chưa commit/push. Kế hoạch: `docs/plans/concurrent-batch-2026-10.md`.
+
 ## 2026-10-03 (Đồng bộ số luồng LLM và sửa request thoại 48 câu)
 
 - Theo user: bỏ giới hạn cứng 3 request trong RateLimitGate; worker pool dùng

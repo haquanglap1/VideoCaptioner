@@ -1114,5 +1114,9 @@
   "Applies to dubbing and subtitle export. Preserve aspect ratio without enlarging smaller videos.": "Áp dụng cho lồng tiếng và ghép phụ đề. Giữ tỷ lệ khung hình, không phóng lớn video nhỏ hơn.",
   "Reuse completed dubbed videos": "Dùng lại video đã lồng tiếng",
   "Skip voice generation and video export when a completed dubbed video matches. Turn off to dub again.": "Bỏ qua tạo giọng và xuất video nếu đã có kết quả phù hợp. Tắt để lồng tiếng lại.",
-  "Maximum concurrent processing requests. LLM uses this thread count, reduced to 1 only after HTTP 429.": "Số yêu cầu xử lý đồng thời tối đa. LLM dùng đúng số luồng đã chọn, chỉ giảm xuống 1 sau khi nhận HTTP 429."
+  "Maximum concurrent processing requests. LLM uses this thread count, reduced to 1 only after HTTP 429.": "Số yêu cầu xử lý đồng thời tối đa. LLM dùng đúng số luồng đã chọn, chỉ giảm xuống 1 sau khi nhận HTTP 429.",
+  "Videos at once": "Video đồng thời",
+  "Subtitle / translation": "Phụ đề / dịch",
+  "Dubbing": "Lồng tiếng",
+  "GPU jobs run one at a time. LLM threads are shared across this batch. Choose 1 video for sequential processing.": "Tác vụ GPU chạy từng lượt. Các video dùng chung số luồng LLM đã chọn. Chọn 1 video để xử lý tuần tự."
 }

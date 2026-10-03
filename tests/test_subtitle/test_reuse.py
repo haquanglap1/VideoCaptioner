@@ -126,6 +126,19 @@ def test_worker_reuses_before_llm_validation_and_republishes_layout(saved, qapp,
     assert "Original sentence" not in output.read_text(encoding="utf-8")
 
 
+def test_batch_isolated_folder_reuses_verified_previous_checkpoint(saved, qapp, monkeypatch):
+    source, _, config, video, original, output, identity = saved
+    before = output.read_bytes(), reuse.checkpoint_path(str(output)).read_bytes()
+    isolated = output.parent / "isolated" / output.name
+    monkeypatch.setattr(SubtitleThread, "_process_subtitles", lambda *args: pytest.fail("Do not translate the previous result again"))
+    task = SubtitleTask(subtitle_path=str(original), output_path=str(isolated), video_path=str(video),
+                        reuse_output_path=str(output), subtitle_config=config, asr_data=source, need_next_task=False)
+    errors, finished, _ = run_worker(task, qapp)
+    assert not errors and finished
+    assert reuse.load_completed(str(isolated), identity).data.segments[0].translated_text == "Câu đã dịch."
+    assert (output.read_bytes(), reuse.checkpoint_path(str(output)).read_bytes()) == before
+
+
 def test_forced_retranslation_bypasses_completed_result(saved, qapp, monkeypatch):
     source, data, config, _, original, output, _ = saved
     config.reuse_translation = False

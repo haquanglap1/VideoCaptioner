@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from threading import Event, Lock
 from time import monotonic
@@ -22,6 +23,7 @@ from videocaptioner.core.llm.context import (
     update_stage,
 )
 from videocaptioner.core.llm.owned_request import OwnedLLMRequest
+from videocaptioner.core.llm.rate_limit import llm_admission_scope
 from videocaptioner.core.optimize.optimize import SubtitleOptimizer
 from videocaptioner.core.split.split import SubtitleSplitter
 from videocaptioner.core.subtitle.publication import SubtitleOutput, publish_subtitles
@@ -94,6 +96,7 @@ class SubtitleThread(QThread):
         self.optimizer = None
         self.translator = None
         self.splitter = None
+        self.llm_gate = None
 
     def set_custom_prompt_text(self, text: str):
         self.custom_prompt_text = text
@@ -109,6 +112,10 @@ class SubtitleThread(QThread):
             raise Exception(self.tr("LLM API 未配置, 请检查LLM配置"))
 
     def run(self):
+        with llm_admission_scope(self.llm_gate):
+            self._run()
+
+    def _run(self):
         started = monotonic()
         self._active_thread = QThread.currentThread()
         # Task context for logs
@@ -145,6 +152,14 @@ class SubtitleThread(QThread):
                 identity = source_identity(asr_data, self.task.video_path, subtitle_config, self._check_cancelled)
                 if subtitle_config.reuse_translation:
                     reused = load_completed(self.task.output_path, identity, self._check_cancelled)
+                    if reused is None and self.task.reuse_output_path:
+                        reused = load_completed(self.task.reuse_output_path, identity, self._check_cancelled)
+                        if reused is None:
+                            reused = load_existing_dialogue(self.task.reuse_output_path, self.task.video_path,
+                                                           asr_data, subtitle_config, self._check_cancelled)
+                        if reused is not None:
+                            # Republish verified dialogue into this source's isolated work folder.
+                            reused = replace(reused, dialogue_path=None)
                     if reused is None:
                         reused = load_existing_dialogue(self.task.output_path, self.task.video_path, asr_data,
                                                        subtitle_config, self._check_cancelled)

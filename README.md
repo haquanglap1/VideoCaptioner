@@ -91,6 +91,21 @@ chạy ASR/dịch/TTS. CLI thêm `download URL --playlist`, `--list-playlist` v�
 `--playlist-items "1,3-5"`. [Cách dùng và giới hạn](docs/dev/bilibili-playlist-2026-10.md).
 App nhớ link tải gần nhất giữa các lần mở; khôi phục ô link không tự gọi mạng.
 Trong **Xử lý hàng loạt**, nhấp đúp hàng **Thất bại** để xem chi tiết lỗi.
+
+Batch hỗ trợ nhiều video đồng thời, mỗi video vẫn theo thứ tự nhận dạng → phụ đề/dịch →
+lồng tiếng (nếu bật) → xuất video. Hàng điều khiển **Video đồng thời / ASR / Phụ đề, dịch /
+Lồng tiếng / Xuất video** đặt giới hạn từng công đoạn (1–8); mặc định 3 / 2 / 3 / 2 / 1.
+Chọn **1 video** để xử lý tuần tự. Local GPU ASR và OmniVoice/VieNeu/Local AI dùng chung
+một suất trong Batch; hàng **Chờ GPU** sẽ tự tiếp tục khi công đoạn trước đã đóng worker.
+CPU/API có thể chạy đồng thời trong giới hạn đã chọn. Không đổi batch size OmniVoice.
+
+Số luồng LLM là tổng request dùng chung trong Batch, gồm split/optimize/dịch và các bước
+LLM phụ trợ; chọn 20 không tạo 20 request cho mỗi video. Cấu hình từng video được chụp lúc
+bấm bắt đầu. Dừng một hàng giữ các hàng khác; dừng toàn bộ chờ worker dọn dẹp mà không
+khóa giao diện. Lỗi quota/429 không phục hồi được dừng các video còn chạy/chờ của Batch.
+Nguồn trùng tên ở các thư mục khác nhau có thư mục phụ đề riêng; bản dịch cũ vẫn được
+dùng lại khi qua kiểm tra nguồn. Các giới hạn này không điều phối tác vụ mở riêng ở tab khác.
+[Kế hoạch và kiểm chứng xử lý đồng thời](docs/plans/concurrent-batch-2026-10.md).
 Nút **Dừng xử lý** hủy hàng đang chờ và yêu cầu bước đang chạy dừng; hàng hiện
 **Đang dừng** cho đến khi worker thoát, rồi **Đã dừng**. Bấm **Bắt đầu xử lý**
 để thử lại các hàng lỗi/đã dừng; các hàng hoàn tất được giữ nguyên.

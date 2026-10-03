@@ -7,7 +7,6 @@ This module tests the subtitle processing thread which handles:
 """
 
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -97,7 +96,8 @@ def run_thread_with_timeout(thread, timeout_ms=60000):
     # The error/finished signals are delivered before run() has returned; dropping
     # a still-running QThread aborts the interpreter ("Destroyed while thread is
     # still running"), which is how this suite died on CI.
-    thread.wait(timeout_ms)
+    assert thread.wait(timeout_ms), "Subtitle worker did not finish cleanup"
+    timer.stop()
 
     return results
 
@@ -113,10 +113,11 @@ def subtitle_file():
 
 
 @pytest.fixture
-def output_dir():
-    """Create temporary output directory."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        yield tmpdir
+def output_dir(tmp_path):
+    """Keep outputs under pytest's managed root until worker fixtures retire."""
+    folder = tmp_path / "output"
+    folder.mkdir()
+    return str(folder)
 
 
 @pytest.fixture

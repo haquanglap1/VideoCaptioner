@@ -19,6 +19,8 @@ from videocaptioner.core.dubbing.completed import (
 from videocaptioner.core.dubbing.engine import DubbingEngine
 from videocaptioner.core.dubbing.review import DubbingReview
 from videocaptioner.core.entities import DubbingTask
+from videocaptioner.core.llm.context import task_context
+from videocaptioner.core.llm.rate_limit import llm_admission_scope
 from videocaptioner.core.utils.logger import setup_logger
 
 logger = setup_logger("dubbing_thread")
@@ -54,6 +56,8 @@ class DubbingThread(QThread):
         self.task = task
         self.resume = resume
         self.automatic = automatic
+        self.llm_gate = None
+        self.output_reservations = None
 
     @property
     def lifecycle_finished(self):
@@ -64,7 +68,8 @@ class DubbingThread(QThread):
         from videocaptioner.core.utils.subprocess_helper import cancellation_scope
         started = monotonic()
         try:
-            with cancellation_scope(self._check_cancelled):
+            with (cancellation_scope(self._check_cancelled), llm_admission_scope(self.llm_gate),
+                  task_context(self.task.task_id, Path(self.task.video_path or "").name, "dubbing")):
                 self._run()
         finally:
             logger.info("Dubbing job: task=%s completed=%s elapsed_seconds=%.3f", self.task.task_id,
@@ -113,7 +118,7 @@ class DubbingThread(QThread):
 
             if not self.task.preview_only:
                 from .video_title import prepare_video_title
-                prepare_video_title(self.task, self._check_cancelled, self.progress.emit)
+                prepare_video_title(self.task, self._check_cancelled, self.progress.emit, self.output_reservations)
                 output_path = self.task.output_path
                 assert output_path is not None
 
@@ -153,6 +158,7 @@ class DubbingThread(QThread):
             self.progress.emit(100, self.tr("Lồng tiếng đã bị hủy"))
             self.cancelled.emit()
         except Exception as e:
+            self.failure = e
             if engine is not None:
                 self._capture_review(engine)
             if self.isInterruptionRequested():

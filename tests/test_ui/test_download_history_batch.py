@@ -132,3 +132,19 @@ def test_batch_stop_controls_and_retry_keep_completed_rows(qapp, tmp_path, monke
     assert page.task_table.rowCount() == 2
     assert page.task_table.item(0, 2).data(Qt.UserRole) == BatchTaskStatus.COMPLETED
     page.close()
+
+
+def test_batch_concurrency_controls_capture_limits_and_disable_during_run(qapp, monkeypatch, vietnamese):
+    items = (cfg.batch_videos, cfg.batch_asr, cfg.batch_subtitle, cfg.batch_dubbing, cfg.batch_synthesis)
+    for item, value in zip(items, (3, 2, 3, 2, 1)):
+        monkeypatch.setattr(item, "value", value)
+    page = batch_ui.BatchProcessInterface()
+    page.concurrency_controls[0].setValue(4)
+    page._configure_batch()
+    assert page.batch_thread.limits.videos == 4 and page.batch_thread.limits.asr == 2
+    assert json.loads(cfg.file.read_text(encoding="utf-8"))["Batch"]["Videos"] == 4
+    page._set_busy(True)
+    assert all(not control.isEnabled() for control in page.concurrency_controls)
+    page._set_busy(False)
+    assert all(control.isEnabled() for control in page.concurrency_controls)
+    page.close()
