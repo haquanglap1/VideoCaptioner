@@ -11,7 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, cast
+from typing import Any, Callable, Mapping, cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 
@@ -228,6 +228,57 @@ def _fingerprint(path: Path, check) -> str:
     return digest.hexdigest()
 
 
+@contextmanager
+def _bilibili_media_backups(ydl, enabled: bool):
+    """Keep same-format backup URLs that the installed extractor otherwise discards."""
+    backups: dict[str, str] = {}
+    if not enabled:
+        yield backups
+        return
+    extractor = ydl.get_info_extractor("BiliBili")
+    original = extractor.extract_formats
+
+    def extract_formats(play_info):
+        formats = original(play_info)
+        pending = [play_info.get("dash") or {}]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, list):
+                pending.extend(value)
+            elif isinstance(value, dict):
+                primary = value.get("baseUrl") or value.get("base_url")
+                alternatives = value.get("backupUrl") or value.get("backup_url") or []
+                if isinstance(primary, str) and isinstance(alternatives, list):
+                    for candidate in alternatives:
+                        try:
+                            candidate = canonical_url(candidate)
+                        except (ValueError, TypeError, AttributeError):
+                            continue
+                        if candidate != primary and urlsplit(candidate).scheme == urlsplit(primary).scheme:
+                            backups[primary] = candidate
+                            break
+                pending.extend(child for child in value.values() if isinstance(child, (dict, list)))
+        return formats
+
+    extractor.extract_formats = extract_formats
+    try:
+        yield backups
+    finally:
+        extractor.extract_formats = original
+
+
+def _media_attempt(info: Mapping[str, Any], backups: dict[str, str] | None = None) -> dict[str, Any]:
+    # yt-dlp mutates formats while processing. Keep IDs/names stable across the retry.
+    result = dict(info)
+    if "formats" in info:
+        result["formats"] = [dict(fmt) for fmt in info.get("formats") or []]
+    if backups and result.get("formats"):
+        for fmt in result["formats"]:
+            if fmt.get("url") in backups:
+                fmt["url"] = backups[fmt["url"]]
+    return result
+
+
 def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress) -> PlaylistItemResult:
     if entry.unavailable_reason or not entry.url:
         raise ValueError(entry.unavailable_reason or "Không có URL")
@@ -261,16 +312,29 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
                "outtmpl": str(folder / "%(title).100s [%(id)s].%(ext)s"), "windowsfilenames": True,
                "progress_hooks": [hook], "postprocessor_hooks": [lambda _: check()],
                "post_hooks": [after_move], "merge_output_format": "mp4/mkv"}
-    if urlsplit(entry.url).hostname in ("bilibili.com", "www.bilibili.com"):
+    bilibili = urlsplit(entry.url).hostname in ("bilibili.com", "www.bilibili.com")
+    if bilibili:
         # Bilibili media connections can end early. Bound each Range request and
         # retain yt-dlp's normal finite retry budget instead of the discovery cap.
         options.update(http_chunk_size=1024 * 1024, retries=10)
     with _downloader(options, cookies, check) as ydl:
-        info = ydl.extract_info(entry.url, download=False, process=False)
+        with _bilibili_media_backups(ydl, bilibili) as backups:
+            info = ydl.extract_info(entry.url, download=False, process=False)
         check()
         if not isinstance(info, dict) or info.get("_type", "video") != "video":
             raise ValueError("Mục này trả danh sách lồng nhau; chưa tải để tránh tải ngoài selection.")
-        result = ydl.process_ie_result(info, download=True)
+        from yt_dlp.utils import DownloadError
+
+        try:
+            result = ydl.process_ie_result(cast(Any, _media_attempt(info)), download=True)
+        except DownloadError as exc:
+            check()
+            # One fallback for truncated media bodies; access/certificate/extractor errors stay errors.
+            if (not re.search(r"\b\d+ bytes read, \d+ more expected\b", str(exc))
+                    or not any(fmt.get("url") in backups for fmt in info.get("formats") or [])):
+                raise
+            paths.clear()
+            result = ydl.process_ie_result(cast(Any, _media_attempt(info, backups)), download=True)
         check()
         if not paths and isinstance(result, dict):
             paths.append(Path(result.get("filepath") or ydl.prepare_filename(result)))

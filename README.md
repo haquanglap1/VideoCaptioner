@@ -89,6 +89,8 @@ Tải cả playlist/合集 Bilibili trong GUI: ở **Tạo tác vụ**, bấm **
 Có dừng/tiếp tục và chuyển các file đã tải sang **Xử lý hàng loạt**; không tự
 chạy ASR/dịch/TTS. CLI thêm `download URL --playlist`, `--list-playlist` và
 `--playlist-items "1,3-5"`. [Cách dùng và giới hạn](docs/dev/bilibili-playlist-2026-10.md).
+App nhớ link tải gần nhất giữa các lần mở; khôi phục ô link không tự gọi mạng.
+Trong **Xử lý hàng loạt**, nhấp đúp hàng **Thất bại** để xem chi tiết lỗi.
 
 Xem chi tiết tham số:
 
@@ -354,6 +356,10 @@ EXE S5.2, còn Whisper API từ EXE gặp HTTP 429. Gate GUI teardown và chất
 Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
 ## Lồng tiếng Natural
+
+Batch dùng đầu ra theo câu của Faster-Whisper trước khi phân đoạn phụ đề;
+bật phân đoạn không tự yêu cầu timestamp từng từ. CLI `--word-timestamps`
+vẫn giữ chế độ từ nghiêm ngặt. Các helper media/GPU chạy ẩn trên Windows.
 
 **Tự căn timing/tốc độ** dùng WAV nguồn đã có để tìm cặp tempo/video phù hợp;
 LLM đang cấu hình có thể chọn nhịp nghe trong các phương án solver. Xem bảng

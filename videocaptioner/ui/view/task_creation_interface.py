@@ -36,7 +36,7 @@ from videocaptioner.core.entities import (
     SupportedAudioFormats,
     SupportedVideoFormats,
 )
-from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.common.config import cfg, recent_download_url, remember_download_url
 from videocaptioner.ui.components.DonateDialog import DonateDialog
 from videocaptioner.ui.thread.video_download_thread import VideoDownloadThread
 from videocaptioner.ui.view.log_window import LogWindow
@@ -155,6 +155,7 @@ class TaskCreationInterface(QWidget):
             self._playlist_dialog._closing = False
             return
         url = self.search_input.text().strip()
+        remember_download_url(url)
         dialog = PlaylistDialog(url if self._is_valid_url(url) else "", str(cfg.work_dir.value),
                                 str(APPDATA_PATH / "cookies.txt"), self)
         self._playlist_dialog = dialog
@@ -229,11 +230,13 @@ class TaskCreationInterface(QWidget):
     def setup_signals(self):
         self.start_button.clicked.connect(self.on_start_clicked)
         self.search_input.textChanged.connect(self.on_search_input_changed)
+        self.search_input.textEdited.connect(remember_download_url)
         self.log_button.clicked.connect(self.show_log_window)
         self.donate_button.clicked.connect(self.show_donate_dialog)
 
     def setup_values(self):
-        self.search_input.setText("")
+        self.search_input.setText(recent_download_url())
+        self.on_search_input_changed()
 
     def on_start_clicked(self):
         if self.start_button._icon == FluentIcon.FOLDER:
@@ -322,7 +325,8 @@ class TaskCreationInterface(QWidget):
         self.finished.emit(file_path)
 
     def _process_url(self, url):
-        # 检测 cookies.txt 文件
+        remember_download_url(url)
+        # Missing cookies can limit the available video formats.
         cookiefile_path = APPDATA_PATH / "cookies.txt"
         if not cookiefile_path.exists():
             InfoBar.warning(

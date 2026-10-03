@@ -17,6 +17,7 @@ from qfluentwidgets import (
     ComboBox,
     InfoBar,
     InfoBarPosition,
+    MessageBox,
     ProgressBar,
     PushButton,
     RoundMenu,
@@ -222,8 +223,8 @@ class BatchProcessInterface(QWidget):
         # 如果有不存在的文件，显示警告
         if non_existent_files:
             InfoBar.warning(
-                title="文件不存在",
-                content=f"以下文件不存在：\n{', '.join(non_existent_files)}",
+                title=self.tr("文件不存在"),
+                content=self.tr("以下文件不存在：\n{0}").format(', '.join(non_existent_files)),
                 duration=INFOBAR_DURATION_WARNING,
                 position=InfoBarPosition.TOP,
                 parent=self,
@@ -257,8 +258,8 @@ class BatchProcessInterface(QWidget):
 
         if not valid_files:
             InfoBar.warning(
-                title="无效文件",
-                content="请选择正确的文件类型",
+                title=self.tr("无效文件"),
+                content=self.tr("请选择正确的文件类型"),
                 duration=INFOBAR_DURATION_WARNING,
                 position=InfoBarPosition.TOP,
                 parent=self,
@@ -272,8 +273,8 @@ class BatchProcessInterface(QWidget):
                 if self.task_table.item(row, 0).toolTip() == file_path:
                     exists = True
                     InfoBar.warning(
-                        title="任务已存在",
-                        content="任务已存在",
+                        title=self.tr("任务已存在"),
+                        content=self.tr("任务已存在"),
                         duration=INFOBAR_DURATION_WARNING,
                         position=InfoBarPosition.TOP_RIGHT,
                         parent=self,
@@ -322,8 +323,9 @@ class BatchProcessInterface(QWidget):
         progress_bar.setFixedHeight(18)
         self.task_table.setCellWidget(row, 1, progress_bar)
 
-        # 状态
-        status = QTableWidgetItem(str(BatchTaskStatus.WAITING))
+        # Queue decisions use the enum, independently of the translated label.
+        status = QTableWidgetItem(self.tr(str(BatchTaskStatus.WAITING)))
+        status.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.WAITING)
         status.setTextAlignment(Qt.AlignCenter)  # type: ignore
         status.setForeground(Qt.gray)  # type: ignore  # 设置字体颜色为灰色
         font = QFont()
@@ -338,22 +340,27 @@ class BatchProcessInterface(QWidget):
 
         menu = RoundMenu(parent=self)
         file_path = self.task_table.item(row, 0).toolTip()
-        status = self.task_table.item(row, 2).text()
+        status = self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole)
 
-        start_action = Action(FIF.PLAY, "开始")
+        start_action = Action(FIF.PLAY, self.tr("开始"))
         start_action.triggered.connect(lambda: self.start_task(file_path))
         menu.addAction(start_action)
 
-        cancel_action = Action(FIF.CLOSE, "取消")
+        cancel_action = Action(FIF.CLOSE, self.tr("取消"))
         cancel_action.triggered.connect(lambda: self.cancel_task(file_path))
         menu.addAction(cancel_action)
 
         menu.addSeparator()
-        open_folder_action = Action(FIF.FOLDER, "打开输出文件夹")
+        open_folder_action = Action(FIF.FOLDER, self.tr("打开输出文件夹"))
         open_folder_action.triggered.connect(lambda: self.open_output_folder(file_path))
         menu.addAction(open_folder_action)
 
-        if status != str(BatchTaskStatus.WAITING):
+        if status == BatchTaskStatus.FAILED:
+            error_action = Action(FIF.INFO, self.tr("Error details"))
+            error_action.triggered.connect(lambda: self.show_task_error(row))
+            menu.addAction(error_action)
+
+        if status != BatchTaskStatus.WAITING:
             start_action.setEnabled(False)
 
         menu.exec_(self.task_table.viewport().mapToGlobal(pos))
@@ -375,50 +382,62 @@ class BatchProcessInterface(QWidget):
     def update_task_progress(self, file_path: str, progress: int, status: str):
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
-                # 更新进度条
+                item = self.task_table.item(row, 2)
+                if item.data(Qt.ItemDataRole.UserRole) in (BatchTaskStatus.FAILED, BatchTaskStatus.COMPLETED):
+                    return
+                # Late progress must not replace a terminal result.
                 progress_bar = self.task_table.cellWidget(row, 1)
                 progress_bar.setValue(progress)
-                # 更新状态
-                self.task_table.item(row, 2).setText(status)
+                # Workers may already supply translated stage descriptions.
+                item.setText(self.tr(status))
+                item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.RUNNING)
                 break
 
     def on_task_error(self, file_path: str, error: str):
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
                 status_item = self.task_table.item(row, 2)
-                status_item.setText(str(BatchTaskStatus.FAILED))
-                status_item.setToolTip(error)
+                status_item.setText(self.tr(str(BatchTaskStatus.FAILED)))
+                status_item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.FAILED)
+                status_item.setData(Qt.ItemDataRole.UserRole + 1, error)
+                status_item.setForeground(QColor("#e74856"))
+                status_item.setToolTip(self._error_text(error) + "\n\n" + self.tr("Double-click this row to view error details."))
                 break
 
     def on_task_completed(self, file_path: str):
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
-                self.task_table.item(row, 2).setText(str(BatchTaskStatus.COMPLETED))
-                self.task_table.item(row, 2).setForeground(QColor("#13A10E"))
+                item = self.task_table.item(row, 2)
+                item.setText(self.tr(str(BatchTaskStatus.COMPLETED)))
+                item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.COMPLETED)
+                item.setData(Qt.ItemDataRole.UserRole + 1, None)
+                item.setToolTip("")
+                item.setForeground(QColor("#13A10E"))
+                self.task_table.cellWidget(row, 1).setValue(100)
                 break
 
     def start_all_tasks(self):
         # 检查是否有任务
         if self.task_table.rowCount() == 0:
             InfoBar.warning(
-                title="无任务",
-                content="请先添加需要处理的文件",
+                title=self.tr("无任务"),
+                content=self.tr("请先添加需要处理的文件"),
                 duration=INFOBAR_DURATION_WARNING,
                 position=InfoBarPosition.TOP,
                 parent=self,
             )
             return
 
-        # 检查是否有等待处理的任务
+        # Display translations must not change which tasks can start.
         waiting_tasks = 0
         for row in range(self.task_table.rowCount()):
-            if self.task_table.item(row, 2).text() == str(BatchTaskStatus.WAITING):
+            if self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole) == BatchTaskStatus.WAITING:
                 waiting_tasks += 1
 
         if waiting_tasks == 0:
             InfoBar.warning(
-                title="无待处理任务",
-                content="所有任务已经在处理或已完成",
+                title=self.tr("无待处理任务"),
+                content=self.tr("所有任务已经在处理或已完成"),
                 duration=INFOBAR_DURATION_WARNING,
                 position=InfoBarPosition.TOP,
                 parent=self,
@@ -428,7 +447,7 @@ class BatchProcessInterface(QWidget):
         # 显示开始处理的提示
         InfoBar.success(
             title=self.tr("开始处理"),
-            content=f"开始处理 {waiting_tasks} 个任务",
+            content=self.tr("开始处理 {0} 个任务").format(waiting_tasks),
             duration=INFOBAR_DURATION_SUCCESS,
             position=InfoBarPosition.TOP,
             parent=self,
@@ -436,8 +455,8 @@ class BatchProcessInterface(QWidget):
         # 开始处理任务
         for row in range(self.task_table.rowCount()):
             file_path = self.task_table.item(row, 0).toolTip()
-            status = self.task_table.item(row, 2).text()
-            if status == str(BatchTaskStatus.WAITING):
+            status = self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole)
+            if status == BatchTaskStatus.WAITING:
                 task_type = self._current_task_type()
                 batch_task = BatchTask(file_path, task_type)
                 self.batch_thread.add_task(batch_task)
@@ -447,7 +466,7 @@ class BatchProcessInterface(QWidget):
         file_name = os.path.basename(file_path)
         InfoBar.success(
             title=self.tr("开始处理"),
-            content=f"开始处理文件：{file_name}",
+            content=self.tr("开始处理文件：{0}").format(file_name),
             duration=INFOBAR_DURATION_SUCCESS,
             position=InfoBarPosition.TOP,
             parent=self,
@@ -492,7 +511,28 @@ class BatchProcessInterface(QWidget):
         super().closeEvent(event)
 
     def on_table_double_clicked(self, index):
-        """处理表格双击事件"""
+        """Show the failure reason, or open the output folder for other rows."""
         row = index.row()
+        if self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole) == BatchTaskStatus.FAILED:
+            self.show_task_error(row)
+            return
         file_path = self.task_table.item(row, 0).toolTip()
         self.open_output_folder(file_path)
+
+    def _error_text(self, error: str) -> str:
+        if "Faster-Whisper returned a non-positive native interval" in error:
+            return self.tr(
+                "Faster-Whisper returned an invalid timestamp (end is not after start). "
+                "Subtitle processing stopped because timing needs review."
+            ) + "\n\n" + self.tr("Technical details:") + "\n" + error
+        return self.tr(error)
+
+    def show_task_error(self, row: int):
+        error = self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole + 1)
+        if not error:
+            return
+        dialog = MessageBox(self.tr("Error details"), self._error_text(error), self.window())
+        dialog.contentLabel.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.yesButton.setText(self.tr("关闭"))
+        dialog.cancelButton.hide()
+        dialog.exec_()

@@ -80,6 +80,9 @@ def fake_download(monkeypatch):
     def downloader(opts, cookies, check):
         options.append(opts)
         class YDL:
+            def get_info_extractor(self, name):
+                return SimpleNamespace(extract_formats=lambda _: [])
+
             def extract_info(self, url, **kwargs):
                 calls.append(url)
                 assert kwargs == {"download": False, "process": False}

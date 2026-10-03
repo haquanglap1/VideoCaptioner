@@ -21,6 +21,7 @@ from qfluentwidgets import (
 )
 
 from videocaptioner.core.playlist import PlaylistInfo, PlaylistItemResult, PlaylistResult
+from videocaptioner.ui.common.config import recent_download_url, remember_download_url
 from videocaptioner.ui.thread.playlist_thread import PlaylistThread
 from videocaptioner.ui.thread.worker_lifecycle import retain_worker
 
@@ -45,7 +46,7 @@ class PlaylistDialog(QDialog):
         layout = QVBoxLayout(self)
         self.url_edit = LineEdit()
         self.url_edit.setPlaceholderText("Link video trong合集, link danh sách hoặc video nhiều phần P")
-        self.url_edit.setText(url)
+        self.url_edit.setText(url or recent_download_url())
         layout.addWidget(self.url_edit)
         options = QHBoxLayout()
         self.scope_combo = ComboBox()
@@ -95,6 +96,7 @@ class PlaylistDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
         self.url_edit.textEdited.connect(self._invalidate_list)
+        self.url_edit.textEdited.connect(remember_download_url)
         self.scope_combo.currentIndexChanged.connect(self._invalidate_list)
         self._set_busy(False)
 
@@ -130,6 +132,7 @@ class PlaylistDialog(QDialog):
     def _discover(self):
         if self._worker and self._worker.isRunning():
             return
+        remember_download_url(self.url_edit.text())
         self.info = None
         self.completed.clear()
         self.table.setRowCount(0)

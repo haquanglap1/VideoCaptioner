@@ -114,6 +114,9 @@ page = SubtitleStyleInterface(root)
 layout.addWidget(page)
 root.resize(1100, 800)
 root.show()
+# The constructor starts a preview worker; do not destroy Qt while it renders.
+if hasattr(page, 'preview_thread'):
+    assert page.preview_thread.wait(10000)
 for _ in range(4):
     app.processEvents()
 color = root.grab().toImage().pixelColor(100, 100)

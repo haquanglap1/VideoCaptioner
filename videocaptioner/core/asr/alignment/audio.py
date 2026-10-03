@@ -10,8 +10,7 @@ import wave
 from pathlib import Path
 from typing import Callable, cast
 
-from pydub import AudioSegment
-
+from videocaptioner.core.utils.audio_segment import AudioSegment
 from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_environment
 
 from .contract import CHUNK_MS, AlignmentError

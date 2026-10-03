@@ -109,8 +109,9 @@ class TaskFactory:
         if engine == TranscribeModelEnum.QWEN_LOCAL and not language:
             # The Qwen settings page explicitly labels this Chinese-only GUI preset.
             language = "zh"
-        if engine in (TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE, TranscribeModelEnum.QWEN_LOCAL):
-            # Native segmentation consumes sentence spans; split does not request strict word output.
+        if engine in (TranscribeModelEnum.SONIOX, TranscribeModelEnum.SCRIBE,
+                      TranscribeModelEnum.QWEN_LOCAL, TranscribeModelEnum.FASTER_WHISPER):
+            # Splitting sentences downstream does not require strict native word timestamps.
             need_word_time_stamp = False
         config = TranscribeConfig(
             transcribe_model=cfg.transcribe_model.value,
@@ -137,7 +138,8 @@ class TaskFactory:
             faster_whisper_vad_threshold=cfg.faster_whisper_vad_threshold.value,
             faster_whisper_vad_method=cfg.faster_whisper_vad_method.value,
             faster_whisper_ff_mdx_kim2=cfg.faster_whisper_ff_mdx_kim2.value,
-            faster_whisper_one_word=cfg.faster_whisper_one_word.value,
+            faster_whisper_one_word=(need_word_time_stamp if engine is TranscribeModelEnum.FASTER_WHISPER
+                                     else cfg.faster_whisper_one_word.value),
             faster_whisper_prompt=cfg.faster_whisper_prompt.value,
         )
 

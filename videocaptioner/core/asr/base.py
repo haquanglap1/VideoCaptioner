@@ -6,8 +6,7 @@ import zlib
 from io import BytesIO
 from typing import Callable, Optional, Union, cast
 
-from pydub import AudioSegment
-
+from videocaptioner.core.utils.audio_segment import AudioSegment
 from videocaptioner.core.utils.cache import get_asr_cache, is_cache_enabled
 from videocaptioner.core.utils.logger import setup_logger
 

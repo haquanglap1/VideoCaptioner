@@ -8,12 +8,6 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional, Union
 
 from videocaptioner.config import FASTER_WHISPER_PATH
-
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None  # type: ignore[assignment]
-
 from videocaptioner.core.utils.subprocess_helper import child_environment
 
 from ..utils.logger import setup_logger
@@ -384,17 +378,20 @@ class FasterWhisperASR(BaseASR):
 
 def is_rtx_50_series() -> bool:
     """Whether the GPU is an RTX 50-series card."""
-    if GPUtil is None:
-        logger.debug("GPUtil 未安装，无法检测 GPU 型号")
-        return False
     try:
-        gpus = GPUtil.getGPUs()
-        for gpu in gpus:
-            gpu_name = gpu.name.lower()
-            # Look for a 50-series marker such as RTX 5090 or RTX 5080
-            if re.search(r"rtx\s*50\d{2}", gpu_name):
-                logger.debug(f"Detected RTX 50 系显卡: {gpu.name}")
-                return True
+        program = shutil.which("nvidia-smi")
+        if not program and os.name == "nt":
+            fallback = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "NVIDIA Corporation/NVSMI/nvidia-smi.exe"
+            if fallback.is_file():
+                program = str(fallback)
+        if not program:
+            return False
+        result = subprocess.run(
+            [program, "--query-gpu=name", "--format=csv,noheader,nounits"],
+            env=child_environment(), capture_output=True, text=True, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
+        )
+        return result.returncode == 0 and bool(re.search(r"rtx\s*50\d{2}", result.stdout, re.IGNORECASE))
     except Exception as e:
-        logger.debug(f"无法检测 GPU 型号: {e}")
+        logger.debug("GPU name probe unavailable: %s", e)
     return False

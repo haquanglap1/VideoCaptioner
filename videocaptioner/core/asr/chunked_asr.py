@@ -9,7 +9,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, List, Optional, Tuple
 
-from pydub import AudioSegment
+from videocaptioner.core.utils.audio_segment import AudioSegment
 
 from ..llm.context import submit_with_context
 from ..utils.logger import setup_logger

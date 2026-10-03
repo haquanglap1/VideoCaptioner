@@ -404,6 +404,7 @@ class Config(QConfig):
 
     # ------------------- 保存配置 -------------------
     work_dir = ConfigItem("Save", "Work_Dir", WORK_PATH, FolderValidator())
+    last_download_url = ConfigItem("Download", "LastUrl", "")
 
     # ------------------- 软件页面配置 -------------------
     micaEnabled = ConfigItem("MainWindow", "MicaEnabled", False, BoolValidator())
@@ -444,3 +445,19 @@ whisper_settings = WhisperSettings(cfg)
 from .native_asr_settings import NativeASRSettings  # noqa: E402
 
 native_asr_settings = [NativeASRSettings(cfg, name) for name in ("soniox", "scribe")]
+
+
+def recent_download_url(value=None) -> str:
+    """Return a valid HTTP URL without credentials; local media paths are not history."""
+    from videocaptioner.core.playlist import canonical_url
+
+    try:
+        return canonical_url(cfg.last_download_url.value if value is None else value)
+    except (ValueError, TypeError, AttributeError):
+        return ""
+
+
+def remember_download_url(value: str) -> None:
+    url = recent_download_url(value)
+    if url:
+        cfg.set(cfg.last_download_url, url)

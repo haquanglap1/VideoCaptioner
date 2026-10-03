@@ -1,5 +1,91 @@
 # Project Status
 
+## 2026-10-03 (Sửa chặn Batch ASR và ẩn media/GPU console)
+
+- GUI không dùng NeedSplit để ép Faster-Whisper word timestamps: lấy câu
+  native rồi giữ bước LLM split. Không sửa setting cá nhân; CLI/core word
+  request tường minh vẫn strict, không bỏ chữ hoặc sửa giả mốc thời gian.
+- Thay các import AudioSegment bằng adapter có CREATE_NO_WINDOW/env scrub
+  cho pydub probe/decode/export; không patch subprocess toàn app hay sửa
+  dependency. GPU-name probe gọi nvidia-smi ẩn/timeout5s thay GPUtil; RTX50
+  vẫn được nhận diện. Spec bundle adapter mới, không đổi model/dependency.
+- Audit `.tools/batch-sentence-console-20261003/`: TaskFactory/QThread trên
+  video1 thật87,437s →13 cue/0 invalid intervals/raw text preserved;9 calls
+  đều hidden/scrubbed,0 survivors. Test Windows child console handle0.
+- Focused45 pass/2 skip. Full PRE2362 pass/1 Qt child crash/5 skip/58 deselect;
+  test Style preview chưa wait worker, đã thêm wait giữ assertion. Full POST
+  **2363 pass/5 skip/58 deselected**,exit0/287,86s; Ruff/Pyright/sync pass.
+- EXE build exit0/204,203s,6 WARNING/0 ERROR,31.684.773bytes,SHA256
+  `f5b61fcf98ede35d6b35a4ac49ec9e0a44960bd89da807f683dbe8211bdc0884`.
+  8 modules source-match,99.315 model/runtime files size-match; GUI20s/exit0.
+  Frozen local ASR replay2,047s SRT byte parity; OmniVoice thật1 cue39,110s,
+  0 rewrite/speed adjustment/review, MP4 decode0/audio RMS2824/0 survivors.
+- Một probe CLI đầu dùng nhầm JSON thay TOML, rơi sang Bijian, gửi audio
+  mẫu Bilibili công khai và nhận HTTP412. Giữ FAIL; probe sau ghim engine và
+  chặn external HTTP trong process test. Không đổi gateway/settings user.
+- Deploy E idle:602 payload files verified, thay EXE/base_library.zip,
+  backup delta;1615 protected files unchanged, không chép models. Live help0,
+  shortcut giữ tên cũ; gate GUI/media same-SHA. Chưa chạy full playlist hoặc
+  nghiệm thu nghe, chưa commit/push; giữ toàn bộ dirty work của các lượt trước.
+
+## 2026-10-03 (Nhớ link tải, Việt hóa Batch và chẩn đoán lỗi timing)
+
+- Thêm `Download.LastUrl`, dùng chung Tạo tác vụ/playlist, khôi phục sau mở
+  app và không tự gọi mạng. Chỉ lưu URL HTTP(S) hợp lệ, giữ phần P Bilibili;
+  local path/URL có username-password không ghi đè lịch sử. Không sửa config
+  bản E để seed link; lịch sử bắt đầu lưu khi user nhập/dùng link.
+- Batch dùng enum trong item data cho logic queue; nhãn trạng thái/menu/
+  cảnh báo qua translator Việt. Hàng lỗi màu đỏ, nhấp đúp/menu Chi tiết lỗi
+  mở giải thích và lỗi kỹ thuật. Late progress không ghi đè kết quả cuối.
+- Log bản E cho thấy Faster-Whisper word mode lỗi `non-positive native
+  interval`. SQLite read-only:17 raw cache có190 cue lexical start=end,
+  0 reversed,181 nằm tại biên cue trước. Replay17/17 tái hiện lỗi,0 inference.
+  Batch bật word mode vì NeedSplit; giữ guard và dữ liệu/cấu hình ASR, chưa
+  sửa được native word timestamps. Không coi bản dịch UI là fix ASR.
+- Audit `.tools/download-history-batch-20261003/`. UI/CLI/ASR timing guards
+ 351 pass, focused11 pass (overlap); Ruff pass, Pyright0/0 sau sửa notation
+  Qt roles, translations in sync. Không full suite hoặc benchmark ASR mới.
+  Giữ nguyên phần CDN fallback chưa commit từ lượt trước; EXE/deploy kiểm riêng.
+- Build `VideoCaptioner-20261003-history` exit0/209,203s,6 WARNING/0 ERROR,
+ 31.690.540bytes,SHA256
+  `a56be0ef901916985a468ef02832a9ada71cf94e34897ed5a01a3c2b2bf2dea6`.
+  5 module runtime/JSON Việt khớp source,99.315 model/runtime files size-match.
+  Native EXE hai process20s/exit0, khôi phục link sau restart; Batch fixture
+  offline hiện Đang chờ/Thất bại/Chi tiết lỗi tiếng Việt, không chạy ASR/model.
+- Deploy E sau khi user đóng:602 file app khớp SHA, thay4 file payload;
+ 1606 file dữ liệu/settings/cookies/voices/manifest giữ nguyên, không chép
+  models; CLI help tại E exit0, tên EXE/shortcut giữ. GUI gate cùng-SHA từ
+  artifact. Backup/receipts trong audit; chưa commit/push hoặc sửa lỗi ASR.
+
+## 2026-10-03 (Fallback CDN cho9 video playlist kẹt cùng vùng byte)
+
+- Bản E đúng SHA network; user còn các mục4,5,6,11,15,18,21,22,26. Probe64 KiB
+  tại offset dở:9/9 primary HTTP206 nhưng short read,9/9 URL backup do Bilibili
+  cung cấp trả đủ đúng Content-Range. Control đầu file4/26 qua primary vẫn
+  pass. Mục26 tái hiện497 bytes read; audit `.tools/playlist-stuck-20261003/`.
+- Giữ backupUrl cùng DASH media record mà extractor bỏ, thử một backup sau
+  short read; giữ format ID/chất lượng/file dở và restore extractor method.
+  Không đổi hostname thủ công, TLS/cookies/dependency hoặc vòng retry vô hạn.
+  Copy format metadata mỗi attempt, giữ direct media không có trường formats.
+- Focused38 pass; CLI160 pass (overlap), Ruff pass, Pyright0/0, sync pass.
+  Real HTTP regression kiểm fallback byte parity, cap, cancel, HTTP403,
+  receipt/reuse và reject unsafe URL/TLS downgrade. Giữ PRE4 failures đã sửa;
+  full suite không chạy lại vì phạm vi hẹp trong downloader.
+- Source mục4 vượt offset310.272 lên66.148.638bytes, chạm budget480s rồi hủy
+  ở483,063s. Frozen tiếp bản sao partial, hoàn tất42,125s/exit0, reuse1,500s
+  SHA-hit. AV1/3456×2160/210,033312s + AAC/210,048118s, full decode exit0/
+  stderr trống. Không ghi vào file user; chưa tải trọn cả9 hoặc toàn31.
+- EXE `VideoCaptioner-20261003-playlist-backup`: build exit0/266,547s,
+  6 WARNING/0 ERROR,31.688.036bytes,SHA256
+  `6aa8f578367fd0739fc19f9f2870565f6a4e0f96adb9fe192bf29967096b9a93`.
+  Core bytecode khớp,99.315 model/runtime files khớp size inventory; GUI20s/
+  exit0/zero owned children. Không tải/cài model. Deploy có receipt riêng.
+- Bản E đã đóng trước deploy; backup delta rồi thay EXE/base_library.zip,
+  602 file app khớp SHA.1601 file dữ liệu/settings/cookies/voices/manifest
+  không đổi, giữ tên EXE cho shortcut và models. Live help exit0; gate GUI/
+  media kế thừa artifact cùng SHA. Không commit/push; giữ user media và raw
+  evidence, không tự tải lại22 video đã hoàn tất.
+
 ## 2026-10-02 (Phục hồi playlist khi kết nối media bị ngắt nhiều lần)
 
 - User thực tế tải1/31; bản E đúng SHA, có30 `.part`, lỗi short read/SSL EOF/

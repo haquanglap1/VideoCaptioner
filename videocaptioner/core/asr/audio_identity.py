@@ -5,7 +5,7 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from pydub import AudioSegment
+from videocaptioner.core.utils.audio_segment import AudioSegment
 
 POLICY = "pcm-s16le-mono-16000-v1"
 Check = Callable[[], None]

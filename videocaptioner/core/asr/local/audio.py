@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from pydub import AudioSegment
+from videocaptioner.core.utils.audio_segment import AudioSegment
 
 from ..alignment.audio import Check
 from .runtime import LocalRuntimeError

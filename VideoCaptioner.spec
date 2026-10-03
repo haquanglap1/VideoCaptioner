@@ -45,6 +45,7 @@ if media_tools:
     datas += [(str(path), "resource/bin") for path in media_files]
 
 hiddenimports = []
+hiddenimports += ["videocaptioner.core.utils.audio_segment"]
 hiddenimports += ["videocaptioner.core.dubbing.scheduling", "videocaptioner.core.dubbing.review",
                   "videocaptioner.ui.components.dubbing_review_dialog",
                   "videocaptioner.core.subtitle.synthesis"]

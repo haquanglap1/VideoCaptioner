@@ -54,9 +54,24 @@ def test_gui_split_keeps_native_sentence_output_and_qwen_language_is_explicit(qa
     monkeypatch.setattr(cfg.transcribe_language, "value", TranscribeLanguageEnum.AUTO)
     monkeypatch.setattr(cfg.need_split, "value", True)
     task = TaskFactory.create_transcribe_task("synthetic.wav", need_next_task=True)
-    assert task.transcribe_config.need_word_time_stamp is (engine == "FASTER_WHISPER")
+    assert task.transcribe_config.need_word_time_stamp is False
     assert task.transcribe_config.transcribe_language == ("zh" if engine == "QWEN_LOCAL" else "")
     assert cfg.transcribe_language.value == TranscribeLanguageEnum.AUTO
+
+
+def test_faster_whisper_batch_sentence_source_keeps_downstream_split(qapp, monkeypatch):
+    from videocaptioner.core.entities import TranscribeModelEnum
+    from videocaptioner.ui.task_factory import TaskFactory
+
+    monkeypatch.setattr(cfg.transcribe_model, "value", TranscribeModelEnum.FASTER_WHISPER)
+    monkeypatch.setattr(cfg.need_split, "value", True)
+    monkeypatch.setattr(cfg.faster_whisper_one_word, "value", True)
+    task = TaskFactory.create_transcribe_task("synthetic.wav", need_next_task=True)
+    assert not task.transcribe_config.need_word_time_stamp
+    assert not task.transcribe_config.faster_whisper_one_word
+    subtitle = TaskFactory.create_subtitle_task("synthetic.srt", need_next_task=True)
+    assert subtitle.subtitle_config.need_split
+    assert cfg.need_split.value and cfg.faster_whisper_one_word.value
 
 
 def test_qwen_explicit_non_chinese_language_is_not_overwritten(qapp, monkeypatch):

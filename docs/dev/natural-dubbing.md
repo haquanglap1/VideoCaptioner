@@ -161,3 +161,53 @@ render mode ASS không yêu cầu pipeline giữ một file `.ass` cạnh video.
 Unit và FFmpeg integration dùng `FakeTTS` WAV deterministic, gồm cache miss/hit, measured rewrite, review,
 allow-overlap, Legacy truncate, silent-source mix và provider failure. Đây là machine acceptance, không phải
 bằng chứng chất lượng nghe, rate-limit hay chất lượng của OpenAI/MiniMax/local provider thật.
+
+## Batch Faster-Whisper và console Windows — 2026-10-03
+
+Lượt Batch user gọi là lồng tiếng thực tế dừng ở ASR: `NeedSplit=True` tự
+ép Faster-Whisper xuất từng từ, trong khi dữ liệu native có cue lexical
+start=end. GUI TaskFactory nay yêu cầu đầu ra theo câu cho Faster-Whisper,
+giữ `need_split` của bước phụ đề và không sửa setting cá nhân. CLI/core khi
+yêu cầu word timestamps tường minh vẫn reject các khoảng không hợp lệ;
+không bỏ chữ hoặc tăng giả end time để vượt guard. Phân đoạn nhỏ hơn cue câu
+vẫn dùng cơ chế ước lượng timing SRT hiện có, không phải word timing native.
+
+pydub tự gọi ffprobe/ffmpeg không có creation flags, còn GPUtil gọi
+nvidia-smi không có cờ ẩn. Adapter `core/utils/audio_segment.py` thay riêng
+binding subprocess trong pydub để thêm `CREATE_NO_WINDOW` và scrub env;
+không patch `subprocess.Popen` toàn app hoặc sửa dependency đã cài. GPU probe
+dùng nvidia-smi trực tiếp, chạy ẩn với timeout5s, giữ nhận diện RTX50. Các
+đường ASR dùng cùng adapter; mix/TTS đã có cờ ẩn tiếp tục giữ hành vi cũ.
+
+Audit `.tools/batch-sentence-console-20261003/`: video1 từng lỗi word timing
+đã qua TaskFactory + TranscriptThread + Faster-Whisper thật87,437s,13 cue,
+0 khoảng thời gian lỗi, toàn bộ text non-whitespace từ raw mới được giữ.
+Downstream split vẫn bật, preference OneWord và file/settings user không
+đổi.9 child calls thực tế đều có cờ134217728 và env đã scrub; test Windows
+riêng xác nhận child `GetConsoleWindow()==0`. Không nâng gate nghe/ASR lexical.
+
+Focused45 pass/2 skip; full đầu2362 pass/1 fail/5 skip/58 deselected do child
+Qt chụp Style thoát với access violation. Test tạo preview worker nhưng chưa
+wait; bổ sung wait trước khi Qt bị hủy, giữ nguyên pixel assertion. Full cuối
+**2363 pass/5 skip/58 deselected**,exit0/287,86s; Ruff/Pyright0/0/sync pass.
+
+EXE `VideoCaptioner-20261003-quiet`: build exit0/204,203s,6 WARNING/0 ERROR,
+31.684.773bytes,SHA256
+`f5b61fcf98ede35d6b35a4ac49ec9e0a44960bd89da807f683dbe8211bdc0884`.
+8 module bytecode khớp source,99.315 model/runtime files khớp size manifest.
+Frozen ASR replay đúng cache native mới exit0/2,047s, SRT cùng SHA source,
+không chạy inference ASR mới. OmniVoice thật một cue Việt, native1x,0 rewrite/
+0 speed adjustment/0 review, xuất MP4 exit0/39,110s. Video12s/audio11,989s,
+decode exit0/stderr trống, audio RMS2824; đây là smoke ngắn, không phải nghiệm
+thu lồng tiếng trọn playlist hay chất lượng nghe. GUI20s/exit0,0 owned children.
+
+Probe EXE đầu có lỗi script: JSON được đưa vào option CLI yêu cầu TOML,
+khiến CLI cảnh báo rồi chọn Bijian mặc định; audio mẫu từ video Bilibili
+công khai đã được gửi và polling trả HTTP412. Giữ log FAIL, không tính PASS.
+Probe sửa dùng `--asr faster-whisper` tường minh và chặn HTTP bên ngoài chỉ
+trong env của process test; không đổi proxy/config hệ thống hay bản E.
+
+Đã backup delta và deploy khi E idle:602 file app khớp SHA, chỉ EXE và
+base_library.zip thay,1615 file dữ liệu được bảo vệ không đổi; không chép
+lại models. Live help exit0, giữ shortcut/tên EXE. GUI/media gates dùng
+artifact cùng SHA. Không commit/push hoặc tự chạy lại toàn bộ lô user.

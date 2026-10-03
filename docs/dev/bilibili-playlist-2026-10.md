@@ -223,3 +223,100 @@ Tiếp tục các tập đã chọn**. Video hoàn tất được kiểm SHA, c�
 lại theo hỗ trợ Range của server. Hai lượt media mới chỉ ghi vào audit;
 file tải của user được giữ nguyên. Đây là cải thiện khả năng phục hồi kết
 nối, không bảo đảm server luôn sẵn sàng hoặc toàn31 đã được nghiệm thu.
+
+## CDN dự phòng cho các vùng byte bị kẹt — 2026-10-03
+
+User còn9 mục chưa hoàn tất:4,5,6,11,15,18,21,22,26. Bộ file hiện có22
+receipt hoàn tất; thư mục lồng của lượt trước đã được user xử lý. Bản E đúng
+SHA của bản network đã phát hành, không phải đang chạy EXE cũ.
+
+Audit `.tools/playlist-stuck-20261003/`: đọc64 KiB tại đúng offset của mỗi
+file dở. Cả9 request tới `upos-hz-mirrorakam.akamaized.net` trả HTTP206 nhưng
+body bị cắt; URL backup `upos-sz-mirrorcosov.bilivideo.com` do Bilibili cung
+cấp trả đủ cùng vùng byte và Content-Range. Hai control ở đầu file4/26 qua
+CDN chính vẫn thành công. Mục26 tái hiện đúng497 bytes read; đây là bằng chứng
+lỗi theo vùng byte trên đường CDN chính, không chỉ là thiếu retry tổng quát.
+
+Extractor yt-dlp đang cài chỉ giữ `baseUrl`, bỏ `backupUrl` của DASH. Core
+playlist nay thu URL dự phòng từ cùng media record trong lúc extract, rồi
+khôi phục method của extractor. Khi tải báo short read sau retry hữu hạn,
+thử đúng một URL backup đã nhận từ server. Không tự thay hostname, đổi
+format ID/chất lượng, hạ HTTPS xuống HTTP, bỏ kiểm certificate hoặc đổi
+cookies. HTTP403 và lỗi khác không được coi là short read. Backup thất bại
+thì giữ lỗi/file dở; không xoay vòng CDN hoặc retry vô hạn.
+
+Mỗi lần process dùng bản sao format metadata vì yt-dlp sửa dict khi tải.
+Giữ filename/format ID để tiếp tục `.part` cũ. Kiểm receipt/SHA, selection,
+thứ tự và handoff Batch giữ contract trước. Direct media ngoài Bilibili vẫn
+đi đường cũ; không đổi dependency hoặc file cấu hình user.
+
+Regression38 pass và CLI160 pass (overlap); Ruff pass, Pyright0 errors/0
+warnings, translations in sync. HTTP loopback thật kiểm primary short read
+→ backup tiếp đúng byte, full SHA, reuse không mạng, backup cũng lỗi thì
+dừng, HTTP403 không fallback, cancel và URL không hợp lệ/TLS downgrade.
+Lượt đầu4 test lộ việc thêm `formats=[]` vào direct media; đã sửa để giữ
+nguyên trường vắng mặt, giữ log PRE và chạy lại. Không chạy full suite.
+
+Source mục4 tự chuyển CDN và đi từ310.272 lên66.148.638bytes; chạm budget
+480s nên hủy ở483,063s và giữ partial, không gọi lượt đó hoàn tất. EXE mới
+tiếp tục một bản sao partial này, tải/merge xong42,125s/exit0; lặp lại1,500s
+SHA-hit. VideoAV1/3456×2160/210,033312s + audioAAC/210,048118s; full decode
+exit0/stderr trống,75.501.149bytes, receipt SHA khớp. File user không đổi.
+
+Artifact `dist/VideoCaptioner-20261003-playlist-backup/`: build exit0/266,547s,
+6 WARNING/0 ERROR,31.688.036bytes,SHA256
+`6aa8f578367fd0739fc19f9f2870565f6a4e0f96adb9fe192bf29967096b9a93`.
+Core bytecode khớp source;99.315 model/runtime files khớp size manifest,
+inventory như bản trước. GUI20s/exit0, không còn owned children. Không tải/cài
+dependency/model. Đã kiểm9 vùng byte và hoàn tất mục4 trong audit, chưa tải
+trọn cả9 video hoặc nâng gate ASR/dịch/TTS/nghe.
+
+Đã deploy sau khi app E đóng:602 file app khớp SHA, chỉ EXE/base_library.zip
+thay; backup tại audit `rollback-payload/`.1601 file dữ liệu/settings/cookies/
+voices/manifest không đổi SHA, không chép lại models, giữ shortcut/tên EXE cũ.
+Live CLI help exit0; GUI/media gates từ artifact cùng SHA. Không commit/push.
+Khi tải tiếp, chọn thư mục cha chứa thư mục playlist để nhận lại các receipt
+hiện có; app vẫn tự thêm một cấp tên playlist. CDN backup có thể chậm hơn.
+
+## Nhớ link tải và trạng thái Batch tiếng Việt — 2026-10-03
+
+`Download.LastUrl` lưu một URL HTTP(S) gần nhất khi nhập hoặc bắt đầu thao
+tác tải/đọc danh sách. Tạo tác vụ và dialog playlist dùng chung lịch sử này;
+mở lại điền link nhưng không tự discovery/download/ASR. Đường dẫn media local,
+URL không hợp lệ hoặc URL chứa username/password không thay link đã lưu.
+URL Bilibili được canonical hóa, bỏ query theo dõi và giữ phần P.
+
+Batch hiển thị các trạng thái qua translator, còn logic chờ/chạy dùng enum
+trong item data để không phụ thuộc tiếng Việt/Trung. Việt hóa menu, cảnh báo
+và thông báo số tác vụ; hàng lỗi có màu đỏ, tooltip và nhấp đúp/menu **Chi
+tiết lỗi**. Lỗi Faster-Whisper timing có giải thích Việt và nguyên văn chi
+tiết kỹ thuật. Progress tới muộn không thay thế trạng thái lỗi/hoàn tất.
+
+Ảnh user là lỗi ASR trong Batch. Log bản E ghi `MissingTimingError` với
+`need_word_time_stamp=True`; TaskFactory hiện lấy cờ này từ `NeedSplit` khi
+chạy tiếp pipeline Faster-Whisper. Đọc cache bằng SQLite read-only:17 kết
+quả có190 cue chứa chữ, start=end (0 cue đảo chiều;181 cue tại biên cue trước).
+Replay cả17 qua parser hiện tại tái hiện lỗi,0 inference/0 gọi dịch vụ mới.
+Không đưa transcript/cookies vào Git. Đây là chẩn đoán timing; lượt thay đổi
+UI không nới guard, sửa timestamp, bỏ chữ hoặc thay cấu hình ASR của user.
+
+Audit `.tools/download-history-batch-20261003/`. UI/CLI/timing guards351 pass;
+focused11 pass sau sửa Qt enum notation, Ruff pass, Pyright0 errors/0 warnings,
+translations in sync. Giữ log lỗi type-check ban đầu13 errors đã sửa. Không
+chạy lại full suite hoặc benchmark ASR; gate EXE/reopen có receipts riêng.
+
+EXE `dist/VideoCaptioner-20261003-history/`: build exit0/209,203s,6 WARNING/
+0 ERROR,31.690.540bytes,SHA256
+`a56be0ef901916985a468ef02832a9ada71cf94e34897ed5a01a3c2b2bf2dea6`.
+Năm module runtime khớp bytecode source, JSON Việt bundle khớp source,
+99.315 model/runtime files khớp size manifest. Native EXE hai process riêng
+cùng qua startup20s/exit0, không còn owned children. Gõ URL ở lượt1, đóng
+app, lượt2 phục hồi đúng URL ở Tạo tác vụ/playlist, không bấm tải. Fixture
+media không hợp lệ kiểm `Đang chờ` → `Thất bại` → nhấp đúp `Chi tiết lỗi`
+với lý do Việt; lỗi xảy ra trước ASR, không gọi model/dịch vụ.
+
+Đã backup delta và deploy E khi app đã đóng:602 file app khớp SHA, thay4
+file (EXE/base_library.zip/hai JSON dịch),1606 file dữ liệu được bảo vệ không
+đổi; không chép lại models. Live help exit0, shortcut giữ tên EXE cũ. Gate
+GUI dùng artifact cùng SHA, không mở profile user để seed lịch sử. User
+nhập link lần đầu sau cập nhật thì app lưu. Không commit/push.
