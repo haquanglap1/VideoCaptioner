@@ -50,7 +50,7 @@ def isolated_asr_review(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def isolated_gui_settings(tmp_path):
+def isolated_gui_settings(tmp_path, monkeypatch):
     """Point QConfig saves at a scratch file.
 
     Views call ``cfg.set(...)`` while wiring combos and ``qconfig.save()`` would
@@ -64,6 +64,8 @@ def isolated_gui_settings(tmp_path):
         yield
         return
     original = cfg.file
+    # Naming is an external LLM request; feature tests opt in explicitly.
+    monkeypatch.setattr(cfg.translate_video_title, "value", False)
     cfg.file = tmp_path / "settings.json"
     try:
         yield

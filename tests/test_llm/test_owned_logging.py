@@ -67,10 +67,11 @@ def test_private_vision_log_keeps_usage_but_not_text_or_image(monkeypatch, entri
 
 @pytest.mark.parametrize("status", [401, 429, 500])
 def test_http_failure_is_logged_once_without_body_or_fake_zero(monkeypatch, entries, status):
+    monkeypatch.setattr("videocaptioner.core.llm.rate_limit.BACKOFF_SECONDS", .01)
     observed, _ = wire_client(monkeypatch, lambda _: httpx.Response(status, json={"error": "PRIVATE_ERROR"}))
     with pytest.raises(RuntimeError):
         OwnedLLMRequest(LLMCredentials("synthetic-key", "https://test.invalid/v1"))([], "synthetic-model")
-    assert len(observed) == len(entries) == 1
+    assert len(observed) == len(entries) == (3 if status == 429 else 1)
     assert entries[0]["outcome"] == "http_error" and entries[0]["status"] == status
     assert "PRIVATE_ERROR" not in json.dumps(entries) and log_usage(entries[0]).total is None
 

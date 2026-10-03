@@ -4,6 +4,9 @@ import os
 import queue
 import subprocess
 import threading
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Callable, Dict, Mapping, Optional, Tuple
 
 from ..utils.logger import setup_logger
@@ -18,6 +21,17 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 # names and anything the OpenAI SDK would pick up implicitly. Matched
 # case-insensitively because Windows environment names are.
 SECRET_ENV_PREFIXES: Tuple[str, ...] = ("OPENAI_", "VIDEOCAPTIONER_")
+_cancel_check: ContextVar[Optional[Callable[[], None]]] = ContextVar("media_cancel_check", default=None)
+
+
+@contextmanager
+def cancellation_scope(check):
+    """Carry a job's cancellation into its media helpers, without global hooks."""
+    token = _cancel_check.set(check)
+    try:
+        yield
+    finally:
+        _cancel_check.reset(token)
 
 
 def child_environment(overrides: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
@@ -36,6 +50,41 @@ def child_environment(overrides: Optional[Mapping[str, str]] = None) -> Dict[str
     if overrides:
         env.update(overrides)
     return env
+
+
+def run_cancellable(cmd, *, check_cancelled=None, **kwargs):
+    """Poll quiet media tools too; always reap the owned process on cancellation."""
+    check_cancelled = check_cancelled or _cancel_check.get()
+    if check_cancelled is None:
+        return subprocess.run(cmd, **kwargs)
+    from videocaptioner.core.asr.alignment.audio import stop_process
+
+    check_cancelled()
+    check = kwargs.pop("check", False)
+    timeout = kwargs.pop("timeout", None)
+    deadline = time.monotonic() + timeout if timeout is not None else None
+    if kwargs.pop("capture_output", False):
+        kwargs["stdout"] = kwargs["stderr"] = subprocess.PIPE
+    process = subprocess.Popen(cmd, **kwargs)
+    try:
+        while True:
+            check_cancelled()
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            try:
+                stdout, stderr = process.communicate(timeout=0.1)
+                break
+            except subprocess.TimeoutExpired:
+                pass
+        check_cancelled()
+        if check and process.returncode:
+            raise subprocess.CalledProcessError(process.returncode, cmd, stdout, stderr)
+        return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
+    finally:
+        stop_process(process)
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            if pipe:
+                pipe.close()
 
 
 class StreamReader:

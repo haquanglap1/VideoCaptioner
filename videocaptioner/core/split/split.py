@@ -5,6 +5,7 @@ from typing import List, Union
 
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.llm.context import submit_with_context
+from videocaptioner.core.llm.rate_limit import LLMRateLimitError
 from videocaptioner.core.split.split_by_llm import source_spans_for_split, split_by_llm
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.text_utils import (
@@ -186,6 +187,8 @@ class SubtitleSplitter:
 
             return asr_data.with_segments(final_segments)
 
+        except LLMRateLimitError:
+            raise
         except Exception as e:
             logger.error(f"Split failed:{str(e)}")
             raise RuntimeError(f"Split failed:{str(e)}")
@@ -289,6 +292,10 @@ class SubtitleSplitter:
             try:
                 result = future.result()
                 processed_segments.append(result)
+            except LLMRateLimitError:
+                for pending in futures:
+                    pending.cancel()
+                raise
             except Exception as e:
                 raise RuntimeError("A segmentation chunk failed; no partial document was returned.") from e
 
@@ -300,6 +307,8 @@ class SubtitleSplitter:
             return []
         try:
             return self._process_by_llm(asr_data_part.segments)
+        except LLMRateLimitError:
+            raise
         except Exception as e:
             logger.warning(f"LLM processing failed, falling back to rules: {str(e)}")
             return self._process_by_rules(asr_data_part.segments)

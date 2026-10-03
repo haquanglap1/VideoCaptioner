@@ -131,6 +131,22 @@ class SettingInterface(ScrollArea):
             texts=[self.tr(lang.value) for lang in cfg.target_language.validator.options],  # type: ignore
             parent=self.translateGroup,
         )
+        self.videoTitleCard = SwitchSettingCard(
+            FIF.LANGUAGE, self.tr("Translate output video titles"),
+            self.tr("Use the selected LLM and target language for output filenames. Keep source files unchanged."),
+            cfg.translate_video_title, self.translateGroup,
+        )
+        self.reuseTranslationCard = SwitchSettingCard(
+            FIF.SAVE, self.tr("Reuse completed translations"),
+            self.tr("Skip splitting, optimization and translation when a completed result matches this source and target language. Turn off to translate again."),
+            cfg.reuse_translation, self.translateGroup,
+        )
+
+        self.reuseDubbingCard = SwitchSettingCard(
+            FIF.SAVE, self.tr("Reuse completed dubbed videos"),
+            self.tr("Skip voice generation and video export when a completed dubbed video matches. Turn off to dub again."),
+            cfg.reuse_dubbing, self.subtitleGroup,
+        )
 
         # Subtitle synthesis cards
         self.subtitleStyleCard = HyperlinkCard(
@@ -169,6 +185,12 @@ class SettingInterface(ScrollArea):
             self.tr("视频合成质量"),
             self.tr("硬字幕视频合成时的质量等级（质量越高文件越大，编码时间越长）"),
             texts=[self.tr(quality.value) for quality in cfg.video_quality.validator.options],  # type: ignore
+            parent=self.subtitleGroup,
+        )
+        self.outputResolutionCard = ComboBoxSettingCard(
+            cfg.output_resolution, FIF.VIDEO, self.tr("Output resolution"),
+            self.tr("Applies to dubbing and subtitle export. Preserve aspect ratio without enlarging smaller videos."),
+            texts=[self.tr("Keep original"), "720p", "1080p", "1440p", "2160p"],
             parent=self.subtitleGroup,
         )
 
@@ -238,12 +260,16 @@ class SettingInterface(ScrollArea):
         self.translateGroup.addSettingCard(self.subtitleCorrectCard)
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
+        self.translateGroup.addSettingCard(self.videoTitleCard)
+        self.translateGroup.addSettingCard(self.reuseTranslationCard)
 
         self.subtitleGroup.addSettingCard(self.subtitleStyleCard)
         self.subtitleGroup.addSettingCard(self.subtitleLayoutCard)
         self.subtitleGroup.addSettingCard(self.needVideoCard)
         self.subtitleGroup.addSettingCard(self.softSubtitleCard)
         self.subtitleGroup.addSettingCard(self.videoQualityCard)
+        self.subtitleGroup.addSettingCard(self.outputResolutionCard)
+        self.subtitleGroup.addSettingCard(self.reuseDubbingCard)
 
         self.saveGroup.addSettingCard(self.savePathCard)
         self.saveGroup.addSettingCard(self.cacheEnabledCard)
@@ -470,7 +496,7 @@ class SettingInterface(ScrollArea):
             FIF.SPEED_HIGH,
             self.tr("线程数"),
             self.tr(
-                "请求并行处理的数量，模型服务商允许的情况下建议尽可能大，数值越大速度越快"
+                "Processing threads. LLM requests use up to 3 concurrent connections, reduced to 1 after HTTP 429."
             ),
             parent=self.translate_serviceGroup,
         )

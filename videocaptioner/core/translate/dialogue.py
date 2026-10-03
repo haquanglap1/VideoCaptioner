@@ -18,6 +18,10 @@ MAX_BLOCK_MS = 8000
 MAX_CONTINUATION_MS = 12000
 
 
+class DialogueBlockTimingError(ValueError):
+    """Complete, source-owned speech was grouped into an oversized block."""
+
+
 def fingerprint(value: object) -> str:
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
                                     separators=(",", ":")).encode("utf-8")).hexdigest()
@@ -64,7 +68,7 @@ def validate_blocks(cues: tuple[DialogueCue, ...], blocks: tuple[SpeechBlock, ..
                             and all(not re.search(r"[.!?。！？][\"'”’)]*\s*$", cue.source_text)
                                     for cue in members[:-1]))
             if not continuation:
-                raise ValueError("Keep blocks within 8 seconds, or 12 seconds only to finish an unpunctuated source continuation.")
+                raise DialogueBlockTimingError("Keep blocks within 8 seconds, or 12 seconds only to finish an unpunctuated source continuation.")
 
 
 @dataclass(frozen=True)

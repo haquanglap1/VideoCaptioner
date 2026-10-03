@@ -1,12 +1,13 @@
 """A job owns its HTTP task/socket, credentials and finite request deadline."""
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 import openai
 
 from .client import LLMCredentials
+from .rate_limit import RateLimitGate, rate_limit_error
 from .request_logger import OwnedRequestLog
 from .request_policy import validate_request_timeout
 
@@ -17,15 +18,16 @@ class OwnedLLMRequest:
     timeout: int = 120
     cancelled: Callable[[], bool] = lambda: False
     log_content: bool = True
+    _gate: RateLimitGate = field(default_factory=RateLimitGate, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         validate_request_timeout(self.timeout)
 
     def __call__(self, messages, model, **kwargs):
-        def check(deadline: float):
+        def check(deadline: float | None):
             if self.cancelled():
                 raise RuntimeError("Translation cancelled.")
-            if asyncio.get_running_loop().time() >= deadline:
+            if deadline is not None and asyncio.get_running_loop().time() >= deadline:
                 raise TimeoutError
 
         if self.cancelled():
@@ -33,8 +35,7 @@ class OwnedLLMRequest:
         if not self.credentials.is_complete:
             raise ValueError("LLM credentials are not configured.")
 
-        async def request():
-            deadline = asyncio.get_running_loop().time() + self.timeout
+        async def attempt(deadline):
             async with openai.AsyncOpenAI(
                 api_key=self.credentials.api_key, base_url=self.credentials.base_url,
                 max_retries=0, timeout=self.timeout,
@@ -57,12 +58,31 @@ class OwnedLLMRequest:
                                else "timeout" if isinstance(exc, (TimeoutError, openai.APITimeoutError))
                                else "http_error" if isinstance(exc, openai.APIStatusError) else "error")
                     log.finish(status=exc.status_code if isinstance(exc, openai.APIStatusError) else None,
-                               outcome=outcome, error_type=type(exc).__name__)
+                               outcome=outcome, error_type=type(exc).__name__,
+                               rejection_kind=rate_limit_error(exc).kind if isinstance(exc, openai.RateLimitError) else "")
                     raise
                 finally:
                     if not task.done():
                         task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
+
+        async def request():
+            deadline = None
+            while True:
+                check(deadline)
+                while not self._gate.enter():
+                    check(deadline)
+                    await asyncio.sleep(.1)
+                # Admission is an executor queue, not a sent provider request.
+                # Recovery waits after the first POST still share its deadline.
+                if deadline is None:
+                    deadline = asyncio.get_running_loop().time() + self.timeout
+                try:
+                    return await attempt(deadline)
+                except openai.RateLimitError as exc:
+                    self._gate.reject(rate_limit_error(exc), deadline - asyncio.get_running_loop().time())
+                finally:
+                    self._gate.leave()
         try:
             return asyncio.run(request())
         except openai.APIStatusError as exc:

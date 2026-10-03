@@ -1101,5 +1101,18 @@
   "Double-click this row to view error details.": "Nhấp đúp vào hàng này để xem chi tiết lỗi.",
   "Technical details:": "Chi tiết kỹ thuật:",
   "Faster-Whisper returned an invalid timestamp (end is not after start). Subtitle processing stopped because timing needs review.": "Faster-Whisper trả mốc thời gian không hợp lệ: thời điểm kết thúc không lớn hơn bắt đầu. Đã dừng xử lý phụ đề để kiểm tra thời gian.",
-  "转录 → 字幕处理 →（lồng tiếng nếu bật）→ 合成视频": "Nhận dạng → Xử lý phụ đề → Lồng tiếng (nếu bật) → Ghép video"
+  "转录 → 字幕处理 →（lồng tiếng nếu bật）→ 合成视频": "Nhận dạng → Xử lý phụ đề → Lồng tiếng (nếu bật) → Ghép video",
+  "Stop processing": "Dừng xử lý",
+  "Stopping": "Đang dừng",
+  "Stopped": "Đã dừng",
+  "Translate output video titles": "Dịch tiêu đề video đầu ra",
+  "Use the selected LLM and target language for output filenames. Keep source files unchanged.": "Dùng LLM và ngôn ngữ đích đã chọn để đặt tên video đầu ra. Giữ nguyên tên file nguồn.",
+  "Reuse completed translations": "Dùng lại bản dịch đã hoàn tất",
+  "Skip splitting, optimization and translation when a completed result matches this source and target language. Turn off to translate again.": "Bỏ qua tách câu, tối ưu và dịch khi có kết quả phù hợp với nguồn/ngôn ngữ đích. Tắt để yêu cầu dịch lại.",
+  "Output resolution": "Độ phân giải đầu ra",
+  "Keep original": "Giữ nguyên",
+  "Applies to dubbing and subtitle export. Preserve aspect ratio without enlarging smaller videos.": "Áp dụng cho lồng tiếng và ghép phụ đề. Giữ tỷ lệ khung hình, không phóng lớn video nhỏ hơn.",
+  "Reuse completed dubbed videos": "Dùng lại video đã lồng tiếng",
+  "Skip voice generation and video export when a completed dubbed video matches. Turn off to dub again.": "Bỏ qua tạo giọng và xuất video nếu đã có kết quả phù hợp. Tắt để lồng tiếng lại.",
+  "Processing threads. LLM requests use up to 3 concurrent connections, reduced to 1 after HTTP 429.": "Số luồng xử lý. LLM gửi tối đa 3 yêu cầu cùng lúc, giảm xuống 1 khi bị giới hạn HTTP 429."
 }

@@ -160,6 +160,36 @@ def test_context_is_read_only_and_cache_tracks_prompt(translator, monkeypatch):
     assert len(calls) == 2
 
 
+def test_oversized_blocks_use_complete_display_cues_without_extra_network_repairs(translator, monkeypatch):
+    data = source()
+    data.segments[1].end_time = 13000
+    data.segments[2].start_time, data.segments[2].end_time = 13200, 15000
+    before = data.to_document()
+    value = payload()
+    calls = respond(translator, monkeypatch, value)
+    translator.translate_subtitle(data)
+    blocks = translator.dialogue_document.blocks
+    assert len(calls) == 1
+    assert blocks == (SpeechBlock(("synthetic-1",), value["subtitle_translations"]["synthetic-1"]),
+                      SpeechBlock(("synthetic-2",), value["subtitle_translations"]["synthetic-2"]),
+                      SpeechBlock(("synthetic-3",), value["speech_blocks"][1]["text"]))
+    assert data.to_document() == before
+    translator.translate_subtitle(data)
+    assert len(calls) == 1
+
+
+def test_timing_repair_cannot_hide_a_second_invalid_block(translator, monkeypatch):
+    data = source()
+    data.segments[1].end_time = 13000
+    data.segments[2].start_time, data.segments[2].end_time = 13200, 15000
+    value = payload()
+    value["speech_blocks"][1]["text"] = ""
+    respond(translator, monkeypatch, value)
+    with pytest.raises(RuntimeError, match="Malformed dialogue"):
+        translator.translate_subtitle(data)
+    assert not translator._cache.values
+
+
 def test_cancel_keeps_source_and_does_not_cache(translator, monkeypatch):
     def request(messages):
         translator.stop()
@@ -170,6 +200,16 @@ def test_cancel_keeps_source_and_does_not_cache(translator, monkeypatch):
     with pytest.raises(RuntimeError, match="cancelled"):
         translator.translate_subtitle(data)
     assert data.to_document() == before and not translator._cache.values
+
+
+def test_explicit_retranslation_bypasses_chunk_cache(translator, monkeypatch):
+    calls = respond(translator, monkeypatch, payload())
+    translator.translate_subtitle(source())
+    translator.translate_subtitle(source())
+    assert len(calls) == 1
+    translator.reuse_cached_chunks = False
+    translator.translate_subtitle(source())
+    assert len(calls) == 2
 
 
 def test_dialogue_uses_the_apps_llm_configuration():

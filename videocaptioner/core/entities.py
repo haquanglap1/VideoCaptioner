@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from videocaptioner.core.ocr.models import Selection
     from videocaptioner.core.translate.dialogue import SpeechBlock
     from videocaptioner.core.translate.types import TargetLanguage
+    from videocaptioner.core.translate.video_title import VideoTitleConfig
 
 
 @dataclass(frozen=True)
@@ -688,6 +689,7 @@ class SubtitleConfig:
     custom_prompt_text: Optional[str] = None
 
     llm_request_timeout: int = 120
+    reuse_translation: bool = True
 
     def __post_init__(self) -> None:
         from videocaptioner.core.llm.request_policy import validate_request_timeout
@@ -750,6 +752,7 @@ class SynthesisConfig:
     # Subtitle style settings
     ass_style: str = ""  # ASS style string
     rounded_style: Optional[dict] = None  # Rounded background style settings
+    output_resolution: int = 0
 
     def print_config(self) -> str:
         """Print video synthesis configuration"""
@@ -848,6 +851,8 @@ class SynthesisTask:
 
     # Producer-supplied layout of a display SRT; None means a raw input.
     input_subtitle_layout: Optional[SubtitleLayoutEnum] = None
+    title_translation: Optional["VideoTitleConfig"] = field(default=None, repr=False)
+    reuse_completed_output: bool = False
 
 
 @dataclass
@@ -881,6 +886,7 @@ class DubbingTask:
     playback_subtitle_path: Optional[str] = None
     preview_only: bool = False
     auto_timing_plan: Optional["AutoTimingPlan"] = None
+    title_translation: Optional["VideoTitleConfig"] = field(default=None, repr=False)
 
 
 @dataclass
@@ -946,6 +952,8 @@ class BatchTaskStatus(Enum):
     RUNNING = "处理中"
     COMPLETED = "已完成"
     FAILED = "失败"
+    STOPPING = "Stopping"
+    CANCELLED = "Stopped"
 
     def __str__(self):
         return self.value

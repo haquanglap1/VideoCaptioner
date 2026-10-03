@@ -1,18 +1,19 @@
-import queue
-import time
-from functools import partial
-from pathlib import Path
-from typing import Dict, Optional
+"""GUI-owned batch queue with retained workers and asynchronous cancellation."""
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from collections import deque
+from pathlib import Path
+from typing import Optional
+
+from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
+from PyQt5.QtWidgets import QApplication
 
 from videocaptioner.core.entities import (
     BatchTaskStatus,
     BatchTaskType,
-    DubbingTask,
+    SubtitleLayoutEnum,
     SupportedSubtitleFormats,
-    TranscribeTask,
 )
+from videocaptioner.core.llm.rate_limit import find_rate_limit
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.task_factory import TaskFactory
@@ -20,6 +21,7 @@ from videocaptioner.ui.thread.dubbing_thread import DubbingThread
 from videocaptioner.ui.thread.subtitle_thread import SubtitleThread
 from videocaptioner.ui.thread.transcript_thread import TranscriptThread
 from videocaptioner.ui.thread.video_synthesis_thread import VideoSynthesisThread
+from videocaptioner.ui.thread.worker_lifecycle import cancel_worker, retain_worker
 
 logger = setup_logger("batch_process_thread")
 
@@ -34,430 +36,203 @@ class BatchTask:
         self.current_thread: Optional[QThread] = None
 
 
-class BatchProcessThread(QThread):
-    # 信号定义
-    task_progress = pyqtSignal(str, int, str)  # file_path, progress, status
-    task_error = pyqtSignal(str, str)  # file_path, error_message
-    task_completed = pyqtSignal(str)  # file_path
+class BatchProcessThread(QObject):
+    """Keep the public name; scheduling no longer needs a polling thread."""
+
+    task_progress = pyqtSignal(str, int, str)
+    task_error = pyqtSignal(str, str)
+    task_completed = pyqtSignal(str)
+    task_cancelled = pyqtSignal(str)
+    busy_changed = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
-        self.task_queue = queue.Queue()
-        self.current_tasks: Dict[str, BatchTask] = {}
-        self.max_concurrent_tasks = 1
-        self.is_running = False
+        self.task_queue = deque()
+        self.current_tasks: dict[str, BatchTask] = {}
         self.factory = TaskFactory()
-        self.threads = []  # 保存所有创建的线程
+        self.threads: list[QThread] = []
+        self._closing = False
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown)
+
+    def isRunning(self):
+        return bool(self.threads or self.task_queue)
 
     def add_task(self, task: BatchTask):
-        self.task_queue.put(task)
+        old = self.current_tasks.get(task.file_path)
+        if self._closing or (old and old.status in (
+                BatchTaskStatus.WAITING, BatchTaskStatus.RUNNING, BatchTaskStatus.STOPPING)):
+            return
         self.current_tasks[task.file_path] = task
-        if not self.isRunning():
-            self.is_running = True
-            self.start()
+        self.task_queue.append(task)
+        self.busy_changed.emit(True)
+        QTimer.singleShot(0, self._pump)
 
-    def run(self):
-        while self.is_running:
-            # 检查是否有正在运行的任务数量是否达到上限
-            running_tasks = sum(
-                1
-                for task in self.current_tasks.values()
-                if task.status == BatchTaskStatus.RUNNING
-            )
+    def _pump(self):
+        if self._closing or self.threads:
+            return
+        while self.task_queue:
+            task = self.task_queue.popleft()
+            if task.status != BatchTaskStatus.WAITING:
+                continue
+            task.status = BatchTaskStatus.RUNNING
+            self.task_progress.emit(task.file_path, 0, str(task.status))
+            try:
+                if task.task_type == BatchTaskType.SUBTITLE:
+                    self._subtitle(task, task.file_path)
+                elif task.task_type == BatchTaskType.DUBBING:
+                    if not cfg.dubbing_enabled.value:
+                        raise ValueError("Lồng tiếng đang tắt — hãy bật ở tab Lồng tiếng trước")
+                    subtitle = self._find_subtitle_for_video(task.file_path)
+                    if not subtitle:
+                        raise ValueError("Không tìm thấy phụ đề cùng tên trong thư mục")
+                    self._dub(task, subtitle, subtitle)
+                else:
+                    self._transcribe(task)
+            except Exception as exc:
+                self._fail(task, str(exc))
+            if self.threads:
+                break
+        self.busy_changed.emit(self.isRunning())
 
-            if running_tasks < self.max_concurrent_tasks:
+    def _fail(self, task, error):
+        task.status = BatchTaskStatus.FAILED
+        task.error_message = error
+        self.task_error.emit(task.file_path, error)
+
+    def _complete(self, task):
+        task.status = BatchTaskStatus.COMPLETED
+        task.progress = 100
+        self.task_completed.emit(task.file_path)
+
+    def _start(self, task, worker, start, end, success):
+        if self._closing or task.status != BatchTaskStatus.RUNNING:
+            return
+        task.current_thread = worker
+        self.threads.append(worker)
+        outcome = {}
+
+        def progress(value, message):
+            if task.current_thread is worker and task.status == BatchTaskStatus.RUNNING:
+                task.progress = start + int(value * (end - start) / 100)
+                self.task_progress.emit(task.file_path, task.progress, message)
+
+        def settle():
+            # Result signals precede native completion and process cleanup.
+            if not worker.wait(0):
+                QTimer.singleShot(10, settle)
+                return
+            if worker in self.threads:
+                self.threads.remove(worker)
+            if self._closing or task.status == BatchTaskStatus.STOPPING:
+                task.status = BatchTaskStatus.CANCELLED
+                self.task_cancelled.emit(task.file_path)
+            elif "error" in outcome:
+                self._fail(task, outcome["error"])
+                if find_rate_limit(getattr(worker, "failure", None)):
+                    # A provider rejection is shared by the queue, not a broken video.
+                    for queued in tuple(self.task_queue):
+                        self.stop_task(queued.file_path)
+            elif "result" in outcome:
                 try:
-                    # 非阻塞方式获取任务
-                    task = self.task_queue.get_nowait()
-                    self._process_task(task)
-                except queue.Empty:
-                    time.sleep(0.1)  # 避免CPU过度使用
+                    success(*outcome["result"])
+                except Exception as exc:
+                    logger.exception("Batch stage handoff failed")
+                    self._fail(task, str(exc))
             else:
-                time.sleep(0.1)
+                self._fail(task, "Tiến trình kết thúc mà không có kết quả.")
+            self.busy_changed.emit(self.isRunning())
+            QTimer.singleShot(0, self._pump)
 
-    def _process_task(self, batch_task: BatchTask):
-        try:
-            batch_task.status = BatchTaskStatus.RUNNING
-            self.task_progress.emit(
-                batch_task.file_path, 0, str(BatchTaskStatus.RUNNING)
-            )
+        worker.progress.connect(progress, Qt.ConnectionType.QueuedConnection)
+        worker.error.connect(lambda error: outcome.update(error=error), Qt.ConnectionType.QueuedConnection)
+        worker.finished.connect(lambda *args: outcome.update(result=args), Qt.ConnectionType.QueuedConnection)
+        QThread.finished.__get__(worker).connect(settle, Qt.ConnectionType.QueuedConnection)
+        retain_worker(worker)
+        worker.start()
 
-            if batch_task.task_type == BatchTaskType.TRANSCRIBE:
-                self._handle_transcribe_task(batch_task)
-            elif batch_task.task_type == BatchTaskType.SUBTITLE:
-                self._handle_subtitle_task(batch_task)
-            elif batch_task.task_type == BatchTaskType.TRANS_SUB:
-                self._handle_trans_sub_task(batch_task)
-            elif batch_task.task_type == BatchTaskType.FULL_PROCESS:
-                self._handle_full_process_task(batch_task)
-            elif batch_task.task_type == BatchTaskType.DUBBING:
-                self._handle_dubbing_task(batch_task)
+    def _transcribe(self, task):
+        next_stage = task.task_type != BatchTaskType.TRANSCRIBE
+        trans = self.factory.create_transcribe_task(task.file_path, need_next_task=next_stage)
 
-        except Exception as e:
-            logger.exception(f"处理任务失败: {str(e)}")
-            batch_task.status = BatchTaskStatus.FAILED
-            batch_task.error_message = str(e)
-            self.task_error.emit(batch_task.file_path, str(e))
+        def done(result):
+            if not next_stage:
+                self._complete(task)
+            else:
+                self._subtitle(task, result.output_path, result.asr_data)
 
-    def _on_progress_wrapper(self, batch_task: BatchTask, progress: int, message: str):
-        """进度信号包装器"""
-        self.task_progress.emit(batch_task.file_path, progress, message)
+        self._start(task, TranscriptThread(trans), 0, 100 if not next_stage else 25, done)
 
-    def _on_error_wrapper(self, batch_task: BatchTask, error: str):
-        """错误信号包装器"""
-        batch_task.status = BatchTaskStatus.FAILED
-        batch_task.error_message = error
-        self.task_error.emit(batch_task.file_path, error)
+    def _subtitle(self, task, path, asr_data=None):
+        full = task.task_type == BatchTaskType.FULL_PROCESS
+        linked_video = task.task_type in (BatchTaskType.FULL_PROCESS, BatchTaskType.TRANS_SUB)
+        subtitle = self.factory.create_subtitle_task(path, task.file_path if linked_video else None, need_next_task=linked_video)
+        subtitle.asr_data = asr_data
+        worker = SubtitleThread(subtitle)
 
-    def _on_finished_wrapper(self, batch_task: BatchTask, task=None):
-        """完成信号包装器"""
-        batch_task.status = BatchTaskStatus.COMPLETED
-        batch_task.progress = 100
-        self.task_completed.emit(batch_task.file_path)
-        if batch_task.current_thread in self.threads:
-            self.threads.remove(batch_task.current_thread)
+        def done(video, display):
+            if not full:
+                self._complete(task)
+            elif cfg.dubbing_enabled.value:
+                self._dub(task, worker.task.dubbing_subtitle_path or display, display)
+            else:
+                self._synthesize(task, task.file_path, display, worker.task.subtitle_config.subtitle_layout)
 
-    def _handle_transcribe_task(self, batch_task: BatchTask):
-        # self.max_concurrent_tasks = 3
-        task = self.factory.create_transcribe_task(batch_task.file_path)
-        thread = TranscriptThread(task)
-        batch_task.current_thread = thread
+        self._start(task, worker, 0 if task.task_type == BatchTaskType.SUBTITLE else 25, 50 if full else 100, done)
 
-        # 保存线程引用
-        self.threads.append(thread)
+    def _dub(self, task, subtitle, display):
+        dubbing = self.factory.create_dubbing_task(task.file_path, subtitle, display_subtitle_path=display)
+        full = task.task_type == BatchTaskType.FULL_PROCESS
+        if full and cfg.need_video.value and dubbing.dubbing_config:
+            # Burn once, after retiming, using captions produced by dubbing.
+            dubbing.dubbing_config.subtitle_mode = "none"
+            dubbing.dubbing_config.output_resolution = 0
+            dubbing.title_translation = None
 
-        thread.progress.connect(  # type: ignore
-            partial(self._on_progress_wrapper, batch_task)  # type: ignore
-        )
-        thread.error.connect(  # type: ignore
-            partial(self._on_error_wrapper, batch_task)  # type: ignore
-        )
-        thread.finished.connect(  # type: ignore
-            partial(self._on_finished_wrapper, batch_task)  # type: ignore
-        )
+        def done(result):
+            if full:
+                self._synthesize(task, result.output_path, result.playback_subtitle_path or display,
+                                 SubtitleLayoutEnum.ONLY_TRANSLATE if result.playback_subtitle_path else cfg.subtitle_layout.value)
+            else:
+                self._complete(task)
 
-        thread.start()
+        self._start(task, DubbingThread(dubbing, automatic=True), 50 if full else 0, 75 if full else 100, done)
 
-    def _handle_subtitle_task(self, batch_task: BatchTask):
-        logger.info(f"开始处理字幕任务: {batch_task.file_path}")
-
-        task = self.factory.create_subtitle_task(batch_task.file_path)
-        thread = SubtitleThread(task)
-        batch_task.current_thread = thread
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(  # type: ignore
-            partial(self._on_progress_wrapper, batch_task)  # type: ignore
-        )
-        thread.error.connect(  # type: ignore
-            partial(self._on_error_wrapper, batch_task)  # type: ignore
-        )
-        thread.finished.connect(  # type: ignore
-            partial(self._on_finished_wrapper, batch_task)  # type: ignore
-        )
-
-        thread.start()
+    def _synthesize(self, task, video, subtitle, layout):
+        synthesis = self.factory.create_synthesis_task(video, subtitle, input_subtitle_layout=layout,
+                                                       title_source=task.file_path)
+        self._start(task, VideoSynthesisThread(synthesis), 75, 100, lambda *_: self._complete(task))
 
     @staticmethod
     def _find_subtitle_for_video(video_path: str) -> Optional[str]:
-        """Tìm file phụ đề cùng tên với video trong cùng thư mục.
-
-        Ưu tiên .srt, sau đó .ass, .vtt. Trả về đường dẫn hoặc None.
-        """
         video = Path(video_path)
-        ordered_exts = ["srt"] + [
-            fmt.value
-            for fmt in SupportedSubtitleFormats
-            if fmt.value != "srt"
-        ]
-        for ext in ordered_exts:
+        for ext in ["srt"] + [fmt.value for fmt in SupportedSubtitleFormats if fmt.value != "srt"]:
             candidate = video.with_suffix(f".{ext}")
             if candidate.exists():
                 return str(candidate)
         return None
 
-    def _handle_dubbing_task(self, batch_task: BatchTask):
-        """Lồng tiếng cho 1 video, tự tìm phụ đề cùng tên trong thư mục."""
-        if not cfg.dubbing_enabled.value:
-            raise ValueError(
-                "Lồng tiếng đang tắt — hãy bật và cấu hình ở tab Lồng tiếng trước"
-            )
-
-        subtitle_path = self._find_subtitle_for_video(batch_task.file_path)
-        if not subtitle_path:
-            raise ValueError(
-                "Không tìm thấy phụ đề cùng tên (.srt/.ass/.vtt) trong thư mục"
-            )
-
-        dubbing_task = self.factory.create_dubbing_task(
-            batch_task.file_path, subtitle_path
-        )
-        thread = DubbingThread(dubbing_task)
-        batch_task.current_thread = thread
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(  # type: ignore
-            partial(self._on_progress_wrapper, batch_task)  # type: ignore
-        )
-        thread.error.connect(  # type: ignore
-            partial(self._on_error_wrapper, batch_task)  # type: ignore
-        )
-        thread.finished.connect(  # type: ignore
-            partial(self._on_finished_wrapper, batch_task)  # type: ignore
-        )
-
-        thread.start()
-
-    def _handle_trans_sub_task(self, batch_task: BatchTask):
-        trans_task = self.factory.create_transcribe_task(
-            batch_task.file_path, need_next_task=True
-        )
-        thread = TranscriptThread(trans_task)
-        batch_task.current_thread = thread
-        self.current_tasks[batch_task.file_path] = batch_task
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(
-            partial(self._on_trans_sub_progress_wrapper, batch_task)
-        )
-        thread.error.connect(partial(self._on_error_wrapper, batch_task))
-        thread.finished.connect(
-            partial(self._on_trans_sub_finished_wrapper, batch_task)
-        )
-
-        thread.start()
-
-    def _on_trans_sub_progress_wrapper(
-        self, batch_task: BatchTask, progress: int, message: str
-    ):
-        """转录+字幕任务进度包装器"""
-        progress = progress // 2  # 转录占50%进度
-        self.task_progress.emit(batch_task.file_path, progress, message)
-
-    def _on_trans_sub_finished_wrapper(
-        self, batch_task: BatchTask, task: TranscribeTask
-    ):
-        """转录+字幕任务转录完成包装器"""
-        if batch_task.current_thread in self.threads:
-            self.threads.remove(batch_task.current_thread)
-
-        # 创建字幕任务
-        if not task.output_path:
-            raise ValueError("Task output_path is None")
-        subtitle_task = self.factory.create_subtitle_task(
-            task.output_path, batch_task.file_path, need_next_task=True
-        )
-        thread = SubtitleThread(subtitle_task)
-        batch_task.current_thread = thread
-        self.current_tasks[batch_task.file_path] = batch_task
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(
-            partial(self._on_trans_sub_subtitle_progress_wrapper, batch_task)
-        )
-        thread.error.connect(partial(self._on_error_wrapper, batch_task))
-        thread.finished.connect(partial(self._on_finished_wrapper, batch_task))
-
-        thread.start()
-
-    def _on_trans_sub_subtitle_progress_wrapper(
-        self, batch_task: BatchTask, progress: int, message: str
-    ):
-        """转录+字幕任务字幕进度包装器"""
-        progress = 50 + progress // 2  # 字幕处理占后50%进度
-        self.task_progress.emit(batch_task.file_path, progress, message)
-
-    def _handle_full_process_task(self, batch_task: BatchTask):
-        # 首先创建转录任务
-        trans_task = self.factory.create_transcribe_task(
-            batch_task.file_path, need_next_task=True
-        )
-        thread = TranscriptThread(trans_task)
-        batch_task.current_thread = thread
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(partial(self.on_full_process_progress, batch_task))
-        thread.error.connect(partial(self._on_error_wrapper, batch_task))
-        thread.finished.connect(partial(self.on_full_process_finished, batch_task))
-
-        thread.start()
-
-    def on_full_process_progress(
-        self, batch_task: BatchTask, progress: int, message: str
-    ):
-        """处理全流程任务的转录进度"""
-        if batch_task.status == BatchTaskStatus.RUNNING:
-            if cfg.dubbing_enabled.value:
-                progress_value = progress * 25 // 100  # 转录占25%（含lồng tiếng）
-            else:
-                progress_value = progress // 3  # 转录占33%进度
-            self.task_progress.emit(batch_task.file_path, progress_value, message)
-
-    def on_full_process_finished(self, batch_task: BatchTask, task: TranscribeTask):
-        """处理转录完成后开始字幕任务"""
-        if batch_task.current_thread in self.threads:
-            self.threads.remove(batch_task.current_thread)
-
-        # 转录完成后创建字幕任务
-        if not task.output_path:
-            raise ValueError("Task output_path is None")
-        subtitle_task = self.factory.create_subtitle_task(
-            task.output_path,
-            batch_task.file_path,
-            need_next_task=True,
-        )
-        thread = SubtitleThread(subtitle_task)
-        batch_task.current_thread = thread
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(
-            partial(self.on_full_process_subtitle_progress, batch_task)
-        )
-        thread.error.connect(partial(self._on_error_wrapper, batch_task))
-        thread.finished.connect(
-            partial(self.on_full_process_subtitle_finished, batch_task)
-        )
-
-        thread.start()
-
-    def on_full_process_subtitle_progress(
-        self, batch_task: BatchTask, progress: int, message: str
-    ):
-        """处理全流程任务中字幕部分的进度"""
-        if batch_task.status == BatchTaskStatus.RUNNING:
-            if cfg.dubbing_enabled.value:
-                progress_value = 25 + progress * 25 // 100  # 字幕占中间25%
-            else:
-                progress_value = 33 + progress // 3  # 字幕处理占中间33%进度
-            self.task_progress.emit(batch_task.file_path, progress_value, message)
-
-    def on_full_process_subtitle_finished(
-        self, batch_task: BatchTask, video_path: str, subtitle_path: str
-    ):
-        """字幕完成后：bật lồng tiếng thì chèn bước lồng tiếng, không thì ghép video"""
-        subtitle_thread = batch_task.current_thread
-        dubbing_subtitle_path = (
-            subtitle_thread.task.dubbing_subtitle_path
-            if isinstance(subtitle_thread, SubtitleThread)
-            else None
-        )
-        if batch_task.current_thread in self.threads:
-            self.threads.remove(batch_task.current_thread)
-
-        if cfg.dubbing_enabled.value:
-            # Chèn bước lồng tiếng trước khi ghép video
-            dubbing_task = self.factory.create_dubbing_task(
-                video_path,
-                dubbing_subtitle_path or subtitle_path,
-                display_subtitle_path=subtitle_path,
-            )
-            thread = DubbingThread(dubbing_task)
-            batch_task.current_thread = thread
-
-            # 保存线程引用
-            self.threads.append(thread)
-
-            thread.progress.connect(
-                partial(self.on_full_process_dubbing_progress, batch_task)
-            )
-            thread.error.connect(partial(self._on_error_wrapper, batch_task))
-            thread.finished.connect(
-                partial(self.on_full_process_dubbing_finished, batch_task)
-            )
-
-            thread.start()
-            return
-
-        # Không lồng tiếng: ghép video trực tiếp
-        self._start_full_process_synthesis(batch_task, video_path, subtitle_path)
-
-    def on_full_process_dubbing_progress(
-        self, batch_task: BatchTask, progress: int, message: str
-    ):
-        """处理全流程任务中lồng tiếng部分的进度"""
-        if batch_task.status == BatchTaskStatus.RUNNING:
-            progress_value = 50 + progress * 25 // 100  # lồng tiếng占第三个25%
-            self.task_progress.emit(batch_task.file_path, progress_value, message)
-
-    def on_full_process_dubbing_finished(
-        self, batch_task: BatchTask, task: DubbingTask
-    ):
-        """lồng tiếng完成后用配音视频继续视频合成"""
-        if batch_task.current_thread in self.threads:
-            self.threads.remove(batch_task.current_thread)
-
-        # Dùng video đã lồng tiếng cho bước ghép phụ đề
-        dubbed_video = task.output_path or task.video_path
-        if not dubbed_video:
-            raise ValueError("Dubbing output_path is None")
-        self._start_full_process_synthesis(
-            batch_task,
-            dubbed_video,
-            task.display_subtitle_path or task.subtitle_path or "",
-        )
-
-    def _start_full_process_synthesis(
-        self, batch_task: BatchTask, video_path: str, subtitle_path: str
-    ):
-        """Tạo và chạy bước ghép video (chặng cuối của full process)"""
-        synthesis_task = self.factory.create_synthesis_task(video_path, subtitle_path)
-        thread = VideoSynthesisThread(synthesis_task)
-        batch_task.current_thread = thread
-
-        # 保存线程引用
-        self.threads.append(thread)
-
-        thread.progress.connect(
-            partial(self.on_full_process_synthesis_progress, batch_task)
-        )
-        thread.error.connect(partial(self._on_error_wrapper, batch_task))
-        thread.finished.connect(partial(self._on_finished_wrapper, batch_task))
-
-        thread.start()
-
-    def on_full_process_synthesis_progress(
-        self, batch_task: BatchTask, progress: int, message: str
-    ):
-        """处理全流程任务中视频合成部分的进度"""
-        if batch_task.status == BatchTaskStatus.RUNNING:
-            if cfg.dubbing_enabled.value:
-                progress_value = 75 + progress * 25 // 100  # 视频合成占最后25%
-            else:
-                progress_value = 66 + progress // 3  # 视频合成占最后34%进度
-            self.task_progress.emit(batch_task.file_path, progress_value, message)
-
     def stop_task(self, file_path: str):
-        if file_path in self.current_tasks:
-            task = self.current_tasks[file_path]
+        task = self.current_tasks.get(file_path)
+        if task is None:
+            return
+        if task.status == BatchTaskStatus.WAITING:
+            self.task_queue = deque(item for item in self.task_queue if item is not task)
+            task.status = BatchTaskStatus.CANCELLED
+            self.task_cancelled.emit(file_path)
+        elif task.status == BatchTaskStatus.RUNNING:
+            task.status = BatchTaskStatus.STOPPING
+            self.task_progress.emit(file_path, task.progress, str(task.status))
             if task.current_thread:
-                if hasattr(task.current_thread, "stop"):
-                    task.current_thread.stop()  # type: ignore
-            del self.current_tasks[file_path]
-            # 从队列中移除任务
-            with self.task_queue.mutex:
-                self.task_queue.queue.clear()
+                cancel_worker(task.current_thread)
+        self.busy_changed.emit(self.isRunning())
 
     def stop_all(self):
-        self.is_running = False
-        # 停止所有线程
-        for thread in self.threads:
-            if hasattr(thread, "stop"):
-                thread.stop()  # type: ignore
-            thread.wait()  # 等待线程结束
-        self.threads.clear()
-        self.current_tasks.clear()
-        # 清空任务队列
-        with self.task_queue.mutex:
-            self.task_queue.queue.clear()
+        # No wait() on the GUI thread. Native completion acknowledges the stop.
+        for path in tuple(self.current_tasks):
+            self.stop_task(path)
+
+    def shutdown(self):
+        self._closing = True
+        self.stop_all()

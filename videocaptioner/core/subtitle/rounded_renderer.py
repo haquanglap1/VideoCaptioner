@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from videocaptioner.core.entities import SubtitleLayoutEnum
 from videocaptioner.core.utils.logger import setup_logger
-from videocaptioner.core.utils.subprocess_helper import child_environment
+from videocaptioner.core.utils.subprocess_helper import child_environment, run_cancellable
 
 from .font_utils import FontType, get_font
 from .styles import RoundedBgStyle
@@ -26,7 +26,7 @@ logger = setup_logger("subtitle.rounded")
 
 def _get_video_info(video_path: str) -> Tuple[int, int, float]:
     """Video resolution and duration."""
-    result = subprocess.run(
+    result = run_cancellable(
         ["ffmpeg", "-i", video_path], env=child_environment(),
         capture_output=True,
         text=True,
@@ -276,6 +276,7 @@ def render_rounded_video(
     preset: str = "medium",
     progress_callback: Optional[Callable] = None,
     reference_height: int = 720,
+    output_resolution: int = 0,
 ) -> None:
     """
     Render rounded-background subtitles into a video (batched overlay).
@@ -317,6 +318,8 @@ def render_rounded_video(
 
     # Video info
     width, height, video_duration = _get_video_info(video_path)
+    from videocaptioner.core.utils.video_resolution import output_dimensions
+    width, height = output_dimensions(width, height, output_resolution)
 
     # Build and scale the style
     style_config = rounded_style or {}
@@ -388,10 +391,14 @@ def render_rounded_video(
             # Build the overlay filter chain
             input_args = ["-i", current_video]
             filter_parts = []
+            base = "[0:v]"
+            if output_resolution and batch_idx == 0:
+                filter_parts.append(f"[0:v]scale={width}:{height}[scaled]")
+                base = "[scaled]"
 
             for local_idx, (start, end, png_path) in enumerate(batch_frames):
                 input_args.extend(["-i", str(png_path)])
-                prev = f"[v{local_idx}]" if local_idx > 0 else "[0:v]"
+                prev = f"[v{local_idx}]" if local_idx > 0 else base
                 curr = f"[{local_idx + 1}:v]"
                 out = f"[v{local_idx + 1}]"
                 filter_parts.append(
@@ -439,8 +446,9 @@ def render_rounded_video(
                 cmd_str = subprocess.list2cmdline(cmd)
                 logger.debug(f"FFmpeg cmd: {cmd_str}")
 
-            result = subprocess.run(
+            result = run_cancellable(
                 cmd, env=child_environment(),
+                check_cancelled=(lambda: progress_callback(30 + int(batch_idx / total_batches * 70), "Đang ghép video")) if progress_callback else None,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

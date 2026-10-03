@@ -259,6 +259,7 @@ def render_ass_video(
     preset: str = "medium",
     progress_callback: Optional[Callable] = None,
     reference_height: int = 720,
+    output_resolution: int = 0,
 ) -> None:
     """
     Burn ASS-style subtitles into a video (hard subtitles).
@@ -280,6 +281,8 @@ def render_ass_video(
 
     # Video resolution
     width, height = _get_video_resolution(video_path)
+    from videocaptioner.core.utils.video_resolution import output_dimensions
+    width, height = output_dimensions(width, height, output_resolution)
 
     # Scale the style to the video height
     scale_factor = height / reference_height
@@ -318,6 +321,8 @@ def render_ass_video(
 
         # Always use the ass filter
         vf = f"ass='{subtitle_path_escaped}':fontsdir='{fonts_dir_escaped}'"
+        if output_resolution:
+            vf = f"scale={width}:{height}," + vf
 
         # Check CUDA availability
         use_cuda = _check_cuda_available()
@@ -367,10 +372,21 @@ def render_ass_video(
             total_duration = None
             current_time = 0
 
+            from videocaptioner.core.utils.subprocess_helper import StreamReader
+            reader = StreamReader(process)
+            reader.start_reading()
+            progress = 0
+            recent_output = ""
             while True:
-                output_line = process.stderr.readline()
-                if not output_line or (process.poll() is not None):
-                    break
+                item = reader.get_output(timeout=0.1)
+                if progress_callback:
+                    progress_callback(str(round(progress)), "Đang ghép video")
+                if item is None:
+                    if process.poll() is not None:
+                        break
+                    continue
+                output_line = item[1]
+                recent_output = (recent_output + output_line)[-4000:]
                 if not progress_callback:
                     continue
 
@@ -402,7 +418,7 @@ def render_ass_video(
             # Check the return code
             return_code = process.wait()
             if return_code != 0:
-                error_info = process.stderr.read()
+                error_info = recent_output
                 logger.error("FFmpeg ASS rendering failed")
                 logger.error(f"Return code: {return_code}")
                 logger.error(f"Command: {cmd_str}")
@@ -417,11 +433,13 @@ def render_ass_video(
             logger.error(f"Error: {str(e)}")
             if process and process.poll() is None:
                 process.kill()
+                process.wait(timeout=3)
             raise
         except Exception as e:
             logger.error(f"ASS subtitle rendering error: {str(e)}")
             if process and process.poll() is None:
                 process.kill()
+                process.wait(timeout=3)
             raise
 
     finally:

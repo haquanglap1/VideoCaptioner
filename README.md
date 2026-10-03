@@ -91,6 +91,43 @@ chạy ASR/dịch/TTS. CLI thêm `download URL --playlist`, `--list-playlist` v�
 `--playlist-items "1,3-5"`. [Cách dùng và giới hạn](docs/dev/bilibili-playlist-2026-10.md).
 App nhớ link tải gần nhất giữa các lần mở; khôi phục ô link không tự gọi mạng.
 Trong **Xử lý hàng loạt**, nhấp đúp hàng **Thất bại** để xem chi tiết lỗi.
+Nút **Dừng xử lý** hủy hàng đang chờ và yêu cầu bước đang chạy dừng; hàng hiện
+**Đang dừng** cho đến khi worker thoát, rồi **Đã dừng**. Bấm **Bắt đầu xử lý**
+để thử lại các hàng lỗi/đã dừng; các hàng hoàn tất được giữ nguyên.
+
+**Cài đặt → Dịch và tối ưu → Dùng lại bản dịch đã hoàn tất** mặc định bật.
+Khi nguồn và ngôn ngữ đích khớp, app bỏ qua cả tách câu, tối ưu và dịch; đổi
+model, prompt hoặc số luồng vẫn giữ bản dịch đã có. Tắt tùy chọn này để dịch lại;
+thao tác dịch lại cũng bỏ qua cache từng nhóm câu. Lệnh dịch lại các dòng được
+chọn luôn yêu cầu bản dịch mới.
+Kết quả mới lưu kèm `.completed.json`; app cũng nhận cặp SRT/`.dialogue.json`
+cũ do chính app xuất khi tên, ngôn ngữ, nội dung hiển thị và thời điểm video phù hợp.
+
+Chọn **Độ phân giải đầu ra** trong Cài đặt hoặc thanh công cụ Tổng hợp video:
+**Giữ nguyên / 720p / 1080p / 1440p / 2160p**. Áp dụng cho video lồng tiếng và
+ghép phụ đề, kể cả Batch. Mặc định giữ nguyên; các mức giới hạn khung hình theo
+tỷ lệ gốc, hỗ trợ video dọc và không phóng lớn nguồn nhỏ hơn.
+
+**Cài đặt → Cấu hình tổng hợp video → Dùng lại video đã lồng tiếng** mặc định bật trong GUI/Batch. Video đã
+hoàn tất và còn nguyên sẽ bỏ qua cả TTS lẫn xuất video; tắt để làm lại. Bản mới
+lưu dấu xác nhận `.dubbing-completed.json` cùng thư mục đầu ra, kiểm tra nội dung
+nguồn/phụ đề, cấu hình giọng, timing, âm lượng và độ phân giải. Bản cũ có mã video
+hoặc tên gốc, playback SRT khớp đủ lời đọc và media hợp lệ được nhận diện một lần;
+bản cũ không có bằng chứng lịch sử về giọng/âm lượng đã chọn.
+
+LLM gửi tối đa 3 yêu cầu cùng lúc, giảm xuống 1 sau HTTP 429. Các nhóm câu dùng
+chung thời gian chờ, tối đa hai lượt
+thử phục hồi trong thời hạn request. Tôn trọng `Retry-After`; lỗi hết hạn mức rõ
+ràng dừng ngay. Nếu vẫn bị từ chối, Batch dừng các hàng còn chờ, giữ bản dịch đã
+hoàn tất để bấm **Bắt đầu xử lý** thử lại. Tăng số luồng không vượt được hạn mức
+của dịch vụ; timeout/mất kết nối vẫn không tự gửi lại request.
+
+**Cài đặt → Dịch và tối ưu → Dịch tiêu đề video đầu ra** đặt tên video lồng
+tiếng/ghép phụ đề theo ngôn ngữ đích bằng LLM đang chọn (mặc định bật).
+Áp dụng cho GUI và Batch, giữ nguyên file nguồn và mã video như `[BV…]`.
+Tên trùng được thêm số thứ tự; dịch lỗi/thiếu cấu hình LLM thì tiếp tục dùng
+tên gốc. Có cache tiêu đề và có thể dừng trong lúc dịch. Không dịch tên file
+vừa tải hoặc đổi tên các video đã có.
 
 Xem chi tiết tham số:
 
@@ -380,6 +417,11 @@ các nhóm lời đọc liền mạch, lưu kèm file `.dialogue.json`. Bản ti
 sẵn cũng dùng được để biên tập cách nói; không tự xác minh bản dịch với tiếng
 gốc trong video. CLI: `videocaptioner subtitle input.srt --dialogue
 --target-language vi --no-optimize --no-split -o display.srt`.
+
+Batch tự chuyển từ dịch lời thoại sang TTS và xuất video. Tab Lồng tiếng riêng
+vẫn có bước duyệt lời thủ công. Nếu LLM trả đủ bản dịch nhưng nhóm lời vẫn vượt
+giới hạn thời gian, app giữ các nhóm hợp lệ và dùng ngay
+nguyên bản dịch từng cue cho nhóm quá dài, không gọi thêm API hoặc bỏ nội dung.
 
 Trong tab Lồng tiếng, chọn `.dialogue.json`, **Chuẩn bị lời đọc trước TTS**,
 duyệt/sửa rồi **Tiếp tục lời đã duyệt**. Kịch bản dùng preset riêng cho job:

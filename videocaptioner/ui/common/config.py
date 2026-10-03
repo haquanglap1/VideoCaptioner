@@ -253,6 +253,9 @@ class Config(QConfig):
     # ------------------- 字幕配置 -------------------
     need_optimize = ConfigItem("Subtitle", "NeedOptimize", False, BoolValidator())
     need_translate = ConfigItem("Subtitle", "NeedTranslate", False, BoolValidator())
+    translate_video_title = ConfigItem("Video", "TranslateTitle", True, BoolValidator())
+    reuse_translation = ConfigItem("Subtitle", "ReuseTranslation", True, BoolValidator())
+    reuse_dubbing = ConfigItem("Dubbing", "ReuseCompleted", True, BoolValidator())
     need_split = ConfigItem("Subtitle", "NeedSplit", False, BoolValidator())
     target_language = OptionsConfigItem(
         "Subtitle",
@@ -272,6 +275,7 @@ class Config(QConfig):
     # ------------------- 字幕合成配置 -------------------
     soft_subtitle = ConfigItem("Video", "SoftSubtitle", False, BoolValidator())
     need_video = ConfigItem("Video", "NeedVideo", True, BoolValidator())
+    output_resolution = OptionsConfigItem("Video", "OutputResolution", 0, OptionsValidator([0, 720, 1080, 1440, 2160]))
     video_quality = OptionsConfigItem(
         "Video",
         "VideoQuality",

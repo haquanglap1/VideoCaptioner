@@ -21,6 +21,7 @@ from videocaptioner.core.dubbing.models import (
     UnresolvedFitPolicy,
 )
 from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_environment
+from videocaptioner.core.utils.video_resolution import resolution_filter
 
 
 def validate_rates(voice_tempo: float, video_speed: float) -> None:
@@ -32,6 +33,7 @@ def validate_rates(voice_tempo: float, video_speed: float) -> None:
 
 def playback_config(config: DubbingConfig) -> DubbingConfig:
     validate_rates(config.voice_tempo, config.video_speed)
+    resolution_filter(config.output_resolution)
     if config.subtitle_mode not in ("none", "soft", "hard"):
         raise ValueError("Playback subtitles must be none, soft or hard")
     if config.voice_tempo == config.video_speed == 1:
@@ -130,10 +132,13 @@ def render_captions(source: str, output: Path, subtitles: Path, config: DubbingC
     from videocaptioner.core.utils.video_utils import auto_wrap_ass_file, check_cuda_available
 
     command = ["ffmpeg", "-nostdin", "-v", "error", "-i", source]
+    scale = resolution_filter(config.output_resolution)
     if config.subtitle_mode == "soft":
         command += ["-i", str(subtitles), "-map", "0:v:0", "-map", "0:a?", "-map", "1:0",
                     "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=vie",
                     "-disposition:s:0", "default"]
+        if scale:
+            command += ["-vf", scale, *_encode_video_args()]
     else:
         rendered = subtitles.with_suffix(".ass")
         style = config.subtitle_style or SubtitleStyle(
@@ -147,7 +152,7 @@ def render_captions(source: str, output: Path, subtitles: Path, config: DubbingC
         # Opaque black boxes cover source captions without changing the user's font/placement.
         box = "BorderStyle=3,OutlineColour=&H00000000,BackColour=&H00000000,Outline=6,Shadow=0"
         command += ["-map", "0:v:0", "-map", "0:a?", "-vf",
-                    f"subtitles='{escaped}':force_style='{box}'", "-c:a", "copy"]
+                    (scale + "," if scale else "") + f"subtitles='{escaped}':force_style='{box}'", "-c:a", "copy"]
         if check_cuda_available():
             command += ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-b:v", "0"]
         else:
@@ -155,6 +160,22 @@ def render_captions(source: str, output: Path, subtitles: Path, config: DubbingC
         command += ["-pix_fmt", "yuv420p", "-fps_mode", "passthrough"]
     run_media(command + ["-movflags", "+faststart", "-y", str(output)], callback,
               "Đang xuất phụ đề theo lời đọc...")
+
+
+def _encode_video_args():
+    from videocaptioner.core.utils.video_utils import check_cuda_available
+    codec = (["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-b:v", "0"] if check_cuda_available()
+             else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"])
+    return [*codec, "-pix_fmt", "yuv420p", "-fps_mode", "passthrough"]
+
+
+def resize_video(source: str, output: Path, limit: int, callback) -> None:
+    scale = resolution_filter(limit)
+    if not scale:
+        raise ValueError("Resizing requires a selected resolution")
+    run_media(["ffmpeg", "-nostdin", "-v", "error", "-i", source, "-map", "0:v:0", "-map", "0:a?",
+               "-vf", scale, *_encode_video_args(), "-c:a", "copy", "-movflags", "+faststart", "-y", str(output)],
+              callback, "Đang xuất theo độ phân giải đã chọn...")
 
 
 def publish_captions(staged: Path, output: str) -> str:

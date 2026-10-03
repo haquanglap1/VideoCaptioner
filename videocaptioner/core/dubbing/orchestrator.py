@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,6 +73,7 @@ class DubbingOrchestrator:
         display_subtitle_path: str | None = None,
         allow_config_change: bool = False,
         timing_plan=None,
+        review_before_tts: bool = True,
     ) -> str:
         self._validate(video_path, subtitle_path, config)
         if Path(output_path).resolve() in {Path(video_path).resolve(), Path(subtitle_path).resolve()}:
@@ -109,7 +111,7 @@ class DubbingOrchestrator:
                 raise ValueError("Phụ đề trống, không có gì để lồng tiếng")
             self._write_report(plan, "", output_created=False)
 
-            if plan.schema_version == "dubbing-plan-dialogue-v1" and review is None:
+            if plan.schema_version == "dubbing-plan-dialogue-v1" and review is None and review_before_tts:
                 for group in plan.groups:
                     group.needs_review = True
                     group.action_taken = "dialogue_wording_preview"
@@ -122,14 +124,18 @@ class DubbingOrchestrator:
             if config.tts_config:
                 config.tts_config.use_cache = config.cache_enabled
             self._resolve_cache_hits(plan.groups, config, cache)
+            cache_hits = sum(bool(group.audio_path) for group in plan.groups)
             if timing_plan is not None:
                 from .auto_timing import validate_application
                 validate_application(timing_plan, plan, config, callback)
             callback(18, "Đang tổng hợp giọng nói...")
+            synthesis_started = time.monotonic()
             self._synthesize_missing_groups(
                 plan.groups, config, provider, cache, work_dir / "tts", callback
             )
             self._measure_groups(plan.groups)
+            logger.info("Dubbing synthesis: groups=%d cache_hits=%d elapsed_seconds=%.3f", len(plan.groups),
+                        cache_hits, time.monotonic() - synthesis_started)
 
             if any(group.fit_status == DubbingFitStatus.FAILED for group in plan.groups):
                 self._write_report(plan, report_path, output_created=False)
@@ -218,6 +224,10 @@ class DubbingOrchestrator:
                 if config.subtitle_mode != "none":
                     final_output = work_dir / ("captioned" + (Path(output_path).suffix or ".mp4"))
                     render_captions(str(mixed_output), final_output, captions, config, callback)
+            if config.subtitle_mode == "none" and config.output_resolution:
+                from .playback import resize_video
+                final_output = work_dir / ("resized" + (Path(output_path).suffix or ".mp4"))
+                resize_video(str(mixed_output), final_output, config.output_resolution, callback)
             if not final_output.is_file():
                 raise RuntimeError("Dubbing không tạo artifact đầu ra")
             if timing_plan is not None:

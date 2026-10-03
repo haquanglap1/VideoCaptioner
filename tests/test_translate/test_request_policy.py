@@ -144,11 +144,12 @@ def test_deadline_cancels_and_does_not_retry_post(monkeypatch):
 
 @pytest.mark.parametrize("status", [401, 429, 500])
 def test_http_error_has_no_body_or_retry(monkeypatch, status):
+    monkeypatch.setattr("videocaptioner.core.llm.rate_limit.BACKOFF_SECONDS", .01)
     observed, closed = wire_client(monkeypatch, lambda request: httpx.Response(status, json={"error": "private-body"}))
     with pytest.raises(RuntimeError) as caught:
         OwnedLLMRequest(LLMCredentials("secret", "https://test.invalid/v1"), 300)([], "gpt-5.6-terra")
     assert str(status) in str(caught.value) and "private-body" not in str(caught.value)
-    assert "secret" not in str(caught.value) and len(observed) == 1 and closed.is_set()
+    assert "secret" not in str(caught.value) and len(observed) == (3 if status == 429 else 1) and closed.is_set()
 
 
 def test_compact_payload_retains_windows_without_repeated_unknown_reviews():

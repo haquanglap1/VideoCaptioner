@@ -9,6 +9,7 @@ from typing import Callable, List, Optional, cast
 from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
 from videocaptioner.core.entities import SubtitleProcessData
 from videocaptioner.core.llm.context import submit_with_context
+from videocaptioner.core.llm.rate_limit import LLMRateLimitError
 from videocaptioner.core.translate.conversation import ConversationSnapshot
 from videocaptioner.core.translate.dialogue import DialogueDocument
 from videocaptioner.core.translate.types import TargetLanguage
@@ -22,6 +23,7 @@ class BaseTranslator(ABC):
     """Translator base class."""
 
     require_complete_result = False
+    reuse_cached_chunks = True
 
     def __init__(
         self,
@@ -93,6 +95,8 @@ class BaseTranslator(ABC):
             )
 
             return self._finish_translation(asr_data, new_segments, translated_list)
+        except LLMRateLimitError:
+            raise
         except Exception as e:
             logger.error(f"Translation failed: {str(e)}")
             raise RuntimeError(f"Translation failed: {str(e)}")
@@ -156,6 +160,10 @@ class BaseTranslator(ABC):
             try:
                 result = future.result()
                 translated_list.extend(result)
+            except LLMRateLimitError:
+                for pending in future_to_chunk:
+                    pending.cancel()
+                raise
             except Exception as e:
                 logger.error(f"Translation chunk failed: {e}")
                 if first_error is None:
@@ -205,7 +213,7 @@ class BaseTranslator(ABC):
                 # stores the list this method produced.
                 cached_result = cast(
                     Optional[List[SubtitleProcessData]],
-                    self._cache.get(cache_key, default=None),
+                    self._cache.get(cache_key, default=None) if self.reuse_cached_chunks else None,
                 )
             except Exception:
                 # Graceful degradation: corrupted cache (e.g. old pickle from app→videocaptioner rename)

@@ -3,10 +3,19 @@
 import datetime
 from copy import deepcopy
 from pathlib import Path
+from time import monotonic
 from typing import Literal
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from videocaptioner.core.dubbing.completed import (
+    CompletedVideo,
+    load_legacy_video,
+    load_video,
+    receipt_path,
+    save_video,
+    video_identity,
+)
 from videocaptioner.core.dubbing.engine import DubbingEngine
 from videocaptioner.core.dubbing.review import DubbingReview
 from videocaptioner.core.entities import DubbingTask
@@ -40,10 +49,11 @@ class DubbingThread(QThread):
     plan_ready = pyqtSignal(object)
     cancelled = pyqtSignal()
 
-    def __init__(self, task: DubbingTask, *, resume: bool = False):
+    def __init__(self, task: DubbingTask, *, resume: bool = False, automatic: bool = False):
         super().__init__()
         self.task = task
         self.resume = resume
+        self.automatic = automatic
 
     @property
     def lifecycle_finished(self):
@@ -51,6 +61,16 @@ class DubbingThread(QThread):
         return super().finished
 
     def run(self):
+        from videocaptioner.core.utils.subprocess_helper import cancellation_scope
+        started = monotonic()
+        try:
+            with cancellation_scope(self._check_cancelled):
+                self._run()
+        finally:
+            logger.info("Dubbing job: task=%s completed=%s elapsed_seconds=%.3f", self.task.task_id,
+                        self.task.completed_at is not None, monotonic() - started)
+
+    def _run(self):
         engine = None
         try:
             self.task.started_at = datetime.datetime.now()
@@ -74,8 +94,33 @@ class DubbingThread(QThread):
             if not output_path:
                 raise ValueError(self.tr("Đường dẫn đầu ra đang trống"))
 
+            receipt = receipt_path(output_path)
+            identity = ""
+            if not self.task.preview_only and not self.resume and self.task.auto_timing_plan is None:
+                identity = video_identity(video_path, subtitle_path, config, self.task.display_subtitle_path, self._check_cancelled)
+                if config.reuse_completed:
+                    cached = load_video(receipt, identity, self._check_cancelled)
+                    if cached is None:
+                        cached = load_legacy_video(video_path, subtitle_path, output_path, config, self._check_cancelled)
+                    if cached:
+                        self.task.output_path = cached.output
+                        self.task.playback_subtitle_path = cached.captions or None
+                        self.task.completed_at = datetime.datetime.now()
+                        self._save_completed(receipt, identity, cached)
+                        self.progress.emit(100, self.tr("Đã có video lồng tiếng; dùng lại, không xuất lại"))
+                        self.finished.emit(self.task)
+                        return
+
+            if not self.task.preview_only:
+                from .video_title import prepare_video_title
+                prepare_video_title(self.task, self._check_cancelled, self.progress.emit)
+                output_path = self.task.output_path
+                assert output_path is not None
+
             engine = _engine_for_task(self.task)
             resume_args = {}
+            if self.automatic:
+                resume_args["review_before_tts"] = False
             if self.resume:
                 if self.task.dubbing_review is None:
                     raise ValueError("Không có kế hoạch lời đọc để tiếp tục")
@@ -95,6 +140,8 @@ class DubbingThread(QThread):
             self._capture_review(engine)
             self._check_cancelled()
 
+            if identity:
+                self._save_completed(receipt, identity, CompletedVideo(output_path, self.task.playback_subtitle_path or ""))
             self.task.completed_at = datetime.datetime.now()
             self.progress.emit(100, self.tr("Lồng tiếng hoàn tất"))
             self.finished.emit(self.task)
@@ -115,6 +162,12 @@ class DubbingThread(QThread):
             logger.exception("Dubbing thất bại: %s", e)
             self.error.emit(str(e))
             self.progress.emit(100, self.tr("Lồng tiếng thất bại"))
+
+    def _save_completed(self, receipt, identity, result):
+        try:
+            save_video(receipt, identity, result, self._check_cancelled)
+        except (OSError, ValueError):
+            logger.warning("Could not save completed dubbing receipt")
 
     def _progress_callback(self, value: int, message: str):
         # Runs on the engine's thread and inside its TTS worker threads; raising

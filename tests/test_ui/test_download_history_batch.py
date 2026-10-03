@@ -106,3 +106,29 @@ def test_failed_batch_row_shows_vietnamese_reason_and_preserves_technical_error(
     page.on_table_double_clicked(page.task_table.model().index(0, 2))
     assert dialogs[0][0] == "Chi tiết lỗi" and error in dialogs[0][1]
     page.close()
+
+
+def test_batch_stop_controls_and_retry_keep_completed_rows(qapp, tmp_path, monkeypatch, vietnamese):
+    files = [tmp_path / f"{i}.mp4" for i in range(2)]
+    for path in files:
+        path.write_bytes(b"fixture")
+    page = batch_ui.BatchProcessInterface()
+    page.add_files([str(path) for path in files], preserve_order=True)
+    page.on_task_completed(str(files[0]))
+    page.on_task_cancelled(str(files[1]))
+    assert page.stop_all_btn.text() == "Dừng xử lý"
+    assert page.task_table.item(1, 2).text() == "Đã dừng"
+    page._set_busy(True)
+    assert page.stop_all_btn.isEnabled() and not page.start_all_btn.isEnabled()
+    stopped = []
+    monkeypatch.setattr(page.batch_thread, "stop_all", lambda: stopped.append(True))
+    page.stop_all_btn.click()
+    assert stopped == [True]
+    page._set_busy(False)
+    queued = []
+    monkeypatch.setattr(page.batch_thread, "add_task", queued.append)
+    page.start_all_tasks()
+    assert [task.file_path for task in queued] == [str(files[1])]
+    assert page.task_table.rowCount() == 2
+    assert page.task_table.item(0, 2).data(Qt.UserRole) == BatchTaskStatus.COMPLETED
+    page.close()

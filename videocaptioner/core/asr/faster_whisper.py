@@ -307,67 +307,76 @@ class FasterWhisperASR(BaseASR):
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
 
-            # Consume output through StreamReader
-            reader = StreamReader(self.process)
-            reader.start_reading()
+            reader = None
+            try:
+                # Consume output through StreamReader
+                reader = StreamReader(self.process)
+                reader.start_reading()
 
-            is_finish = False
-            error_msg = ""
-            last_progress = 0
+                is_finish = False
+                error_msg = ""
+                last_progress = 0
 
-            # Process output as it arrives
-            while True:
-                # Check process state
-                if self.process.poll() is not None:
-                    # Process ended; read the remaining output
-                    for _stream_name, line in reader.get_remaining_output():
+                # Process output as it arrives
+                while True:
+                    callback(last_progress, "Đang nhận dạng...")
+                    # Check process state
+                    if self.process.poll() is not None:
+                        # Process ended; read the remaining output
+                        for _stream_name, line in reader.get_remaining_output():
+                            line = line.strip()
+                            if line:
+                                if "error" in line:
+                                    error_msg += line
+                                else:
+                                    logger.debug(line)
+                        break
+
+                    # Read output
+                    output = reader.get_output(timeout=0.1)
+                    if output:
+                        _stream_name, line = output
                         line = line.strip()
                         if line:
-                            if "error" in line:
+                            # Parse the progress percentage
+                            if match := re.search(r"(\d+)%", line):
+                                progress = int(match.group(1))
+                                if progress == 100:
+                                    is_finish = True
+                                mapped_progress = int(5 + (progress * 0.9))
+                                # Progress may only increase
+                                if mapped_progress > last_progress:
+                                    last_progress = mapped_progress
+                                    callback(mapped_progress, f"{mapped_progress}%")
+                            if "Subtitles are written to" in line:
+                                is_finish = True
+                                callback(*ASRStatus.COMPLETED.callback_tuple())
+                            if "error" in line or "Error" in line:
                                 error_msg += line
+                                logger.error(line)
                             else:
                                 logger.debug(line)
-                    break
 
-                # Read output
-                output = reader.get_output(timeout=0.1)
-                if output:
-                    _stream_name, line = output
-                    line = line.strip()
-                    if line:
-                        # Parse the progress percentage
-                        if match := re.search(r"(\d+)%", line):
-                            progress = int(match.group(1))
-                            if progress == 100:
-                                is_finish = True
-                            mapped_progress = int(5 + (progress * 0.9))
-                            # Progress may only increase
-                            if mapped_progress > last_progress:
-                                last_progress = mapped_progress
-                                callback(mapped_progress, f"{mapped_progress}%")
-                        if "Subtitles are written to" in line:
-                            is_finish = True
-                            callback(*ASRStatus.COMPLETED.callback_tuple())
-                        if "error" in line or "Error" in line:
-                            error_msg += line
-                            logger.error(line)
-                        else:
-                            logger.debug(line)
+                if not is_finish:
+                    logger.error("Faster Whisper Error: %s", error_msg)
+                    raise RuntimeError(error_msg)
 
-            if not is_finish:
-                logger.error("Faster Whisper Error: %s", error_msg)
-                raise RuntimeError(error_msg)
+                # Decide whether recognition succeeded
+                if not output_path.exists():
+                    logger.debug("Faster Whisper 返回值: %s", self.process.returncode)
+                    raise RuntimeError(f"Faster Whisper 输出文件不存在: {output_path}")
 
-            # Decide whether recognition succeeded
-            if not output_path.exists():
-                logger.debug("Faster Whisper 返回值: %s", self.process.returncode)
-                raise RuntimeError(f"Faster Whisper 输出文件不存在: {output_path}")
+                logger.debug("Faster Whisper ASR completed")
 
-            logger.debug("Faster Whisper ASR completed")
+                callback(*ASRStatus.COMPLETED.callback_tuple())
 
-            callback(*ASRStatus.COMPLETED.callback_tuple())
-
-            return output_path.read_text(encoding="utf-8")
+                return output_path.read_text(encoding="utf-8")
+            finally:
+                from videocaptioner.core.asr.alignment.audio import stop_process
+                stop_process(self.process)
+                if reader is not None:
+                    for thread in reader.threads:
+                        thread.join(timeout=1)
 
     def _get_key(self):
         """Cache key for this configuration."""

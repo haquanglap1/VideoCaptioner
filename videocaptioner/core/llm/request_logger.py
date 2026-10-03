@@ -172,7 +172,7 @@ class OwnedRequestLog:
                             **{key: params[key] for key in ("max_tokens", "max_completion_tokens", "temperature") if key in params}}
 
     def finish(self, response: Any = None, *, status: int | None = None, outcome: str = "success",
-               error_type: str = "") -> None:
+               error_type: str = "", rejection_kind: str = "") -> None:
         if self.finished:
             return
         self.finished = True
@@ -188,6 +188,8 @@ class OwnedRequestLog:
                      "content_logged": self.log_content}
             if error_type:
                 entry["error_type"] = error_type
+            if rejection_kind in ("quota", "rate_limit"):
+                entry["rejection_kind"] = rejection_kind
             _write_log(entry)
         except Exception:
             pass

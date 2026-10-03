@@ -36,7 +36,10 @@ def test_disabled_dubbing_preserves_display_subtitle(qapp, tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("needs_review", [False, True])
-def test_worker_report_controls_synthesis_handoff(qapp, monkeypatch, needs_review):
+def test_worker_report_controls_synthesis_handoff(qapp, monkeypatch, needs_review, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    for name in ("source.mp4", "spoken.vi.srt", "display.vi-en.srt"):
+        (tmp_path / name).write_bytes(b"synthetic source")
     report = {
         "schema_version": "dubbing-report-v1",
         "summary": {"total_groups": 1, "review_groups": int(needs_review)},

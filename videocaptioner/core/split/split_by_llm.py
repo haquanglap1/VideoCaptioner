@@ -5,6 +5,7 @@ import unicodedata
 from typing import List, Tuple
 
 from ..llm import call_llm
+from ..llm.rate_limit import LLMRateLimitError
 from ..prompts import get_prompt
 from ..utils.logger import setup_logger
 from ..utils.text_utils import count_words, is_mainly_cjk
@@ -61,6 +62,8 @@ def split_by_llm(
         return []
     try:
         return _split_with_agent_loop(text, model, max_word_count_cjk, max_word_count_english, request)
+    except LLMRateLimitError:
+        raise
     except Exception as exc:
         logger.warning("LLM segmentation failed (%s); preserving original text.", type(exc).__name__)
         return [text]

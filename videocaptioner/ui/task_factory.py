@@ -225,6 +225,7 @@ class TaskFactory:
             # 字幕处理
             need_reflect=cfg.need_reflect_translate.value,
             dialogue_translation=cfg.dialogue_translation.value,
+            reuse_translation=cfg.reuse_translation.value,
             need_translate=cfg.need_translate.value,
             need_optimize=cfg.need_optimize.value,
             thread_num=cfg.thread_num.value,
@@ -262,6 +263,7 @@ class TaskFactory:
         need_next_task: bool = False,
         task_id: Optional[str] = None,
         input_subtitle_layout: Optional[SubtitleLayoutEnum] = None,
+        title_source: Optional[str] = None,
     ) -> SynthesisTask:
         """Create a video synthesis task."""
         output_path = str(
@@ -271,6 +273,7 @@ class TaskFactory:
         # 只有启用样式时才传入样式配置
         use_style = cfg.use_subtitle_style.value
         config = SynthesisConfig(
+            output_resolution=cfg.output_resolution.value,
             need_video=cfg.need_video.value,
             soft_subtitle=cfg.soft_subtitle.value,
             render_mode=cfg.subtitle_render_mode.value,
@@ -286,7 +289,9 @@ class TaskFactory:
             subtitle_path=subtitle_path,
             output_path=output_path,
             synthesis_config=config,
+            reuse_completed_output=cfg.reuse_dubbing.value and "_dubbed" in Path(video_path).stem,
             input_subtitle_layout=input_subtitle_layout,
+            title_translation=TaskFactory.create_title_translation(title_source or video_path, "_captioned"),
             need_next_task=need_next_task,
         )
         if task_id:
@@ -425,6 +430,8 @@ class TaskFactory:
             tts_config.voice = cfg.omnivoice_voice_id.value
 
         return DubbingConfig(
+            reuse_completed=cfg.reuse_dubbing.value,
+            output_resolution=cfg.output_resolution.value,
             tts_provider=tts_provider,
             tts_config=tts_config,
             omnivoice=OmniVoiceOptions(runtime=cfg.omnivoice_runtime.value,
@@ -479,9 +486,28 @@ class TaskFactory:
             subtitle_path=subtitle_path,
             display_subtitle_path=display_subtitle_path or subtitle_path,
             output_path=output_path,
+            title_translation=TaskFactory.create_title_translation(video_path, "_dubbed"),
             dubbing_config=dubbing_config,
             cache_root=cache_root,
         )
         if task_id:
             task.task_id = task_id
         return task
+
+    @staticmethod
+    def create_title_translation(video_path: str, output_suffix: str):
+        from videocaptioner.core.llm.client import LLMCredentials
+        from videocaptioner.core.llm.services import fill_default_api_key, llm_service_preset
+        from videocaptioner.core.translate.video_title import VideoTitleConfig
+
+        if not cfg.translate_video_title.value:
+            return None
+        service = cfg.llm_service.value
+        prefix = llm_service_preset(service).config_attr
+        return VideoTitleConfig(
+            Path(video_path).stem, output_suffix, cfg.target_language.value.value,
+            getattr(cfg, prefix + "_model").value,
+            LLMCredentials(fill_default_api_key(service, getattr(cfg, prefix + "_api_key").value),
+                           getattr(cfg, prefix + "_api_base").value),
+            min(cfg.llm_request_timeout.value, 60),
+        )

@@ -38,7 +38,10 @@ class SlowFakeEngine:
         raise AssertionError("dubbing was not interrupted")
 
 
-def test_interrupted_thread_unwinds_job_without_error(qapp, monkeypatch):
+def test_interrupted_thread_unwinds_job_without_error(qapp, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "in.mp4").write_bytes(b"synthetic video")
+    (tmp_path / "in.srt").write_bytes(b"synthetic subtitle")
     engine = SlowFakeEngine()
     monkeypatch.setattr(dubbing_thread_module, "DubbingEngine", lambda: engine)
     task = DubbingTask(
@@ -63,7 +66,10 @@ def test_interrupted_thread_unwinds_job_without_error(qapp, monkeypatch):
     assert messages[-1] == "Lồng tiếng đã bị hủy"
 
 
-def test_cancel_after_engine_returns_suppresses_success_and_emits_native_finish(qapp, monkeypatch):
+def test_cancel_after_engine_returns_suppresses_success_and_emits_native_finish(qapp, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "in.mp4").write_bytes(b"synthetic video")
+    (tmp_path / "in.srt").write_bytes(b"synthetic subtitle")
     started, release = threading.Event(), threading.Event()
 
     class ReturningEngine:

@@ -159,6 +159,8 @@ class SubtitlePipelineThread(QThread):
                 )
                 if dubbing_task.dubbing_config:
                     dubbing_task.dubbing_config.subtitle_mode = "none"
+                    if self.task.synthesis_config and self.task.synthesis_config.need_video:
+                        dubbing_task.dubbing_config.output_resolution = 0
                 dubbing_thread = DubbingThread(dubbing_task)
                 self._active_worker = dubbing_thread
                 d_range = d_end - d_start

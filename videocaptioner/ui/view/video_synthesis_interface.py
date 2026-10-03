@@ -38,6 +38,7 @@ from videocaptioner.core.entities import (
     VideoQualityEnum,
 )
 from videocaptioner.core.utils.platform_utils import open_folder
+from videocaptioner.core.utils.video_resolution import PRESETS
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.common.signal_bus import signalBus
 from videocaptioner.ui.task_factory import TaskFactory
@@ -181,6 +182,18 @@ class VideoSynthesisInterface(QWidget):
             self.video_quality_menu.addAction(action)
         self.video_quality_button.setMenu(self.video_quality_menu)
         self.command_bar.addWidget(self.video_quality_button)
+
+        self.resolution_button = TransparentDropDownPushButton(self.tr("Output resolution"), self, FIF.VIDEO)
+        self.resolution_button.setFixedHeight(34)
+        self.resolution_menu = RoundMenu(parent=self)
+        for resolution in PRESETS:
+            action = Action(text=self.tr("Keep original") if resolution == 0 else f"{resolution}p")
+            action.triggered.connect(lambda checked, value=resolution: cfg.set(cfg.output_resolution, value))
+            self.resolution_menu.addAction(action)
+        self.resolution_button.setMenu(self.resolution_menu)
+        self.command_bar.addWidget(self.resolution_button)
+        cfg.output_resolution.valueChanged.connect(self._show_resolution)
+        self._show_resolution(cfg.output_resolution.value)
 
         self.command_bar.addSeparator()
 
@@ -426,6 +439,10 @@ class VideoSynthesisInterface(QWidget):
         )
         if file_path:
             self.video_input.setText(file_path)
+
+    def _show_resolution(self, value):
+        self.resolution_button.setText(self.tr("Keep original") if value == 0 else f"{value}p")
+        self.resolution_button.setToolTip(self.tr("Output resolution"))
 
     def create_task(self):
         subtitle_file = self.subtitle_input.text()

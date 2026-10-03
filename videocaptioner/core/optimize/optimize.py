@@ -15,6 +15,7 @@ from ..asr.asr_data import ASRData, ASRDataSeg
 from ..entities import SubtitleProcessData
 from ..llm import call_llm
 from ..llm.context import submit_with_context
+from ..llm.rate_limit import LLMRateLimitError
 from ..prompts import get_prompt
 from ..split.alignment import SubtitleAligner
 from ..utils.logger import setup_logger
@@ -106,6 +107,8 @@ class SubtitleOptimizer:
 
             return asr_data.with_segments(new_segments)
 
+        except LLMRateLimitError:
+            raise
         except Exception as e:
             logger.error(f"Optimization failed: {str(e)}")
             raise RuntimeError(f"Optimization failed: {str(e)}")
@@ -153,6 +156,10 @@ class SubtitleOptimizer:
             try:
                 result = future.result()
                 optimized_dict.update(result)
+            except LLMRateLimitError:
+                for pending, _ in futures:
+                    pending.cancel()
+                raise
             except Exception as e:
                 logger.error(f"Optimization batch failed: {str(e)}")
                 optimized_dict.update(chunk)  # 失败时保留原文
@@ -188,6 +195,8 @@ class SubtitleOptimizer:
 
             return result
 
+        except LLMRateLimitError:
+            raise
         except Exception as e:
             logger.error(f"Optimization failed: {str(e)}")
             return subtitle_chunk

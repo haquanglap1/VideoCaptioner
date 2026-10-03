@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from videocaptioner.core.utils import video_utils
+from videocaptioner.core.utils import subprocess_helper, video_utils
 from videocaptioner.core.utils.video_utils import (
     VideoChunkPlan,
     _extract_thumbnail,
@@ -80,6 +80,7 @@ def fake_subprocess(monkeypatch):
     def install(run_results=None, popen_factory=None):
         fake = FakeSubprocess(run_results, popen_factory)
         monkeypatch.setattr(video_utils, "subprocess", fake)
+        monkeypatch.setattr(subprocess_helper, "subprocess", fake)
         return fake
 
     return install
@@ -287,6 +288,7 @@ class _FakeProcess:
         self._lines = list(stderr_lines)
         self.returncode = returncode
         self.stderr = self
+        self.stdout = None
         self.killed = False
 
     def readline(self):
@@ -298,8 +300,11 @@ class _FakeProcess:
     def poll(self):
         return None if self._lines else self.returncode
 
-    def wait(self):
+    def wait(self, timeout=None):
         return self.returncode
+
+    def close(self):
+        pass
 
     def kill(self):
         self.killed = True

@@ -106,6 +106,7 @@ class DubbingEngine:
         display_subtitle_path: str | None = None,
         allow_config_change: bool = False,
         timing_plan=None,
+        review_before_tts: bool = True,
     ) -> str:
         """Thực hiện toàn bộ pipeline dubbing.
 
@@ -147,6 +148,7 @@ class DubbingEngine:
                 review=review, display_subtitle_path=display_subtitle_path,
                 allow_config_change=allow_config_change,
                 timing_plan=timing_plan,
+                review_before_tts=review_before_tts,
             )
 
     def propose_timing(self, video_path: str, subtitle_path: str, config: DubbingConfig,

@@ -9,6 +9,7 @@ import openai
 
 from videocaptioner.core.llm.client import LLMCredentials, get_llm_credentials
 from videocaptioner.core.llm.owned_request import OwnedLLMRequest
+from videocaptioner.core.llm.rate_limit import LLMRateLimitError
 from videocaptioner.core.llm.request_policy import validate_request_timeout
 from videocaptioner.core.prompts import get_prompt
 from videocaptioner.core.translate.base import BaseTranslator, SubtitleProcessData, logger
@@ -53,6 +54,7 @@ class LLMTranslator(BaseTranslator):
         self.model = model
         self.custom_prompt = custom_prompt
         self.is_reflect = is_reflect
+        self._owned_request = OwnedLLMRequest(self._credentials, self.request_timeout, lambda: not self.is_running)
         # Global context brief (topic/tone/glossary) built by _prepare before translating
         self.global_context = ""
         # Deterministic fingerprint of the full source text, used in the cache key (see _get_cache_key)
@@ -114,6 +116,8 @@ class LLMTranslator(BaseTranslator):
             context = response.choices[0].message.content.strip()
             logger.debug("Global translation brief prepared")
             return context
+        except LLMRateLimitError:
+            raise
         except Exception as e:
             logger.warning(f"构建全局上下文失败，跳过（不影响翻译）: {e}")
             return ""
@@ -247,7 +251,7 @@ class LLMTranslator(BaseTranslator):
 
     def _request(self, messages):
         """Every translation request owns its socket and immutable job credentials."""
-        return OwnedLLMRequest(self._credentials, self.request_timeout, lambda: not self.is_running)(
+        return self._owned_request(
             messages=messages, model=self.model)
 
     def _validate_llm_response(

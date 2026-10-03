@@ -309,9 +309,9 @@ def test_transport_cancels_socket_and_preserves_contextvars(monkeypatch):
         set_task_context,
         submit_with_context,
     )
-    engine = translator()
+    engine = LLMTranslator(3, 2, TargetLanguage.VIETNAMESE, "synthetic-model", "", False, None,
+                           credentials=LLMCredentials("synthetic-key", "https://synthetic.example/v1"))
     engine.conversation_snapshot = dialogue().context_snapshot()
-    engine._credentials = LLMCredentials("synthetic-key", "https://synthetic.example/v1")
     entered, cancelled, closed = Event(), Event(), Event()
     seen = []
 

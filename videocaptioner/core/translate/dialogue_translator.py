@@ -11,6 +11,7 @@ import json_repair
 from videocaptioner.core.prompts import get_prompt
 from videocaptioner.core.translate.dialogue import (
     POLICY,
+    DialogueBlockTimingError,
     DialogueCue,
     DialogueDocument,
     SpeechBlock,
@@ -19,6 +20,9 @@ from videocaptioner.core.translate.dialogue import (
     validate_blocks,
 )
 from videocaptioner.core.translate.llm_translator import LLMTranslator
+from videocaptioner.core.utils.logger import setup_logger
+
+logger = setup_logger("dialogue_translator")
 
 
 class DialogueTranslator(LLMTranslator):
@@ -71,7 +75,7 @@ class DialogueTranslator(LLMTranslator):
             "endpoint": self._credentials.base_url if self._credentials else "",
         })
 
-    def _parse(self, payload, chunk):
+    def _parse(self, payload, chunk, *, repair_timing=False):
         if not isinstance(payload, dict) or set(payload) != {"subtitle_translations", "speech_blocks"}:
             raise ValueError("Return subtitle_translations and speech_blocks only.")
         translations = payload["subtitle_translations"]
@@ -88,7 +92,25 @@ class DialogueTranslator(LLMTranslator):
                 raise ValueError("Each speech block requires cue_ids and text.")
             blocks.append(SpeechBlock(tuple(value["cue_ids"]), value["text"]))
         cues = tuple(self._cue(item, translations[item.cue_id]) for item in chunk)
-        validate_blocks(cues, tuple(blocks))
+        try:
+            validate_blocks(cues, tuple(blocks))
+        except DialogueBlockTimingError:
+            if not repair_timing:
+                raise
+            # Keep valid blocks verbatim. Oversized groups can use their complete
+            # display translations without another paid request or guessed timing.
+            repaired = []
+            by_id = {cue.cue_id: cue for cue in cues}
+            for block in blocks:
+                members = tuple(by_id[cid] for cid in block.cue_ids)
+                try:
+                    validate_blocks(members, (block,))
+                    repaired.append(block)
+                except DialogueBlockTimingError:
+                    repaired.extend(SpeechBlock((cue.cue_id,), cue.subtitle_text) for cue in members)
+            validate_blocks(cues, tuple(repaired))
+            blocks = repaired
+            logger.warning("Oversized speech blocks replaced with complete per-cue translations; source timing preserved.")
         first_members = {block.cue_ids[0]: block for block in blocks}
         return [replace(item, translated_text=translations[item.cue_id],
                         speech_block=first_members.get(item.cue_id)) for item in chunk]
@@ -98,7 +120,7 @@ class DialogueTranslator(LLMTranslator):
             raise RuntimeError("Translation cancelled.")
         key = self._get_cache_key(chunk)
         try:
-            payload = self._cache.get(key, default=None)
+            payload = self._cache.get(key, default=None) if self.reuse_cached_chunks else None
             result = self._parse(payload, chunk) if payload is not None else None
         except (ValueError, TypeError, KeyError, AttributeError):
             result = None
@@ -130,7 +152,9 @@ class DialogueTranslator(LLMTranslator):
             response = self._request(messages)
             payload = json_repair.loads(response.choices[0].message.content.strip())
             try:
-                return self._parse(payload, subtitle_chunk)
+                # Complete translations need no second network round-trip merely
+                # because a proposed speech block spans too much source time.
+                return self._parse(payload, subtitle_chunk, repair_timing=True)
             except ValueError as exc:
                 messages.extend([{"role": "assistant", "content": json.dumps(payload, ensure_ascii=False)},
                                  {"role": "user", "content": str(exc) + " Repair the complete JSON; keep all owned information."}])

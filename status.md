@@ -1,5 +1,168 @@
 # Project Status
 
+## 2026-10-03 (Phục hồi HTTP 429 và dùng lại video đã lồng tiếng)
+
+- Log bản E: split/optimize nhận429 nhưng fallback nuốt lỗi, rồi vẫn gọi dịch
+  và chạy video kế tiếp. Log cũ không lưu subtype nên chưa phân biệt được quota
+  hay rate limit. Một probe rất nhỏ trả200; không coi là toàn job đã dịch được.
+- Thêm admission chung trong mỗi job LLM: tối đa3 request, sau429 chỉ1, shared
+  cooldown/Retry-After và tối đa2 probe phục hồi trong deadline. Quota rõ ràng
+  dừng ngay. Chờ đến lượt gửi trước POST không ăn timeout; backoff sau POST có
+  tính vào deadline. Timeout/mất kết nối không tự POST lại. Giữ log category,
+  không ghi raw error body hoặc traceback SDK có thể chứa dữ liệu riêng tư.
+- Split/optimize/translate giữ typed rejection xuyên worker; Batch dừng hàng
+  còn chờ, hiện nguyên nhân tiếng Việt, giữ cache đã hoàn tất để bấm Start lại.
+  Cập nhật tooltip số luồng giải thích giới hạn request thực tế.
+- `Dubbing.ReuseCompleted` mặc định bật trong GUI/Batch, thẻ Cài đặt; force-off
+  vẫn chạy mới. Receipt hash nguồn/subtitle/display/config/voice-reference và
+  output/playback SRT, kiểm trước title/TTS/runtime/render. Đổi giọng, timing,
+  mix/resolution hoặc file bị sửa sẽ miss. Synthesis sau dubbing cũng có receipt,
+  bao gồm input layout. Tên dịch/collision được giữ, không sinh bản trùng khi hit.
+- Nhận diện output cũ một lần bằng BV/name, đủ lời playback, timestamp, duration,
+  audio/video và resolution; không có fingerprint lịch sử cho voice/mix/caption
+  style. Receipt cũ không khớp không được hạ xuống legacy matching. Hai video
+  thực trên bản sao:0,281/0,312s lần đầu;0,125s khi có receipt;0 TTS/0 render,
+  nguồn/settings user giữ nguyên. Đây không phải nghiệm thu nghe mới.
+- Audit `.tools/rate-limit-dub-reuse-20261003/`:full cuối2449 pass/5 skip/58
+  deselected; sau guard admission401 pass/26 deselected, privacy19 pass;
+  Ruff/Pyright0/0 và translation sync pass. PRE có fixture path/qapp/credentials
+  cần cập nhật; giữ raw failure logs. Lượt focused ban đầu chạy nhầm cả integration
+  có6 service/LLM failures; không tính các lượt đó là gate online đã đạt.
+- Native EXE workflow:reuse0,140s,0 child TTS/FFmpeg, output nguyên hash; HTTP429
+  loopback đúng1 request, hàng sau Đã dừng, dialog Việt; GUI384,281s/exit0.
+  Final admission/privacy/tooltip:38 module source-match, GUI140.219s/
+  exit0,0 survivors; workflow kế thừa bản trước, guard mới bằng401+19
+  test source. Không tuyên bố khắc phục sự cố Qt teardown sporadic của lượt cũ.
+- EXE cuối build0/197.047s,6 WARNING/0 ERROR,
+  31723235bytes,SHA256`3eab4168f6c53bbf18371d3c7c3d02210f2f15fb3a5ab3ac4970ff28f6cbc2bc`.99.315 file model/runtime khớp
+  size inventory; tái dùng8 component:faster-whisper,qwen,omnivoice,vieneu-runtime,
+  faster-whisper-large-v3,faster-whisper-tiny,vieneu,ocr-v6-medium; không cài/tải mới.
+- Deploy E idle:giữ tên shortcut,602 app files SHA-match,delta4
+  có backup;2282 file dữ liệu/settings/giọng/manifest nguyên hash,
+  models không chép lại, live CLI help0. Chưa commit/push; closeout ghi file/hash,
+  giữ dirty từ trước và hai stash. Chưa có whole-playlist/new-provider/listening gate.
+
+## 2026-10-03 (Dùng lại bản dịch, đo thời gian và chọn độ phân giải)
+
+- Theo user: giữ bản dịch cùng nguồn/ngôn ngữ kể cả đổi model/prompt; chỉ dịch
+  mới khi yêu cầu. Thêm `Subtitle.ReuseTranslation` mặc định bật và checkpoint
+  `.completed.json` sau publication thành công. Hash dữ liệu ASR/video/language/
+  dialogue, checksum body/files, giữ metadata và speech blocks. Bỏ qua split,
+  optimize, translate khi hit; hỗ trợ bấm lại bảng đã hoàn tất mà vẫn giữ binding
+  raw cho Batch. Force/retranslate selected rows bỏ cả chunk cache, không xóa cache.
+- Bản cũ: chỉ import cặp SRT/dialogue đúng basename, language, nội dung hiển thị
+  và video không mới hơn kết quả. Không đoán arbitrary SRT, không import legacy
+  cho nguồn giàu metadata. Liên kết cũ là name/time binding, chưa có SHA lịch sử;
+  từ lần dùng lại này có checkpoint SHA. Tài liệu domain nêu rõ giới hạn.
+- Giảm request dư: nhóm thoại vượt thời gian nhưng có đủ bản dịch được tách
+  thành cue translations ngay. Lỗi thiếu/trùng/sai cue vẫn phải sửa/không cache.
+  Replay của lượt99 cue:7 phản hồi cũ →3 lượt xử lý response đầu, không gọi API
+  mới. Không đổi model, prompt, ngôn ngữ, chất lượng TTS hoặc thread settings user.
+- Video thực6:02, AV1/3840×2160: log split158,313s + optimize69,594s + translate
+  413,703s; chỉ2–4 nhóm chạy song song. OmniVoice đang batch4, concurrency48 không
+  tạo48 worker. Copy subtitle99 cue/66 block: legacy reuse0,063s, checkpoint với
+  model/prompt đổi0,047s,0 requests; dữ liệu user không đổi. Warm TTS66/66 cache
+  hit, synthesis0s, toàn export4K140,141s;1080p141,828s. Không kết luận1080p nhanh
+  hơn từ hai lượt này; file giảm145.647.424 →61.215.526bytes. Thêm log thời gian
+  pipeline và cache hits/TTS để các lần sau tách đúng giai đoạn chậm.
+- Thêm `Video.OutputResolution`:0/720/1080/1440/2160, mặc định giữ nguyên; Settings
+  và thanh công cụ Synthesis. Snapshot cả Dubbing/Synthesis, scale trước ASS/PNG,
+  soft subtitle/video-only cũng hỗ trợ; giữ tỷ lệ, kích thước chẵn, không upscale.
+  Intermediate không resize nếu còn synthesis. 7 đường xuất và portrait/square/
+  nguồn nhỏ kiểm bằng FFmpeg; audio/duration/source giữ nguyên.
+- Audit `.tools/subtitle-reuse-20261003/`:reuse-only full2408 pass/5 skip; combined
+  full2433 pass/5 skip/58 deselected. Final force-refresh scope282 pass/16 deselect;
+  menu QAction3 pass; Ruff/Pyright0/0/translations pass. PRE failures là fixture
+  dùng sai clone kwargs, cancel stub kwargs, duration`.5`, và test block placement;
+  đã sửa fixture, giữ raw logs. Không đổi assertion để bỏ qua lỗi product.
+- EXE cuối build0/186,328s,6 WARNING/0 ERROR,31.709.652bytes,SHA256
+  `24123c584b6bfdcae50b03f27c5e4221bc5f3f35f847f4ea8336f074665a7673`.
+  30 module dirty/new source-match; models/runtime dùng payload cũ (8 component).
+  Native build trước force:reuse2 lần với key trống,0 request, đúng bảng;720p
+  export từ1440p đạt1280×720/mov_text2s, decode0/stderr0. Source QAction xác nhận
+  menu lưu lựa chọn; native dùng preset test đã lưu. Full source export video
+  thực1080p giữ470,685921s và66 group cache. Chưa nâng gate nghe/toàn playlist.
+- GUI cuối lần đầu63,516s lỗi lúc thoát với0xC0000005,0 owned survivors; giữ
+  FAIL và chặn deploy lần đó. Retry91,047s/exit0/0 survivors, không tuyên bố đã
+  sửa lỗi Qt sporadic. Native reuse/export kế thừa build trước; force refresh
+  kiểm bằng282 test domain. Deploy cuối E idle:602 app files SHA-match, delta2
+  đã backup;2.292 file dữ liệu/settings/giọng/manifest giữ nguyên, models không
+  chép lại, live CLI help0. Chưa commit/push; closeout liệt kê file/hash và các
+  gate riêng, bao gồm cả GUI failure thay vì bỏ qua.
+
+## 2026-10-03 (Dịch tiêu đề cho tên video đầu ra)
+
+- Thêm `Video.TranslateTitle`, mặc định bật, tại Cài đặt → Dịch và tối ưu.
+  Chỉ đặt tên video lồng tiếng/ghép phụ đề trong GUI/Batch; không rename nguồn,
+  file đã tải hay toàn bộ thư mục. Snapshot LLM/ngôn ngữ đích vào task, request
+  trong worker; không gửi directory hoặc mã video vào prompt, không log nội
+  dung/key. Một request tối đa60s, cache theo title/lang/model/endpoint/policy;
+  lỗi dùng tên gốc, hủy vẫn hủy job. Preview/review resume không dịch lặp.
+- Giữ mã `[BV…]`, đuôi video và hậu tố xử lý; lọc ký tự/tên Windows không hợp
+  lệ, giới hạn chiều dài, thêm `(2)`... khi trùng. Batch/Home chỉ dịch ở bước
+  xuất cuối nếu còn synthesis, giữ nguyên tên intermediate và subtitle binding.
+- Audit `.tools/title-output-20261003/`:32 focused pass; full **2392 pass,
+  5 skip/58 deselected**, exit0; title suite cuối15 pass. PRE có1 fixture thiếu
+  qapp, đã bổ sung fixture local; Pyright4 warning đã sửa về0/0, Ruff/sync pass.
+  Giữ các thay đổi Batch trước đó chưa commit; không reset/clean/stage.
+- Source gọi LLM thật đúng1 tiêu đề công khai và xuất clip synthetic2s trong
+  6,407s; tên Việt có mã BV, settings/source giữ nguyên. Native EXE replay cache
+  cùng tiêu đề (0 request mới), xuất hai file tên Việt/`(2)` cùng SHA; input SHA
+  không đổi, H264+mov_text2s, full decode exit0/stderr0. Đã đọc thẻ setting Việt.
+- Build exit0/207,437s,6 WARNING/0 ERROR;31.696.706bytes,SHA256
+  `e28f3747a964f031e5d41182a623d39b2899eb58b7398c01bd07e8670ffe0e63`.
+ 22 module dirty/new source-match;99.315 model/runtime files size-match với8
+  component đã có, không tải/cài lại. GUI117,719s/exit0/0 owned survivors.
+  Không chạy lại ASR/TTS/toàn playlist vì thay đổi này chỉ thêm tên đầu ra;
+  các gate media/provider cũ không được nâng thành nghiệm thu mới.
+- Deploy E khi idle:602 file app khớp SHA, thay4 file có backup;1.606 file
+  dữ liệu/settings/giọng/manifest không đổi, models không chép lại. Live help0,
+  shortcut giữ tên cũ. Audit closeout liệt kê17 file thêm/sửa của tính năng
+  này,19 file dirty cũ còn lại giữ nguyên hash; tổng36 file chưa commit/push.
+
+## 2026-10-03 (Batch tự tiếp tục lời thoại và dừng được toàn bộ queue)
+
+- Log bản E sau `fa327a5`: ASR đã qua; video1 dừng ở checkpoint duyệt lời
+  thoại trước TTS, video2 có đủ bản dịch nhưng speech block vượt giới hạn
+  8/12 giây sau3 phản hồi. Batch nay chạy TTS tự động; API/tab lồng tiếng riêng
+  vẫn mặc định duyệt. Giữ kiểm tra nội dung, WAV, trễ và cuối video.
+- Chỉ repair nhóm quá dài bằng nguyên bản dịch mỗi cue sau budget cũ; giữ
+  nhóm hợp lệ, reject thiếu/trùng/lạ/blank/hard boundary, không thêm request.
+  Replay12 phản hồi cũ:7 lỗi timing trở thành hợp lệ,5 hợp lệ giữ nguyên;
+  đây là replay offline, không phải lượt dịch API mới.
+- Thêm Dừng xử lý, Đang dừng/Đã dừng và thử lại hàng lỗi/đã dừng. Scheduler
+  nằm ở GUI thread, tác vụ nặng ở QThread; đợi native completion trước handoff,
+  giữ worker qua cleanup, chặn signal muộn và không wait chặn UI khi hủy.
+  Hủy một hàng không xóa queue khác; hoàn tất giữ nguyên. FFmpeg quiet polling,
+  Faster-Whisper heartbeat/finally reap và cancellation scope theo từng job.
+- Batch giữ caption mode của dubbing khi synthesis tắt; khi bật synthesis,
+  dùng playback SRT và chỉ render phụ đề một lần. Không đổi settings user.
+- Audit `.tools/batch-continuous-20261003/`: targeted328 pass/2 skip;
+  full PRE2364 pass/10 fail do fake subprocess chưa theo helper/stream reader;
+  cập nhật fake, giữ assertions. Full FINAL **2376 pass/5 skip/58 deselected**,
+  exit0/311,18s; Ruff pass, Pyright0/0, translations in sync. Regression44 pass.
+- Source thực: dùng dialogue đã dịch của video1, đúng giọng riêng/tempo1,20×/
+  video0,77×;40 nhóm TTS hoàn tất63,594s,0 review. Probe đầu thiếu thư viện
+  giọng trong sandbox đã giữ FAIL, rồi chép reference sang audit và chạy lại.
+  Probe synthesis bật NeedVideo riêng trong test (setting user đang tắt):
+  MP4 có video317,132875s/audio317,115011s/phụ đề315,369s. Full decode exit0
+  nhưng stderr623bytes; audio-only decode exit0/stderr0. Chưa nghiệm thu nghe.
+- EXE cuối build exit0/188,531s,6 WARNING/0 ERROR,31.689.906bytes,SHA256
+  `a08e9d95f144f5ba67f1b7ceb075c8fa7be659b27c746bcf3cc647129ea2505a`.
+  Các build trước guard caption/binding giữ riêng. Final16 modules khớp
+  source,99.315 model/runtime files khớp size inventory; không cài/tải model
+  hoặc dependency. Native EXE trước sửa binding217,485s/exit0/0 survivors: Start
+  hai hàng → dừng khi Faster-Whisper đang chạy →2 Đã dừng, Start lại rồi Stop
+  lần nữa thành công. Cuối chỉ đổi `_subtitle` để giữ video binding/SRT cạnh
+  video của Nhận dạng + phụ đề; regression17/17. Readback bytecode xác nhận
+  các method hủy không đổi. GUI đúng EXE cuối46,64s/exit0/0 survivors. Không
+  chạy whole-playlist hay dịch API mới.
+- Deploy cuối khi E idle:602 file app được đối chiếu, delta2 file từ build
+  trước đã backup;1.606 file settings/cookies/giọng/cache/media/manifest giữ
+  nguyên SHA, không chép models. Live CLI help exit0, giữ tên EXE/shortcut;
+  gate GUI/cancel kế thừa như mô tả trên.27 file source/docs/tests đang sửa,
+  chưa commit/push; hai stash giữ nguyên. File list/hashes trong closeout.json.
+
 ## 2026-10-03 (Sửa chặn Batch ASR và ẩn media/GPU console)
 
 - GUI không dùng NeedSplit để ép Faster-Whisper word timestamps: lấy câu

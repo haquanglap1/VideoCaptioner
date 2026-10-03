@@ -92,6 +92,8 @@ class DubbingConfig:
 
     # Enable/disable
     enabled: bool = False  # Mặc định tắt, user bật khi cần
+    output_resolution: int = 0
+    reuse_completed: bool = True
 
     def print_config(self) -> str:
         """Print dubbing configuration."""

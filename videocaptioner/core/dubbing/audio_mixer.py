@@ -21,7 +21,7 @@ from typing import List, Optional
 
 from videocaptioner.core.dubbing.config import AudioMixMode
 from videocaptioner.core.utils.logger import setup_logger
-from videocaptioner.core.utils.subprocess_helper import child_environment
+from videocaptioner.core.utils.subprocess_helper import child_environment, run_cancellable
 
 logger = setup_logger("dubbing.audio_mixer")
 
@@ -54,7 +54,7 @@ def get_audio_duration(audio_path: str) -> float:
         Thời lượng tính bằng giây, hoặc 0.0 nếu lỗi.
     """
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             [
                 "ffprobe",
                 "-v", "error",
@@ -122,7 +122,7 @@ def adjust_audio_speed(
     logger.debug("adjust_audio_speed cmd: %s", " ".join(cmd))
 
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             cmd, env=child_environment(),
             capture_output=True,
             text=True,
@@ -341,7 +341,7 @@ def mix_audio_tracks(
     logger.debug("mix_audio_tracks cmd: %s", subprocess.list2cmdline(cmd))
 
     try:
-        process = subprocess.Popen(
+        process = run_cancellable(
             cmd, env=child_environment(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -350,7 +350,7 @@ def mix_audio_tracks(
             errors="replace",
             creationflags=_FFMPEG_CREATE_FLAGS,
         )
-        _, stderr = process.communicate()
+        stderr = process.stderr
 
         if process.returncode == 0 and Path(output_path).is_file():
             logger.info("Audio mix complete: %s", output_path)
@@ -377,7 +377,7 @@ def _filter_complex_file_flag() -> str:
     fail hoàn toàn — nên probe một lần rồi cache.
     """
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             [
                 "ffmpeg", "-hide_banner",
                 "-filter_complex_script", os.devnull,
@@ -407,7 +407,7 @@ def _has_audio_stream(media_path: str) -> bool:
     audio gốc chỉ vì ffprobe lỗi.
     """
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             [
                 "ffprobe",
                 "-v", "error",
@@ -474,7 +474,7 @@ def _measure_loudnorm(audio_path: str) -> dict | None:
         "-",
     ]
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             cmd, env=child_environment(),
             capture_output=True,
             text=True,
@@ -592,7 +592,7 @@ def _render_voice_track(
             "-y",
             output_path,
         ]
-        result = subprocess.run(
+        result = run_cancellable(
             cmd, env=child_environment(),
             capture_output=True,
             text=True,
@@ -648,7 +648,7 @@ def _mix_full_tracks(
         output_path,
     ]
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             cmd, env=child_environment(),
             capture_output=True,
             text=True,

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal, Optional
 
-from videocaptioner.core.utils.subprocess_helper import child_environment
+from videocaptioner.core.utils.subprocess_helper import child_environment, run_cancellable
 
 from ..entities import (
     AudioStreamInfo,
@@ -150,7 +150,7 @@ def temporary_subtitle_file(subtitle_path: str):
         Path(temp_path).unlink(missing_ok=True)
 
 
-def video2audio(input_file: str, output: str = "", audio_track_index: int = 0) -> bool:
+def video2audio(input_file: str, output: str = "", audio_track_index: int = 0, *, check_cancelled=None) -> bool:
     """Extract one audio track with ffmpeg as 16 kHz mono.
 
     Args:
@@ -184,8 +184,9 @@ def video2audio(input_file: str, output: str = "", audio_track_index: int = 0) -
     logger.debug(f"Audio conversion cmd: {' '.join(cmd)}")
 
     try:
-        result = subprocess.run(
+        result = run_cancellable(
             cmd, env=child_environment(),
+            check_cancelled=check_cancelled,
             capture_output=True,
             check=True,
             encoding="utf-8",
@@ -218,7 +219,7 @@ def check_cuda_available() -> bool:
     """Check if CUDA hardware acceleration is available via FFmpeg."""
     try:
         # First check whether this ffmpeg build lists cuda
-        result = subprocess.run(
+        result = run_cancellable(
             ["ffmpeg", "-hwaccels"], env=child_environment(),
             capture_output=True,
             text=True,
@@ -231,7 +232,7 @@ def check_cuda_available() -> bool:
             return False
 
         # Then try to initialise the CUDA device
-        result = subprocess.run(
+        result = run_cancellable(
             ["ffmpeg", "-hide_banner", "-init_hw_device", "cuda"], env=child_environment(),
             capture_output=True,
             text=True,
@@ -275,7 +276,10 @@ def add_subtitles(
     vcodec: str = "libx264",
     soft_subtitle: bool = False,
     progress_callback: Optional[Callable] = None,
+    output_resolution: int = 0,
 ) -> None:
+    from .video_resolution import resolution_filter
+    scale = resolution_filter(output_resolution)
     assert Path(input_file).is_file(), "输入文件不存在"
     assert Path(subtitle_file).is_file(), "字幕文件不存在"
 
@@ -310,8 +314,12 @@ def add_subtitles(
                 output,
             ]
             logger.debug(f"FFmpeg soft subtitle cmd: {' '.join(cmd)}")
+            if scale:
+                position = cmd.index("-c:v")
+                cmd[position:position + 2] = ["-vf", scale, "-c:v", "libx264", "-crf", str(crf),
+                                              "-preset", preset, "-pix_fmt", "yuv420p"]
             try:
-                subprocess.run(
+                run_cancellable(
                     cmd, env=child_environment(),
                     capture_output=True,
                     check=True,
@@ -345,6 +353,8 @@ def add_subtitles(
                 vf = f"ass='{subtitle_path_escaped}'"
             else:
                 vf = f"subtitles='{subtitle_path_escaped}'"
+            if scale:
+                vf = scale + "," + vf
 
             if Path(output).suffix.lower() == ".webm":
                 vcodec = "libvpx-vp9"
@@ -398,10 +408,21 @@ def add_subtitles(
                 total_duration = None
                 current_time = 0
 
+                from videocaptioner.core.utils.subprocess_helper import StreamReader
+                reader = StreamReader(process)
+                reader.start_reading()
+                progress = 0
+                recent_output = ""
                 while True:
-                    output_line = process.stderr.readline()
-                    if not output_line or (process.poll() is not None):
-                        break
+                    item = reader.get_output(timeout=0.1)
+                    if progress_callback:
+                        progress_callback(str(round(progress)), "Đang ghép video")
+                    if item is None:
+                        if process.poll() is not None:
+                            break
+                        continue
+                    output_line = item[1]
+                    recent_output = (recent_output + output_line)[-4000:]
                     if not progress_callback:
                         continue
 
@@ -433,7 +454,7 @@ def add_subtitles(
                 # Check the exit code
                 return_code = process.wait()
                 if return_code != 0:
-                    error_info = process.stderr.read()
+                    error_info = recent_output
                     logger.error("FFmpeg hard subtitle failed")
                     logger.error(f"Return code: {return_code}")
                     logger.error(f"Command: {cmd_str}")
@@ -447,11 +468,13 @@ def add_subtitles(
                 logger.error(f"Error: {str(e)}")
                 if process and process.poll() is None:
                     process.kill()
+                    process.wait(timeout=3)
                 raise
             except Exception as e:
                 logger.error(f"Loi trong qua trinh ghep video: {str(e)}")
                 if process and process.poll() is None:
                     process.kill()
+                    process.wait(timeout=3)
                 raise
 
 
@@ -470,7 +493,7 @@ def get_video_info(
     """
     try:
         # Run ffmpeg to get the stream banner
-        result = subprocess.run(
+        result = run_cancellable(
             ["ffmpeg", "-i", file_path], env=child_environment(),
             capture_output=True,
             text=True,
@@ -582,7 +605,7 @@ def _extract_thumbnail(video_path: str, seek_time: float, thumbnail_path: str) -
         timestamp = f"{int(seek_time // 3600):02}:{int((seek_time % 3600) // 60):02}:{seek_time % 60:06.3f}"
         Path(thumbnail_path).parent.mkdir(parents=True, exist_ok=True)
 
-        result = subprocess.run(
+        result = run_cancellable(
             [
                 "ffmpeg",
                 "-ss",
@@ -622,6 +645,7 @@ def add_subtitles_with_style(
     crf: int = 23,
     preset: PresetType = "medium",
     progress_callback: Optional[Callable] = None,
+    output_resolution: int = 0,
 ) -> None:
     """
     Burn subtitles using the selected render mode.
@@ -642,6 +666,7 @@ def add_subtitles_with_style(
     if render_mode == SubtitleRenderModeEnum.ROUNDED_BG:
         # Rounded background mode
         render_rounded_video(
+            output_resolution=output_resolution,
             video_path=video_path,
             asr_data=asr_data,
             output_path=output_path,
@@ -654,6 +679,7 @@ def add_subtitles_with_style(
     else:
         # ASS style mode
         render_ass_video(
+            output_resolution=output_resolution,
             video_path=video_path,
             asr_data=asr_data,
             output_path=output_path,

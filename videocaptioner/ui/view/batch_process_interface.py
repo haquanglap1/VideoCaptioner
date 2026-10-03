@@ -53,6 +53,7 @@ class BatchProcessInterface(QWidget):
         self.setWindowTitle(self.tr("批量处理"))
         self.setAcceptDrops(True)
         self.batch_thread = BatchProcessThread()
+        self._clear_when_idle = False
 
         self.init_ui()
         self.setup_connections()
@@ -92,6 +93,8 @@ class BatchProcessInterface(QWidget):
         # 控制按钮
         self.add_file_btn = PushButton(self.tr("添加文件"), icon=FIF.ADD)
         self.start_all_btn = PushButton(self.tr("开始处理"), icon=FIF.PLAY)
+        self.stop_all_btn = PushButton(self.tr("Stop processing"), icon=FIF.CLOSE)
+        self.stop_all_btn.setEnabled(False)
         self.clear_btn = PushButton(self.tr("清空列表"), icon=FIF.DELETE)
 
         # 添加到顶部布局
@@ -101,6 +104,7 @@ class BatchProcessInterface(QWidget):
 
         top_layout.addStretch()
         top_layout.addWidget(self.start_all_btn)
+        top_layout.addWidget(self.stop_all_btn)
 
         # 创建任务表格
         self.task_table = TableWidget()
@@ -140,6 +144,7 @@ class BatchProcessInterface(QWidget):
         # 连接信号
         self.add_file_btn.clicked.connect(self.on_add_file_clicked)
         self.start_all_btn.clicked.connect(self.start_all_tasks)
+        self.stop_all_btn.clicked.connect(self.stop_all_tasks)
         self.clear_btn.clicked.connect(self.clear_tasks)
         self.task_type_combo.currentIndexChanged.connect(self.on_task_type_changed)
 
@@ -148,6 +153,8 @@ class BatchProcessInterface(QWidget):
         self.batch_thread.task_progress.connect(self.update_task_progress)
         self.batch_thread.task_error.connect(self.on_task_error)
         self.batch_thread.task_completed.connect(self.on_task_completed)
+        self.batch_thread.task_cancelled.connect(self.on_task_cancelled)
+        self.batch_thread.busy_changed.connect(self._set_busy)
 
         # 表格右键菜单
         self.task_table.setContextMenuPolicy(Qt.CustomContextMenu)  # type: ignore
@@ -360,8 +367,9 @@ class BatchProcessInterface(QWidget):
             error_action.triggered.connect(lambda: self.show_task_error(row))
             menu.addAction(error_action)
 
-        if status != BatchTaskStatus.WAITING:
+        if self.batch_thread.isRunning() or status not in (BatchTaskStatus.WAITING, BatchTaskStatus.FAILED, BatchTaskStatus.CANCELLED):
             start_action.setEnabled(False)
+        cancel_action.setEnabled(status in (BatchTaskStatus.WAITING, BatchTaskStatus.RUNNING))
 
         menu.exec_(self.task_table.viewport().mapToGlobal(pos))
 
@@ -383,14 +391,15 @@ class BatchProcessInterface(QWidget):
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
                 item = self.task_table.item(row, 2)
-                if item.data(Qt.ItemDataRole.UserRole) in (BatchTaskStatus.FAILED, BatchTaskStatus.COMPLETED):
+                if item.data(Qt.ItemDataRole.UserRole) in (BatchTaskStatus.FAILED, BatchTaskStatus.COMPLETED, BatchTaskStatus.CANCELLED):
                     return
                 # Late progress must not replace a terminal result.
                 progress_bar = self.task_table.cellWidget(row, 1)
                 progress_bar.setValue(progress)
                 # Workers may already supply translated stage descriptions.
                 item.setText(self.tr(status))
-                item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.RUNNING)
+                item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.STOPPING
+                             if status == str(BatchTaskStatus.STOPPING) else BatchTaskStatus.RUNNING)
                 break
 
     def on_task_error(self, file_path: str, error: str):
@@ -431,7 +440,7 @@ class BatchProcessInterface(QWidget):
         # Display translations must not change which tasks can start.
         waiting_tasks = 0
         for row in range(self.task_table.rowCount()):
-            if self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole) == BatchTaskStatus.WAITING:
+            if self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole) in (BatchTaskStatus.WAITING, BatchTaskStatus.FAILED, BatchTaskStatus.CANCELLED):
                 waiting_tasks += 1
 
         if waiting_tasks == 0:
@@ -456,12 +465,18 @@ class BatchProcessInterface(QWidget):
         for row in range(self.task_table.rowCount()):
             file_path = self.task_table.item(row, 0).toolTip()
             status = self.task_table.item(row, 2).data(Qt.ItemDataRole.UserRole)
-            if status == BatchTaskStatus.WAITING:
+            if status in (BatchTaskStatus.WAITING, BatchTaskStatus.FAILED, BatchTaskStatus.CANCELLED):
+                self._reset_row(row)
                 task_type = self._current_task_type()
                 batch_task = BatchTask(file_path, task_type)
                 self.batch_thread.add_task(batch_task)
 
     def start_task(self, file_path: str):
+        if self.batch_thread.isRunning():
+            return
+        for row in range(self.task_table.rowCount()):
+            if self.task_table.item(row, 0).toolTip() == file_path:
+                self._reset_row(row)
         # 显示开始处理的提示
         file_name = os.path.basename(file_path)
         InfoBar.success(
@@ -478,16 +493,46 @@ class BatchProcessInterface(QWidget):
         self.batch_thread.add_task(batch_task)
 
     def cancel_task(self, file_path: str):
+        if file_path not in self.batch_thread.current_tasks:
+            self.on_task_cancelled(file_path)
+            return
         self.batch_thread.stop_task(file_path)
-        # 从表格中移除任务
+
+    def on_task_cancelled(self, file_path: str):
         for row in range(self.task_table.rowCount()):
             if self.task_table.item(row, 0).toolTip() == file_path:
-                self.task_table.removeRow(row)
+                item = self.task_table.item(row, 2)
+                item.setText(self.tr("Stopped"))
+                item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.CANCELLED)
+                item.setForeground(QColor("#d8a23e"))
                 break
 
-    def clear_tasks(self):
+    def _reset_row(self, row):
+        item = self.task_table.item(row, 2)
+        item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.WAITING)
+        item.setData(Qt.ItemDataRole.UserRole + 1, None)
+        item.setText(self.tr(str(BatchTaskStatus.WAITING)))
+        item.setToolTip("")
+        item.setForeground(QColor("#999999"))
+        self.task_table.cellWidget(row, 1).setValue(0)
+
+    def _set_busy(self, busy):
+        self.start_all_btn.setEnabled(not busy)
+        self.stop_all_btn.setEnabled(busy)
+        self.clear_btn.setEnabled(not busy)
+        self.task_type_combo.setEnabled(not busy)
+        self.add_file_btn.setEnabled(not busy)
+        if not busy and self._clear_when_idle:
+            self._clear_when_idle = False
+            self.task_table.setRowCount(0)
+
+    def stop_all_tasks(self):
         self.batch_thread.stop_all()
-        self.task_table.setRowCount(0)
+
+    def clear_tasks(self):
+        self._clear_when_idle = True
+        self.batch_thread.stop_all()
+        self._set_busy(self.batch_thread.isRunning())
 
     def on_task_type_changed(self, _index: int):
         # 显示任务类型说明

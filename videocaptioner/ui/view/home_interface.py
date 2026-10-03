@@ -184,6 +184,11 @@ class HomeInterface(QWidget):
             ),
             task_id=self._current_task_id,
         )
+        from videocaptioner.ui.common.config import cfg
+        if cfg.need_video.value:
+            dubbing_task.title_translation = None
+            if dubbing_task.dubbing_config:
+                dubbing_task.dubbing_config.output_resolution = 0
         interface = self.dubbing_interface
         interface.set_task(dubbing_task)
         interface.process()
@@ -201,6 +206,7 @@ class HomeInterface(QWidget):
         synthesis_task = TaskFactory.create_synthesis_task(
             video_path, subtitle_path, need_next_task=True, task_id=self._current_task_id,
             input_subtitle_layout=input_layout,
+            title_source=producer.video_path if producer and producer.video_path else video_path,
         )
         self._current_task_id = None
         interface = self.video_synthesis_interface

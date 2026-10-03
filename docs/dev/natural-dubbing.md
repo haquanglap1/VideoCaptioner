@@ -6,6 +6,29 @@ song ngữ/đơn ngữ mà user đã chọn.
 
 ## Luồng xử lý
 
+Độ phân giải đầu ra dùng `Video.OutputResolution` (0 giữ nguyên, 720/1080/1440/2160),
+chụp vào `DubbingConfig`/`SynthesisConfig` theo từng job. Preset giới hạn khung
+16:9 hoặc 9:16 tùy hướng nguồn, giữ tỷ lệ hiển thị và kích thước chẵn, không upscale.
+Scale chạy trước khi vẽ phụ đề; ASS/PNG được dựng theo kích thước đích. Phụ đề
+mềm và chế độ không phụ đề cũng xuất đúng độ phân giải. Intermediate dubbing
+trong pipeline giữ nguyên nếu còn synthesis; resize chỉ ở lần xuất cuối.
+Đổi độ phân giải không đổi cache giọng, lời đọc, tempo/video speed hoặc timing.
+
+Pipeline phụ đề GUI ghi `.completed.json` sau khi publish thành công toàn bộ
+kết quả. Identity gồm dữ liệu ASR đầu vào, SHA video, ngôn ngữ đích và chế độ
+dialogue; không gồm key/model/prompt/concurrency theo lựa chọn của user.
+Body có checksum, đầy đủ text/timing/translation và dữ liệu hội thoại; kiểm
+hash file SRT/dialogue trước khi dùng lại. Có cả identity của bảng kết quả
+để bấm xử lý lại trong cùng tab không dịch lặp, đồng thời giữ identity nguồn
+ban đầu cho lần chạy Batch sau. Không dùng kết quả thiếu, hỏng hoặc đã đổi nguồn.
+
+Đối với bản cũ chưa có checkpoint, chỉ nhận đúng cặp SRT/dialogue cạnh output,
+ngôn ngữ khớp, SRT khớp nội dung document và video không mới hơn bản dịch.
+Đây là liên kết theo tên/timestamp của bản cũ, không phải bằng chứng SHA của
+video tại thời điểm dịch trước đây. Bản native giàu metadata không đi đường
+import cũ này. Sau khi dùng lại, app ghi checkpoint để các lần sau kiểm SHA.
+Tắt **Dùng lại bản dịch đã hoàn tất** để chủ động chạy lại toàn bộ các bước LLM.
+
 1. `DubbingTextSource` chọn text rõ ràng. `AUTO` ưu tiên `translated_text`; `TRANSLATED` fail nếu thiếu.
 2. Planner thuần sắp cue theo timeline, group câu liền nhau và mượn silence có `silence_guard_ms`.
    Với `sequential`, giữ mọi từ khi nối cue, kể cả lời lặp ở biên. Các policy khác giữ heuristic cũ:
@@ -31,6 +54,29 @@ sau khi có report, kèm số group cần xem lại (`needs_review`, `fit_status
 Hợp đồng report in-memory không đổi.
 
 ## Duyệt lời đọc và tiếp tục
+
+Trong **Xử lý hàng loạt**, lệnh bắt đầu dùng luồng tự động: bản lời thoại đã
+qua kiểm tra cấu trúc đi thẳng sang TTS, không tạo checkpoint duyệt thủ công
+trước mỗi video. API engine mặc định và tab Lồng tiếng riêng vẫn giữ bước
+duyệt. Chế độ tự động không đánh dấu lời là đã được người dùng duyệt và không
+bỏ kiểm tra timing/WAV: thiếu lời, lỗi provider hoặc tràn thời lượng vẫn dừng.
+
+Nếu phản hồi LLM có đủ cue và bản dịch hợp lệ, nhưng còn nhóm lời vượt giới
+hạn 8/12 giây, translator chỉ thay nhóm quá dài ngay bằng nguyên
+bản dịch hiển thị của từng cue. Nhóm hợp lệ giữ nguyên. Không suy đoán timing,
+bỏ chữ hoặc chấp nhận cue thiếu/trùng/lạ. Lỗi cấu trúc/nội dung vẫn có tối đa
+ba phản hồi; riêng lỗi gom nhóm thời gian không cần thêm lượt gọi mạng.
+
+Batch có **Dừng xử lý** và trạng thái **Đang dừng / Đã dừng**. Queue do Qt main
+thread điều phối; mỗi stage vẫn là worker. Chuyển stage/khởi chạy video tiếp
+theo đợi native QThread kết thúc để cleanup xong, không chỉ đợi signal kết quả.
+Hủy giữ kết quả đã hoàn tất, bỏ các hàng đang chờ, chặn signal muộn chuyển sang
+bước tiếp và không `wait()` chặn GUI. Có thể thử lại hàng lỗi/đã dừng.
+
+Faster-Whisper kiểm callback cả khi stdout im lặng và kết thúc process tree
+khi hủy. FFmpeg extraction/mix/render dùng polling hoặc stream reader; scope
+hủy theo job không patch subprocess toàn ứng dụng. Batch giữ phụ đề của bước
+lồng tiếng nếu tắt synthesis; nếu bật, chỉ ghép phụ đề một lần theo timing mới.
 
 Khi job dừng để review, mở **Duyệt / sửa lời đọc** ở tab Lồng tiếng. Bảng nhóm
 giữ cue membership, nguyên văn nguồn, phụ đề, lời trước rewrite và thông tin

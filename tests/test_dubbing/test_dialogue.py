@@ -60,6 +60,18 @@ def test_direct_dub_stops_before_provider_until_wording_is_approved(inputs, tmp_
     assert not (tmp_path / "out.mp4").exists()
 
 
+def test_automatic_batch_can_start_tts_without_a_manual_wording_checkpoint(inputs, tmp_path):
+    path, video, config = inputs
+    class ReachedProvider(Exception):
+        pass
+    def provider(_):
+        raise ReachedProvider()
+    engine = DubbingEngine(tts_provider_factory=provider, cache_root=tmp_path / "cache")
+    with pytest.raises(ReachedProvider):
+        engine.dub(str(video), str(path), str(tmp_path / "out.mp4"), config, review_before_tts=False)
+    assert all(group.action_taken != "dialogue_wording_preview" for group in engine.last_review.groups)
+
+
 def test_prepared_review_roundtrip_and_changed_boundary_rejected(inputs, tmp_path):
     path, video, config = inputs
     engine = DubbingEngine(cache_root=tmp_path / "cache")

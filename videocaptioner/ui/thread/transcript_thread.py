@@ -31,6 +31,7 @@ class TranscriptThread(QThread):
 
     def run(self):
         try:
+            self._check_cancelled()
             self.task.started_at = datetime.datetime.now()
             self.task.asr_data = None
             self.task.transcript_path = None
@@ -45,6 +46,8 @@ class TranscriptThread(QThread):
             self._perform_transcription()
 
         except Exception as e:
+            if self.isInterruptionRequested():
+                return
             message = str(e)
             if isinstance(e, NativeReviewRequired):
                 recovered = self._recover_transcript(e)
@@ -134,6 +137,7 @@ class TranscriptThread(QThread):
                 str(video_path),
                 output=temp_audio_path,
                 audio_track_index=audio_track_index,
+                check_cancelled=self._check_cancelled,
             )
             if not is_success:
                 logger.error("音频转换失败")
@@ -204,12 +208,15 @@ class TranscriptThread(QThread):
             Path(temp_audio_path).unlink(missing_ok=True)
 
     def progress_callback(self, value, message):
+        self._check_cancelled()
+        progress = min(20 + (value * 0.8), 100)
+        self.progress.emit(int(progress), message)
+
+    def _check_cancelled(self):
         if self.isInterruptionRequested() or QThread.currentThread().isInterruptionRequested():
             from videocaptioner.core.asr.alignment.contract import AlignmentError
 
             raise AlignmentError("cancelled")
-        progress = min(20 + (value * 0.8), 100)
-        self.progress.emit(int(progress), message)
 
     def stop(self):
         self.requestInterruption()
