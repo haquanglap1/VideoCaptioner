@@ -285,9 +285,23 @@ def _media_attempt(info: Mapping[str, Any], backups: dict[str, str] | None = Non
 
 
 def _recoverable_media_error(error: Exception) -> bool:
-    text = str(error)
-    return bool(re.search(r"\b\d+ bytes read, \d+ more expected\b", text)
-                or re.search(r"\[download\]\s+Got error:\s+HTTP Error (?:500|502|503|504)\b", text))
+    message = re.search(r"\[download\]\s+Got error:\s+(.+)", str(error), re.DOTALL)
+    if not message:
+        return False
+    text = message[1]
+    status = re.search(r"\bHTTP(?:\s+Error)?\s+(\d{3})\b", text, re.IGNORECASE)
+    if status:
+        return status[1] in ("500", "502", "503", "504")
+    # yt-dlp's exhausted retry callback flattens the transport exception into text.
+    # Match known connection failures, never certificate or proxy configuration errors.
+    if re.search(r"certificate|CERTIFICATE_VERIFY_FAILED|ProxyError", text, re.IGNORECASE):
+        return False
+    return bool(re.search(
+        r"\b\d+ bytes read, \d+ more expected\b|\bRemoteDisconnected\b|"
+        r"Remote end closed connection without response|\bConnection(?:Reset|Aborted)Error\b|"
+        r"Connection reset by peer|\b(?:ReadTimeout|ConnectTimeout|SSLEOFError)\b|"
+        r"\bUNEXPECTED_EOF_WHILE_READING\b|(?:read operation|read|connection) timed out",
+        text, re.IGNORECASE))
 
 
 def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress) -> PlaylistItemResult:
@@ -340,7 +354,7 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
             result = ydl.process_ie_result(cast(Any, _media_attempt(info)), download=True)
         except DownloadError as exc:
             check()
-            # One fallback for truncated bodies or temporary media server errors.
+            # One fallback for interrupted connections, truncated bodies or temporary server errors.
             # Access/certificate/extractor errors retain their original failure.
             if (not _recoverable_media_error(exc)
                     or not any(fmt.get("url") in backups for fmt in info.get("formats") or [])):

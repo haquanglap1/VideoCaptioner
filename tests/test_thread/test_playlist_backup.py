@@ -22,12 +22,16 @@ from videocaptioner.core import playlist as core
     ("504", True, False, False),
     ("503", False, False, False),
     ("503", True, True, False),
+    ("disconnect", True, False, False),
+    ("disconnect", False, False, False),
+    ("disconnect", True, True, False),
     ("403", True, False, False),
     ("404", True, False, False),
     ("412", True, False, False),
     ("429", True, False, False),
     ("short", True, False, True),
     ("503", True, False, True),
+    ("disconnect", True, False, True),
 ])
 def test_same_format_backup_resumes_only_transport_failures(
     tmp_path, monkeypatch, failure, has_backup, backup_fails, cancel,
@@ -50,6 +54,9 @@ def test_same_format_backup_resumes_only_transport_failures(
             if failure != "short" and (primary or backup_fails):
                 if cancel:
                     stopped[0] = True
+                if failure == "disconnect":
+                    self.close_connection = True
+                    return
                 self.send_error(int(failure))
                 return
             self.send_response(206)
@@ -121,7 +128,7 @@ def test_same_format_backup_resumes_only_transport_failures(
         assert requests[0][1] == len(prefix)
         primary_requests = sum(path == "/primary.mp4" for path, _, _ in requests)
         assert primary_requests <= 11
-        if failure in ("500", "502", "503", "504") and not cancel:
+        if failure in ("500", "502", "503", "504", "disconnect") and not cancel:
             assert primary_requests == 11
     finally:
         server.shutdown()
@@ -159,9 +166,27 @@ def test_backup_capture_keeps_format_identity_and_rejects_insecure_urls():
     "ERROR: [download] Got error: HTTP Error 429: Too Many Requests",
     "ERROR: [download] Got error: certificate verify failed",
     "ERROR: Postprocessing failed for video503.mp4",
+    "ERROR: Unable to download webpage: RemoteDisconnected('Remote end closed connection without response')",
+    "ERROR: [download] Got error: ProxyError('ConnectionResetError')",
+    "ERROR: [download] Got error: certificate verify failed (ConnectionResetError)",
+    "ERROR: [download] Got error: HTTP Error 403: Forbidden (RemoteDisconnected)",
 ])
 def test_backup_does_not_retry_other_errors(message):
     assert not core._recoverable_media_error(Exception(message))
+
+
+@pytest.mark.parametrize("reason", [
+    "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+    "ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host')",
+    "Connection reset by peer",
+    "ConnectionAbortedError(10053, 'Software caused connection abort')",
+    "ReadTimeout('Read timed out')",
+    "ConnectTimeout('Connection timed out')",
+    "The read operation timed out",
+    "SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol')",
+])
+def test_backup_recognizes_exhausted_connection_failures(reason):
+    assert core._recoverable_media_error(Exception(f"ERROR: [download] Got error: {reason}. Giving up after 10 retries"))
 
 
 def test_server_error_explains_resume_without_blame_on_cookies():

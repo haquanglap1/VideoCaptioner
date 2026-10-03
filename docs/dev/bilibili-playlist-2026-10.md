@@ -357,3 +357,43 @@ Deploy bản E khi app đã đóng:602 file app khớp SHA,thay2 file có backup
 `rollback-payload/`;6.826 file dữ liệu/settings/cookies/voices/manifest nguyên
 hash, không chép models. Giữ tên EXE và shortcut; live CLI help exit0.
 GUI/download gate kế thừa artifact cùngSHA. Chưa commit/push.
+
+
+## Phục hồi server đóng kết nối trước response — 2026-10-03
+
+User tải lại cùng video nhưng lỗi thực là `RemoteDisconnected` sau10 retries,
+không phải HTTP503. Đọc trực tiếp GUI xác nhận đúng EXE503 và file dở6.257.648
+bytes; nhánh cũ chưa coi việc đóng kết nối trước header là lỗi có thể fallback.
+
+Bổ sung nhận diện lỗi transport đã hết retries: disconnect/reset/abort,
+read/connect timeout và SSL EOF. Chỉ nhận thông báo từ bước download media;
+HTTP status có ưu tiên, certificate/proxy/extractor/postprocessing không mở
+fallback. Vẫn chỉ thử một backup URL cùng format do Bilibili trả, giữ Range,
+file `.part`, chất lượng và ngân sách retry hữu hạn.
+
+Audit `.tools/playlist-transport-20261003/`: PRE2 fail/24 pass tái hiện đúng
+`RemoteDisconnected` bằng server HTTP thực đóng kết nối trước header.
+POST228 pass gồm playlist core/UI/CLI và toàn CLI suite. Kiểm backup resume
+đúng offset/SHA, cả hai server ngắt, thiếu backup, cancel, HTTP/access/certificate
+và proxy không fallback. Reset/timeout/SSL EOF có classifier regression; không
+coi đó là online gate riêng cho từng loại lỗi. Ruff pass (cache ACL warning),
+Pyright0/0, sync pass; không full suite hoặc đổi dependency.
+
+Source nhận đúng `RemoteDisconnected` tại primary, chuyển backup và hoàn tất
+7,063s từ bản sao file dở6MB. Native EXE CLI tải8,016s/exit0, reuse1,109s/exit0.
+Native GUI qua Computer Use: đọc25 mục, bỏ chọn tất cả, chọn riêng5, bấm
+Tải / Tiếp tục → `Đã tải`,1 hoàn tất/0 lỗi; bấm lần nữa → `Đã có (SHA khớp)`.
+Source/CLI/GUI đều cùngSHA,22.519.678bytes, AV1/852×480 + AAC/475,940317s,
+full decode0/stderr0. Chỉ các bản sao audit thay đổi, dữ liệu nguồn giữ nguyên.
+
+Build0/189,140s,6 WARNING/0 ERROR,31.749.872bytes,SHA256
+`0eade3f040f1b1be76a52aeccf54c7915123acd22ec1e4a1e492cf0a7f4cd3d4`.
+Core source-match;99.315 model/runtime files/8 components size-match, không
+cài/tải thêm. GUI sống272,357s/exit0/0 survivors theo process monitor; user
+dừng Computer Use bằng Esc, nên lần đó chưa deploy. Không nâng gate nghe,
+ASR/translation/TTS hoặc toàn playlist từ kết quả tải một video.
+
+Sau khi user đóng app và yêu cầu cập nhật, deploy E thành công:602 file app
+SHA-match,delta2 có backup tại audit `rollback-payload/`,6.826 protected files
+nguyên hash. Không chép models, giữ tên EXE/shortcut; live help exit0.
+GUI/media gate kế thừa đúng artifact cùngSHA nêu trên.

@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-10-03 (Phục hồi RemoteDisconnected và cập nhật EXE chạy thật)
+
+- User tải lại BV171c2eXESw gặp server đóng kết nối trước response, không phải
+  HTTP503. Đọc GUI xác nhận `RemoteDisconnected` sau10 retries và partial
+  6.257.648bytes. Mở một fallback cho disconnect/reset/abort/timeout/SSL EOF
+  ở download media; certificate/proxy/access/extractor/postprocessing vẫn
+  dừng. Giữ URL backup cùng format từ server, Range và retry hữu hạn.
+- Audit `.tools/playlist-transport-20261003/`: PRE2 fail/24 pass bằng server
+  HTTP đóng trước header; POST228 pass (playlist core/UI/CLI + CLI suite).
+  Ruff pass (cache ACL warning), Pyright0/0, sync pass. Không full suite.
+  Reset/timeout/SSL EOF có classifier tests, không coi là online gate riêng.
+- Source từ bản sao partial6MB: tái hiện RemoteDisconnected rồi backup hoàn
+  tất7,063s, reuse0 request. Native CLI tải8,016s/reuse1,109s, exit0. Native
+  GUI đọc25 mục, chọn riêng5, Tải / Tiếp tục →1 hoàn tất/0 lỗi, bấm lại →
+  Đã có (SHA khớp). Source/CLI/GUI cùngSHA,22.519.678bytes, AV1/852×480 +
+  AAC/475,940317s; full decode0/stderr0. Không đổi file nguồn/settings/cookies.
+- Build0/189,140s,6 WARNING/0 ERROR,31.749.872bytes,SHA256
+  `0eade3f040f1b1be76a52aeccf54c7915123acd22ec1e4a1e492cf0a7f4cd3d4`.
+  Core source-match;99.315 model/runtime files/8 components size-match,
+  không tải/cài mới. GUI272,357s/exit0/0 survivors theo process monitor.
+- User dừng Computer Use nên lượt đầu chưa deploy. Sau khi user đóng app và
+  yêu cầu cập nhật, đã deploy E:602 file app SHA-match,delta2 có backup,
+  6.826 protected files nguyên hash,models không chép,giữ tên EXE/shortcut,
+  live help0. GUI/media kế thừa artifact cùngSHA; chưa toàn playlist/ASR/TTS/nghe.
+
 ## 2026-10-03 (Phục hồi HTTP 503 khi tải playlist Bilibili)
 
 - User báo `BV171c2eXESw`: fallback cũ chỉ xử lý short read nên HTTP503 sau10
