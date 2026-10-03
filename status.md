@@ -1,5 +1,30 @@
 # Project Status
 
+## 2026-10-03 (Phục hồi HTTP 503 khi tải playlist Bilibili)
+
+- User báo `BV171c2eXESw`: fallback cũ chỉ xử lý short read nên HTTP503 sau10
+  retries chưa chuyển CDN. Thêm một fallback cho media HTTP500/502/503/504
+  tới backup URL cùng format do server trả; giữ Range/resume/retry hữu hạn.
+  Không fallback lỗi403/404/412/429/certificate/extractor/postprocessing.
+  Nếu chưa tải xong, báo tiếng Việt và hướng dẫn tiếp tục cùng thư mục.
+- Audit `.tools/playlist-503-20261003/`: PRE5 fail/11 pass tái hiện thiếu
+  nhánh5xx; POST212 pass (playlist core/UI/CLI + CLI suite), Ruff pass với
+  warning cache ACL, Pyright0/0, sync pass. Không full suite; không dependency
+  change. Giữ file `.part`, receipt/SHA, cookies và selection contract.
+- Đúng video user: source nhận503 tại CDN chính rồi backup tải xong77,359s;
+  reuse0 request. Native EXE tải8,296s/exit0, reuse1,063s/exit0. Hai output
+  cùngSHA,22.519.678bytes, AV1/852×480 + AAC/475,940317s; full decode0/stderr0.
+  Chỉ tải bản sao vào audit; partial/settings/cookies gốc nguyên hash.
+- Build0/192,875s,6 WARNING/0 ERROR,31.749.489bytes,SHA256
+  `9c707705c4ca5f37993c3902044fc775e2bde1e1598a30e65c05f3d710fa51be`.
+  Core source-match;99.315 model/runtime files/8 components size-match;
+  không tải/cài mới. GUI30,656s/exit0/0 survivors.
+- Deploy E khi idle:602 app files SHA-match,delta2 đã backup,6.826 protected
+  files nguyên hash; không chép models, giữ tên EXE/shortcut. Live help0;
+  GUI/media kế thừa artifact cùngSHA. Chưa kiểm cả playlist/ASR/LLM/TTS/nghe.
+  Sửa4 file: core playlist, test backup, tài liệu playlist và status; chưa
+  commit/push. Chi tiết/receipts trong audit và docs/dev/bilibili-playlist-2026-10.md.
+
 ## 2026-10-03 (Thử GPU 2 và thư mục lưu video lồng tiếng tập trung)
 
 - Batch thêm GPU jobs1/2, mặc định1 cho portable. Mức2 cho Faster-Whisper/OmniVoice;

@@ -320,3 +320,40 @@ file (EXE/base_library.zip/hai JSON dịch),1606 file dữ liệu được bảo
 đổi; không chép lại models. Live help exit0, shortcut giữ tên EXE cũ. Gate
 GUI dùng artifact cùng SHA, không mở profile user để seed lịch sử. User
 nhập link lần đầu sau cập nhật thì app lưu. Không commit/push.
+
+
+## Phục hồi HTTP 503 khi tải media — 2026-10-03
+
+Bản sửa CDN trước chỉ nhận short read, nên HTTP 503 sau 10 retries vẫn dừng
+mà chưa thử URL dự phòng. Nay cho phép đúng một lần chuyển sang backup URL
+cùng format do Bilibili trả về khi downloader báo HTTP 500/502/503/504.
+Giữ giới hạn 10 retries mỗi stream, file `.part`, format ID và tên file.
+Lỗi quyền truy cập, certificate, extractor hoặc postprocessing không mở
+nhánh này. Nếu backup cũng lỗi hoặc không có backup, dừng hữu hạn và hiện
+hướng dẫn tiếng Việt để Tải / Tiếp tục sau trong cùng thư mục.
+
+Audit `.tools/playlist-503-20261003/`: PRE tái hiện 5 regression fail/11 pass;
+POST **212 pass** gồm playlist core/UI/CLI và toàn CLI suite. HTTP loopback
+thật kiểm 5xx → backup resume đúng offset/SHA, cả hai server lỗi, không có
+backup, hủy, 403/404/412/429 không fallback, reuse không gọi mạng. Ruff pass
+(cảnh báo cache ACL), Pyright0 errors/0 warnings, translations in sync.
+Không chạy full suite vì phạm vi sửa giới hạn ở tải playlist.
+
+Đúng video user báo `BV171c2eXESw`: CDN chính Akamai trả HTTP503 sau10 retries;
+source tự chuyển sang URL backup COS do server cung cấp và hoàn tất77,359s.
+Native EXE đọc metadata1,078s, tải cùng video8,296s/exit0, dùng lại1,063s/exit0.
+Hai output cùng SHA,22.519.678bytes, AV1/852×480 + AAC/475,940317s; full decode
+exit0/stderr0. Nguồn `.part`1byte/settings/cookies được giữ nguyên; các lượt
+thử chỉ ghi vào audit. Gate này là một video thật, chưa phải cả playlist.
+
+Build `VideoCaptioner-20261003-playlist-503`: exit0/192,875s,6 WARNING/0 ERROR,
+31.749.489bytes, SHA256
+`9c707705c4ca5f37993c3902044fc775e2bde1e1598a30e65c05f3d710fa51be`.
+Core bytecode khớp source;99.315 file/8 model-runtime component khớp size
+manifest đã có, không tải/cài thêm. GUI startup30,656s/exit0/0 survivors.
+ASR/translation/TTS và nghe không thuộc lượt kiểm này.
+
+Deploy bản E khi app đã đóng:602 file app khớp SHA,thay2 file có backup tại
+`rollback-payload/`;6.826 file dữ liệu/settings/cookies/voices/manifest nguyên
+hash, không chép models. Giữ tên EXE và shortcut; live CLI help exit0.
+GUI/download gate kế thừa artifact cùngSHA. Chưa commit/push.

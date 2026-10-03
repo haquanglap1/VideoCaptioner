@@ -94,6 +94,11 @@ def friendly_error(error: Exception) -> str:
     status = re.search(r"\bHTTP(?:\s+Error)?\s+(403|412|429)\b", text, re.IGNORECASE)
     if status:
         return f"Bilibili/dịch vụ đang hạn chế truy cập (HTTP {status[1]}). Kiểm tra cookies/quyền truy cập hoặc thử lại sau."
+    status = re.search(r"\bHTTP(?:\s+Error)?\s+(500|502|503|504)\b", text, re.IGNORECASE)
+    if status:
+        return (f"Máy chủ tải video tạm thời lỗi (HTTP {status[1]}). "
+                "Lượt tải chưa hoàn tất; các video đã xong và file tải dở được giữ nguyên. "
+                "Thử lại sau bằng Tải / Tiếp tục trong cùng thư mục.")
     return text[:700]
 
 
@@ -279,6 +284,12 @@ def _media_attempt(info: Mapping[str, Any], backups: dict[str, str] | None = Non
     return result
 
 
+def _recoverable_media_error(error: Exception) -> bool:
+    text = str(error)
+    return bool(re.search(r"\b\d+ bytes read, \d+ more expected\b", text)
+                or re.search(r"\[download\]\s+Got error:\s+HTTP Error (?:500|502|503|504)\b", text))
+
+
 def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress) -> PlaylistItemResult:
     if entry.unavailable_reason or not entry.url:
         raise ValueError(entry.unavailable_reason or "Không có URL")
@@ -329,8 +340,9 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
             result = ydl.process_ie_result(cast(Any, _media_attempt(info)), download=True)
         except DownloadError as exc:
             check()
-            # One fallback for truncated media bodies; access/certificate/extractor errors stay errors.
-            if (not re.search(r"\b\d+ bytes read, \d+ more expected\b", str(exc))
+            # One fallback for truncated bodies or temporary media server errors.
+            # Access/certificate/extractor errors retain their original failure.
+            if (not _recoverable_media_error(exc)
                     or not any(fmt.get("url") in backups for fmt in info.get("formats") or [])):
                 raise
             paths.clear()

@@ -16,8 +16,18 @@ from videocaptioner.core import playlist as core
     ("short", True, False, False),
     ("short", False, False, False),
     ("short", True, True, False),
+    ("500", True, False, False),
+    ("502", True, False, False),
+    ("503", True, False, False),
+    ("504", True, False, False),
+    ("503", False, False, False),
+    ("503", True, True, False),
     ("403", True, False, False),
+    ("404", True, False, False),
+    ("412", True, False, False),
+    ("429", True, False, False),
     ("short", True, False, True),
+    ("503", True, False, True),
 ])
 def test_same_format_backup_resumes_only_transport_failures(
     tmp_path, monkeypatch, failure, has_backup, backup_fails, cancel,
@@ -37,8 +47,10 @@ def test_same_format_backup_resumes_only_transport_failures(
             start = int(first)
             end = min(int(last) if last else len(payload) - 1, len(payload) - 1)
             requests.append((self.path, start, end))
-            if primary and failure == "403":
-                self.send_error(403)
+            if failure != "short" and (primary or backup_fails):
+                if cancel:
+                    stopped[0] = True
+                self.send_error(int(failure))
                 return
             self.send_response(206)
             self.send_header("Content-Type", "video/mp4")
@@ -87,7 +99,7 @@ def test_same_format_backup_resumes_only_transport_failures(
             stopped[0] = True
     entry = core.PlaylistEntry(1, "fixture", "Fixture", "https://www.bilibili.com/video/BVfixture")
     try:
-        if cancel or failure == "403" or not has_backup or backup_fails:
+        if cancel or failure in ("403", "404", "412", "429") or not has_backup or backup_fails:
             with pytest.raises(core.DownloadCancelled if cancel else DownloadError):
                 core._download_entry(entry, folder, None, check, progress)
             assert not (folder / "completed.json").exists()
@@ -101,12 +113,16 @@ def test_same_format_backup_resumes_only_transport_failures(
             receipt = json.loads((folder / "completed.json").read_text())
             assert receipt["sha256"] == hashlib.sha256(payload).hexdigest()
             first_backup = next(start for path, start, _ in requests if path == "/backup.mp4")
-            assert first_backup > len(prefix)
+            assert first_backup > len(prefix) if failure == "short" else first_backup == len(prefix)
             count = len(requests)
             assert core._download_entry(entry, folder, None, check, progress).status == "existing"
             assert len(requests) == count
         assert all(path != "/unused.mp4" for path, _, _ in requests)
         assert requests[0][1] == len(prefix)
+        primary_requests = sum(path == "/primary.mp4" for path, _, _ in requests)
+        assert primary_requests <= 11
+        if failure in ("500", "502", "503", "504") and not cancel:
+            assert primary_requests == 11
     finally:
         server.shutdown()
         server.server_close()
@@ -135,3 +151,22 @@ def test_backup_capture_keeps_format_identity_and_rejects_insecure_urls():
     assert info["formats"][0] == source
     direct = {"id": "fixture", "url": source["url"]}
     assert core._media_attempt(direct) == direct
+
+
+@pytest.mark.parametrize("message", [
+    "ERROR: Unable to download webpage: HTTP Error 503: Service Unavailable",
+    "ERROR: [download] Got error: HTTP Error 403: Forbidden",
+    "ERROR: [download] Got error: HTTP Error 429: Too Many Requests",
+    "ERROR: [download] Got error: certificate verify failed",
+    "ERROR: Postprocessing failed for video503.mp4",
+])
+def test_backup_does_not_retry_other_errors(message):
+    assert not core._recoverable_media_error(Exception(message))
+
+
+def test_server_error_explains_resume_without_blame_on_cookies():
+    error = Exception("ERROR: [download] Got error: HTTP Error 503: Service Unavailable. Giving up after 10 retries")
+    message = core.friendly_error(error)
+    assert "HTTP 503" in message
+    assert "Tải / Tiếp tục" in message
+    assert "cookies" not in message
