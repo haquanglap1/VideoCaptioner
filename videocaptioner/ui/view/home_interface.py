@@ -4,7 +4,7 @@ from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 from qfluentwidgets import SegmentedWidget
 
-from videocaptioner.core.entities import SubtitleLayoutEnum, SubtitleTask
+from videocaptioner.core.entities import DubbingTask, SubtitleLayoutEnum, SubtitleTask
 from videocaptioner.core.llm.context import generate_task_id
 
 
@@ -18,6 +18,7 @@ class HomeInterface(QWidget):
         self._current_task_id: Optional[str] = None
         self._display_subtitle_handoff: tuple[str, SubtitleLayoutEnum] | None = None
         self._display_subtitle_task: SubtitleTask | None = None
+        self._dubbing_handoff: DubbingTask | None = None
         self.setObjectName("HomeInterface")
         self.setStyleSheet("HomeInterface{background: white}")
 
@@ -190,6 +191,7 @@ class HomeInterface(QWidget):
             if dubbing_task.dubbing_config:
                 dubbing_task.dubbing_config.output_resolution = 0
         interface = self.dubbing_interface
+        self._dubbing_handoff = dubbing_task
         interface.set_task(dubbing_task)
         interface.process()
         self.stackedWidget.setCurrentWidget(interface)
@@ -208,6 +210,10 @@ class HomeInterface(QWidget):
             input_subtitle_layout=input_layout,
             title_source=producer.video_path if producer and producer.video_path else video_path,
         )
+        dubbed = getattr(self, "_dubbing_handoff", None)
+        if dubbed and dubbed.output_path == video_path:
+            synthesis_task.output_directory = dubbed.output_directory
+            synthesis_task.source_video_path = dubbed.video_path
         self._current_task_id = None
         interface = self.video_synthesis_interface
         interface.set_task(synthesis_task)

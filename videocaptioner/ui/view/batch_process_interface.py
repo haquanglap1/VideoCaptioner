@@ -44,6 +44,7 @@ from videocaptioner.core.entities import (
 )
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
+from videocaptioner.ui.components.dubbing_output_folder import DubbingOutputFolder
 from videocaptioner.ui.thread.batch_process_thread import (
     BatchProcessThread,
     BatchTask,
@@ -114,11 +115,11 @@ class BatchProcessInterface(QWidget):
         self.concurrency_controls = []
         for label, item in (("Videos at once", cfg.batch_videos), ("ASR", cfg.batch_asr),
                             ("Subtitle / translation", cfg.batch_subtitle), ("Dubbing", cfg.batch_dubbing),
-                            ("Export", cfg.batch_synthesis)):
+                            ("Export", cfg.batch_synthesis), ("GPU jobs (trial)", cfg.batch_gpu)):
             column = QVBoxLayout()
             column.addWidget(BodyLabel(self.tr(label)))
             control = SpinBox()
-            control.setRange(1, 8)
+            control.setRange(1, 2 if item is cfg.batch_gpu else 8)
             control.setValue(item.value)
             control.setFixedWidth(120)
             control.valueChanged.connect(lambda value, setting=item: cfg.set(setting, value))
@@ -127,8 +128,9 @@ class BatchProcessInterface(QWidget):
             self.concurrency_controls.append(control)
         concurrency_layout.addStretch()
         concurrency_note = BodyLabel(self.tr(
-            "GPU jobs run one at a time. LLM threads are shared across this batch. Choose 1 video for sequential processing."))
+            "GPU 2 is experimental for Faster-Whisper and OmniVoice; other GPU runtimes run alone. LLM threads are shared across this batch."))
         concurrency_note.setWordWrap(True)
+        self.output_folder = DubbingOutputFolder(self)
 
         # 创建任务表格
         self.task_table = TableWidget()
@@ -165,6 +167,7 @@ class BatchProcessInterface(QWidget):
         main_layout.addLayout(top_layout)
         main_layout.addLayout(concurrency_layout)
         main_layout.addWidget(concurrency_note)
+        main_layout.addWidget(self.output_folder)
         main_layout.addWidget(self.task_table)
 
         # 连接信号
@@ -400,17 +403,11 @@ class BatchProcessInterface(QWidget):
         menu.exec_(self.task_table.viewport().mapToGlobal(pos))
 
     def open_output_folder(self, file_path: str):
-        # 根据任务类型和文件路径确定输出文件夹
-        task_type = self._current_task_type()
-        file_dir = os.path.dirname(file_path)
-
-        if task_type == BatchTaskType.FULL_PROCESS:
-            # 对于全流程任务，输出在视频同目录下
-            output_dir = file_dir
-        else:
-            # 其他任务输出在文件同目录下
-            output_dir = file_dir
-
+        task = self.batch_thread.current_tasks.get(file_path)
+        output = task.output_path if task else ""
+        directory = cfg.dubbing_output_dir.value.strip() if self._current_task_type() in (
+            BatchTaskType.DUBBING, BatchTaskType.FULL_PROCESS) else ""
+        output_dir = os.path.dirname(output) if output else directory or os.path.dirname(file_path)
         open_folder(output_dir)
 
     def update_task_progress(self, file_path: str, progress: int, status: str):
@@ -448,6 +445,9 @@ class BatchProcessInterface(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, BatchTaskStatus.COMPLETED)
                 item.setData(Qt.ItemDataRole.UserRole + 1, None)
                 item.setToolTip("")
+                task = self.batch_thread.current_tasks.get(file_path)
+                if task and task.output_path:
+                    item.setToolTip(task.output_path)
                 item.setForeground(QColor("#13A10E"))
                 self.task_table.cellWidget(row, 1).setValue(100)
                 break
@@ -548,6 +548,7 @@ class BatchProcessInterface(QWidget):
         self.task_table.cellWidget(row, 1).setValue(0)
 
     def _set_busy(self, busy):
+        self.output_folder.setEnabled(not busy)
         for control in self.concurrency_controls:
             control.setEnabled(not busy)
         self.start_all_btn.setEnabled(not busy)

@@ -220,3 +220,34 @@ def test_sources_sharing_same_output_basename_are_rejected_before_workers(parall
 def test_cloud_asr_with_local_alignment_reserves_gpu(model, expected):
     config = TranscribeConfig(transcribe_model=TranscribeModelEnum.WHISPER_API, whisper_api_model=model)
     assert asr_uses_gpu(config) is expected
+
+
+def test_two_gpu_slots_overlap_asr_and_omnivoice(parallel, qapp, monkeypatch):
+    monkeypatch.setattr(cfg.transcribe_model, "value", TranscribeModelEnum.FASTER_WHISPER)
+    monkeypatch.setattr(cfg.faster_whisper_device, "value", "cuda")
+    monkeypatch.setattr(cfg.dubbing_tts_provider, "value", "omnivoice-local")
+    parallel.c.configure(BatchLimits(gpu=2))
+    parallel.gates[("1.mp4", "asr")] = Event()
+    tasks = enqueue(parallel, 3)
+    until(qapp, lambda: any(e[:3] == ("start", "0.mp4", "tts") for e in parallel.events))
+    assert not any(e[:3] == ("exit", "1.mp4", "asr") for e in parallel.events)
+    parallel.gates[("1.mp4", "asr")].set()
+    until(qapp, lambda: not parallel.c.isRunning())
+    active = peak = 0
+    for action, _, stage, _ in parallel.events:
+        if stage in ("asr", "tts"):
+            active += 1 if action == "start" else -1
+            peak = max(peak, active)
+            assert active <= 2
+    assert peak == 2 and all(task.status == Status.COMPLETED for task in tasks)
+
+
+def test_other_managed_gpu_runtimes_remain_exclusive():
+    from videocaptioner.core.batch import BatchAdmission, BatchStage
+    admission = BatchAdmission(BatchLimits(gpu=2))
+    assert admission.acquire("first", BatchStage.ASR, True)
+    assert not admission.acquire("vieneu", BatchStage.DUBBING, True, exclusive=True)
+    admission.release("first")
+    assert admission.acquire("vieneu", BatchStage.DUBBING, True, exclusive=True)
+    assert not admission.acquire("second", BatchStage.ASR, True)
+    assert admission.acquire("translate", BatchStage.SUBTITLE, False)

@@ -13,7 +13,7 @@ from threading import Lock
 from uuid import uuid4
 
 from videocaptioner.core.asr.alignment.audio import stop_process
-from videocaptioner.core.utils.gpu_lease import GPULease
+from videocaptioner.core.utils.gpu_lease import GPULease, current_gpu_job
 from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, StreamReader, child_environment
 
 from .config import CODE_REVISION, MODEL_REVISION, POLICY, resources, runtime_root
@@ -297,4 +297,7 @@ _service = OmniVoiceRuntime()
 
 
 def get_omnivoice_service():
+    job = current_gpu_job()
+    if job is not None:
+        return job.service("omnivoice", OmniVoiceRuntime)
     return _service

@@ -14,6 +14,7 @@ from videocaptioner.core.entities import (
     TranscribeTask,
 )
 from videocaptioner.core.llm.context import task_context
+from videocaptioner.core.utils.gpu_lease import gpu_job_scope
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.video_utils import video2audio
 
@@ -29,10 +30,17 @@ class TranscriptThread(QThread):
     def __init__(self, task: TranscribeTask):
         super().__init__()
         self.task = task
+        self.gpu_session = None
 
     def run(self):
-        with task_context(self.task.task_id, Path(self.task.file_path or "").name, "transcribe"):
-            self._run()
+        try:
+            with (task_context(self.task.task_id, Path(self.task.file_path or "").name, "transcribe"),
+                  gpu_job_scope(self.gpu_session, self._check_cancelled,
+                                lambda: self.progress.emit(0, self.tr("Chờ GPU của tác vụ khác...")))):
+                self._run()
+        except Exception as exc:
+            if not self.isInterruptionRequested():
+                self.error.emit(str(exc))
 
     def _run(self):
         try:

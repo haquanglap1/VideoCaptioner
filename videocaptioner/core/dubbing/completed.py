@@ -66,17 +66,17 @@ def _local(root: Path, name: str) -> Path:
     return path
 
 
-def load_video(receipt: Path, identity: str, check=lambda: None) -> CompletedVideo | None:
+def load_video(receipt: Path, identity: str, check=lambda: None, *, root: Path | None = None) -> CompletedVideo | None:
     try:
         if receipt.stat().st_size > 65536:
             return None
         data = json.loads(receipt.read_text(encoding="utf-8"))
         if data["schema"] != SCHEMA or data["identity"] != identity:
             return None
-        output = _local(receipt.parent, data["output"])
+        output = _local(root or receipt.parent, data["output"])
         if output.stat().st_size == 0 or file_digest(output, check) != data["output_sha256"]:
             return None
-        captions = _local(receipt.parent, data["captions"]) if data["captions"] else None
+        captions = _local(root or receipt.parent, data["captions"]) if data["captions"] else None
         if captions and file_digest(captions, check) != data["captions_sha256"]:
             return None
         check()
@@ -85,14 +85,14 @@ def load_video(receipt: Path, identity: str, check=lambda: None) -> CompletedVid
         return None
 
 
-def save_video(receipt: Path, identity: str, result: CompletedVideo, check=lambda: None):
+def save_video(receipt: Path, identity: str, result: CompletedVideo, check=lambda: None, *, root: Path | None = None):
     output = Path(result.output)
     if not output.is_file() or output.stat().st_size == 0:
         return
     captions = Path(result.captions) if result.captions else None
     body = {"schema": SCHEMA, "identity": identity, "origin": result.origin,
-            "output": output.relative_to(receipt.parent).as_posix(), "output_sha256": file_digest(output, check),
-            "captions": captions.relative_to(receipt.parent).as_posix() if captions else "",
+            "output": output.relative_to(root or receipt.parent).as_posix(), "output_sha256": file_digest(output, check),
+            "captions": captions.relative_to(root or receipt.parent).as_posix() if captions else "",
             "captions_sha256": file_digest(captions, check) if captions else ""}
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=receipt.parent, suffix=".tmp", delete=False) as f:
         staged = Path(f.name)

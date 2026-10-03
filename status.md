@@ -1,5 +1,36 @@
 # Project Status
 
+## 2026-10-03 (Thử GPU 2 và thư mục lưu video lồng tiếng tập trung)
+
+- Batch thêm GPU jobs1/2, mặc định1 cho portable. Mức2 cho Faster-Whisper/OmniVoice;
+  Qwen/aligner/VieNeu/Local AI giữ độc quyền. Mỗi job OmniVoice có worker/pipe/options/
+  cancel riêng qua context; Batch giữ OS lease tới khi các worker đã cleanup.
+- Thêm `Dubbing.OutputDirectory` dùng chung Batch/tab Lồng tiếng, mặc địnhtrống để
+  lưu cạnh nguồn. Snapshot chuyển tiếp sang synthesis/Home/retry; claim filename
+  không ghi đè, receipt gắn nguồn trong `.videocaptioner`, dùng lại output/captions
+  hợp lệ, mở đúng thư mục kết quả. Không di chuyển file đã xuất trước đó.
+- Audit `.tools/gpu-output-20261003/`:focused131 pass; full cuối **2490 pass/5 skip/
+  58 deselected**,240,30s/exit0; Ruff/Pyright0/0/sync pass. Giữ các raw failure:
+  fake thiếu field, thiếu qapp, Qt teardown; runner giữ QApplication và settings
+  riêng. Full đầu2489 pass/1 fail do fixture switch provider bắt đầu sẵn ở OmniVoice;
+  đã ghim OpenAI trước switch, giữ assertions. Không cài/tải package/model.
+- Source loopback ASR/LLM/TTS + FFmpeg:3 video cùng basename/khác thư mục,11,875s;
+  output tập trung/khác tên, decode0/stderr0, input nguyên hash, reuse16ms.
+- GPU thật,3 clip tổng hợp15s,large-v3 CUDA + OmniVoice batch1 + dịch loopback:
+  GPU1 **153,531s**, GPU2 **94,875s**; peak process model1/2. VRAM toàn GPU peak
+  8069/12726MiB, baseline3325/3408MiB. Chạy1 trước2, không suy thành benchmark
+  playlist dài/kernel overlap. Cả6 output decode0/stderr0,0 survivors,reuse16/31ms.
+- Hủy thực hai giọng nữ1/nam1:job1 CANCELLED trong0,547s, job2 vẫn sống rồi COMPLETED;
+  retry job1 COMPLETED;3 runtime riêng,giọng đúng job,0 process/lease còn giữ.
+- EXE build0/231,047s,6 WARNING/0 ERROR,31.749.133bytes,SHA256
+  `88062ce08305feb2d32e791ed74196ff637904be14b08a7b650ac62313494ce9`.
+  18 module source-match;99.315 file/8 model-runtime component size-match.
+  Native CLI loopback40/40 cue,peak20,13,016s/exit0;GUI30,641s/exit0/0 survivors.
+- Deploy E idle:602 app files khớpSHA,delta4 backup;6.826 protected files nguyên hash,
+  không chép models,giữ EXE/shortcut. Live help0;GUI/CLI kế thừa same-SHA artifact.
+  GPU2/folder là source gate; chưa full Batch native EXE/provider online/nghe thật.
+  Chưa commit/push; plan `docs/plans/gpu-output-folder-2026-10.md`.
+
 ## 2026-10-03 (Batch nhiều video đồng thời theo công đoạn)
 
 - Thêm giới hạn video/ASR/subtitle/dubbing/export trong Batch, mặc định3/2/3/2/1;

@@ -16,9 +16,11 @@ from videocaptioner.core.entities import (
     BatchTaskType,
     SubtitleLayoutEnum,
     SupportedSubtitleFormats,
+    TranscribeModelEnum,
 )
 from videocaptioner.core.llm.rate_limit import RateLimitGate, find_rate_limit
 from videocaptioner.core.translate.video_title import OutputReservations
+from videocaptioner.core.utils.gpu_lease import BatchGPUSession
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.ui.batch_plan import BatchPlan
 from videocaptioner.ui.common.config import cfg
@@ -45,6 +47,7 @@ class BatchTask:
         self.started = False
         self.stage = BatchStage.ASR
         self.waiting_message = ""
+        self.output_path = ""
 
 
 @dataclass
@@ -53,6 +56,7 @@ class PendingStage:
     stage: BatchStage
     gpu: bool
     launch: Callable
+    exclusive: bool = False
 
 
 class BatchProcessThread(QObject):
@@ -72,8 +76,9 @@ class BatchProcessThread(QObject):
         self.threads: list[QThread] = []
         self._closing = False
         self.limits = limits or BatchLimits(cfg.batch_videos.value, cfg.batch_asr.value,
-            cfg.batch_subtitle.value, cfg.batch_dubbing.value, cfg.batch_synthesis.value)
+            cfg.batch_subtitle.value, cfg.batch_dubbing.value, cfg.batch_synthesis.value, cfg.batch_gpu.value)
         self.admission = BatchAdmission(self.limits)
+        self.gpu_session = BatchGPUSession(self.limits.gpu)
         self.pending: deque[PendingStage] = deque()
         self.llm_gate = RateLimitGate(cfg.thread_num.value)
         self.output_reservations = OutputReservations()
@@ -89,6 +94,7 @@ class BatchProcessThread(QObject):
             raise RuntimeError("Stop Batch before changing concurrency")
         self.limits = limits
         self.admission = BatchAdmission(limits)
+        self.gpu_session = BatchGPUSession(limits.gpu)
 
     def add_task(self, task: BatchTask):
         old = self.current_tasks.get(task.file_path)
@@ -152,14 +158,14 @@ class BatchProcessThread(QObject):
             if task.status != BatchTaskStatus.RUNNING:
                 self.pending.remove(pending)
                 continue
-            reason = self.admission.waiting_for(task.task_id, pending.stage, pending.gpu)
+            reason = self.admission.waiting_for(task.task_id, pending.stage, pending.gpu, pending.exclusive)
             if reason:
                 message = "Chờ GPU" if reason == "gpu" else "Chờ lượt: " + self._stage_label(pending.stage)
                 if task.waiting_message != message:
                     task.waiting_message = message
                     self.task_progress.emit(task.file_path, task.progress, message)
                 continue
-            self.admission.acquire(task.task_id, pending.stage, pending.gpu)
+            self.admission.acquire(task.task_id, pending.stage, pending.gpu, pending.exclusive)
             self.pending.remove(pending)
             task.waiting_message = ""
             try:
@@ -175,9 +181,9 @@ class BatchProcessThread(QObject):
         return {BatchStage.ASR: "Nhận dạng", BatchStage.SUBTITLE: "Xử lý phụ đề / dịch",
                 BatchStage.DUBBING: "Lồng tiếng", BatchStage.SYNTHESIS: "Xuất video"}[stage]
 
-    def _schedule(self, task, stage, launch, *, gpu=False):
+    def _schedule(self, task, stage, launch, *, gpu=False, exclusive=False):
         task.stage = stage
-        self.pending.append(PendingStage(task, stage, gpu, launch))
+        self.pending.append(PendingStage(task, stage, gpu, launch, exclusive))
         QTimer.singleShot(0, self._pump)
 
     def _fail(self, task, error):
@@ -196,6 +202,7 @@ class BatchProcessThread(QObject):
         task.current_thread = worker
         worker.llm_gate = self.llm_gate
         worker.output_reservations = self.output_reservations
+        worker.gpu_session = self.gpu_session if self.admission.active[task.task_id][1] else None
         self.threads.append(worker)
         self.task_progress.emit(task.file_path, start, self._stage_label(task.stage))
         outcome = {}
@@ -246,6 +253,7 @@ class BatchProcessThread(QObject):
         trans = task.plan.transcribe
 
         def done(result):
+            task.output_path = result.output_path or ""
             if not next_stage:
                 self._complete(task)
             else:
@@ -253,7 +261,8 @@ class BatchProcessThread(QObject):
 
         self._schedule(task, BatchStage.ASR,
                        lambda: self._start(task, TranscriptThread(trans), 0, 100 if not next_stage else 25, done),
-                       gpu=asr_uses_gpu(trans.transcribe_config))
+                       gpu=asr_uses_gpu(trans.transcribe_config),
+                       exclusive=trans.transcribe_config.transcribe_model != TranscribeModelEnum.FASTER_WHISPER)
 
     def _subtitle(self, task, path, asr_data=None):
         full = task.task_type == BatchTaskType.FULL_PROCESS
@@ -266,6 +275,7 @@ class BatchProcessThread(QObject):
             worker = SubtitleThread(subtitle)
 
             def done(video, display):
+                task.output_path = display
                 if not full:
                     self._complete(task)
                 elif task.plan.dubbing:
@@ -283,6 +293,7 @@ class BatchProcessThread(QObject):
         full = task.task_type == BatchTaskType.FULL_PROCESS
 
         def done(result):
+            task.output_path = result.output_path or ""
             if full:
                 self._synthesize(task, result.output_path, result.playback_subtitle_path or display,
                                  SubtitleLayoutEnum.ONLY_TRANSLATE if result.playback_subtitle_path
@@ -294,7 +305,8 @@ class BatchProcessThread(QObject):
                                                      TTSProviderEnum.LOCAL_AI)
         self._schedule(task, BatchStage.DUBBING,
                        lambda: self._start(task, DubbingThread(dubbing, automatic=True),
-                                           50 if full else 0, 75 if full else 100, done), gpu=gpu)
+                                           50 if full else 0, 75 if full else 100, done), gpu=gpu,
+                       exclusive=dubbing.dubbing_config.tts_provider != TTSProviderEnum.OMNIVOICE_LOCAL)
 
     def _synthesize(self, task, video, subtitle, layout):
         assert task.plan and task.plan.synthesis
@@ -302,9 +314,13 @@ class BatchProcessThread(QObject):
         synthesis.video_path, synthesis.subtitle_path = video, subtitle
         synthesis.input_subtitle_layout = layout
         synthesis.output_path = str(Path(video).with_name(Path(video).stem + "_captioned.mp4"))
+
+        def done(result):
+            task.output_path = result.output_path if synthesis.synthesis_config.need_video else video
+            self._complete(task)
+
         self._schedule(task, BatchStage.SYNTHESIS,
-                       lambda: self._start(task, VideoSynthesisThread(synthesis), 75, 100,
-                                           lambda *_: self._complete(task)))
+                       lambda: self._start(task, VideoSynthesisThread(synthesis), 75, 100, done))
 
     @staticmethod
     def _find_subtitle_for_video(video_path: str) -> Optional[str]:

@@ -29,6 +29,7 @@ def restore_voice_settings():
 
 def test_select_omnivoice_and_return_to_vieneu(monkeypatch):
     app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(cfg.dubbing_tts_provider, "value", "openai")
     monkeypatch.setattr("videocaptioner.ui.components.omnivoice_panel.prepare_runtime", lambda *a, **kw: pytest.fail("Opening controls must not download"))
     view = DubbingInterface()
     view.provider_combo.setCurrentIndex(4)

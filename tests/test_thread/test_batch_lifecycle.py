@@ -92,6 +92,7 @@ def queue(qapp, monkeypatch, tmp_path):
 
         def create_dubbing_task(self, video, subtitle, **kwargs):
             return SimpleNamespace(stage="tts", output_path="dubbed.mp4", playback_subtitle_path="playback.srt",
+                                   output_directory="",
                                    dubbing_config=SimpleNamespace(subtitle_mode="hard", tts_provider=TTSProviderEnum.OPENAI))
 
         def create_synthesis_task(self, video, subtitle, **kwargs):

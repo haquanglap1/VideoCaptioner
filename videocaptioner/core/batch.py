@@ -21,34 +21,42 @@ class BatchLimits:
     subtitle: int = 3
     dubbing: int = 2
     synthesis: int = 1
+    gpu: int = 1
 
     def __post_init__(self):
         if any(not 1 <= value <= 8 for value in vars(self).values()):
             raise ValueError("Batch concurrency must be between 1 and 8")
+        if self.gpu not in (1, 2):
+            raise ValueError("GPU concurrency must be 1 or 2")
 
 
 class BatchAdmission:
     def __init__(self, limits: BatchLimits):
         self.limits = limits
         self.active: dict[str, tuple[BatchStage, bool]] = {}
+        self.exclusive: set[str] = set()
 
-    def waiting_for(self, job: str, stage: BatchStage, gpu: bool) -> str:
+    def waiting_for(self, job: str, stage: BatchStage, gpu: bool, exclusive=False) -> str:
         if job in self.active:
             return "stage"
-        if gpu and any(uses_gpu for _, uses_gpu in self.active.values()):
+        gpu_jobs = sum(uses_gpu for _, uses_gpu in self.active.values())
+        if gpu and (gpu_jobs >= self.limits.gpu or (gpu_jobs and (exclusive or self.exclusive))):
             return "gpu"
         if sum(kind == stage for kind, _ in self.active.values()) >= getattr(self.limits, stage.value):
             return "stage"
         return ""
 
-    def acquire(self, job: str, stage: BatchStage, gpu: bool) -> bool:
-        if self.waiting_for(job, stage, gpu):
+    def acquire(self, job: str, stage: BatchStage, gpu: bool, exclusive=False) -> bool:
+        if self.waiting_for(job, stage, gpu, exclusive):
             return False
         self.active[job] = stage, gpu
+        if gpu and exclusive:
+            self.exclusive.add(job)
         return True
 
     def release(self, job: str):
         self.active.pop(job, None)
+        self.exclusive.discard(job)
 
 
 def asr_uses_gpu(config: TranscribeConfig) -> bool:

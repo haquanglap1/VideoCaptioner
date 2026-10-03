@@ -48,6 +48,8 @@ class BatchPlan:
         if full:
             video = plan.dubbing.output_path if plan.dubbing else path
             plan.synthesis = factory.create_synthesis_task(video, source, task_id=task_id, title_source=path)
+            if plan.dubbing:
+                plan.synthesis.output_directory = plan.dubbing.output_directory
             if plan.dubbing and plan.synthesis.synthesis_config.need_video and plan.dubbing.dubbing_config:
                 plan.dubbing.dubbing_config.subtitle_mode = "none"
                 plan.dubbing.dubbing_config.output_resolution = 0

@@ -855,6 +855,8 @@ class SynthesisTask:
     input_subtitle_layout: Optional[SubtitleLayoutEnum] = None
     title_translation: Optional["VideoTitleConfig"] = field(default=None, repr=False)
     reuse_completed_output: bool = False
+    output_directory: str = ""
+    source_video_path: Optional[str] = None
 
 
 @dataclass
@@ -889,6 +891,7 @@ class DubbingTask:
     preview_only: bool = False
     auto_timing_plan: Optional["AutoTimingPlan"] = None
     title_translation: Optional["VideoTitleConfig"] = field(default=None, repr=False)
+    output_directory: str = ""
 
 
 @dataclass

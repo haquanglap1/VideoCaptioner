@@ -461,9 +461,13 @@ class VideoSynthesisInterface(QWidget):
             if self.task and self.task.subtitle_path == subtitle_file
             else None
         )
-        return TaskFactory.create_synthesis_task(
+        task = TaskFactory.create_synthesis_task(
             video_file, subtitle_file, input_subtitle_layout=input_layout
         )
+        if self.task and self.task.video_path == video_file:
+            task.output_directory = self.task.output_directory
+            task.source_video_path = self.task.source_video_path
+        return task
 
     def set_task(self, task: SynthesisTask):
         self.task = task

@@ -95,9 +95,18 @@ Trong **Xử lý hàng loạt**, nhấp đúp hàng **Thất bại** để xem c
 Batch hỗ trợ nhiều video đồng thời, mỗi video vẫn theo thứ tự nhận dạng → phụ đề/dịch →
 lồng tiếng (nếu bật) → xuất video. Hàng điều khiển **Video đồng thời / ASR / Phụ đề, dịch /
 Lồng tiếng / Xuất video** đặt giới hạn từng công đoạn (1–8); mặc định 3 / 2 / 3 / 2 / 1.
-Chọn **1 video** để xử lý tuần tự. Local GPU ASR và OmniVoice/VieNeu/Local AI dùng chung
-một suất trong Batch; hàng **Chờ GPU** sẽ tự tiếp tục khi công đoạn trước đã đóng worker.
-CPU/API có thể chạy đồng thời trong giới hạn đã chọn. Không đổi batch size OmniVoice.
+Chọn **1 video** để xử lý tuần tự. **Job GPU (thử nghiệm)** chọn 1 hoặc 2, mặc định1:
+mức2 cho phép Faster-Whisper và OmniVoice cùng tiến hành, kể cả hai video dùng OmniVoice.
+Mỗi job có worker và trạng thái hủy riêng; Qwen, forced alignment, VieNeu và Local AI vẫn
+chạy riêng. Hàng **Chờ GPU** tự tiếp tục sau khi có suất. CPU/API chạy đồng thời trong
+giới hạn đã chọn. Không đổi batch size OmniVoice; nhiều job cần thêm VRAM và cần đo tốc độ.
+
+**Thư mục video lồng tiếng** nằm ở Batch và tab Lồng tiếng, dùng chung một lựa chọn được lưu.
+Chọn thư mục để tập trung video từ các thư mục con của playlist. Để trống hoặc bấm **Lưu cạnh nguồn**
+thì đầu ra vẫn cạnh từng video nguồn. Khi chọn thư mục chung, tên trùng được thêm số, không ghi đè
+file có sẵn; bản hoàn tất được nhận diện theo nguồn để dùng lại. Phụ đề playback và video ghép cuối
+cùng đi theo thư mục đã chọn; metadata kiểm tra nằm trong `.videocaptioner` bên dưới thư mục đó.
+Lựa chọn mới chỉ áp dụng cho các job bắt đầu sau đó, không di chuyển những video đã xuất trước đây.
 
 Số luồng LLM là tổng request dùng chung trong Batch, gồm split/optimize/dịch và các bước
 LLM phụ trợ; chọn 20 không tạo 20 request cho mỗi video. Cấu hình từng video được chụp lúc

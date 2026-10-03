@@ -5,6 +5,12 @@ Rà soát ngày **2026-09-29**. Dùng trang này để chọn plan đang áp d�
 Các số đo trong tài liệu liên kết thuộc đúng lần chạy/artifact được ghi ở đó;
 không suy validation offline thành nghiệm thu chất lượng nhận dạng.
 
+## 2026-10-03 — GPU 2 và thư mục video lồng tiếng
+
+- [Thử hai job GPU, thư mục lưu chung và kiểm chứng](gpu-output-folder-2026-10.md).
+- GPU2 cho Faster-Whisper/OmniVoice là tùy chọn thử nghiệm; giữ batch size1.
+  Thư mục để trống vẫn lưu cạnh nguồn, có chọn thì video và captions tập trung.
+
 ## 2026-10-03 — Batch nhiều video đồng thời
 
 - Điều phối theo công đoạn, giới hạn video/ASR/subtitle/TTS/export, chung số luồng LLM và một suất GPU.

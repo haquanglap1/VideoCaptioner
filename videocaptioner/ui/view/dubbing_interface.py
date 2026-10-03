@@ -49,6 +49,7 @@ from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.components.auto_timing_dialog import AutoTimingDialog
+from videocaptioner.ui.components.dubbing_output_folder import DubbingOutputFolder
 from videocaptioner.ui.components.dubbing_review_dialog import DubbingReviewDialog
 from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
 from videocaptioner.ui.components.omnivoice_panel import OmniVoicePanel
@@ -514,6 +515,8 @@ class DubbingInterface(QWidget):
         settings_layout.addSpacing(10)
 
         # --- Manual mode: file selectors ---
+        self.output_folder = DubbingOutputFolder(self)
+        settings_layout.addWidget(self.output_folder)
         manual_label = StrongBodyLabel(self.tr("Lồng tiếng thủ công"))
         settings_layout.addWidget(manual_label)
 

@@ -141,6 +141,29 @@ def test_home_captures_producer_layout_across_dubbing_before_cfg_changes(monkeyp
     assert received[-1].input_subtitle_layout is None
 
 
+def test_home_and_manual_retry_keep_captured_dubbing_destination(monkeypatch, tmp_path):
+    source = str(tmp_path / "input/video.mp4")
+    directory = str(tmp_path / "collected")
+    subtitle = SubtitleTask(video_path=source, output_path="display.srt", subtitle_config=SubtitleConfig())
+    received = []
+    interface = SimpleNamespace(set_task=received.append, process=lambda: None)
+    home = SimpleNamespace(_current_task_id="fixture", _display_subtitle_handoff=None,
+        subtitle_optimization_interface=SimpleNamespace(task=subtitle), dubbing_interface=interface,
+        video_synthesis_interface=interface, stackedWidget=SimpleNamespace(setCurrentWidget=lambda _: None),
+        pivot=SimpleNamespace(setCurrentItem=lambda _: None))
+    monkeypatch.setattr(cfg.dubbing_output_dir, "value", directory)
+    HomeInterface.switch_to_dubbing(home, source, "tts.srt")
+    dubbed = received[-1]
+    monkeypatch.setattr(cfg.dubbing_output_dir, "value", "")
+    HomeInterface.switch_to_video_synthesis(home, dubbed.output_path, "display.srt")
+    synthesis = received[-1]
+    assert synthesis.output_directory == directory and synthesis.source_video_path == source
+    view = SimpleNamespace(task=synthesis, subtitle_input=SimpleNamespace(text=lambda: "display.srt"),
+                           video_input=SimpleNamespace(text=lambda: dubbed.output_path))
+    retry = VideoSynthesisInterface.create_task(view)
+    assert retry.output_directory == directory and retry.source_video_path == source
+
+
 @pytest.mark.parametrize("written", [False, True])
 def test_reexport_updates_input_layout_only_after_display_write(source, monkeypatch, written):
     task = SubtitleTask(output_path="display.srt", subtitle_config=SubtitleConfig(subtitle_layout=Layout.TRANSLATE_ON_TOP))

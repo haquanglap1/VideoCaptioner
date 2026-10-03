@@ -7,10 +7,10 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from videocaptioner.core.dubbing.completed import (
     CompletedVideo,
     load_video,
-    receipt_path,
     save_video,
     video_identity,
 )
+from videocaptioner.core.dubbing.output import OutputClaim, video_destination
 from videocaptioner.core.entities import SynthesisTask
 from videocaptioner.core.llm.context import task_context
 from videocaptioner.core.llm.rate_limit import llm_admission_scope
@@ -32,13 +32,18 @@ class VideoSynthesisThread(QThread):
         self.task = task
         self.llm_gate = None
         self.output_reservations = None
+        self.output_claim = None
         logger.debug(f"Khoi tao VideoSynthesisThread, task: {self.task}")
 
     def run(self):
         from videocaptioner.core.utils.subprocess_helper import cancellation_scope
-        with (cancellation_scope(self._check_cancelled), llm_admission_scope(self.llm_gate),
-              task_context(self.task.task_id, Path(self.task.video_path or "").name, "synthesis")):
-            self._run()
+        try:
+            with (cancellation_scope(self._check_cancelled), llm_admission_scope(self.llm_gate),
+                  task_context(self.task.task_id, Path(self.task.video_path or "").name, "synthesis")):
+                self._run()
+        finally:
+            if self.output_claim:
+                self.output_claim.close()
 
     def _run(self):
         try:
@@ -64,12 +69,15 @@ class VideoSynthesisThread(QThread):
             if not output_path:
                 raise ValueError(self.tr("Đường dẫn đầu ra đang trống"))
 
-            receipt = receipt_path(output_path, "synthesis")
+            destination = video_destination(output_path, self.task.output_directory,
+                                            self.task.source_video_path or video_file, "synthesis")
+            self.task.output_path = output_path = str(destination.output)
+            receipt = destination.receipt
             identity = ""
             if self.task.reuse_completed_output:
                 identity = fingerprint([video_identity(video_file, subtitle_file, config, check=self._check_cancelled),
                                         self.task.input_subtitle_layout.value if self.task.input_subtitle_layout else None])
-                cached = load_video(receipt, identity, self._check_cancelled)
+                cached = load_video(receipt, identity, self._check_cancelled, root=destination.root)
                 if cached:
                     self.task.output_path = cached.output
                     self.progress.emit(100, self.tr("Đã có video hoàn tất; dùng lại, không xuất lại"))
@@ -78,6 +86,9 @@ class VideoSynthesisThread(QThread):
 
             from .video_title import prepare_video_title
             prepare_video_title(self.task, self._check_cancelled, self.progress.emit, self.output_reservations)
+            if destination.root is not None:
+                self.output_claim = OutputClaim(self.task.output_path, self._check_cancelled)
+                self.task.output_path = str(self.output_claim.path)
             output_path = self.task.output_path
             assert output_path is not None
 
@@ -138,7 +149,7 @@ class VideoSynthesisThread(QThread):
             self._check_cancelled()
             if identity:
                 try:
-                    save_video(receipt, identity, CompletedVideo(output_path), self._check_cancelled)
+                    save_video(receipt, identity, CompletedVideo(output_path), self._check_cancelled, root=destination.root)
                 except (OSError, ValueError):
                     logger.warning("Could not save completed synthesis receipt")
             self.progress.emit(100, self.tr("Hoàn tất ghép video"))

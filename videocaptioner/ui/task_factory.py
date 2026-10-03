@@ -292,6 +292,7 @@ class TaskFactory:
             reuse_completed_output=cfg.reuse_dubbing.value and "_dubbed" in Path(video_path).stem,
             input_subtitle_layout=input_subtitle_layout,
             title_translation=TaskFactory.create_title_translation(title_source or video_path, "_captioned"),
+            source_video_path=title_source or video_path,
             need_next_task=need_next_task,
         )
         if task_id:
@@ -475,9 +476,10 @@ class TaskFactory:
         cache_root: Optional[str] = None,
     ) -> DubbingTask:
         """Tạo dubbing task."""
-        output_path = str(
-            Path(video_path).parent / f"{Path(video_path).stem}_dubbed.mp4"
-        )
+        directory = cfg.dubbing_output_dir.value.strip()
+        directory = str(Path(directory).expanduser().resolve()) if directory else ""
+        output_path = str((Path(directory) if directory else Path(video_path).parent)
+                          / f"{Path(video_path).stem}_dubbed.mp4")
         dubbing_config = TaskFactory.create_dubbing_config()
 
         task = DubbingTask(
@@ -489,6 +491,7 @@ class TaskFactory:
             title_translation=TaskFactory.create_title_translation(video_path, "_dubbed"),
             dubbing_config=dubbing_config,
             cache_root=cache_root,
+            output_directory=directory,
         )
         if task_id:
             task.task_id = task_id

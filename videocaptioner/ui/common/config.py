@@ -82,6 +82,8 @@ class Config(QConfig):
     batch_subtitle = RangeConfigItem("Batch", "Subtitle", 3, RangeValidator(1, 8))
     batch_dubbing = RangeConfigItem("Batch", "Dubbing", 2, RangeValidator(1, 8))
     batch_synthesis = RangeConfigItem("Batch", "Synthesis", 1, RangeValidator(1, 8))
+    batch_gpu = RangeConfigItem("Batch", "GPUJobs", 1, RangeValidator(1, 2))
+    dubbing_output_dir = ConfigItem("Dubbing", "OutputDirectory", "")
 
     # LLM配置
     llm_service = OptionsConfigItem(

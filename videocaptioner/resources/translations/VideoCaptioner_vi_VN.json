@@ -841,7 +841,7 @@
   "Outline color": "Màu viền",
   "Outline width": "Độ dày viền",
   "Image": "Ảnh",
-  "Browse": "Chọn tệp",
+  "Browse": "Duyệt",
   "Mask mode": "Chế độ mặt nạ",
   "Fill color": "Màu nền",
   "Strength": "Cường độ",
@@ -1118,5 +1118,11 @@
   "Videos at once": "Video đồng thời",
   "Subtitle / translation": "Phụ đề / dịch",
   "Dubbing": "Lồng tiếng",
-  "GPU jobs run one at a time. LLM threads are shared across this batch. Choose 1 video for sequential processing.": "Tác vụ GPU chạy từng lượt. Các video dùng chung số luồng LLM đã chọn. Chọn 1 video để xử lý tuần tự."
+  "GPU jobs run one at a time. LLM threads are shared across this batch. Choose 1 video for sequential processing.": "Tác vụ GPU chạy từng lượt. Các video dùng chung số luồng LLM đã chọn. Chọn 1 video để xử lý tuần tự.",
+  "GPU jobs (trial)": "Job GPU (thử nghiệm)",
+  "GPU 2 is experimental for Faster-Whisper and OmniVoice; other GPU runtimes run alone. LLM threads are shared across this batch.": "GPU 2 thử nghiệm với Faster-Whisper và OmniVoice; các runtime GPU khác chạy riêng. Các video dùng chung số luồng LLM.",
+  "Dubbed video folder:": "Thư mục video lồng tiếng:",
+  "Leave empty to save beside each source video": "Để trống để lưu cạnh từng video nguồn",
+  "Use source folder": "Lưu cạnh nguồn",
+  "Choose dubbed video folder": "Chọn thư mục lưu video lồng tiếng"
 }

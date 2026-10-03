@@ -12,15 +12,16 @@ from videocaptioner.core.dubbing.completed import (
     CompletedVideo,
     load_legacy_video,
     load_video,
-    receipt_path,
     save_video,
     video_identity,
 )
 from videocaptioner.core.dubbing.engine import DubbingEngine
+from videocaptioner.core.dubbing.output import OutputClaim, video_destination
 from videocaptioner.core.dubbing.review import DubbingReview
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.core.llm.context import task_context
 from videocaptioner.core.llm.rate_limit import llm_admission_scope
+from videocaptioner.core.utils.gpu_lease import gpu_job_scope
 from videocaptioner.core.utils.logger import setup_logger
 
 logger = setup_logger("dubbing_thread")
@@ -58,6 +59,9 @@ class DubbingThread(QThread):
         self.automatic = automatic
         self.llm_gate = None
         self.output_reservations = None
+        self.gpu_session = None
+        self.output_claim = None
+        self.output_root = None
 
     @property
     def lifecycle_finished(self):
@@ -69,9 +73,17 @@ class DubbingThread(QThread):
         started = monotonic()
         try:
             with (cancellation_scope(self._check_cancelled), llm_admission_scope(self.llm_gate),
-                  task_context(self.task.task_id, Path(self.task.video_path or "").name, "dubbing")):
+                  task_context(self.task.task_id, Path(self.task.video_path or "").name, "dubbing"),
+                  gpu_job_scope(self.gpu_session, self._check_cancelled,
+                                lambda: self.progress.emit(0, self.tr("Chờ GPU của tác vụ khác...")))):
                 self._run()
+        except Exception as exc:
+            if not self.isInterruptionRequested():
+                self.failure = exc
+                self.error.emit(str(exc))
         finally:
+            if self.output_claim:
+                self.output_claim.close()
             logger.info("Dubbing job: task=%s completed=%s elapsed_seconds=%.3f", self.task.task_id,
                         self.task.completed_at is not None, monotonic() - started)
 
@@ -99,13 +111,16 @@ class DubbingThread(QThread):
             if not output_path:
                 raise ValueError(self.tr("Đường dẫn đầu ra đang trống"))
 
-            receipt = receipt_path(output_path)
+            destination = video_destination(output_path, "" if self.task.preview_only else self.task.output_directory,
+                                            video_path)
+            self.task.output_path = output_path = str(destination.output)
+            receipt, self.output_root = destination.receipt, destination.root
             identity = ""
             if not self.task.preview_only and not self.resume and self.task.auto_timing_plan is None:
                 identity = video_identity(video_path, subtitle_path, config, self.task.display_subtitle_path, self._check_cancelled)
                 if config.reuse_completed:
-                    cached = load_video(receipt, identity, self._check_cancelled)
-                    if cached is None:
+                    cached = load_video(receipt, identity, self._check_cancelled, root=self.output_root)
+                    if cached is None and self.output_root is None:
                         cached = load_legacy_video(video_path, subtitle_path, output_path, config, self._check_cancelled)
                     if cached:
                         self.task.output_path = cached.output
@@ -119,6 +134,9 @@ class DubbingThread(QThread):
             if not self.task.preview_only:
                 from .video_title import prepare_video_title
                 prepare_video_title(self.task, self._check_cancelled, self.progress.emit, self.output_reservations)
+                if self.output_root is not None:
+                    self.output_claim = OutputClaim(self.task.output_path, self._check_cancelled)
+                    self.task.output_path = str(self.output_claim.path)
                 output_path = self.task.output_path
                 assert output_path is not None
 
@@ -171,7 +189,7 @@ class DubbingThread(QThread):
 
     def _save_completed(self, receipt, identity, result):
         try:
-            save_video(receipt, identity, result, self._check_cancelled)
+            save_video(receipt, identity, result, self._check_cancelled, root=self.output_root)
         except (OSError, ValueError):
             logger.warning("Could not save completed dubbing receipt")
 
