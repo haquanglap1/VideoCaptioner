@@ -66,6 +66,14 @@ def respond(engine, monkeypatch, value):
     return calls
 
 
+def test_empty_source_never_requests_llm_or_publishes_dialogue(translator, monkeypatch):
+    calls = respond(translator, monkeypatch, payload())
+    with pytest.raises(RuntimeError, match="phụ đề nguồn rỗng"):
+        translator.translate_subtitle(ASRData([]))
+    assert calls == [] and translator.dialogue_document is None
+    assert translator._cache.values == {}
+
+
 def test_spoken_groups_roundtrip_preserve_source_and_display_timing(translator, monkeypatch, tmp_path):
     data = source()
     original = data.to_document()

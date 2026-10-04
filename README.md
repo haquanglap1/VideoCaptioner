@@ -90,7 +90,13 @@ Có dừng/tiếp tục và chuyển các file đã tải sang **Xử lý hàng 
 chạy ASR/dịch/TTS. CLI thêm `download URL --playlist`, `--list-playlist` và
 `--playlist-items "1,3-5"`. [Cách dùng và giới hạn](docs/dev/bilibili-playlist-2026-10.md).
 App nhớ link tải gần nhất giữa các lần mở; khôi phục ô link không tự gọi mạng.
+Tải lẻ và playlist chỉ chọn đầu ra **MP4**; FFmpeg ghép video MP4 + audio M4A
+vào MP4, giữ codec/chất lượng nguồn. Không tự chuyển sang MKV/WebM nếu thiếu
+định dạng phù hợp. File MKV cũ giữ nguyên; chọn thư mục mới nếu muốn tải lại MP4.
 Trong **Xử lý hàng loạt**, nhấp đúp hàng **Thất bại** để xem chi tiết lỗi.
+Nếu ASR không nhận được câu nào, app báo **Không nhận diện được lời nói** và
+dừng video đó trước dịch/lồng tiếng. Kiểm tra audio/ngôn ngữ; nếu có lời nói,
+có thể thử tắt VAD rồi nhận dạng lại. App không tự tắt VAD hoặc tạo lời thay thế.
 
 Batch hỗ trợ nhiều video đồng thời, mỗi video vẫn theo thứ tự nhận dạng → phụ đề/dịch →
 lồng tiếng (nếu bật) → xuất video. Hàng điều khiển **Video đồng thời / ASR / Phụ đề, dịch /

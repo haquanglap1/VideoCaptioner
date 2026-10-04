@@ -79,6 +79,7 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
             if isinstance(asr, NativeASR):
                 asr.audio_identity = identity
         asr_data = asr.run(callback=callback)
+        asr_data.require_speech()
         if identity is not None:
             asr_data.audio_identity = identity
         asr_data.pending_diarization = config.local_asr.diarize

@@ -56,6 +56,7 @@ class BaseTranslator(ABC):
             raise RuntimeError("Translator already has an active job.")
         try:
             asr_data = subtitle_data
+            asr_data.require_speech()
             document = context_data if context_data is not None else asr_data
             source_version = generate_cache_key(document.to_document())
             selected_version = generate_cache_key(asr_data.to_document())

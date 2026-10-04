@@ -17,6 +17,8 @@ def test_gui_download_returns_requested_video_instead_of_an_anthology(tmp_path, 
     class AnthologyDownloader:
         def __init__(self, params):
             self.params = params
+            assert params["merge_output_format"] == "mp4"
+            assert params["format"].endswith("best[ext=mp4]")
 
         def __enter__(self):
             return self

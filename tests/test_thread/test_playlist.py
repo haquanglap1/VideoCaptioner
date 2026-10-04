@@ -108,6 +108,8 @@ def test_queue_individual_errors_same_titles_resume_and_integrity(tmp_path, fake
     source = info()
     failing.add(source.entries[1].url)
     result = core.download_playlist(source, source.entries, tmp_path)
+    assert options[0]["merge_output_format"] == "mp4"
+    assert options[0]["format"].endswith("best[ext=mp4]")
     assert [item.status for item in result.items] == ["downloaded", "failed", "downloaded"]
     assert len(set(result.paths)) == 2
     assert all(Path(path).is_relative_to(tmp_path) for path in result.paths)

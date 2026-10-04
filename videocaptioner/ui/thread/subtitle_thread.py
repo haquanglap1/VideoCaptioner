@@ -259,6 +259,7 @@ class SubtitleThread(QThread):
             clear_task_context()
 
     def _process_subtitles(self, asr_data, subtitle_config, request, task_file):
+        asr_data.require_speech()
         # Verify the LLM configuration
         if self.need_llm(subtitle_config, asr_data):
             self.progress.emit(2, self.tr("开始验证 LLM 配置..."))

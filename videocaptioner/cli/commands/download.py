@@ -7,6 +7,7 @@ from pathlib import Path
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
+from videocaptioner.core.utils.download_format import mp4_format_selector
 from videocaptioner.core.utils.subprocess_helper import child_environment
 
 
@@ -56,12 +57,11 @@ def run(args: Namespace, config: dict) -> int:
     try:
         import subprocess
         has_ffmpeg = bool(shutil.which("ffmpeg"))
-        format_selector = (
-            "bestvideo+bestaudio/best" if has_ffmpeg else "best[ext=mp4]/best"
-        )
+        format_selector = mp4_format_selector(has_ffmpeg)
         cmd = [
             "yt-dlp",
             "-f", format_selector,
+            "--merge-output-format", "mp4",
             "-o", f"{out_dir}/%(title)s.%(ext)s",
             "--no-playlist",
             "--retries", "5",

@@ -49,6 +49,12 @@ Thành công toàn selection trảexit0; còn mục lỗi trảexit5, kết qu�
 
 ## Implementation và giới hạn
 
+- Tải mới chỉ chọn MP4 (video MP4 + audio M4A khi có FFmpeg, hoặc MP4 có sẵn
+  audio). `merge_output_format=mp4` tránh fallback MKV do tên codec HEVC
+  `hev1`/`hvc1` trong metadata. Dùng cùng policy cho playlist, GUI và CLI tải lẻ;
+  thiếu format phù hợp thì báo lỗi. Không transcode hoặc đổi đuôi giả.
+  Receipt MKV cũ được giữ nguyên và không đưa sang Batch như MP4; chọn thư mục
+  mới để tải lại. Không tự chuyển đổi/xóa media cũ.
 - Core typed `PlaylistInfo`/`PlaylistEntry`/`PlaylistResult` ở
   `videocaptioner/core/playlist.py`; worker QThread giữ context/cancel.
 - Bilibili BV dùng `window.__INITIAL_STATE__.videoData.ugc_season` để nhận ra
@@ -69,6 +75,68 @@ Thành công toàn selection trảexit0; còn mục lỗi trảexit5, kết qu�
 - Tham khảo [yt-dlp video selection và playlist options](https://github.com/yt-dlp/yt-dlp#video-selection).
 
 ## Evidence
+
+### 2026-10-04: MP4-only và kết quả ASR rỗng
+
+Audit `.tools/mp4-empty-asr-20261004/`. Video `BV1XJu2ztEvQ` trả video MP4
+codec `hev1.1.6.L153.90` + audio M4A `mp4a.40.2`. Hàm chọn container của yt-dlp
+đang cài trả `mkv` với policy cũ `mp4/mkv`; ép container `mp4` giữ nguyên
+HEVC/AAC. Source tải mới12,703s, reuse nhận file đã hoàn tất; ffprobe xác nhận
+MP4/58,436485s, full decode exit0/stderr0. Audio PCM của MKV gốc và MP4 tải
+mới cùng SHA256, cùng1.869.486bytes. Không đổi media/receipt cũ hoặc settings/cookies.
+
+Lỗi dialogue lúc16:09:05 có raw ASR cache0 ký tự và SRT0byte. Không có lời
+bị mất ở bước filter/translation; WAV replay có CRC32 `77f3d8c0` khớp đầu vào
+cache gốc. Replay Faster-Whisper large-v3 CUDA trên
+audio58,4214375s có mức RMS−15,019dBFS trả0cue cả VAD on4,672s lẫn VAD
+off105,375s, runtime exit0 và thực sự tạo SRT. Audio không phải toàn số0;
+đây chưa phải bằng chứng nghe hoặc kết luận video không có lời nói.
+Hai probe đầu chỉ ra đường dẫn model sai trong harness; giữ log lỗi và không
+tính exit0 thiếu SRT là ASR pass. Không tải/cài model hoặc sửa runtime.
+
+Nguyên nhân lỗi app: `transcribe()` cho phép kết quả cả job rỗng đi tiếp;
+`DialogueDocument.validate()` gộp trường hợp không có cue với ID trùng/rỗng.
+`ASRData.require_speech()` nay chặn ở đầu ra ASR toàn job, đầu vào GUI/CLI
+subtitle và translator trước LLM/export. Trả thông báo không nhận diện được
+lời nói, không tự tạo thoại hoặc tắt VAD. Chunk im lặng vẫn hợp lệ để ghép
+với các chunk có lời; không thay cache hay nội dung/timing của ASR.
+
+Offline liên quan1136pass/37deselected,70,90s/exit0; không chạy full suite
+hoặc các test online trong suite. Ruff/Pyright0errors/0warnings/sync pass.
+Test mới dùng yt-dlp thật để chọn HEVC/AV1/H264 →MP4, từ chối WebM-only,
+giữ receipt/media MKV cũ; kiểm GUI/CLI/translator chặn phụ đề rỗng và chunk
+im lặng vẫn ghép được. Lượt đầu fixture sai import parser, thiếu extractor
+metadata và sai exception type đã sửa; raw failure logs giữ trong audit.
+
+Build exit0/221,375s,6WARNING/0ERROR,31.753.429bytes, SHA256
+`7ac0b7556ce2dad71205d61807a39f59929c85d8f261e9aad1306e3dc4a1c1a4`.
+Artifact `dist/VideoCaptioner-20261004-mp4-empty-asr/`; timestamp trong
+`build.json`. Cả9 module sửa đổi source-match. Manifest99.315files không có
+file thiếu/sai size, gồm8 thành phần: Faster-Whisper runtime, large-v3, tiny,
+Qwen, OmniVoice, VieNeu runtime/model và OCR-v6-medium; dùng lại payload đã cài.
+Native GUI startup30,469s/exit0/0survivors. Native CLI kiểm SRT rỗng0,359s
+và ASR thật37,500s: cả hai trả runtime error5 đúng thông báo mới, không xuất
+SRT. Tải MP4 thật8,172s/reuse1,437s, exit0; media cùngSHA source và decode
+exit0/stderr0. Không nghiệm thu toàn playlist/dịch/TTS hoặc nghe chủ quan.
+
+Deploy khi live idle:602file app SHA-match,delta2 có backup trong
+`rollback-payload/`;21.800file protected nguyênSHA, không chép models,
+giữ tên EXE/shortcut cũ. Live CLI help exit0; GUI/media/ASR kế thừa artifact
+cùngSHA, không coi là đã chạy lại GUI/workflow trên live.
+
+Các file thay đổi trong task:
+
+- Source: `videocaptioner/core/utils/download_format.py`,
+  `videocaptioner/core/playlist.py`, `videocaptioner/cli/commands/download.py`,
+  `videocaptioner/ui/thread/video_download_thread.py`,
+  `videocaptioner/core/asr/asr_data.py`, `videocaptioner/core/asr/transcribe.py`,
+  `videocaptioner/core/translate/base.py`,
+  `videocaptioner/ui/thread/subtitle_thread.py`,
+  `videocaptioner/cli/commands/subtitle.py`.
+- Tests: `tests/test_asr/test_empty_transcript.py`,
+  `tests/test_thread/test_download_formats.py`, `tests/test_thread/test_playlist.py`,
+  `tests/test_thread/test_video_download.py`, `tests/test_translate/test_dialogue.py`.
+- Docs: `README.md`, `docs/dev/bilibili-playlist-2026-10.md`, `status.md`.
 
 Audit `.tools/bilibili-playlist-20261002/`, baseline `feee402`. User cung cấp
 BV1addWBtEem: nhận diện合集 **UE5干货分享**,31 entries đầy đủ, chưa tải toàn bộ31.

@@ -66,6 +66,12 @@ def run(args: Namespace, config: dict) -> int:
             output.error("Cannot read subtitle document; review JSON schema and cue associations.")
             return EXIT.RUNTIME_ERROR
 
+    try:
+        asr_data.require_speech()
+    except ValueError as exc:
+        output.error(str(exc))
+        return EXIT.RUNTIME_ERROR
+
     need_optimize = get(config, "subtitle.optimize", True)
     need_translate = get(config, "subtitle.translate", False)
     need_split = get(config, "subtitle.split", True)

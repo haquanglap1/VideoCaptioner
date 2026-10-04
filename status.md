@@ -1,5 +1,32 @@
 # Project Status
 
+## 2026-10-04 (Chỉ tải MP4 và chặn phụ đề ASR rỗng)
+
+- Tải playlist/GUI/CLI dùng cùng MP4-only policy; ép container MP4, giữ codec,
+  bỏ fallback MKV/WebM. Nguồn thiếu format phù hợp báo lỗi; MKV/receipt cũ giữ
+  nguyên, không tự chuyển đổi hoặc đưa sang Batch như lượt tải MP4 mới.
+- Doro `BV1XJu2ztEvQ` có HEVC tag `hev1`, khiến yt-dlp policy cũ chọn MKV.
+  Source và native tải mới MP4/HEVC/AAC, cùngSHA; full decode0/stderr0.
+  Audio PCM của MKV gốc và MP4 mới cùngSHA, không mất audio do container.
+- Bug dialogue: ASR raw cache0ký tự/SRT0byte nhưng pipeline tiếp tục dịch,
+  validator báo lỗi cue IDs. Thêm `require_speech()` sau ASR toàn job và trước
+  GUI/CLI subtitle/translator; dừng rõ “Không nhận diện được lời nói”, không
+  xuất SRT rỗng/gọi LLM. Giữ chunk im lặng để ghép, không tự tắt VAD/tạo thoại.
+  Replay large-v3 CUDA trên WAV CRC32 khớp cache gốc vẫn0cue với VAD on/off;
+  chưa có nghiệm thu nghe hoặc kết luận nội dung không có lời nói.
+- Audit `.tools/mp4-empty-asr-20261004/`:1136pass/37deselected,70,90s/exit0;
+  Ruff/Pyright0/0/sync pass, không full suite. Raw fixture/model-path probe
+  failures giữ trong audit; probe exit0 thiếu SRT không được tính ASR pass.
+- Build0/221,375s,6WARNING/0ERROR,31.753.429bytes,SHA256
+  `7ac0b7556ce2dad71205d61807a39f59929c85d8f261e9aad1306e3dc4a1c1a4`.
+  9module source-match;99.315model/runtime files/8components size-match.
+  GUI30,469s/exit0/0survivors; native tải8,172s/reuse1,437s/exit0. Native
+  SRT rỗng và ASR thật trả lỗi5 đúng thông báo mới, không xuất file phụ đề.
+- Deploy E idle:602file app SHA-match,delta2 có backup;21.800file được bảo vệ
+  nguyên hash,models không chép,giữ tên EXE cũ; live CLI help0. GUI/download/
+  ASR kế thừa artifact cùngSHA, chưa toàn playlist/dịch/TTS/nghe.17file source/
+  tests/docs sửa; danh sách trong tài liệu playlist.
+
 ## 2026-10-04 (Batch tự dùng LLM căn timing, giữ đủ lời)
 
 - Theo user: giữ nguyên lời/giọng, chỉ căn timing/tốc độ. Batch bật một recovery

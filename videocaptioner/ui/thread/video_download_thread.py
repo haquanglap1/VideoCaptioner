@@ -201,20 +201,11 @@ class VideoDownloadThread(QThread):
         # YouTube exposes pre-merged streams up to 720p; better than nothing.
         from shutil import which
         has_ffmpeg = bool(which("ffmpeg"))
-        if has_ffmpeg:
-            # Broad chain: prefer mp4+m4a for compatibility, but fall through to ANY best
-            # video+audio combo, then any single best/worst — so logged-in/Premium accounts
-            # whose top formats are AV1/Opus/WebM still resolve to a downloadable stream.
-            format_selector = (
-                "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
-                "bestvideo*+bestaudio/"
-                "best[ext=mp4]/"
-                "best/"
-                "worst"
-            )
-        else:
-            format_selector = "best[ext=mp4]/best/worst"
-            logger.warning("ffmpeg 未找到，使用单文件下载（最高 720p）。")
+        from videocaptioner.core.utils.download_format import mp4_format_selector, require_mp4
+
+        format_selector = mp4_format_selector(has_ffmpeg)
+        if not has_ffmpeg:
+            logger.warning("FFmpeg unavailable; selecting a single MP4 stream.")
 
         # Base yt-dlp options
         initial_ydl_opts = {
@@ -224,6 +215,7 @@ class VideoDownloadThread(QThread):
                 "thumbnail": "thumbnail",
             },
             "format": format_selector,
+            "merge_output_format": "mp4",
             "progress_hooks": [self.progress_hook],  # Progress hook
             "quiet": True,  # Silence logging
             "no_warnings": True,  # Silence warnings
@@ -323,6 +315,7 @@ class VideoDownloadThread(QThread):
 
             # Video file path
             video_file_path = Path(ydl.prepare_filename(info_dict))
+            require_mp4(video_file_path)
             if video_file_path.exists():
                 video_file_path = str(video_file_path)
             else:

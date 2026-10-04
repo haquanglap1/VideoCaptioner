@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
+from videocaptioner.core.utils.download_format import mp4_format_selector, require_mp4
+
 
 class DownloadCancelled(Exception):
     """Cooperative cancellation at network/progress boundaries."""
@@ -91,6 +93,8 @@ def selection(info: PlaylistInfo, expression: str = "") -> tuple[PlaylistEntry, 
 
 def friendly_error(error: Exception) -> str:
     text = str(error)
+    if "Requested format is not available" in text:
+        return "Không có định dạng MP4 phù hợp để tải. Kiểm tra FFmpeg và quyền truy cập chất lượng video."
     status = re.search(r"\bHTTP(?:\s+Error)?\s+(403|412|429)\b", text, re.IGNORECASE)
     if status:
         return f"Bilibili/dịch vụ đang hạn chế truy cập (HTTP {status[1]}). Kiểm tra cookies/quyền truy cập hoặc thử lại sau."
@@ -310,15 +314,19 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
     folder.mkdir(parents=True, exist_ok=True)
     receipt = folder / "completed.json"
     if receipt.is_file():
+        verified = False
         try:
             saved = json.loads(receipt.read_text(encoding="utf-8"))
             target = folder / saved["filename"]
             if (target.resolve().parent == folder.resolve() and saved["url"] == entry.url
                 and target.is_file() and target.stat().st_size == saved["size"]
                 and _fingerprint(target, check) == saved["sha256"]):
-                return PlaylistItemResult(entry.index, "existing", str(target.resolve()))
+                verified = True
         except (KeyError, TypeError, ValueError, OSError):
             pass
+        if verified:
+            require_mp4(target)
+            return PlaylistItemResult(entry.index, "existing", str(target.resolve()))
         # Keep a user's modified completed file rather than letting yt-dlp treat it as a cache hit.
         raise ValueError("File/receipt đã thay đổi hoặc thiếu. Chọn thư mục đích mới để tải lại; bản cũ được giữ.")
 
@@ -333,10 +341,10 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
         check()
         paths.append(Path(filename))
 
-    options = {"format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best" if shutil.which("ffmpeg") else "best[ext=mp4]/best",
+    options = {"format": mp4_format_selector(bool(shutil.which("ffmpeg"))),
                "outtmpl": str(folder / "%(title).100s [%(id)s].%(ext)s"), "windowsfilenames": True,
                "progress_hooks": [hook], "postprocessor_hooks": [lambda _: check()],
-               "post_hooks": [after_move], "merge_output_format": "mp4/mkv"}
+               "post_hooks": [after_move], "merge_output_format": "mp4"}
     bilibili = urlsplit(entry.url).hostname in ("bilibili.com", "www.bilibili.com")
     if bilibili:
         # Bilibili media connections can end early. Bound each Range request and
@@ -367,6 +375,7 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
     if len(paths) != 1:
         raise ValueError("Không xác minh được một file video hoàn chỉnh cho mục này.")
     target = paths[0].resolve()
+    require_mp4(target)
     if target.parent != folder.resolve() or not target.is_file() or target.stat().st_size <= 0 or target.suffix.lower() in (".part", ".ytdl"):
         raise ValueError("Tải chưa tạo file video hoàn chỉnh.")
     record = {"url": entry.url, "filename": target.name, "size": target.stat().st_size,

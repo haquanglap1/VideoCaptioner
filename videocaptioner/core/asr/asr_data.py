@@ -138,6 +138,10 @@ class ASRDataSeg:
         return f"ASRDataSeg({self.text}, {self.start_time}, {self.end_time})"
 
 
+class EmptyTranscriptError(ValueError):
+    """A complete input contains no recognized speech cues."""
+
+
 class ASRData:
     def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None,
                  conversation_context: Optional[ConversationContext] = None,
@@ -168,6 +172,14 @@ class ASRData:
                 seg.cue_id = f"cue-{hashlib.sha256(payload).hexdigest()[:16]}"
         if len({seg.cue_id for seg in self.segments}) != len(self.segments):
             raise ValueError("Duplicate cue IDs; review required.")
+
+    def require_speech(self) -> None:
+        """Check complete jobs only; silent chunks remain valid during merging."""
+        if not self.segments:
+            raise EmptyTranscriptError(
+                "Không nhận diện được lời nói: phụ đề nguồn rỗng. "
+                "Kiểm tra audio/ngôn ngữ nhận dạng; nếu có lời nói, thử tắt VAD rồi nhận dạng lại."
+            )
 
     def with_segments(self, segments: List[ASRDataSeg]) -> "ASRData":
         return ASRData(segments, self.events, self.conversation_context, self.audio_identity,
