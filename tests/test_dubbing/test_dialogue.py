@@ -47,12 +47,14 @@ def test_dialogue_preset_is_job_local_and_uses_two_second_limit(inputs):
     assert not effective.rewrite_enabled
 
 
-def test_direct_dub_stops_before_provider_until_wording_is_approved(inputs, tmp_path):
+@pytest.mark.parametrize("auto_recovery", [False, True])
+def test_direct_dub_stops_before_provider_until_wording_is_approved(inputs, tmp_path, auto_recovery):
     path, video, config = inputs
     engine = DubbingEngine(tts_provider_factory=lambda cfg: pytest.fail("Unapproved dialogue reached TTS"),
                            cache_root=tmp_path / "cache")
     with pytest.raises(DubbingReviewRequired, match="Duyệt lời thoại"):
-        engine.dub(str(video), str(path), str(tmp_path / "out.mp4"), config)
+        engine.dub(str(video), str(path), str(tmp_path / "out.mp4"), config,
+                   auto_timing_on_overflow=auto_recovery)
     assert engine.last_review is not None
     assert engine.last_review.plan.schema_version == PLAN_SCHEMA
     assert engine.last_review.groups[0].cue_ids == ["a", "b"]

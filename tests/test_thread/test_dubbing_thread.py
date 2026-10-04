@@ -3,6 +3,8 @@
 import threading
 import time
 
+import pytest
+
 from videocaptioner.core.dubbing.config import DubbingConfig
 from videocaptioner.core.entities import DubbingTask
 from videocaptioner.ui.thread import dubbing_thread as dubbing_thread_module
@@ -66,7 +68,8 @@ def test_interrupted_thread_unwinds_job_without_error(qapp, monkeypatch, tmp_pat
     assert messages[-1] == "Lồng tiếng đã bị hủy"
 
 
-def test_cancel_after_engine_returns_suppresses_success_and_emits_native_finish(qapp, monkeypatch, tmp_path):
+@pytest.mark.parametrize("automatic", [False, True])
+def test_cancel_after_engine_returns_suppresses_success_and_emits_native_finish(qapp, monkeypatch, tmp_path, automatic):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "in.mp4").write_bytes(b"synthetic video")
     (tmp_path / "in.srt").write_bytes(b"synthetic subtitle")
@@ -77,6 +80,10 @@ def test_cancel_after_engine_returns_suppresses_success_and_emits_native_finish(
         last_report = {"summary": {"output_created": True}}
 
         def dub(self, **kwargs):
+            assert kwargs.get("auto_timing_on_overflow", False) == automatic
+            if automatic:
+                assert kwargs["review_before_tts"] is False
+                assert callable(kwargs["cancelled"])
             started.set()
             assert release.wait(5)
             return kwargs["output_path"]
@@ -84,7 +91,7 @@ def test_cancel_after_engine_returns_suppresses_success_and_emits_native_finish(
     monkeypatch.setattr(dubbing_thread_module, "DubbingEngine", ReturningEngine)
     task = DubbingTask(video_path="in.mp4", subtitle_path="in.srt", output_path="out.mp4",
                        dubbing_config=DubbingConfig())
-    worker = DubbingThread(task)
+    worker = DubbingThread(task, automatic=automatic)
     results, errors, cancelled, stopped = [], [], [], []
     worker.finished.connect(results.append)
     worker.error.connect(errors.append)

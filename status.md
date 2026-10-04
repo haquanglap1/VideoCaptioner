@@ -1,5 +1,39 @@
 # Project Status
 
+## 2026-10-04 (Batch tự dùng LLM căn timing, giữ đủ lời)
+
+- Theo user: giữ nguyên lời/giọng, chỉ căn timing/tốc độ. Batch bật một recovery
+  sau overflow sequential có đủ native WAV cache: LLM chọn candidate của solver,
+  đo lại video/audio, kiểm binding rồi xuất. Không TTS/rewrite lại; không vượt
+  checkpoint duyệt lời, không chữa provider failure/thiếu WAV. Timeout/missing
+  LLM dùng solver; quota/429/cancel giữ contract dừng, không lặp recovery.
+- Giữ rates1,00–1,20×/0,50–1,00× và giới hạn trễ, chỉ áp dụng trong job.
+  Sửa thêm encoder time base cho hard/soft-resize/resize sau retime: giữ demux
+  precision, tránh104 PTS trùng/16.821 packets thấy trong video thật. PRE3
+  regression lệch5,167ms; POST giữ150 frames/sai lệch dưới1ms ở cả3 nhánh.
+- Audit `.tools/batch-auto-timing-20261004/`: tái hiện đúng0,138s với106 WAV
+  của video/giọng user; source LLM thật1 request chọn1,18×/0,73×, max delay546ms,
+  end/boundary overrun0. Xuất lại cùng proposal sau sửa encoder,0 request mới,
+  106 cache hits/0 TTS/0 rewrite, giữ group/text/membership/source/settings/reference.
+  Video768,070250s/audio768,069002s/lời cuối767,791458s; decode0/stderr0.
+  Đây là cache replay theo identity đã kiểm; không có nghe/lexical acceptance mới.
+- Offline toàn bộ chia5 process, không bỏ test path:2534 pass/5 skip/58 deselect,
+  mọi process exit0. Monolithic giữ FAIL: Qt teardown0xC0000005, UI cancel race,
+  một FFmpeg helper bị kẹt phải dừng. Fixture cancel thêm Event để hủy trong lúc
+  transfer còn hoạt động; không đổi product OmniVoice hoặc bỏ assertions.
+  Focused417 trước encoder;46 cuối (overlap). Ruff/Pyright0/0/sync pass.
+- Final r2 build0/242,407s,6 WARNING/0 ERROR,31.751.831bytes,SHA256
+  `87adb072207ed96984f9639a6c42a63d017ddb63b76c305ce87c2a3f9bfc493c`.
+  4 runtime modules source-match;99.315 files/8 model-runtime components size-match.
+  Native GUI Batch fixture:1 LLM loopback/0 TTS,2 lượt1 cache hit, hoàn tất1,390s,
+  decode0/stderr0. Startup183,501s/exit0; sau workflow khi đóng402,452s exit
+  0xC0000005,0 survivors. Lỗi Qt teardown còn mở, không gọi lượt đó PASS.
+- User đã đóng app và yêu cầu cập nhật/commit/push. Deploy E:602 app files
+  SHA-match,delta2 có backup tại audit `final/rollback-payload/`;12.928 protected
+  files nguyên hash,models không chép,giữ tên EXE/shortcut; live CLI help0.
+  GUI/media kế thừa artifact cùngSHA; giữ riêng lỗi Qt lúc thoát đã báo trước,
+  không nâng thành gate PASS. Chi tiết/raw failures trong tài liệu domain và audit.
+
 ## 2026-10-03 (Phục hồi RemoteDisconnected và cập nhật EXE chạy thật)
 
 - User tải lại BV171c2eXESw gặp server đóng kết nối trước response, không phải

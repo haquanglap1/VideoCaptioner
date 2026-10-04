@@ -1,4 +1,4 @@
-# Tự căn timing/tốc độ — MVP source
+# Tự căn timing/tốc độ
 
 ## Cách dùng
 
@@ -42,7 +42,7 @@ và không mang cam kết nền đen; dùng burn-in cho kết quả cố định
 - Không tự rút lời, bỏ nhóm, gán speaker, giả timestamp từng từ, đổi grouping,
   cắt đuôi hoặc tăng tempo ngoài trần. Không feasible thì giữ review/audio.
 - Preview và export dùng cùng plan + pipeline hiện có, retime audio nền/caption
-  theo cùng video speed. Auto chỉ nằm trong tab Lồng tiếng/core API ở MVP này;
+  theo cùng video speed. Auto có nút thủ công ở tab Lồng tiếng và tự phục hồi overflow trong Batch;
   CLI flags và Editor schema không đổi. Editor Fast Preview vẫn là nguồn.
 
 Auto plan hiện giữ trong RAM; **Lưu kế hoạch** vẫn lưu review lời như trước.
@@ -152,3 +152,67 @@ frozen playback sử dụng artifact cùng SHA đã kiểm; không coi việc de
 nghiệm thu nghe hoặc Auto/LLM GUI trọn luồng. Phạm vi công bố là17 file phía
 trên; source code giữ nguyên SHA so với closeout, chỉ thêm tài liệu triển khai.
 Commit/remote/stash cuối được ghi trong audit publish, không sửa raw evidence.
+
+
+## Batch tự phục hồi khi speech vượt khung — 2026-10-04
+
+User chọn giữ đủ lời, chỉ tự căn timing/tốc độ. `DubbingThread(automatic=True)`
+bật một recovery trong core sau `DubbingReviewRequired` của speech sequential
+đã có đủ WAV, native1× và cache. Không tự vượt checkpoint duyệt lời, chạy lại TTS,
+đổi giọng hay rewrite. Provider failure, thiếu WAV và policy khác giữ lỗi gốc.
+
+Recovery dùng lại solver/LLM allowlist và validator đã có, kiểm lại binding rồi
+xuất với một cặp rates áp dụng riêng cho job. Một recovery duy nhất; lần đo/xuất
+sau còn lỗi thì giữ review. Missing LLM/timeout dùng solver, cancellation và typed
+quota/429 truyền ra để Batch dừng đúng admission contract. Tab thủ công vẫn opt-in.
+
+Kiểm video thật còn phát hiện độ chính xác timestamp bị mất khi encode caption
+sau retime. Các nhánh encode của playback nay dùng `-enc_time_base:v demux`
+cùng `-fps_mode passthrough`, theo [FFmpeg encoder time base](https://ffmpeg.org/ffmpeg.html#Advanced-options).
+Bản trước có104 PTS trùng trong16.821 packet; retime stream-copy riêng vẫn sạch.
+Probe cùng video với encoder time base từ demux giữ16.821 frame/0 PTS trùng và
+full decode0/stderr0. Ba regression hard/soft-resize/resize giữ frame count và
+PTS sai lệch dưới1ms; PRE theo command cũ cả3 fail (lệch tới5,167ms), POST pass.
+
+Audit `.tools/batch-auto-timing-20261004/`: tái hiện đúng nhóm
+`dialogue-f5d95331215430dd`, end728,321s/video728,182s/vượt0,138s bằng106 WAV
+đã có của giọng user. Copy cache trong audit, xác minh identity theo settings,
+voice/reference/runtime metadata; cache-only provider chặn synthesis mới.
+LLM thật đúng1 request chọn1,18×/0,73×; đo0 end/boundary overrun, max delay546ms.
+Giữ nguyên106 group IDs/membership/tts_text,106 cache hits/0 TTS/0 rewrite.
+Lượt đầu105,766s; xuất lại cùng proposal sau sửa encoder107,265s,0 request mới.
+Output cuối: video768,070250s/audio768,069002s, lời cuối767,791458s,852×480;
+full decode passthrough/demux0/stderr0. Settings, source, native WAV và reference
+được bảo vệ nguyên hash. Không coi đây là nghiệm thu nghe hoặc lexical ASR/TTS.
+
+Offline cuối:2534 pass/5 skip/58 deselected, chia5 process bao phủ mọi test path,
+không bỏ test lỗi. Full một process giữ các lần thất bại: Qt teardown0xC0000005,
+UI cancel race, một FFmpeg test child bị kẹt đã dừng có receipt. Fixture hủy
+OmniVoice nay giữ transfer tại progress bằng Event tới khi GUI bấm hủy, thay
+cho dựa vào sleep5ms; giữ toàn bộ assertions và không sửa product OmniVoice.
+Focused417 pass trước encoder,46 pass gồm encoder/cancel cuối; các suite overlap.
+Ruff pass với cache ACL warning, Pyright0/0, translations in sync.
+
+Final EXE `VideoCaptioner-20261004-batch-auto-timing-r2`: build0/242,407s,
+6 WARNING/0 ERROR,31.751.831bytes,SHA256
+`87adb072207ed96984f9639a6c42a63d017ddb63b76c305ce87c2a3f9bfc493c`.
+4 runtime modules source-match;99.315 model/runtime files/8 components size-match,
+không cài/tải mới. Native GUI Batch dùng fixture3s + cache3,169s + loopback LLM:
+tự căn rồi `Đã hoàn tất`,1 LLM/0 TTS,2 lượt cùng1 cache hit, output audio/video/
+subtitle và decode0/stderr0, input/native WAV nguyên SHA. Preset đầu sai enum
+LLM đã sửa trước workflow; giữ startup diagnostic/timeout, không gọi các lượt
+đó là pass. Startup smoke183,501s/exit0/0 survivors; GUI sau workflow xuất đúng
+nhưng lúc đóng402,452s exit0xC0000005/0 survivors. Lỗi Qt teardown còn mở,
+không tuyên bố đã sửa nó. Native workflow chỉ có LLM loopback; LLM thật là gate source.
+
+Các file của lượt Batch recovery này: `README.md`, `status.md`, tài liệu này;
+`core/dubbing/auto_timing.py`, `core/dubbing/engine.py`, `core/dubbing/playback.py`,
+`ui/thread/dubbing_thread.py` (đều dưới `videocaptioner/`);
+`tests/test_dubbing/test_auto_recovery.py`, `tests/test_dubbing/test_dialogue.py`,
+`tests/test_thread/test_dubbing_thread.py`, `tests/test_omnivoice/test_prepare_ui.py`.
+Sau bàn giao, user đã đóng app và yêu cầu cập nhật/commit/push. Deploy E có602
+file app SHA-match,delta2 đã backup tại `final/rollback-payload/`,12.928 protected
+files nguyên hash. Không chép models,giữ tên EXE/shortcut; live CLI help exit0.
+GUI/media gate kế thừa artifact cùngSHA. Lỗi Qt shutdown đã báo vẫn giữ nguyên
+trong receipt, không đổi FAIL thành PASS. Artifact, output đã kiểm và raw failures
+được giữ trong audit; publication receipt nằm trong `closeout.json`.

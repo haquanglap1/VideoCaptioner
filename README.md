@@ -115,6 +115,15 @@ khóa giao diện. Lỗi quota/429 không phục hồi được dừng các vide
 Nguồn trùng tên ở các thư mục khác nhau có thư mục phụ đề riêng; bản dịch cũ vẫn được
 dùng lại khi qua kiểm tra nguồn. Các giới hạn này không điều phối tác vụ mở riêng ở tab khác.
 [Kế hoạch và kiểm chứng xử lý đồng thời](docs/plans/concurrent-batch-2026-10.md).
+Khi lồng tiếng tuần tự trong Batch vượt giới hạn timing, app tự thử căn lại một lần
+bằng WAV đã có. LLM đang cấu hình chọn trong các phương án của solver; chỉ áp dụng
+sau khi đo lại giọng/video thật. Giữ đủ lời, thứ tự và giọng, không sinh TTS lại;
+voice tempo trong 1,00–1,20× và video speed 0,50–1,00×, giữ giới hạn trễ đã chọn.
+Thiếu LLM hoặc lỗi/timeout dùng solver; quota/429 không phục hồi được vẫn dừng Batch.
+Nếu không có phương án hợp lệ thì giữ audio/review và báo lỗi. Các tốc độ đã áp dụng
+nằm trong báo cáo của job; cài đặt chung không bị đổi. Tab Lồng tiếng riêng vẫn
+có bước duyệt và nút **Tự căn timing/tốc độ** như trước.
+
 Nút **Dừng xử lý** hủy hàng đang chờ và yêu cầu bước đang chạy dừng; hàng hiện
 **Đang dừng** cho đến khi worker thoát, rồi **Đã dừng**. Bấm **Bắt đầu xử lý**
 để thử lại các hàng lỗi/đã dừng; các hàng hoàn tất được giữ nguyên.

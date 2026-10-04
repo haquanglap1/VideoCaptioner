@@ -29,6 +29,7 @@ from videocaptioner.core.dubbing.models import (
     DubbingCue,
     DubbingFitStatus,
     DubbingProviderError,
+    DubbingReviewRequired,
     DubbingTextSource,
     resolve_dubbing_text,
 )
@@ -107,6 +108,8 @@ class DubbingEngine:
         allow_config_change: bool = False,
         timing_plan=None,
         review_before_tts: bool = True,
+        auto_timing_on_overflow: bool = False,
+        cancelled: Callable[[], bool] = lambda: False,
     ) -> str:
         """Thực hiện toàn bộ pipeline dubbing.
 
@@ -142,14 +145,22 @@ class DubbingEngine:
             self.last_report_path = ""
             if not review.can_resume:
                 raise DubbingResumeError(review.provenance_note)
-        with self._managed_runtime_context(config, callback):
-            return DubbingOrchestrator(self).run(
-                video_path, subtitle_path, output_path, config, callback,
-                review=review, display_subtitle_path=display_subtitle_path,
-                allow_config_change=allow_config_change,
-                timing_plan=timing_plan,
-                review_before_tts=review_before_tts,
-            )
+        try:
+            with self._managed_runtime_context(config, callback):
+                return DubbingOrchestrator(self).run(
+                    video_path, subtitle_path, output_path, config, callback,
+                    review=review, display_subtitle_path=display_subtitle_path,
+                    allow_config_change=allow_config_change,
+                    timing_plan=timing_plan,
+                    review_before_tts=review_before_tts,
+                )
+        except DubbingReviewRequired as exc:
+            if not auto_timing_on_overflow or timing_plan is not None:
+                raise
+            from .auto_timing import recover_overflow
+            return recover_overflow(self, video_path, subtitle_path, output_path, config,
+                self.last_review, exc, callback, display_subtitle_path=display_subtitle_path,
+                cancelled=cancelled)
 
     def propose_timing(self, video_path: str, subtitle_path: str, config: DubbingConfig,
                        review: DubbingReview, callback=None, **kwargs):

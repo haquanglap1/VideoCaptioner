@@ -2,6 +2,7 @@
 
 import errno
 import shutil
+from threading import Event
 
 import pytest
 from PyQt5.QtCore import QEventLoop, QThread, QTimer
@@ -36,12 +37,25 @@ def finish_worker(panel, app, on_progress=None):
     return worker, progress
 
 
-def test_gui_cancel_finishes_and_resumes_partial(omni_qapp, staged_runtime, loopback_download):
+def test_gui_cancel_finishes_and_resumes_partial(omni_qapp, staged_runtime, loopback_download, monkeypatch):
     panel = OmniVoicePanel()
     panel.runtime_edit.setText(str(staged_runtime))
     loopback_download.slow = True
     cancelled = []
     control_states = []
+    cancel_observed = Event()
+    download = prepare.download
+
+    def wait_for_gui_cancel(*args, progress, check, **kwargs):
+        def report(message):
+            progress(message)
+            if "MiB" in message and "0.0 MiB" not in message:
+                # Keep the transfer active until Qt delivers the queued progress/cancel action.
+                assert cancel_observed.wait(5), "GUI did not receive download progress"
+                check()
+        return download(*args, progress=report, check=check, **kwargs)
+
+    monkeypatch.setattr(prepare, "download", wait_for_gui_cancel)
 
     def cancel_after_bytes(message):
         if "MiB" in message and "0.0 MiB" not in message and not cancelled:
@@ -50,6 +64,7 @@ def test_gui_cancel_finishes_and_resumes_partial(omni_qapp, staged_runtime, loop
             cancelled.append(True)
             panel.prepare_button.click()
             control_states.append(panel.prepare_button.isEnabled())
+            cancel_observed.set()
 
     try:
         old_worker, progress = finish_worker(panel, omni_qapp, cancel_after_bytes)
@@ -78,6 +93,7 @@ def test_gui_cancel_finishes_and_resumes_partial(omni_qapp, staged_runtime, loop
         assert len(loopback_download.requests) == request_count
         assert panel.status_label.text() == "OmniVoice: Ready"
     finally:
+        cancel_observed.set()
         panel.close()
 
 

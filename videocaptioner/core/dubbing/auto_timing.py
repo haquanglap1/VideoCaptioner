@@ -14,10 +14,18 @@ from typing import Callable
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.llm.client import LLMCredentials
 from videocaptioner.core.llm.owned_request import OwnedLLMRequest
+from videocaptioner.core.llm.rate_limit import LLMRateLimitError
 
 from .cache import PersistentTTSCache
 from .config import DubbingConfig
-from .models import DubbingGroup, DubbingPlan, DubbingTimingMode, UnresolvedFitPolicy
+from .models import (
+    DubbingFitStatus,
+    DubbingGroup,
+    DubbingPlan,
+    DubbingReviewRequired,
+    DubbingTimingMode,
+    UnresolvedFitPolicy,
+)
 from .playback import apply_voice_tempo, retime_video, validate_rates
 from .review import DubbingReview, settings_fingerprint
 from .scheduling import PlaybackSlot, measured_slot
@@ -198,6 +206,8 @@ def choose_with_llm(candidates: tuple[TimingCandidate, ...], groups: list[Dubbin
         try:
             response = caller(messages=messages, model=config.rewrite_model,
                               response_format={"type": "json_object"})
+        except LLMRateLimitError:
+            raise
         except Exception:
             callback(35, "Đang kiểm tra hủy...")
             if cancelled():
@@ -210,6 +220,40 @@ def choose_with_llm(candidates: tuple[TimingCandidate, ...], groups: list[Dubbin
         except (ValueError, TypeError, AttributeError, IndexError):
             messages.append({"role": "user", "content": "Invalid schema/ID. Return exactly the required JSON fields and allowlisted IDs."})
     return candidates[0], "solver-fallback", "LLM sai schema sau 3 lượt; dùng solver.", 3, ()
+
+
+def recover_overflow(engine, video_path: str, subtitle_path: str, output_path: str,
+                     config: DubbingConfig, review: DubbingReview | None,
+                     failure: DubbingReviewRequired, callback: Progress, *,
+                     display_subtitle_path: str | None = None,
+                     cancelled: Callable[[], bool] = lambda: False) -> str:
+    """One measured, cache-only recovery after complete sequential speech fails to fit."""
+    if (review is None or not config.cache_enabled or config.tts_config is None
+            or config.tts_config.speed != 1 or config.natural_max_speed != 1
+            or config.silence_guard_ms != 80 or config.timing_mode != DubbingTimingMode.NATURAL
+            or config.unresolved_policy != UnresolvedFitPolicy.SEQUENTIAL):
+        raise failure
+    groups = review.groups
+    overflow = [g for g in groups if g.needs_review]
+    if (not overflow or any(g.fit_status == DubbingFitStatus.FAILED or g.measured_duration <= 0 for g in groups)
+            or any(g.playback_start_time is None or g.playback_end_time is None for g in overflow)):
+        raise failure
+    callback(67, "Lời đọc vượt khung; đang tự căn timing từ WAV đã có, giữ nguyên lời...")
+    proposal = engine.propose_timing(video_path, subtitle_path, config, review, callback,
+        display_subtitle_path=display_subtitle_path, use_llm=True, allow_video_slowdown=True,
+        cancelled=cancelled)
+    if not proposal.can_apply or proposal.selected is None:
+        raise DubbingReviewRequired(report_path=failure.report_path,
+            reason=f"{failure.reason} Tự căn chưa tìm được timing hợp lệ: {proposal.reason}")
+    adjusted = auto_config(config)
+    adjusted.voice_tempo = proposal.selected.voice_tempo
+    adjusted.video_speed = proposal.selected.video_speed
+    callback(67, f"Đã đo timing hợp lệ: giọng {adjusted.voice_tempo:.2f}×, "
+                 f"video {adjusted.video_speed:.2f}× ({proposal.decision_source}); đang tiếp tục xuất...")
+    # A second failure remains reviewable; never recurse into another recovery or regenerate wording.
+    return engine.dub(video_path, subtitle_path, output_path, adjusted, callback, review=review,
+        display_subtitle_path=display_subtitle_path, timing_plan=proposal, review_before_tts=False,
+        cancelled=cancelled)
 
 
 def propose(engine, video_path: str, subtitle_path: str, config: DubbingConfig,

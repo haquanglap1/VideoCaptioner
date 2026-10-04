@@ -144,6 +144,8 @@ class DubbingThread(QThread):
             resume_args = {}
             if self.automatic:
                 resume_args["review_before_tts"] = False
+                resume_args["auto_timing_on_overflow"] = True
+                resume_args["cancelled"] = self.isInterruptionRequested
             if self.resume:
                 if self.task.dubbing_review is None:
                     raise ValueError("Không có kế hoạch lời đọc để tiếp tục")

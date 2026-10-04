@@ -157,7 +157,8 @@ def render_captions(source: str, output: Path, subtitles: Path, config: DubbingC
             command += ["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-b:v", "0"]
         else:
             command += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
-        command += ["-pix_fmt", "yuv420p", "-fps_mode", "passthrough"]
+        # Retimed packets need their original precision, not the nominal encoder FPS grid.
+        command += ["-pix_fmt", "yuv420p", "-fps_mode", "passthrough", "-enc_time_base:v", "demux"]
     run_media(command + ["-movflags", "+faststart", "-y", str(output)], callback,
               "Đang xuất phụ đề theo lời đọc...")
 
@@ -166,7 +167,7 @@ def _encode_video_args():
     from videocaptioner.core.utils.video_utils import check_cuda_available
     codec = (["-c:v", "h264_nvenc", "-preset", "p5", "-cq", "20", "-b:v", "0"] if check_cuda_available()
              else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"])
-    return [*codec, "-pix_fmt", "yuv420p", "-fps_mode", "passthrough"]
+    return [*codec, "-pix_fmt", "yuv420p", "-fps_mode", "passthrough", "-enc_time_base:v", "demux"]
 
 
 def resize_video(source: str, output: Path, limit: int, callback) -> None:
