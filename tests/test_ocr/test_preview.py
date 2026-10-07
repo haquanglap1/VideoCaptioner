@@ -43,6 +43,8 @@ def test_exact_candidate_preview_matches_pts_transform_and_sha(make_video, text_
     assert preview.video == doc.visual_source.video
     positioned = preview_video(video, 100, jobs, ffmpeg=ffmpeg, ffprobe=ffprobe)
     assert positioned.png == preview.png
+    assert positioned.duration_ms is not None and positioned.duration_ms > 0
+    assert preview.duration_ms is None  # Candidate crops carry evidence only, not a selection default.
     assert not list(jobs.iterdir())
     with pytest.raises(OcrError, match="không thuộc"):
         preview_candidate(video, doc, replace(candidate, crop_sha256="a" * 64), jobs, ffmpeg=ffmpeg, ffprobe=ffprobe)

@@ -154,6 +154,21 @@ trên; source code giữ nguyên SHA so với closeout, chỉ thêm tài liệu 
 Commit/remote/stash cuối được ghi trong audit publish, không sửa raw evidence.
 
 
+## Sửa hiển thị bảng Auto và nhãn trạng thái — 2026-10-07
+
+User báo lỗi hiển thị ở phần Auto timing. Ảnh chụp native (`QWidget.grab`, không hiện cửa sổ)
+cho thấy `AutoTimingDialog` là `QDialog` trần nên giữ palette sáng của Windows, trong khi
+`BodyLabel`/`TableWidget`/`PushButton` của QFluentWidgets vẽ chữ trắng theo theme tối bị ép
+trong `ui/common/config.py`; toàn bộ chữ gần như không đọc được. Sửa:
+
+- Dialog đặt `objectName` và stylesheet nền/chữ theo `isDarkTheme()` (cùng cách với
+  `PlaylistDialog`), ẩn cột số thứ tự, in đậm dòng đã đo, căn giữa số, nút Áp dụng là primary.
+- Thêm dòng kết luận (đã đo/chưa áp dụng được/không có phương án) và dịch `decision_source`
+  (`llm`, `solver`, `solver-fallback`, hậu tố `+refined`) sang tiếng Việt qua `decision_label`.
+- Tab Lồng tiếng: `review_label` thêm dòng "Auto timing đang áp dụng …" sau khi áp dụng và đổi thành
+  cảnh báo "đã chỉnh tay" khi tempo/video/trễ khác phương án đo; đóng bảng không áp dụng cũng báo rõ.
+- Core/contract không đổi; test GUI mới kiểm stylesheet theo theme, nhãn, dòng đo in đậm và nhãn tab.
+
 ## Batch tự phục hồi khi speech vượt khung — 2026-10-04
 
 User chọn giữ đủ lời, chỉ tự căn timing/tốc độ. `DubbingThread(automatic=True)`

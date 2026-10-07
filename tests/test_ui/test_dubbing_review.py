@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from PyQt5.QtCore import QEventLoop, QRect, QThread, QTimer
 from PyQt5.QtWidgets import QDialog
+from qfluentwidgets import BodyLabel, StrongBodyLabel
 
 from videocaptioner.core.dubbing.config import DubbingConfig
 from videocaptioner.core.dubbing.engine import DubbingEngine
@@ -564,9 +565,42 @@ def test_auto_worker_apply_preview_manual_and_context(session, qapp, monkeypatch
     assert previews == [proposal] and s.view._task.auto_timing_plan == proposal
     assert s.view.voice_tempo_spinbox.value() == 1.2 and s.view.video_speed_spinbox.value() == .8
     assert not s.view._job_busy
+    assert "Auto timing đang áp dụng: giọng 1.20× / video 0.80× / trễ 2000 ms" in s.view.review_label.text()
     s.view.video_speed_spinbox.setValue(.75)
+    assert "đã chỉnh tay" in s.view.review_label.text()
     changed = s.view._task_with_playback(s.view._task)
     assert changed.auto_timing_plan is None
+
+
+def test_auto_dialog_follows_dark_theme_and_labels_decisions_in_vietnamese(qapp):
+    from qfluentwidgets import isDarkTheme
+
+    from videocaptioner.core.dubbing.auto_timing import AutoTimingPlan, TimingCandidate
+    from videocaptioner.ui.components.auto_timing_dialog import (
+        AutoTimingDialog,
+        decision_label,
+        headline,
+    )
+
+    assert decision_label("llm").startswith("LLM")
+    assert decision_label("solver-fallback+refined").endswith("sau khi đo media thật")
+    assert decision_label("unknown-token") == "unknown-token"
+    measured = TimingCandidate("t118-v076", 1.18, .76, 385.2, 1652, 1013, 0, 0, 0, (), measured=True)
+    predicted = TimingCandidate("t118-v076", 1.18, .76, 506.8, 1582, 1000, 0, 0, 0, ())
+    proposal = AutoTimingPlan("a" * 64, (predicted,), measured, "llm+refined", "Nội dung dày số liệu.", 2000, True)
+    assert "Có thể áp dụng" in headline(proposal)
+    dialog = AutoTimingDialog(proposal)
+    try:
+        # A bare QDialog stays light while Fluent text turns white under the forced dark theme.
+        assert ("#202020" if isDarkTheme() else "#fafafa") in dialog.styleSheet()
+        assert dialog.table.verticalHeader().isHidden()
+        assert dialog.table.item(0, 0).text() == "Đã đo / chọn" and dialog.table.item(0, 0).font().bold()
+        assert dialog.table.item(1, 0).text() == "Dự báo" and not dialog.table.item(1, 0).font().bold()
+        assert dialog.apply_button.isEnabled() and dialog.preview_button.isEnabled()
+        labels = [label.text() for label in dialog.findChildren(BodyLabel)]
+        assert any("Nguồn quyết định: LLM chọn" in text and "+refined" not in text for text in labels)
+    finally:
+        dialog.close()
 
 
 def test_auto_dialog_rejects_prediction_and_worker_cancel(session, qapp, monkeypatch):
@@ -586,6 +620,7 @@ def test_auto_dialog_rejects_prediction_and_worker_cancel(session, qapp, monkeyp
     unavailable = replace(proposal, selected=None, candidates=())
     dialog = AutoTimingDialog(unavailable)
     assert not dialog.apply_button.isEnabled()
+    assert "Chưa có phương án" in dialog.findChildren(StrongBodyLabel)[0].text()
     dialog.close()
     monkeypatch.setattr(auto_timing_thread, "_engine_for_task", lambda _: pytest.fail("Cancelled before engine"))
     worker = auto_timing_thread.AutoTimingThread(s.task, use_llm=True, allow_video_slowdown=True)

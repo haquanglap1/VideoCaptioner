@@ -1,5 +1,33 @@
 # Project Status
 
+## 2026-10-07 (Sửa hiển thị bảng Auto timing, đơn giản hóa Qwen/OCR)
+
+- User báo lỗi hiển thị ở Auto timing và chưa hiểu cách dùng Qwen local/OCR. Ảnh chụp
+  native (`QWidget.grab`) xác nhận `AutoTimingDialog` là QDialog trần giữ nền sáng trong
+  khi chữ Fluent theo theme tối là trắng, gần như không đọc được. Sửa stylesheet theo
+  `isDarkTheme()`, dịch nguồn quyết định sang tiếng Việt, dòng kết luận, dòng đã đo in
+  đậm; tab Lồng tiếng ghi "Auto timing đang áp dụng…" và báo khi chỉnh tay.
+- Qwen: cửa sổ Quản lý mô hình đặt tên ba bước, hiện thư mục lưu model, thêm Kiểm tra cả
+  3 bước (hàng đợi status), thu thao tác nâng cao vào nút riêng; 21 chuỗi Việt mới trong
+  `VideoCaptioner_vi_VN.json` (đã sync bản fallback). OCR: luồng 4 bước, "Quét toàn bộ
+  video" bật sẵn và tự điền độ dài từ `OcrPreview.duration_ms` (`probe_duration_ms` best
+  effort, không ảnh hưởng identity/timing), nút lấy ảnh giữa video, control ít dùng vào
+  Tùy chọn nâng cao. Hướng dẫn mới `docs/guide/qwen-local-asr.md`, `docs/guide/ocr-subtitles.md`.
+- Gate source: focused 97 pass (UI dubbing/OCR/local ASR, OCR preview/decoder/duration);
+  offline rộng test_ui/test_ocr/test_dubbing/test_thread/test_cli **1053 pass/17 deselected**,
+  160,27 s/exit 0. Ruff pass, Pyright 0/0, translations in sync. Không full suite.
+- Build `VideoCaptioner-20261007-ux-dialogs`: exit 0/207,0 s, 6 WARNING/0 ERROR,
+  31.762.446 bytes, SHA256 `6d99dd472451f02c9008aced2a47875f97328da68e95908afdc2220a3aeaab48`.
+  99.315 model files/8 components size-match (payload dùng lại, không tải/cài); 6 module
+  và vi_VN.json source-match. GUI từ artifact sống 30,391 s/exit 0/0 survivors.
+- Deploy E khi idle: 599 app files đối chiếu, 45 file thay (EXE, base_library.zip, 2
+  vi_VN.json và 41 DLL UCRT `api-ms-win-*`/`ucrtbase` 10.0.22000.194 do PyInstaller lấy từ
+  Windows Performance Toolkit trên PATH thay cho bộ 10.0.26100.4654 cũ; Windows 10/11 không
+  nạp bản bundled nên không đổi runtime, cả hai shell đều cho cùng kết quả). Backup trong
+  `.tools/ux-dialogs-20261007/rollback-payload`; 32.674 protected files nguyên hash, models
+  không chép, giữ tên EXE/shortcut, live `ocr --help` exit 0. Chưa có nghiệm thu thao tác
+  thật của user trên GUI E, chạy Qwen/OCR với video thật hoặc nghe; chưa commit/push.
+
 ## 2026-10-04 (Chỉ tải MP4 và chặn phụ đề ASR rỗng)
 
 - Tải playlist/GUI/CLI dùng cùng MP4-only policy; ép container MP4, giữ codec,

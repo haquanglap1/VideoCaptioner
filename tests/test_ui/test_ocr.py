@@ -374,6 +374,43 @@ def test_failed_scan_keeps_partial_document_and_incomplete_progress(qapp, cancel
     dialog.close()
 
 
+def test_preview_length_fills_whole_video_range_and_advanced_controls_stay_collapsed(qapp):
+    dialog = OcrDialog()
+    try:
+        assert dialog.full_range.isChecked() and not dialog.end_ms.isEnabled()
+        assert dialog.advanced.isHidden() and dialog.end_ms.value() == 60000
+        assert not dialog.middle_button.isEnabled() and "hết video" in dialog.range_label.text()
+        image = Image.new("RGB", (64, 16), "black")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        doc = make_document()
+        dialog.accept_preview(OcrPreview(buffer.getvalue(), doc.visual_source.video, "a" * 64, 123456))
+        assert (dialog.start_ms.value(), dialog.end_ms.value()) == (0, 123456)
+        assert dialog.middle_button.isEnabled() and "02:03" in dialog.range_label.text()
+        assert "02:03" in dialog.status.text()
+        dialog.full_range.setChecked(False)
+        assert dialog.end_ms.isEnabled()
+        dialog.end_ms.setValue(5000)
+        assert "00:05" in dialog.range_label.text()
+        dialog.full_range.setChecked(True)
+        assert dialog.end_ms.value() == 123456 and not dialog.end_ms.isEnabled()
+        # A saved selection is authoritative: loading data must not expand it to the whole video.
+        dialog.accept_document(doc)
+        selection = doc.config.selection
+        assert not dialog.full_range.isChecked()
+        assert (dialog.start_ms.value(), dialog.end_ms.value()) == (selection.start_ms, selection.end_ms)
+        dialog.advanced_button.setChecked(True)
+        assert not dialog.advanced.isHidden()
+        # Re-enabling "whole video" reuses the last known length; an unknown length keeps the values.
+        dialog.full_range.setChecked(True)
+        assert dialog.end_ms.value() == 123456
+        dialog.accept_preview(OcrPreview(buffer.getvalue(), doc.visual_source.video, "b" * 64))
+        assert dialog.end_ms.value() == 123456 and not dialog.middle_button.isEnabled()
+        assert "02:03" in dialog.range_label.text()
+    finally:
+        dialog.close()
+
+
 def test_review_command_keeps_ids_and_raw_on_redo():
     doc = make_document()
     session = OcrReviewSession(doc)

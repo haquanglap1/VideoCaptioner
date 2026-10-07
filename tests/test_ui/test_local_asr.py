@@ -207,6 +207,60 @@ def test_prepare_button_cancels_and_resumes_same_selected_model(qapp, monkeypatc
         cfg.set(cfg.local_asr_root, before)
 
 
+def test_manager_hides_advanced_actions_and_names_the_storage_root(qapp, monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Opening the manager must not probe/install")
+    monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.locate", forbidden)
+    monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.ensure_model", forbidden)
+    dialog = LocalASRDialog()
+    try:
+        assert dialog.advanced.isHidden() and dialog.prepare_button.isDefault()
+        assert [dialog.model.itemData(i) for i in range(4)] == ["qwen-1.7b", "qwen-0.6b", "aligner", "community-1"]
+        assert dialog.model.itemText(0).startswith("Step 1") and dialog.model.itemText(3).startswith("Step 3")
+        root = cfg.local_asr_root.value
+        assert (root if root else "qwen-1.7b-") in dialog.storage.text()
+        dialog.model.setCurrentIndex(3)
+        diarization = cfg.local_diarization_root.value
+        assert (diarization if diarization else "community-1-") in dialog.storage.text()
+        assert dialog.summary.text().count("—") == 4
+        dialog.advanced_button.setChecked(True)
+        assert not dialog.advanced.isHidden()
+    finally:
+        dialog.close()
+
+
+def test_check_all_steps_runs_file_checks_in_pipeline_order(qapp, monkeypatch):
+    import time
+
+    calls = []
+
+    def locate(model, root, *, verify, check):
+        check()
+        calls.append((model, verify))
+        return "layout"
+
+    monkeypatch.setattr("videocaptioner.ui.thread.local_asr_thread.locate", locate)
+    dialog = LocalASRDialog()
+    dialog.model.setCurrentIndex(1)
+    try:
+        dialog.check_all_button.click()
+        assert dialog.worker is not None and not dialog.check_all_button.isEnabled()
+        deadline = time.monotonic() + 10
+        while (dialog.worker is not None or dialog._queue) and time.monotonic() < deadline:
+            qapp.processEvents()
+            time.sleep(0.01)
+        assert calls == [("qwen-0.6b", False), ("aligner", False), ("community-1", False)]
+        assert dialog.check_all_button.isEnabled() and dialog.model.isEnabled()
+        summary = dialog.summary.text()
+        assert summary.count("Installed.") == 3 and summary.count("—") == 1
+        assert "Installed." in dialog.status.text()
+    finally:
+        if dialog.worker is not None:
+            dialog.worker.stop()
+            dialog.worker.wait()
+        dialog.close()
+
+
 @pytest.mark.parametrize("name", ["QWEN_LOCAL", "WHISPER_API", "SONIOX", "SCRIBE", "BIJIAN", "FASTER_WHISPER"])
 def test_engine_switch_scopes_local_diarization_without_erasing_preference(qapp, name):
     from videocaptioner.core.entities import TranscribeModelEnum

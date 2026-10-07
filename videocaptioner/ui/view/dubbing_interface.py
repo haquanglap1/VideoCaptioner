@@ -48,7 +48,7 @@ from videocaptioner.core.tts.vieneu.model_updater import VieNeuUpdateCheck
 from videocaptioner.core.utils.logger import setup_logger
 from videocaptioner.core.utils.platform_utils import open_folder
 from videocaptioner.ui.common.config import cfg
-from videocaptioner.ui.components.auto_timing_dialog import AutoTimingDialog
+from videocaptioner.ui.components.auto_timing_dialog import AutoTimingDialog, decision_label
 from videocaptioner.ui.components.dubbing_output_folder import DubbingOutputFolder
 from videocaptioner.ui.components.dubbing_review_dialog import DubbingReviewDialog
 from videocaptioner.ui.components.DubbingReportDialog import DubbingReportDialog
@@ -402,6 +402,9 @@ class DubbingInterface(QWidget):
         settings_layout.addWidget(self.playback_hint)
         self.voice_tempo_spinbox.valueChanged.connect(self._update_timing_controls)
         self.video_speed_spinbox.valueChanged.connect(self._update_timing_controls)
+        # Manual edits drop the Auto binding at resume time; say so on the review label right away.
+        for spinbox in (self.voice_tempo_spinbox, self.video_speed_spinbox, self.start_delay_spinbox):
+            spinbox.valueChanged.connect(lambda _value: self._refresh_review_actions())
 
         # Mix Mode
         row6 = QHBoxLayout()
@@ -984,7 +987,7 @@ class DubbingInterface(QWidget):
         if review:
             plan = review.plan
             task = self._task
-            self.review_label.setText(self.tr(
+            text = self.tr(
                 "{groups} nhóm | {review} cần review | {provider} / {model} / {voice}\n"
                 "Nguồn: {video} + {subtitle}. Tiếp tục giữ giọng/lời đã duyệt, áp tempo/video/trễ đang chọn; "
                 "kiểm tra nguồn và giọng trước khi tạo audio.\nCache của job: {cache}\n{provenance}"
@@ -993,9 +996,29 @@ class DubbingInterface(QWidget):
                      video=Path(task.video_path or "").name if task else "",
                      subtitle=Path(task.subtitle_path or "").name if task else "",
                      cache=task.cache_root if task and task.cache_root else self.tr("Mặc định của ứng dụng"),
-                     provenance=review.provenance_note))
+                     provenance=review.provenance_note)
+            auto_note = self._auto_timing_note()
+            self.review_label.setText(f"{text}\n{auto_note}" if auto_note else text)
         else:
             self.review_label.setText(self.tr("Chưa có kế hoạch lời đọc."))
+
+    def _auto_timing_note(self) -> str:
+        """Describe the in-memory Auto proposal and whether the controls still match it."""
+        plan = self._task.auto_timing_plan if self._task else None
+        if plan is None or plan.selected is None:
+            return ""
+        selected = plan.selected
+        current = (self.voice_tempo_spinbox.value(), self.video_speed_spinbox.value(), self.start_delay_spinbox.value())
+        if current != (selected.voice_tempo, selected.video_speed, plan.max_start_delay_ms):
+            return self.tr(
+                "Auto timing: tempo/video/trễ đã chỉnh tay khác phương án đo ({tempo:.2f}× / {speed:.2f}× / {delay} ms); "
+                "Tiếp tục hoặc Xem trước sẽ dùng giá trị đang chọn và bỏ nhãn Auto."
+            ).format(tempo=selected.voice_tempo, speed=selected.video_speed, delay=plan.max_start_delay_ms)
+        return self.tr(
+            "Auto timing đang áp dụng: giọng {tempo:.2f}× / video {speed:.2f}× / trễ {delay} ms ({source}); "
+            "đã đo WAV/video, chọn Xem trước hoặc Tiếp tục để xuất."
+        ).format(tempo=selected.voice_tempo, speed=selected.video_speed, delay=plan.max_start_delay_ms,
+                 source=decision_label(plan.decision_source))
 
     def _on_review_ready(self, review: DubbingReview):
         if self._task:
@@ -1100,9 +1123,12 @@ class DubbingInterface(QWidget):
                 self.voice_tempo_spinbox.setValue(proposal.selected.voice_tempo)
                 self.video_speed_spinbox.setValue(proposal.selected.video_speed)
                 self.start_delay_spinbox.setValue(proposal.max_start_delay_ms)
+                self._refresh_review_actions()
                 self.status_label.setText(self.tr("Đã áp dụng phương án đo thực. Chọn Xem trước hoặc Tiếp tục để xuất."))
                 if dialog.preview_requested:
                     self._preview_review()
+            else:
+                self.status_label.setText(self.tr("Đã đóng bảng Auto; giữ nguyên tempo/video/trễ và lời đã duyệt."))
 
     def _preview_review(self):
         if self._job_busy or not self._task or not self._task.dubbing_review:

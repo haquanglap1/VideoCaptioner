@@ -15,7 +15,7 @@ from PIL import Image
 
 from videocaptioner.core.utils.subprocess_helper import _NO_WINDOW, child_environment
 
-from .decoder import probe_video, stop_owned_process
+from .decoder import probe_duration_ms, probe_video, stop_owned_process
 from .document import OcrCandidate, OcrDocument
 from .geometry import Roi
 from .identity import VisualSourceIdentity
@@ -28,6 +28,8 @@ class OcrPreview:
     png: bytes
     video: VideoInfo
     source_sha256: str
+    # Container length for selection defaults only; identity and timing never depend on it.
+    duration_ms: int | None = None
 
 
 def _frame(source: Path, info: VideoInfo, roi: Roi, predicate: str, ffmpeg: str, check: Check) -> bytes:
@@ -80,7 +82,8 @@ def preview_video(source: Path, position_ms: int, jobs_root: Path, *, ffmpeg: st
         ticks = (info.timeline_origin + Fraction(position_ms, 1000)) / info.time_base
         predicate = f"gte(pts,{ticks.numerator}/{ticks.denominator})"
         raw = _frame(snapshot.path, info, Roi(0, 0, 1, 1), predicate, ffmpeg, check)
-        return OcrPreview(_png(raw, *info.geometry.display_size), info, snapshot.sha256)
+        return OcrPreview(_png(raw, *info.geometry.display_size), info, snapshot.sha256,
+                          probe_duration_ms(snapshot.path, ffprobe, check))
 
 
 def preview_candidate(source: Path, document: OcrDocument, candidate: OcrCandidate, jobs_root: Path, *,

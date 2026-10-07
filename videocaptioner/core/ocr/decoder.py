@@ -40,15 +40,8 @@ def stop_owned_process(process: subprocess.Popen) -> None:
     process.wait(timeout=3)
 
 
-def probe_video(source: Path, ffprobe: str = "ffprobe", check: Check = lambda: None,
-                timeout: float = 30) -> VideoInfo:
-    check()
-    if not source.is_file():
-        raise OcrError("OCR source must be a local video file")
-    command = [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
-               "stream=index,width,height,time_base,start_pts,sample_aspect_ratio:"
-               "stream_tags=rotate:stream_side_data=rotation,displaymatrix:format=start_time",
-               "-of", "json", str(source.resolve())]
+def _probe_output(command: list[str], check: Check, timeout: float) -> bytes:
+    """Bounded ffprobe stdout from an owned process; cancellation checks run while waiting."""
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                env=child_environment(), creationflags=_NO_WINDOW,
                                start_new_session=os.name != "nt")
@@ -65,39 +58,79 @@ def probe_video(source: Path, ffprobe: str = "ffprobe", check: Check = lambda: N
                 continue
         if process.returncode or len(data) > 65536:
             raise OcrError("Video probe failed")
-        try:
-            payload = json.loads(data)
-            stream = payload["streams"][0]
-            tb = Fraction(stream["time_base"])
-            side_data = stream.get("side_data_list", [])
-            rotation = float(stream.get("tags", {}).get("rotate", 0))
-            for side in side_data:
-                rotation = float(side.get("rotation", rotation))
-                matrix = side.get("displaymatrix")
-                if matrix:
-                    values = [int(value) for row in matrix.strip().splitlines()
-                              for value in row.split(":", 1)[1].split()]
-                    # A pure quarter-turn has unit scale, no mirroring, shear or perspective.
-                    if (len(values) != 9 or values[2:3] != [0] or values[5:9] != [0, 0, 0, 1073741824]
-                            or any(abs(values[i]) not in (0, 65536) for i in (0, 1, 3, 4))
-                            or values[0] * values[4] - values[1] * values[3] != 65536**2):
-                        raise ValueError
-            if not math.isfinite(rotation) or rotation % 90:
-                raise ValueError
-            sar = stream.get("sample_aspect_ratio", "1:1")
-            if sar in ("N/A", "0:1"):
-                sar = "1:1"
-            origin = payload.get("format", {}).get("start_time")
-            origin = Fraction(origin) if origin is not None else int(stream["start_pts"]) * tb
-            return VideoInfo(int(stream["index"]), VideoGeometry(int(stream["width"]),
-                             int(stream["height"]), Fraction(sar.replace(":", "/")),
-                             int(rotation) % 360), tb, origin)
-        except (KeyError, ValueError, IndexError, TypeError, ZeroDivisionError):
-            raise OcrError("Missing timing or unsupported video geometry") from None
+        return data
     finally:
         stop_owned_process(process)
         if process.stdout:
             process.stdout.close()
+
+
+def _duration_from_probe(payload: dict) -> int | None:
+    """Milliseconds from the container, else the first video stream; None when unknown."""
+    values = [payload.get("format", {}).get("duration")]
+    values += [stream.get("duration") for stream in payload.get("streams", []) if isinstance(stream, dict)]
+    for value in values:
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(seconds) and seconds > 0:
+            return int(round(seconds * 1000))
+    return None
+
+
+def probe_duration_ms(source: Path, ffprobe: str = "ffprobe", check: Check = lambda: None,
+                      timeout: float = 30) -> int | None:
+    """Best-effort video length for selection defaults; not a timing measurement, never fatal."""
+    check()
+    command = [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+               "stream=duration:format=duration", "-of", "json", str(source.resolve())]
+    try:
+        return _duration_from_probe(json.loads(_probe_output(command, check, timeout)))
+    except (OcrError, OSError, ValueError, TypeError, AttributeError):
+        check()  # Cancellation stays fatal; a failed probe only loses the default length.
+        return None
+
+
+def probe_video(source: Path, ffprobe: str = "ffprobe", check: Check = lambda: None,
+                timeout: float = 30) -> VideoInfo:
+    check()
+    if not source.is_file():
+        raise OcrError("OCR source must be a local video file")
+    command = [ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+               "stream=index,width,height,time_base,start_pts,sample_aspect_ratio:"
+               "stream_tags=rotate:stream_side_data=rotation,displaymatrix:format=start_time",
+               "-of", "json", str(source.resolve())]
+    data = _probe_output(command, check, timeout)
+    try:
+        payload = json.loads(data)
+        stream = payload["streams"][0]
+        tb = Fraction(stream["time_base"])
+        side_data = stream.get("side_data_list", [])
+        rotation = float(stream.get("tags", {}).get("rotate", 0))
+        for side in side_data:
+            rotation = float(side.get("rotation", rotation))
+            matrix = side.get("displaymatrix")
+            if matrix:
+                values = [int(value) for row in matrix.strip().splitlines()
+                          for value in row.split(":", 1)[1].split()]
+                # A pure quarter-turn has unit scale, no mirroring, shear or perspective.
+                if (len(values) != 9 or values[2:3] != [0] or values[5:9] != [0, 0, 0, 1073741824]
+                        or any(abs(values[i]) not in (0, 65536) for i in (0, 1, 3, 4))
+                        or values[0] * values[4] - values[1] * values[3] != 65536**2):
+                    raise ValueError
+        if not math.isfinite(rotation) or rotation % 90:
+            raise ValueError
+        sar = stream.get("sample_aspect_ratio", "1:1")
+        if sar in ("N/A", "0:1"):
+            sar = "1:1"
+        origin = payload.get("format", {}).get("start_time")
+        origin = Fraction(origin) if origin is not None else int(stream["start_pts"]) * tb
+        return VideoInfo(int(stream["index"]), VideoGeometry(int(stream["width"]),
+                         int(stream["height"]), Fraction(sar.replace(":", "/")),
+                         int(rotation) % 360), tb, origin)
+    except (KeyError, ValueError, IndexError, TypeError, ZeroDivisionError):
+        raise OcrError("Missing timing or unsupported video geometry") from None
 
 
 @dataclass

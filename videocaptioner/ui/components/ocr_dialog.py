@@ -48,6 +48,16 @@ from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_wo
 
 from .ocr_region_canvas import OcrRegionCanvas
 
+DEFAULT_END_MS = 60000
+
+
+def clock(ms: int) -> str:
+    """mm:ss (or h:mm:ss) for labels only; selections stay in milliseconds."""
+    seconds = max(0, int(ms)) // 1000
+    if seconds >= 3600:
+        return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
 
 class OcrDialog(QDialog):
     subtitles_ready = pyqtSignal(object, str, str)
@@ -58,35 +68,89 @@ class OcrDialog(QDialog):
         self.session: OcrReviewSession | None = None
         self.review_path: Path | None = None
         self.source_preview = None
+        self.duration_ms: int | None = None
         self._drafts: dict[tuple[str, str], OcrVietnameseDraft] = {}
         self._draft_configs: dict[tuple[str, str], tuple[str, str, int]] = {}
         self._closed = False
         self.setWindowTitle("OCR — Phụ đề trong hình")
         self.resize(1120, 900)
-        self.setStyleSheet("QDialog { background: #202733; color: #e6edf6; } QLabel { color: #e6edf6; }")
+        self.setStyleSheet("QDialog { background: #202733; color: #e6edf6; } "
+                           "QLabel { color: #e6edf6; } QCheckBox { color: #e6edf6; }")
         self.finished.connect(self.shutdown)
         layout = QVBoxLayout(self)
-        notice = QLabel("Đọc phụ đề ngang trong một vùng cố định, một hoặc hai dòng. "
-                        "CPU chạy tại máy; không tự tải model hoặc gọi dịch vụ đọc ảnh.")
-        notice.setWordWrap(True)
-        layout.addWidget(notice)
+        guide = QLabel("Bước 1: Chọn video  →  Bước 2: Tải ảnh mẫu rồi kéo chuột quanh dòng phụ đề trên ảnh  →  "
+                       "Bước 3: Đọc phụ đề  →  Bước 4: Xuất phụ đề hoặc Mở bảng phụ đề / dịch.\n"
+                       "OCR chạy bằng CPU tại máy, chỉ đọc chữ trong vùng đã kéo; không tự tải model hoặc gọi "
+                       "dịch vụ đọc ảnh. Các tùy chọn ít dùng nằm trong Tùy chọn nâng cao.")
+        guide.setWordWrap(True)
+        layout.addWidget(guide)
         self.controls = QWidget()
         controls = QVBoxLayout(self.controls)
         controls.setContentsMargins(0, 0, 0, 0)
+
         row = QHBoxLayout()
+        row.addWidget(QLabel("1. Video"))
         self.source = QLineEdit(source)
         self.source.setReadOnly(True)
         row.addWidget(self.source, 1)
         self._button(row, "Chọn video…", self.choose_source)
         self._button(row, "Mở dữ liệu OCR…", self.load_review)
         controls.addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("2. Ảnh mẫu tại"))
+        self.position_ms = QSpinBox()
+        self.position_ms.setRange(0, 2_147_483_647)
+        self.position_ms.setValue(0)
+        self.position_ms.setSuffix(" ms")
+        self.position_ms.setToolTip("Chọn một thời điểm đang hiện phụ đề để kéo vùng cho đúng. "
+                                    "Ảnh mẫu không xác nhận biên câu.")
+        row.addWidget(self.position_ms)
+        self._button(row, "Tải ảnh chọn ROI", self.load_preview)
+        self.middle_button = self._button(row, "Lấy ảnh giữa video", self.preview_middle)
+        self.middle_button.setEnabled(False)
+        row.addStretch(1)
+        controls.addLayout(row)
+
+        row = QHBoxLayout()
+        self.full_range = QCheckBox("Quét toàn bộ video")
+        self.full_range.setChecked(True)
+        self.full_range.setToolTip("Bỏ chọn để chỉ quét một đoạn; đầu/cuối tính bằng millisecond.")
+        row.addWidget(self.full_range)
+        self.start_ms, self.end_ms = QSpinBox(), QSpinBox()
+        for label, spin, value in (("Đầu (ms)", self.start_ms, 0), ("Cuối (ms)", self.end_ms, DEFAULT_END_MS)):
+            spin.setRange(0, 2_147_483_647)
+            spin.setValue(value)
+            spin.setEnabled(False)
+            row.addWidget(QLabel(label))
+            row.addWidget(spin)
+        self.range_label = QLabel()
+        row.addWidget(self.range_label)
+        row.addStretch(1)
+        controls.addLayout(row)
+        self.full_range.toggled.connect(self.toggle_full_range)
+        for spin in (self.start_ms, self.end_ms):
+            spin.valueChanged.connect(self.refresh_range_label)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("3."))
+        self.scan_button = self._button(row, "Đọc phụ đề bằng CPU", self.scan)
+        self.advanced_button = QPushButton("Tùy chọn nâng cao")
+        self.advanced_button.setCheckable(True)
+        row.addWidget(self.advanced_button)
+        row.addStretch(1)
+        controls.addLayout(row)
+
+        self.advanced = QWidget()
+        advanced = QVBoxLayout(self.advanced)
+        advanced.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         self.runtime = QLineEdit()
         self.runtime.setPlaceholderText("Tự tìm runtime OCR cạnh ứng dụng; hoặc chọn bộ đã cài")
         row.addWidget(self.runtime, 1)
         self._button(row, "Chọn runtime…", self.choose_runtime)
         self._button(row, "Kiểm tra model đã cài", self.check_runtime)
-        controls.addLayout(row)
+        advanced.addLayout(row)
         row = QHBoxLayout()
         self.recognizer_runtime = QLineEdit()
         self.recognizer_runtime.setPlaceholderText("PaddleOCR-VL thử nghiệm: chọn runtime GPU; để trống dùng CPU")
@@ -94,21 +158,11 @@ class OcrDialog(QDialog):
                                           "chưa được nghiệm thu trên toàn video.")
         row.addWidget(self.recognizer_runtime, 1)
         self._button(row, "Chọn PaddleOCR-VL…", self.choose_recognizer_runtime)
-        controls.addLayout(row)
-        row = QHBoxLayout()
-        self.start_ms, self.end_ms, self.position_ms = QSpinBox(), QSpinBox(), QSpinBox()
-        for label, spin, value in (("Đầu (ms)", self.start_ms, 0), ("Cuối (ms)", self.end_ms, 60000),
-                                    ("Xem tại (ms)", self.position_ms, 0)):
-            spin.setRange(0, 2_147_483_647)
-            spin.setValue(value)
-            row.addWidget(QLabel(label))
-            row.addWidget(spin)
-        self._button(row, "Tải ảnh chọn ROI", self.load_preview)
-        self.scan_button = self._button(row, "Đọc phụ đề bằng CPU", self.scan)
+        advanced.addLayout(row)
         self.recognizer_runtime.textChanged.connect(
             lambda text: self.scan_button.setText("Đọc phụ đề" if text.strip() else "Đọc phụ đề bằng CPU"))
-        controls.addLayout(row)
         row = QHBoxLayout()
+        row.addWidget(QLabel("ROI số (0–1)"))
         self.roi_values = []
         for label, value in (("X", 0), ("Y", 0), ("Rộng", 1), ("Cao", 1)):
             spin = QDoubleSpinBox()
@@ -120,10 +174,9 @@ class OcrDialog(QDialog):
             row.addWidget(QLabel(label))
             row.addWidget(spin)
         self._button(row, "Dùng ROI số", self.apply_roi)
-        controls.addLayout(row)
+        advanced.addLayout(row)
         row = QHBoxLayout()
         self.select_lines = QCheckBox("Chỉ lấy dòng đi qua vạch chọn")
-        self.select_lines.setStyleSheet("color: #e6edf6;")
         self.line_anchors = QLineEdit("50")
         self.line_anchors.setMaximumWidth(110)
         self.line_anchors.setEnabled(False)
@@ -136,17 +189,13 @@ class OcrDialog(QDialog):
         row.addWidget(self.select_lines)
         row.addWidget(QLabel("Vị trí (%)"))
         row.addWidget(self.line_anchors)
-        row.addStretch(1)
-        controls.addLayout(row)
-        row = QHBoxLayout()
         self.stable_tracking = QCheckBox("Ổn định nhóm phụ đề một dòng (CPU)")
-        self.stable_tracking.setStyleSheet("color: #e6edf6;")
         self.stable_tracking.setEnabled(False)
         self.stable_tracking.setToolTip("Dùng PP-OCRv6 medium để giảm cue bị tách theo nền chuyển động. "
                                        "Cần chọn đúng một vạch; chậm hơn và vẫn giữ thông tin biên bất định.")
         row.addWidget(self.stable_tracking)
         row.addStretch(1)
-        controls.addLayout(row)
+        advanced.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel("Cache chữ OCR (MiB; 0 = tắt)"))
         self.cache_mib = QSpinBox()
@@ -158,8 +207,12 @@ class OcrDialog(QDialog):
         self._button(row, "Dung lượng cache", self.show_cache)
         self._button(row, "Xóa cache OCR", lambda: self.show_cache(clear=True))
         row.addStretch(1)
-        controls.addLayout(row)
+        advanced.addLayout(row)
+        self.advanced.hide()
+        self.advanced_button.toggled.connect(self.advanced.setVisible)
+        controls.addWidget(self.advanced)
         layout.addWidget(self.controls)
+
         splitter = QSplitter(Qt.Orientation.Vertical)
         self.canvas = OcrRegionCanvas()
         self.canvas.roi_changed.connect(self.roi_changed)
@@ -214,7 +267,7 @@ class OcrDialog(QDialog):
         splitter.addWidget(self.result_controls)
         splitter.setSizes([260, 300])
         layout.addWidget(splitter, 1)
-        self.status = QLabel("Chọn video, tải ảnh và kéo vùng phụ đề. Quét xong có thể xuất hoặc chuyển sang dịch ngay.")
+        self.status = QLabel("Chọn video, tải ảnh mẫu và kéo vùng phụ đề. Quét xong có thể xuất hoặc chuyển sang dịch ngay.")
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -222,6 +275,7 @@ class OcrDialog(QDialog):
         layout.addWidget(self.progress)
         self.actions_panel = QWidget()
         row = QHBoxLayout(self.actions_panel)
+        row.addWidget(QLabel("4."))
         self._button(row, "Lưu dữ liệu OCR…", self.save_review)
         self.resume_button = self._button(row, "Tiếp tục quét", self.resume_scan)
         self.resume_button.setToolTip("Giữ các câu đã lưu; tiếp tục quét theo vùng và đoạn của dữ liệu OCR.")
@@ -232,6 +286,7 @@ class OcrDialog(QDialog):
         self.cancel_button = self._button(row, "Hủy tác vụ", self.cancel)
         self._button(row, "Đóng", self.reject)
         layout.addLayout(row)
+        self.refresh_range_label()
         self.refresh()
 
     @staticmethod
@@ -280,6 +335,7 @@ class OcrDialog(QDialog):
         self.actions_panel.setEnabled(not busy and self.session is not None)
         self.cancel_button.setEnabled(busy)
         self.scan_button.setEnabled(self.source_preview is not None and self.canvas.roi is not None)
+        self.middle_button.setEnabled(bool(self.duration_ms))
         self.resume_button.setEnabled(bool(not busy and self.source.text() and self.session
                                            and not self.session.document.complete))
         exportable = not busy and self.session is not None and not self.session.document.export_issues
@@ -294,8 +350,11 @@ class OcrDialog(QDialog):
         if path:
             self.source.setText(path)
             self.source_preview = None
+            self.duration_ms = None
             self.canvas.roi = None
+            self.refresh_range_label()
             self.refresh_enabled()
+            self.status.setText("Bấm Tải ảnh chọn ROI tại một thời điểm đang hiện phụ đề, rồi kéo vùng phụ đề trên ảnh.")
 
     def choose_runtime(self):
         path = QFileDialog.getExistingDirectory(self, "Chọn runtime OCR đã cài")
@@ -334,11 +393,44 @@ class OcrDialog(QDialog):
         source, position = Path(self.source.text()), self.position_ms.value()
         self._start(OcrWorker(lambda check: preview_video(source, position, jobs_directory(), check=check)), self.accept_preview)
 
+    def preview_middle(self):
+        if self.duration_ms:
+            self.position_ms.setValue(self.duration_ms // 2)
+            self.load_preview()
+
     def accept_preview(self, preview):
         self.source_preview = preview
+        self.duration_ms = getattr(preview, "duration_ms", None) or None
+        if self.full_range.isChecked() and self.duration_ms:
+            self.set_range(0, self.duration_ms)
+        self.refresh_range_label()
         self.canvas.editable = True
         self.canvas.set_image(preview.png)
-        self.status.setText("Kéo đúng vùng phụ đề trên ảnh, hoặc nhập ROI số. Ảnh xem trước không xác nhận biên câu.")
+        length = f" Video dài {clock(self.duration_ms)}." if self.duration_ms else ""
+        self.status.setText("Kéo chuột quanh dòng phụ đề trên ảnh (hoặc nhập ROI số trong Tùy chọn nâng cao), "
+                            "rồi bấm Đọc phụ đề. Ảnh xem trước không xác nhận biên câu." + length)
+        self.refresh_enabled()
+
+    def set_range(self, start_ms: int, end_ms: int):
+        for spin, value in ((self.start_ms, start_ms), (self.end_ms, end_ms)):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+        self.refresh_range_label()
+
+    def toggle_full_range(self, checked: bool):
+        for spin in (self.start_ms, self.end_ms):
+            spin.setEnabled(not checked)
+        if checked and self.duration_ms:
+            self.set_range(0, self.duration_ms)
+        self.refresh_range_label()
+
+    def refresh_range_label(self, *_):
+        start, end = self.start_ms.value(), self.end_ms.value()
+        if self.full_range.isChecked() and not self.duration_ms and (start, end) == (0, DEFAULT_END_MS):
+            self.range_label.setText("(đến hết video sau khi tải ảnh mẫu)")
+            return
+        self.range_label.setText(f"= {clock(start)} → {clock(end)}")
 
     def roi_changed(self, roi):
         for spin, value in zip(self.roi_values, (roi.x, roi.y, roi.width, roi.height)):
@@ -404,8 +496,9 @@ class OcrDialog(QDialog):
         self.session = OcrReviewSession(document)
         self.review_path = None
         selection = document.config.selection
-        self.start_ms.setValue(selection.start_ms)
-        self.end_ms.setValue(selection.end_ms)
+        # The saved selection is authoritative; "whole video" must not overwrite it later.
+        self.full_range.setChecked(False)
+        self.set_range(selection.start_ms, selection.end_ms)
         self.position_ms.setValue(selection.start_ms)
         self.canvas.roi = document.config.roi
         roi = document.config.roi

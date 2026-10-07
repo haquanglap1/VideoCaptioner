@@ -192,6 +192,11 @@ một lần trong GUI là đủ; các tùy chọn hành vi (optimize, translate.
 
 ## OCR phụ đề trong hình
 
+Hướng dẫn ngắn theo bước: [docs/guide/ocr-subtitles.md](docs/guide/ocr-subtitles.md). Cửa sổ OCR
+đi theo 4 bước (video → ảnh mẫu/ROI → đọc → xuất/dịch); **Quét toàn bộ video** bật sẵn và tự điền
+độ dài video sau khi tải ảnh mẫu, các control ít dùng (runtime, ROI số, vạch chọn, cache) nằm trong
+**Tùy chọn nâng cao**.
+
 Khi ROI có cả chữ giao diện nhỏ, bật **Chỉ lấy dòng đi qua vạch chọn** và đặt
 **Vị trí (%)** theo chiều cao ROI: `50` cho dòng ở giữa, `25,75` cho hai dòng.
 Vạch vàng trên ảnh giúp đặt vị trí. App giữ nguyên các dòng OCR cắt vạch và
@@ -368,6 +373,10 @@ Xem [hợp đồng phân đoạn và validation](docs/dev/speech-segmentation-20
 
 ## Qwen local và hybrid người nói (S5)
 
+Hướng dẫn ngắn theo bước: [docs/guide/qwen-local-asr.md](docs/guide/qwen-local-asr.md). Cửa sổ
+**Quản lý mô hình** liệt kê ba bước (nhận dạng, căn thời gian, người nói), hiển thị thư mục lưu model,
+có **Kiểm tra cả 3 bước** và **Chuẩn bị / tiếp tục model đã chọn**; thao tác nâng cao thu vào nút riêng.
+
 Chọn `Qwen3-ASR [Local]` trong GUI hoặc `--asr qwen-local --language zh` trong CLI.
 1.7B/0.6B và ForcedAligner chạy tuần tự trong runtime riêng; không đổi engine mặc định.
 Khi bắt đầu, Qwen tự chuẩn bị model đang chọn nếu thiếu; xuất phụ đề mới chuẩn bị thêm
@@ -441,6 +450,8 @@ vẫn giữ chế độ từ nghiêm ngặt. Các helper media/GPU chạy ẩn t
 **Tự căn timing/tốc độ** dùng WAV nguồn đã có để tìm cặp tempo/video phù hợp;
 LLM đang cấu hình có thể chọn nhịp nghe trong các phương án solver. Xem bảng
 dự báo/đã đo rồi **Áp dụng / Xem trước**; thiếu key/lỗi LLM có fallback solver.
+Bảng kết quả theo theme của app, dòng đã đo in đậm, nguồn quyết định ghi tiếng Việt;
+sau khi áp dụng, nhãn kế hoạch trong tab ghi rõ cặp Auto đang dùng và báo khi chỉnh tay.
 Giữ đủ lời, giọng tối đa1,20×, gap80ms, trễ mặc định2s; không sinh lại giọng
 khi Auto. **Ghi vào hình (nền đen)** đặt hộp đen đặc phía sau chữ để dễ đọc trên
 video có sẵn phụ đề. [Contract, cách dùng và gate](docs/dev/auto-timing-2026-10.md).
