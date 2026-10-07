@@ -503,7 +503,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     _build_transcribe_parser(subparsers)
     _build_subtitle_parser(subparsers)
-    ocr = subparsers.add_parser("ocr", help="Read a fixed video subtitle ROI with an installed CPU OCR runtime")
+    ocr = subparsers.add_parser("ocr", help="Read a fixed video subtitle ROI with the configured vision LLM or an installed CPU OCR runtime")
     ocr.add_argument("input")
     ocr.add_argument("--start-ms", type=int, required=True)
     ocr.add_argument("--end-ms", type=int, required=True)
@@ -511,11 +511,23 @@ def build_parser() -> argparse.ArgumentParser:
     ocr.add_argument("--line-anchors", metavar="Y[,Y]",
                      help="Select lines crossing one/two normalized ROI heights, e.g. 0.5 or 0.25,0.75; "
                           "includes nearby detached punctuation. Omit to keep all lines.")
-    ocr.add_argument("--tracking", choices=["edges", "characters", "characters-v2", "characters-v3"], default="edges",
-                     help="Character tracking stabilizes one selected line using PP-OCRv6 medium (slower CPU mode)")
+    ocr.add_argument("--tracking", choices=["edges", "strokes", "characters", "characters-v2", "characters-v3"],
+                     default=None,
+                     help="Cue boundaries: edges (CPU default) compares edge tiles; strokes (vision default) follows "
+                          "bright outlined glyphs so moving backgrounds do not split cues; characters* use PP-OCRv6 medium")
     ocr.add_argument("--consensus", choices=["exact-v1", "punctuation-v2"], default="exact-v1",
                      help="Experimental punctuation-v2 requires matching visible dots in both candidate frames")
     ocr.add_argument("--language", choices=["zh"], default="zh")
+    ocr.add_argument("--vision-llm", action="store_true",
+                     help="Read numbered contact sheets of subtitle crops with the configured LLM (llm.model) "
+                          "instead of the local CPU runtime; only decode/tracking stay local")
+    ocr.add_argument("--vision-model", help="Vision-capable model name; defaults to llm.model")
+    ocr.add_argument("--vision-rows", type=int, default=16, help="Crops per request sheet (1-40)")
+    ocr.add_argument("--vision-width", type=int, default=1024, help="Crop width on the sheet in pixels (320-2048)")
+    ocr.add_argument("--vision-crops", type=int, choices=[1, 2], default=1,
+                     help="Crops read per cue: 1 sharpest frame, 2 adds a boundary frame for agreement")
+    ocr.add_argument("--vision-sheets-dir", metavar="DIR",
+                     help="Save each PNG sheet and reply for inspection; never credentials")
     ocr.add_argument("--ocr-runtime", help="Installed runtime root; defaults to models/ocr beside the app")
     ocr.add_argument("--recognizer-runtime", help="Opt-in PaddleOCR-VL manifest directory; max 40 total requests / 360s")
     ocr.add_argument("--ocr-bridge", help="Explicit worker override; otherwise use the bundled bridge")
@@ -535,6 +547,8 @@ def build_parser() -> argparse.ArgumentParser:
     ocr_resume = subparsers.add_parser("ocr-resume", help="Continue an incomplete OCR scan using its saved settings")
     ocr_resume.add_argument("input", help="Incomplete OCR document JSON")
     ocr_resume.add_argument("--source", required=True, help="Original video, verified before decoding")
+    ocr_resume.add_argument("--vision-model", help="Must match the checkpoint model when it was read by the vision LLM")
+    ocr_resume.add_argument("--vision-sheets-dir", metavar="DIR", help="Save vision sheets and replies for inspection")
     ocr_resume.add_argument("--ocr-runtime", help="Installed runtime matching the saved profile")
     ocr_resume.add_argument("--recognizer-runtime", help="PaddleOCR-VL manifest matching the saved recognizer, if used")
     ocr_resume.add_argument("--ocr-bridge", help="Explicit worker override matching the saved bridge")
@@ -744,13 +758,14 @@ def _run_local_diarize(args: argparse.Namespace) -> int:
 def _run_ocr(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.ocr import run
 
-    return run(args, {})
+    return run(args, _load_config(args) if getattr(args, "vision_llm", False) else {})
 
 
 def _run_ocr_resume(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.ocr import resume_scan
 
-    return resume_scan(args, {})
+    # Vision checkpoints need LLM credentials; local runtimes never read the config.
+    return resume_scan(args, _load_config(args))
 
 
 def _run_ocr_review(args: argparse.Namespace) -> int:

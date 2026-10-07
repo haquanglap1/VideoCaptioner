@@ -197,6 +197,30 @@ Hướng dẫn ngắn theo bước: [docs/guide/ocr-subtitles.md](docs/guide/ocr
 độ dài video sau khi tải ảnh mẫu, các control ít dùng (runtime, ROI số, vạch chọn, cache) nằm trong
 **Tùy chọn nâng cao**.
 
+### Đọc chữ bằng AI qua API LLM (mặc định)
+
+Từ 2026-10-07, ô **Đọc chữ bằng AI qua API LLM trong Cài đặt** bật sẵn: máy chỉ giải mã video và
+theo dõi **nét chữ sáng/mảnh** trong ROI (`text-strokes-v1`, so hai frame bằng độ chồng nét nên nền
+chuyển động không tách câu; không ONNX); mỗi câu lấy **một crop nét nhất** thu về dải chữ, ghép
+tối đa **16 crop** thành một tờ ảnh PNG đánh số rồi gửi tới model LLM đang chọn trong Cài đặt (model
+phải đọc được ảnh). Reply là JSON một chữ cho mỗi dòng; app kiểm đúng số dòng/chỉ số, thử lại đúng
+một lần cho tờ lỗi rồi dừng và giữ checkpoint. Dòng AI trả về rỗng bị loại khỏi phụ đề (metrics
+`dropped_empty_cues`), vùng ngắn hơn 100 ms không gửi, và khi xuất các cue liên tiếp cùng chữ cách
+≤ 150 ms được gộp thành một câu; không chặn xuất. Chỉ gửi crop, số dòng và ngôn ngữ; không gửi tên file, audio
+hay chữ lân cận. Nhật ký yêu cầu ghi metadata/usage, không ghi ảnh. Cache bản đọc dùng chung cơ chế
+cũ, khóa theo model + prompt + cỡ tờ, nên quét lại cùng video không gửi lại. Vạch chọn dòng, ổn định
+nhóm và PaddleOCR-VL chỉ áp dụng cho đường CPU. CLI:
+
+```bash
+uv run --frozen videocaptioner ocr clip.mp4 --vision-llm --start-ms 0 --end-ms 60000 \
+  --roi 0.05,0.86,0.90,0.10 --vision-rows 16 --checkpoint scan.ocr.json -o captions.srt
+```
+
+`--vision-model` ghi đè `llm.model`; `--vision-crops 2` gửi thêm frame biên để đối chiếu; `--vision-sheets-dir`
+lưu từng tờ PNG và reply để xem lại (không có key). `ocr-resume` tự nhận checkpoint vision và yêu
+cầu đúng model đã dùng. Chưa có nghiệm thu chất lượng với model thật trên video thật; xem
+[contract, gate và giới hạn](docs/dev/ocr-vision-llm-2026-10.md).
+
 Khi ROI có cả chữ giao diện nhỏ, bật **Chỉ lấy dòng đi qua vạch chọn** và đặt
 **Vị trí (%)** theo chiều cao ROI: `50` cho dòng ở giữa, `25,75` cho hai dòng.
 Vạch vàng trên ảnh giúp đặt vị trí. App giữ nguyên các dòng OCR cắt vạch và

@@ -35,7 +35,9 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
                progress: Callable[[int, str], None] = lambda *_: None,
                expected_source_sha256: str = "", cache_root: Path | None = None,
                cache_mib: int = DEFAULT_CACHE_MIB, resume_document: OcrDocument | None = None,
-               visual_reader: Callable[[RoiFrame, EngineRead | None], VisualDecision] | None = None) -> OcrDocument:
+               visual_reader: Callable[[RoiFrame, EngineRead | None], VisualDecision] | None = None,
+               candidate_limit: int | None = None, drop_empty: bool = False,
+               min_region_ms: int = 0) -> OcrDocument:
     cache_bytes = cache_limit_bytes(cache_mib)
     if (config.tracking_policy in CHARACTER_TRACKING_WORKERS) != (visual_reader is not None):
         raise OcrError("OCR tracking reader does not match its saved policy")
@@ -67,7 +69,9 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
 
             pipeline = OcrPipeline(recognizer, cache, check=check, line_selection=config.line_selection,
                                    visual_reader=visual_reader, frame_progress=frame_progress,
-                                   consensus_policy=config.consensus_policy)
+                                   consensus_policy=config.consensus_policy,
+                                   candidate_limit=candidate_limit, drop_empty=drop_empty,
+                                   tracking_policy=config.tracking_policy, min_region_ms=min_region_ms)
             try:
                 if boundary:
                     position = boundary.start_ms if boundary.start_ms is not None else config.selection.start_ms
@@ -91,7 +95,9 @@ def scan_video(source: Path, config: OcrConfig, recognizer: Recognizer, *, jobs_
                                        OcrMetrics(metrics.roi_frames, metrics.tracks, metrics.candidate_crops,
                                                   metrics.fresh_calls, metrics.cache_hits, metrics.pipeline_wall_s,
                                                   metrics.tracking_s, metrics.recognition_call_s,
-                                                  time.monotonic() - begun))
+                                                  time.monotonic() - begun,
+                                                  dropped_empty_cues=metrics.empty_regions if drop_empty else None,
+                                                  dropped_short_cues=metrics.short_regions if min_region_ms else None))
                 checkpoint(document)
         return document
 

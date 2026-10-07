@@ -1,5 +1,39 @@
 # Project Status
 
+## 2026-10-07 (OCR đọc chữ bằng vision LLM qua tờ ảnh ghép)
+
+- Theo yêu cầu user: thay OCR local (kém, nặng máy) bằng cắt crop tự động gửi thẳng API LLM đang
+  cấu hình, ít thao tác tay. Thêm policy `vision-sheet-v1` (`core/ocr/vision.py`, `vision_profile.py`):
+  máy chỉ decode ROI và theo dõi nét chữ (`text-strokes-v1`: top-hat + một dải ngang + IoU ≥ 0,55 +
+  settle 150 ms), lấy một crop nét nhất mỗi cue, thu về dải chữ, ghép ≤ 16 crop thành tờ PNG đánh số
+  rồi gửi một request; reply JSON cứng, thử lại một lần, ngân sách request, cache theo model + prompt.
+  Dòng rỗng và vùng < 100 ms bị loại; khi xuất gộp cue liên tiếp cùng chữ cách ≤ 150 ms.
+  `OcrPipeline` có chế độ batch (`BatchRecognizer`), `TrackedRegion.best_pts`, `select_candidates`
+  dùng chung với resume; document cũ không đổi byte/ID. CLI `ocr --vision-llm`/`ocr-resume` đọc
+  `llm.*` từ config; GUI thêm ô **Đọc chữ bằng AI qua API LLM trong Cài đặt** (mặc định bật) và
+  **Số crop mỗi lượt gửi AI**. Tài liệu: `docs/dev/ocr-vision-llm-2026-10.md`, README, guide;
+  kế hoạch gán nhãn người nói: `docs/plans/speaker-labeling-2026-10.md`.
+- Đo tracker trên `BV1GFbk6LEVm-P1-zh.mp4` 107–127 s (endpoint giả, không tốn API): edge tiles tách
+  16 vùng/giây đầu; strokes v3 cho 24 vùng (18 ≥ 100 ms), đủ mọi phụ đề, 8/18 hàng là cảnh không
+  chữ (AI sẽ trả rỗng). Hai biến thể chặt hơn làm mất chữ nên bị bỏ. Tờ mẫu trong
+  `.tools/ocr-vision-20261007/evidence/sheets/`.
+- Gate source: `tests/test_ocr/test_vision.py` 25 test mới + GUI vision test; OCR/GUI OCR/CLI
+  **556 pass/7 skipped**; offline rộng (ui/editor/thread/subtitle/dubbing, không integration)
+  **774 pass/12 deselected**, 130 s; Ruff pass, Pyright 0/0, translations in sync. Root conftest
+  cô lập thêm `vision.cache_directory` (lượt đầu đã ghi 2 bản đọc giả vào cache OCR thật, khóa theo
+  SHA video tổng hợp). Chưa gọi API thật: chất lượng đọc/chi phí/gateway với ảnh chưa nghiệm thu.
+- Build `VideoCaptioner-20261007-ocr-vision`: exit 0/193,8 s, 6 WARNING/0 ERROR, 31.795.293 bytes,
+  SHA256 `229976d348de9c2ba00e892f44f06a89956237a157c7fe4515cc8fb754e86c90`; 16 module source-match,
+  vi_VN.json match; 99.315 model files/8 components size-match (payload dùng lại). GUI từ artifact
+  sống 30,5 s/exit 0/0 survivors; EXE `ocr --help` hiện tùy chọn vision.
+- Deploy E khi idle: 599 app files đối chiếu, 2 file thay (EXE giữ tên `VideoCaptioner-20260920-e2e7863.exe`,
+  `_internal/base_library.zip`), 32.674 protected files nguyên hash, models không chép, backup
+  `.tools/ocr-vision-20261007/rollback-payload`, live `ocr --help` exit 0. Chưa có nghiệm thu user
+  trên GUI E với video thật và model thật.
+- Theo yêu cầu user cùng ngày: không tạo nhiều bản build, bản dist 41 GB và bản ux-dialogs cũ đã
+  xóa sau khi đối chiếu hash với E (thu hồi 80 GB); từ nay build nhẹ (không `VC_TEST_MODELS_DIR`)
+  rồi chép EXE + `_internal` thẳng vào E, ghi trong AGENTS.md/CLAUDE.md. Commit và push theo yêu cầu.
+
 ## 2026-10-07 (Sửa hiển thị bảng Auto timing, đơn giản hóa Qwen/OCR)
 
 - User báo lỗi hiển thị ở Auto timing và chưa hiểu cách dùng Qwen local/OCR. Ảnh chụp

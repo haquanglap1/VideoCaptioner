@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from videocaptioner.core.ocr.geometry import Roi
     from videocaptioner.core.ocr.line_selection import LineSelectionPolicy
     from videocaptioner.core.ocr.models import Selection
+    from videocaptioner.core.ocr.vision import VisionSettings
     from videocaptioner.core.translate.dialogue import SpeechBlock
     from videocaptioner.core.translate.types import TargetLanguage
     from videocaptioner.core.translate.video_title import VideoTitleConfig
@@ -33,8 +34,10 @@ class OcrTask:
     cache_mib: int = 64
     resume_document: Optional["OcrDocument"] = None
     line_selection: Optional["LineSelectionPolicy"] = None
-    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
+    tracking_policy: Literal["edge-tiles-ocr2-v1", "text-strokes-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
     recognizer_runtime: str = ""
+    # Set when the configured LLM reads contact sheets instead of the local CPU runtime.
+    vision_settings: Optional["VisionSettings"] = None
 
 
 def _generate_task_id() -> str:

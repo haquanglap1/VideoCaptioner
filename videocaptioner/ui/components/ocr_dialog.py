@@ -37,12 +37,14 @@ from videocaptioner.core.ocr.models import OcrError, Selection
 from videocaptioner.core.ocr.preview import preview_candidate, preview_video
 from videocaptioner.core.ocr.review import OcrReviewSession, issue_labels
 from videocaptioner.core.ocr.service import jobs_directory
+from videocaptioner.ui.common.config import cfg
 from videocaptioner.ui.task_factory import TaskFactory
 from videocaptioner.ui.thread.ocr_thread import (
     OcrDraftThread,
     OcrThread,
     OcrWorker,
     capture_draft_settings,
+    capture_vision_settings,
 )
 from videocaptioner.ui.thread.worker_lifecycle import connect_current, retain_worker, retire_worker
 
@@ -80,8 +82,9 @@ class OcrDialog(QDialog):
         layout = QVBoxLayout(self)
         guide = QLabel("Bước 1: Chọn video  →  Bước 2: Tải ảnh mẫu rồi kéo chuột quanh dòng phụ đề trên ảnh  →  "
                        "Bước 3: Đọc phụ đề  →  Bước 4: Xuất phụ đề hoặc Mở bảng phụ đề / dịch.\n"
-                       "OCR chạy bằng CPU tại máy, chỉ đọc chữ trong vùng đã kéo; không tự tải model hoặc gọi "
-                       "dịch vụ đọc ảnh. Các tùy chọn ít dùng nằm trong Tùy chọn nâng cao.")
+                       "Mặc định app ghép các crop phụ đề thành tờ ảnh đánh số và gửi tới model LLM trong Cài đặt "
+                       "để đọc chữ; máy chỉ giải mã video và tìm lúc chữ đổi. Bỏ chọn để đọc bằng CPU tại máy "
+                       "(cần runtime OCR đã cài). Các tùy chọn ít dùng nằm trong Tùy chọn nâng cao.")
         guide.setWordWrap(True)
         layout.addWidget(guide)
         self.controls = QWidget()
@@ -135,6 +138,12 @@ class OcrDialog(QDialog):
         row = QHBoxLayout()
         row.addWidget(QLabel("3."))
         self.scan_button = self._button(row, "Đọc phụ đề bằng CPU", self.scan)
+        self.vision_llm = QCheckBox("Đọc chữ bằng AI qua API LLM trong Cài đặt")
+        self.vision_llm.setToolTip("Gửi các tờ ảnh ghép crop phụ đề (có đánh số) tới model LLM đang chọn trong "
+                                   "Cài đặt; không cần runtime OCR local. Model phải đọc được ảnh. Chỉ gửi crop, "
+                                   "số dòng và ngôn ngữ; không gửi tên file hay audio.")
+        self.vision_llm.setChecked(bool(cfg.ocr_vision_llm.value))
+        row.addWidget(self.vision_llm)
         self.advanced_button = QPushButton("Tùy chọn nâng cao")
         self.advanced_button.setCheckable(True)
         row.addWidget(self.advanced_button)
@@ -145,12 +154,25 @@ class OcrDialog(QDialog):
         advanced = QVBoxLayout(self.advanced)
         advanced.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
+        row.addWidget(QLabel("Số crop mỗi lượt gửi AI"))
+        self.vision_rows = QSpinBox()
+        self.vision_rows.setRange(1, 40)
+        self.vision_rows.setValue(int(cfg.ocr_vision_rows.value))
+        self.vision_rows.setToolTip("Mỗi lượt gửi một tờ ảnh ghép tối đa chừng này crop; ít hơn thì nhiều lượt hơn, "
+                                    "nhiều hơn thì model dễ bỏ sót dòng.")
+        row.addWidget(self.vision_rows)
+        row.addStretch(1)
+        advanced.addLayout(row)
+        self.local_options = QWidget()
+        local = QVBoxLayout(self.local_options)
+        local.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
         self.runtime = QLineEdit()
         self.runtime.setPlaceholderText("Tự tìm runtime OCR cạnh ứng dụng; hoặc chọn bộ đã cài")
         row.addWidget(self.runtime, 1)
         self._button(row, "Chọn runtime…", self.choose_runtime)
         self._button(row, "Kiểm tra model đã cài", self.check_runtime)
-        advanced.addLayout(row)
+        local.addLayout(row)
         row = QHBoxLayout()
         self.recognizer_runtime = QLineEdit()
         self.recognizer_runtime.setPlaceholderText("PaddleOCR-VL thử nghiệm: chọn runtime GPU; để trống dùng CPU")
@@ -158,9 +180,9 @@ class OcrDialog(QDialog):
                                           "chưa được nghiệm thu trên toàn video.")
         row.addWidget(self.recognizer_runtime, 1)
         self._button(row, "Chọn PaddleOCR-VL…", self.choose_recognizer_runtime)
-        advanced.addLayout(row)
-        self.recognizer_runtime.textChanged.connect(
-            lambda text: self.scan_button.setText("Đọc phụ đề" if text.strip() else "Đọc phụ đề bằng CPU"))
+        local.addLayout(row)
+        advanced.addWidget(self.local_options)
+        self.recognizer_runtime.textChanged.connect(self.refresh_scan_label)
         row = QHBoxLayout()
         row.addWidget(QLabel("ROI số (0–1)"))
         self.roi_values = []
@@ -211,6 +233,8 @@ class OcrDialog(QDialog):
         self.advanced.hide()
         self.advanced_button.toggled.connect(self.advanced.setVisible)
         controls.addWidget(self.advanced)
+        self.vision_llm.toggled.connect(self.toggle_vision)
+        self.toggle_vision(self.vision_llm.isChecked())
         layout.addWidget(self.controls)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -365,7 +389,44 @@ class OcrDialog(QDialog):
         path = QFileDialog.getExistingDirectory(self, "Chọn runtime PaddleOCR-VL đã chuẩn bị")
         if path:
             self.recognizer_runtime.setText(path)
-            self.scan_button.setText("Đọc phụ đề")
+            self.refresh_scan_label()
+
+    def refresh_scan_label(self, *_):
+        if self.vision_llm.isChecked():
+            self.scan_button.setText("Đọc phụ đề bằng AI (API)")
+        else:
+            self.scan_button.setText("Đọc phụ đề" if self.recognizer_runtime.text().strip() else "Đọc phụ đề bằng CPU")
+
+    def toggle_vision(self, checked: bool):
+        """Vision mode reads the whole ROI; line selection and local runtimes do not apply."""
+        if bool(cfg.ocr_vision_llm.value) != bool(checked):
+            cfg.set(cfg.ocr_vision_llm, bool(checked))
+        self.local_options.setEnabled(not checked)
+        self.vision_rows.setEnabled(checked)
+        if checked:
+            self.select_lines.setChecked(False)
+            self.stable_tracking.setChecked(False)
+        self.select_lines.setEnabled(not checked)
+        self.refresh_scan_label()
+
+    def vision_settings(self, profile=None):
+        """Capture the configured LLM on the GUI thread; None when vision mode is off."""
+        if profile is None and not self.vision_llm.isChecked():
+            return None
+        try:
+            rows = self.vision_rows.value() if profile is None else profile.rows
+            if profile is None:
+                cfg.set(cfg.ocr_vision_rows, rows)
+                settings = capture_vision_settings(rows)
+            else:
+                settings = capture_vision_settings(rows, profile.width, profile.crops)
+        except (KeyError, ValueError, OcrError):
+            raise OcrError("Kiểm tra cấu hình dịch vụ LLM, model, API key và thời gian chờ trong Cài đặt "
+                           "trước khi đọc phụ đề bằng AI.") from None
+        if profile is not None and settings.profile != profile:
+            raise OcrError(f"Dữ liệu OCR này được đọc bằng model {profile.model}; chọn lại đúng model đó "
+                           "trong Cài đặt rồi bấm Tiếp tục quét.")
+        return settings
 
     def check_runtime(self):
         root = Path(self.runtime.text()) if self.runtime.text().strip() else None
@@ -469,13 +530,17 @@ class OcrDialog(QDialog):
         if self.source_preview is None or self.canvas.roi is None:
             return
         try:
+            vision = self.vision_settings()
             task = TaskFactory.create_ocr_task(self.source.text(), self.canvas.roi,
                 Selection(self.start_ms.value(), self.end_ms.value()), self.runtime.text(),
                 expected_source_sha256=self.source_preview.source_sha256, cache_mib=self.cache_mib.value(),
-                line_selection=self.line_policy(),
-                tracking_policy="character-features-v1" if self.stable_tracking.isChecked() else "edge-tiles-ocr2-v1",
-                recognizer_runtime=self.recognizer_runtime.text().strip())
+                line_selection=None if vision else self.line_policy(),
+                tracking_policy="character-features-v1" if self.stable_tracking.isChecked() and not vision else "edge-tiles-ocr2-v1",
+                recognizer_runtime="" if vision else self.recognizer_runtime.text().strip(),
+                vision_settings=vision)
             self._start(OcrThread(task), self.accept_document)
+        except OcrError as exc:
+            self.status.setText(str(exc))
         except ValueError:
             self.status.setText("Kiểm tra đầu/cuối video và vị trí dòng: một hoặc hai số tăng dần, lớn hơn 0 và nhỏ hơn 100.")
 
@@ -485,11 +550,17 @@ class OcrDialog(QDialog):
         document = self.session.document
         if document.complete:
             return
+        try:
+            vision = self.vision_settings(document.config.vision) if document.config.vision else None
+        except OcrError as exc:
+            self.status.setText(str(exc))
+            return
         task = TaskFactory.create_ocr_task(self.source.text(), document.config.roi,
             document.config.selection, self.runtime.text(),
             expected_source_sha256=document.visual_source.snapshot_sha256,
             cache_mib=self.cache_mib.value(), resume_document=document,
-            recognizer_runtime=self.recognizer_runtime.text().strip())
+            recognizer_runtime="" if vision else self.recognizer_runtime.text().strip(),
+            vision_settings=vision)
         self._start(OcrThread(task), self.accept_document)
 
     def accept_document(self, document):
@@ -509,6 +580,10 @@ class OcrDialog(QDialog):
         policy = document.config.line_selection
         if policy:
             self.line_anchors.setText(",".join(f"{y * 100:g}" for y in policy.anchors))
+        vision = document.config.vision
+        self.vision_llm.setChecked(vision is not None)
+        if vision is not None:
+            self.vision_rows.setValue(vision.rows)
         self.select_lines.setChecked(policy is not None)
         self.stable_tracking.setChecked(document.config.tracking_policy in ("character-features-v1", "character-features-v2", "character-features-v3"))
         self.refresh()

@@ -80,6 +80,7 @@ hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.
                   "videocaptioner.core.ocr.installation", "videocaptioner.core.ocr.resume",
                   "videocaptioner.core.ocr.line_selection",
                   "videocaptioner.core.ocr.vl", "videocaptioner.core.ocr.vl_profile",
+                  "videocaptioner.core.ocr.vision", "videocaptioner.core.ocr.vision_profile",
                   "videocaptioner.resources.ocr.ocr_tracking_worker",
                   "videocaptioner.resources.ocr.ocr_tracking_worker_v2",
                   "videocaptioner.resources.ocr.ocr_tracking_worker_v3",

@@ -1,4 +1,4 @@
-"""Local OCR, direct export and scan resume; no model installation or vision requests."""
+"""Local or vision-LLM OCR, direct export and scan resume; no model installation."""
 
 from __future__ import annotations
 
@@ -10,6 +10,9 @@ from typing import Any
 
 from videocaptioner.cli import exit_codes as EXIT
 from videocaptioner.cli import output
+from videocaptioner.cli.config import get
+from videocaptioner.core.llm.client import LLMCredentials
+from videocaptioner.core.llm.request_policy import validate_request_timeout
 from videocaptioner.core.ocr.cache import cache_limit_bytes, manage_cache
 from videocaptioner.core.ocr.codec import atomic_json, atomic_text
 from videocaptioner.core.ocr.document import OcrConfig, OcrDocument
@@ -23,6 +26,15 @@ from videocaptioner.core.ocr.resume import validate_resume
 from videocaptioner.core.ocr.runtime import OcrRuntimeMissing
 from videocaptioner.core.ocr.service import jobs_directory, run_cpu_ocr
 from videocaptioner.core.ocr.tracking import CHARACTER_TRACKING_WORKERS
+from videocaptioner.core.ocr.vision import (
+    VisionSettings,
+    run_vision_ocr,
+    vision_config,
+    vision_profile,
+)
+from videocaptioner.core.ocr.vision_profile import VisionProfile
+
+LOCAL_ONLY_OPTIONS = ("line_anchors", "recognizer_runtime", "ocr_runtime", "ocr_bridge", "profile_sha256")
 
 
 def _paths(inputs: list[Path], destinations: list[str | None], protected: Path | None = None) -> None:
@@ -77,16 +89,93 @@ def _recognizer_profile(root: Path, inputs: list[Path], destinations: list[str |
     return installation.profile
 
 
+def _vision_settings(args: Namespace, config: dict, saved: VisionProfile | None = None) -> VisionSettings:
+    """Credentials come from the merged CLI config; a checkpoint pins the model and sheet recipe."""
+    model = str(getattr(args, "vision_model", None) or get(config, "llm.model", "") or "").strip()
+    if saved is not None:
+        if model and model != saved.model:
+            raise OcrError(f"Checkpoint was read with model {saved.model}; pass the same --vision-model or omit it")
+        profile = saved
+    else:
+        if not model:
+            raise OcrError("Choose --vision-model or configure llm.model before vision OCR")
+        profile = vision_profile(model, args.vision_rows, args.vision_width, args.vision_crops)
+    sheets = getattr(args, "vision_sheets_dir", None)
+    return VisionSettings(LLMCredentials(str(get(config, "llm.api_key", "") or ""),
+                                         str(get(config, "llm.api_base", "") or "")),
+                          profile, validate_request_timeout(get(config, "llm.request_timeout", 120)),
+                          args.max_requests, Path(sheets) if sheets else None)
+
+
+def _run_vision(args: Namespace, source: Path, config: dict) -> int:
+    try:
+        _validate_suffixes(args)
+        if not args.output and not args.review:
+            raise OcrError("Choose --output for subtitles or --checkpoint to save OCR data")
+        mode = getattr(args, "tracking", None) or "strokes"
+        if (any(getattr(args, name, None) for name in LOCAL_ONLY_OPTIONS)
+                or mode not in ("strokes", "edges") or getattr(args, "consensus", "exact-v1") != "exact-v1"):
+            raise OcrError("Vision LLM OCR reads the whole ROI; omit runtime, bridge, profile, line anchor, "
+                           "character tracking, consensus and recognizer options")
+        cache_limit_bytes(args.cache_mib)
+        sheets = getattr(args, "vision_sheets_dir", None)
+        _paths([source], [args.review, args.output, args.report], Path(sheets) if sheets else None)
+        roi_values = [float(v) for v in args.roi.split(",")]
+        if len(roi_values) != 4:
+            raise OcrError("ROI needs normalized X,Y,WIDTH,HEIGHT")
+        settings = _vision_settings(args, config)
+        document_config = vision_config(Roi(*roi_values), Selection(args.start_ms, args.end_ms), settings.profile,
+                                        args.language, "text-strokes-v1" if mode == "strokes" else "edge-tiles-ocr2-v1")
+    except OcrError as exc:
+        output.error(str(exc))
+        return EXIT.USAGE_ERROR
+    except (OSError, ValueError, TypeError):
+        output.error("Invalid OCR selection, ROI, LLM settings or output paths.")
+        return EXIT.USAGE_ERROR
+    return _scan_vision(args, source, document_config, settings)
+
+
+def _scan_vision(args: Namespace, source: Path, settings_config: OcrConfig, settings: VisionSettings,
+                 resume_document: OcrDocument | None = None) -> int:
+    assert settings_config.vision is not None
+    output.info(f"Vision OCR: {settings_config.vision.model}, {settings_config.vision.rows} rows per request.")
+    try:
+        document = run_vision_ocr(source, settings_config, settings, ffmpeg=args.ffmpeg, ffprobe=args.ffprobe,
+                                  checkpoint=lambda doc: doc.save(args.review) if args.review else None,
+                                  cache_mib=args.cache_mib, progress=lambda _percent, message: output.info(message),
+                                  resume_document=resume_document)
+        if args.report:
+            atomic_json(Path(args.report), {"schema": "ocr-report-v1", "document_id": document.id,
+                                           "complete": document.complete, "metrics": document.to_dict()["metrics"],
+                                           "pending_issues": list(document.pending_issues),
+                                           "export_issues": list(document.export_issues), "stage_times_overlap": True})
+        metrics = document.metrics
+        output.info(f"Vision OCR requests: {metrics.vision_requests}, rows: {metrics.vision_rows}, "
+                    f"retries: {metrics.vision_retries}, tokens in/out: {metrics.vision_prompt_tokens}/"
+                    f"{metrics.vision_completion_tokens}, dropped empty cues: {metrics.dropped_empty_cues}.")
+        return _export(document, document.visual_source, args.output)
+    except OcrError as exc:
+        output.error(str(exc))
+        output.error("Vision OCR stopped; any saved partial checkpoint remains incomplete.")
+        return EXIT.RUNTIME_ERROR
+    except (OSError, ValueError, RuntimeError):
+        output.error("Vision OCR failed; any saved partial checkpoint remains incomplete. No model was installed.")
+        return EXIT.RUNTIME_ERROR
+
+
 def run(args: Namespace, config: dict) -> int:
     source = Path(args.input)
     if not source.is_file():
         output.error("OCR video not found.")
         return EXIT.FILE_NOT_FOUND
+    if getattr(args, "vision_llm", False):
+        return _run_vision(args, source, config)
     root = Path(args.ocr_runtime) if args.ocr_runtime else default_runtime()
     mode = getattr(args, "tracking", "edges")
     tracking = ("character-features-v3" if mode == "characters-v3" else
                 "character-features-v2" if mode == "characters-v2" else
-                "character-features-v1" if mode == "characters" else "edge-tiles-ocr2-v1")
+                "character-features-v1" if mode == "characters" else
+                "text-strokes-v1" if mode == "strokes" else "edge-tiles-ocr2-v1")
     bridge = Path(args.ocr_bridge) if args.ocr_bridge else resources() / CHARACTER_TRACKING_WORKERS.get(
         tracking, "ocr_stream_worker.py")
     try:
@@ -137,8 +226,14 @@ def resume_scan(args: Namespace, config: dict) -> int:
         if not args.output and not args.review:
             raise OcrError("Choose --output for subtitles or --checkpoint to save OCR data")
         cache_limit_bytes(args.cache_mib)
-        _paths([source, saved, bridge], [args.review, args.output, args.report], root)
         document = OcrDocument.load(saved)
+        if document.config.vision is not None:
+            sheets = getattr(args, "vision_sheets_dir", None)
+            _paths([source, saved], [args.review, args.output, args.report], Path(sheets) if sheets else None)
+            validate_resume(document, document.config)
+            settings = _vision_settings(args, config, document.config.vision)
+            return _scan_vision(args, source, document.config, settings, document)
+        _paths([source, saved, bridge], [args.review, args.output, args.report], root)
         if getattr(args, "recognizer_runtime", None):
             profile = _recognizer_profile(Path(args.recognizer_runtime), [source, saved, bridge],
                                            [args.review, args.output, args.report])
@@ -148,6 +243,9 @@ def resume_scan(args: Namespace, config: dict) -> int:
         if not args.ocr_bridge and document.config.tracking_policy in CHARACTER_TRACKING_WORKERS:
             bridge = resources() / CHARACTER_TRACKING_WORKERS[document.config.tracking_policy]
             _paths([source, saved, bridge], [args.review, args.output, args.report], root)
+    except OcrError as exc:
+        output.error(str(exc))
+        return EXIT.USAGE_ERROR
     except (OSError, ValueError):
         output.error("Invalid or completed OCR checkpoint; preserve the input and choose a separate output.")
         return EXIT.USAGE_ERROR

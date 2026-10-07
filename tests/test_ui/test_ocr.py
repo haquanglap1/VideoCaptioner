@@ -51,6 +51,7 @@ def test_line_selection_ui_worker_export_and_saved_resume(qapp, tmp_path, monkey
 
     monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.run_cpu_ocr", scan)
     dialog = OcrDialog(source="synthetic.mov")
+    dialog.vision_llm.setChecked(False)  # local CPU path under test
     dialog.source_preview = SimpleNamespace(source_sha256=doc.visual_source.snapshot_sha256)
     dialog.canvas.roi = doc.config.roi
     dialog.start_ms.setValue(doc.config.selection.start_ms)
@@ -103,6 +104,7 @@ def test_character_tracking_control_and_worker_bridge(qapp, tmp_path, monkeypatc
 
     monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.run_cpu_ocr", scan)
     dialog = OcrDialog(source="synthetic.mov")
+    dialog.vision_llm.setChecked(False)  # local CPU path under test
     dialog.source_preview = SimpleNamespace(source_sha256="a" * 64)
     dialog.canvas.roi = config.roi
     dialog.start_ms.setValue(config.selection.start_ms)
@@ -448,4 +450,74 @@ def test_cache_management_runs_in_worker_and_preserves_review(qapp, monkeypatch)
         assert dialog.session.document == doc and dialog.export_button.isEnabled()
     assert calls == [False, True]
     assert "3" in dialog.status.text()
+    dialog.close()
+
+
+def test_vision_mode_sends_configured_llm_settings_and_resume_checks_model(qapp, tmp_path, monkeypatch):
+    from videocaptioner.core.llm.client import LLMCredentials
+    from videocaptioner.core.ocr.vision import VisionSettings, vision_config, vision_profile
+    from videocaptioner.ui.common.config import cfg
+    from videocaptioner.ui.thread.ocr_thread import OcrThread
+
+    base = make_document()
+    profile = vision_profile("vision-fixture", 8, 1024)
+    config = vision_config(base.config.roi, base.config.selection, profile)
+    raw = replace(base.cues[0].candidates[0].raw, revision=config.read_revision)
+    candidate = replace(base.cues[0].candidates[0], raw=raw)
+    from videocaptioner.core.ocr.document import OcrDocument, candidate_id, cue_id, document_id
+    identifier = document_id(base.visual_source, config)
+    candidate = replace(candidate, id=candidate_id(identifier, candidate.frame_pts, candidate.crop_sha256, raw))
+    cue = replace(base.cues[0], id=cue_id(identifier, base.cues[0].exact_start_ms, base.cues[0].exact_end_ms,
+                                          base.cues[0].first_pts, base.cues[0].last_pts),
+                  candidates=(candidate,), raw_candidate_id=candidate.id)
+    doc = OcrDocument(identifier, base.visual_source, config, (cue,), True)
+    calls = []
+
+    def fake_capture(rows, width=1024, crops=1, *, max_requests=400):
+        calls.append(("capture", rows, width, crops))
+        return VisionSettings(LLMCredentials("sk-fixture-only", "https://fixture.invalid/v1"),
+                              vision_profile("vision-fixture", rows, width, crops), 120, max_requests)
+
+    def fake_run(_source, run_config, settings, **options):
+        calls.append(("run", run_config.vision, settings.profile, options["resume_document"]))
+        return doc
+
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.capture_vision_settings", fake_capture)
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.run_vision_ocr", fake_run)
+    monkeypatch.setattr("videocaptioner.ui.thread.ocr_thread.inspect_installation",
+                        lambda *_: pytest.fail("vision mode must not inspect the local runtime"))
+    dialog = OcrDialog(source="synthetic.mov")
+    dialog.vision_llm.setChecked(True)
+    assert dialog.scan_button.text() == "Đọc phụ đề bằng AI (API)" and not dialog.local_options.isEnabled()
+    assert not dialog.select_lines.isEnabled() and cfg.ocr_vision_llm.value is True
+    dialog.vision_rows.setValue(8)
+    dialog.source_preview = SimpleNamespace(source_sha256=doc.visual_source.snapshot_sha256)
+    dialog.canvas.roi = doc.config.roi
+    dialog.start_ms.setValue(doc.config.selection.start_ms)
+    dialog.end_ms.setValue(doc.config.selection.end_ms)
+    dialog.scan()
+    worker = dialog.worker
+    assert isinstance(worker, OcrThread) and worker.task.vision_settings is not None
+    wait_worker(worker)
+    qapp.processEvents()
+    assert calls[0] == ("capture", 8, 1024, 1) and calls[1][1] == profile and calls[1][3] is None
+    assert dialog.table.item(0, 2).text() == doc.cues[0].text and dialog.export_button.isEnabled()
+    assert cfg.ocr_vision_rows.value == 8
+    # Resume keeps the saved recipe and refuses a different configured model.
+    dialog.accept_document(replace(doc, complete=False))
+    assert dialog.vision_llm.isChecked() and dialog.vision_rows.value() == 8
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.capture_vision_settings",
+                        lambda rows, width=1024, crops=1, **_: VisionSettings(
+                            LLMCredentials("sk-fixture-only", "https://fixture.invalid/v1"),
+                            vision_profile("other-model", rows, width, crops), 120))
+    dialog.resume_scan()
+    assert dialog.worker is None and "other-model" not in dialog.status.text() and "vision-fixture" in dialog.status.text()
+    monkeypatch.setattr("videocaptioner.ui.components.ocr_dialog.capture_vision_settings", fake_capture)
+    dialog.resume_scan()
+    wait_worker(dialog.worker)
+    qapp.processEvents()
+    assert calls[-1][0] == "run" and calls[-1][3] is not None and calls[-2] == ("capture", 8, 1024, 1)
+    dialog.vision_llm.setChecked(False)
+    assert dialog.scan_button.text() == "Đọc phụ đề bằng CPU" and dialog.local_options.isEnabled()
+    assert cfg.ocr_vision_llm.value is False
     dialog.close()

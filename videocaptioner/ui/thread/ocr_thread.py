@@ -19,6 +19,12 @@ from videocaptioner.core.ocr.installation import inspect_installation
 from videocaptioner.core.ocr.models import Check, OcrError
 from videocaptioner.core.ocr.service import run_cpu_ocr
 from videocaptioner.core.ocr.tracking import CHARACTER_TRACKING_WORKERS
+from videocaptioner.core.ocr.vision import (
+    VisionSettings,
+    run_vision_ocr,
+    vision_config,
+    vision_profile,
+)
 
 
 class OcrWorker(QThread):
@@ -64,6 +70,8 @@ class OcrThread(OcrWorker):
         super().__init__(self.scan)
 
     def scan(self, check: Check) -> OcrDocument:
+        if self.task.vision_settings is not None:
+            return self.scan_vision(self.task.vision_settings, check)
         self.progress.emit(0, "Kiểm tra runtime OCR đã cài…")
         installation = inspect_installation(Path(self.task.runtime_path) if self.task.runtime_path else None, check)
         config = installation.config(self.task.roi, self.task.selection)
@@ -95,6 +103,18 @@ class OcrThread(OcrWorker):
                            expected_source_sha256=self.task.expected_source_sha256, cache_mib=self.task.cache_mib,
                            resume_document=self.task.resume_document, **extra)
 
+    def scan_vision(self, settings: VisionSettings, check: Check) -> OcrDocument:
+        resume = self.task.resume_document
+        config = resume.config if resume is not None else vision_config(self.task.roi, self.task.selection, settings.profile)
+        if config.vision != settings.profile:
+            raise OcrError("Model/cỡ tờ ảnh trong Cài đặt khác dữ liệu OCR đã lưu; chọn lại đúng model để tiếp tục.")
+        # Request logs keep stage/usage only; the source name is private and stays out of the journal.
+        set_task_context(generate_task_id(), "", "ocr-vision")
+        self.progress.emit(0, f"Đang đọc phụ đề bằng AI ({settings.profile.model}) qua API LLM…")
+        return run_vision_ocr(Path(self.task.file_path), config, settings, check=check, checkpoint=self.capture,
+                              progress=self.progress.emit, expected_source_sha256=self.task.expected_source_sha256,
+                              cache_mib=self.task.cache_mib, resume_document=resume)
+
     def capture(self, document: OcrDocument) -> None:
         self.partial_document = document
 
@@ -110,6 +130,13 @@ def capture_draft_settings() -> OcrDraftSettings:
                        getattr(cfg, prefix + "_api_base").value),
         getattr(cfg, prefix + "_model").value, cfg.llm_request_timeout.value,
     )
+
+
+def capture_vision_settings(rows: int, width: int = 1024, crops: int = 1, *, max_requests: int = 400) -> VisionSettings:
+    """Read the selected LLM on the GUI thread when the user starts a vision scan."""
+    draft = capture_draft_settings()
+    return VisionSettings(draft.credentials, vision_profile(draft.model, rows, width, crops), draft.timeout,
+                          max_requests)
 
 
 class OcrDraftThread(OcrWorker):

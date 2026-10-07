@@ -15,6 +15,7 @@ from .line_selection import LineSelectionPolicy, selected_text
 from .models import EngineRead, OcrError, Selection
 from .pipeline import RegionResult
 from .profile import OcrProfileSnapshot
+from .vision_profile import VisionProfile
 from .vl_profile import VlProfile
 
 TEXT_ISSUES = frozenset({"engine_disagreement", "insufficient_independent_crops", "uncalibrated_profile",
@@ -32,16 +33,22 @@ class OcrConfig:
     profile_sha256: str
     bridge_sha256: str
     language: str = "zh"
-    tracking_policy: Literal["edge-tiles-ocr2-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
+    tracking_policy: Literal["edge-tiles-ocr2-v1", "text-strokes-v1", "character-features-v1", "character-features-v2", "character-features-v3"] = "edge-tiles-ocr2-v1"
     consensus_policy: Literal["exact-read-uncalibrated-v1", "witnessed-punctuation-v2"] = "exact-read-uncalibrated-v1"
     profile_snapshot: OcrProfileSnapshot | None = None
     # Omission preserves the serialized config and IDs of all existing documents.
     line_selection: LineSelectionPolicy | None = field(default=None, metadata={"omit_none": True})
     recognizer: VlProfile | None = field(default=None, metadata={"omit_none": True})
+    vision: VisionProfile | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         sha256(self.profile_sha256)
         sha256(self.bridge_sha256)
+        if self.vision is not None and (not isinstance(self.vision, VisionProfile) or self.line_selection is not None
+                                        or self.recognizer is not None or self.profile_snapshot is not None
+                                        or self.tracking_policy not in ("edge-tiles-ocr2-v1", "text-strokes-v1")
+                                        or self.consensus_policy != "exact-read-uncalibrated-v1"):
+            raise OcrError("Vision LLM OCR reads the whole ROI with edge tracking and no local profile")
         if self.consensus_policy not in ("exact-read-uncalibrated-v1", "witnessed-punctuation-v2"):
             raise OcrError("Unknown OCR consensus policy")
         if self.line_selection is not None and not isinstance(self.line_selection, LineSelectionPolicy):
@@ -59,11 +66,13 @@ class OcrConfig:
             stages = self.profile_snapshot.stage_parameters if self.profile_snapshot else {}
             if stages.get("Rec.ocr_version") != "PP-OCRv6" or stages.get("Rec.model_type") != "medium":
                 raise OcrError("Character tracking requires the installed PP-OCRv6 medium profile")
-        elif self.tracking_policy != "edge-tiles-ocr2-v1":
+        elif self.tracking_policy not in ("edge-tiles-ocr2-v1", "text-strokes-v1"):
             raise OcrError("Unknown OCR tracking policy")
 
     @property
     def read_revision(self) -> str:
+        if self.vision is not None:
+            return digest([self.profile_sha256, self.vision])
         return digest([self.profile_sha256, self.recognizer]) if self.recognizer else self.profile_sha256
 
 
@@ -252,6 +261,14 @@ class OcrMetrics:
     gpu_recognizer_attempts: int | None = field(default=None, metadata={"omit_none": True})
     gpu_inference_s: float | None = field(default=None, metadata={"omit_none": True})
     gpu_process_wall_s: float | None = field(default=None, metadata={"omit_none": True})
+    dropped_empty_cues: int | None = field(default=None, metadata={"omit_none": True})
+    dropped_short_cues: int | None = field(default=None, metadata={"omit_none": True})
+    vision_requests: int | None = field(default=None, metadata={"omit_none": True})
+    vision_rows: int | None = field(default=None, metadata={"omit_none": True})
+    vision_retries: int | None = field(default=None, metadata={"omit_none": True})
+    vision_prompt_tokens: int | None = field(default=None, metadata={"omit_none": True})
+    vision_completion_tokens: int | None = field(default=None, metadata={"omit_none": True})
+    vision_sheet_bytes: int | None = field(default=None, metadata={"omit_none": True})
 
     def __post_init__(self) -> None:
         import math
@@ -319,7 +336,7 @@ class OcrDocument:
         issues = []
         if not self.complete:
             issues.append("incomplete_scan")
-        if self.config.profile_snapshot is None:
+        if self.config.profile_snapshot is None and self.config.vision is None:
             issues.append("missing_profile_snapshot")
         if not self.cues:
             issues.append("no_cues")

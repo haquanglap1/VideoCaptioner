@@ -160,12 +160,14 @@ uv run --frozen pyinstaller VideoCaptioner.spec --clean --noconfirm
 ```
 
 Spec build ở chế độ `onedir`: phân phối nguyên thư mục `dist/VideoCaptioner/`, không chép riêng file EXE.
-Theo yêu cầu user từ 2026-09-10, bản EXE để test phải kèm các model/runtime đã cài trong
-`models/` cạnh EXE, tự tìm được khi chuyển ổ; chỉ làm bản nhẹ nếu user yêu cầu. Dùng
-`scripts/package_test_models.py` để stage từ cài đặt đã có, rồi truyền `VC_TEST_MODELS_DIR`
-vào spec. Giữ Python/runtime riêng, không chỉ chép weights rồi để phụ thuộc đường dẫn máy dev.
-Nếu đã có bộ `models/portable-models.json` được verify và model/runtime không đổi, dùng lại
-bộ đó trực tiếp qua `VC_TEST_MODELS_DIR`; không stage lại từ đầu chỉ vì build EXE mới.
+Theo yêu cầu user ngày 2026-10-07, **không tạo nhiều bản build và không giữ bản dist kèm models**:
+bản chạy thật `E:\Game\Translate video` đã có `models/`, runtime và dữ liệu, nên bản EXE để test
+build **nhẹ** (không truyền `VC_TEST_MODELS_DIR`) rồi chép thẳng EXE + `_internal` vào E theo quy
+trình cập nhật bản chạy thật bên dưới; xóa `dist/<tên build>` ngay sau khi đã đối chiếu hash và
+deploy. Không trỏ `--distpath` thẳng vào E vì `--clean`/`--noconfirm` xóa thư mục đích. Chỉ đóng gói
+kèm models (`scripts/package_test_models.py` + `VC_TEST_MODELS_DIR`, hoặc dùng lại bộ
+`models/portable-models.json` đã verify) khi user yêu cầu bản portable mang sang máy/ổ khác; khi đó
+giữ Python/runtime riêng, không chỉ chép weights rồi để phụ thuộc đường dẫn máy dev.
 Không tải lại model hoặc cài dependency để đóng gói; không mang key, settings, media, cache job
 và log cá nhân vào gói. Báo inventory model thực sự có/thiếu và kiểm tra đường dẫn sau di chuyển.
 Nếu cần tên riêng, không tạo thêm file spec:

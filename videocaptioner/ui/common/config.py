@@ -85,6 +85,10 @@ class Config(QConfig):
     batch_gpu = RangeConfigItem("Batch", "GPUJobs", 1, RangeValidator(1, 2))
     dubbing_output_dir = ConfigItem("Dubbing", "OutputDirectory", "")
 
+    # OCR: read contact sheets with the configured LLM instead of the local CPU runtime.
+    ocr_vision_llm = ConfigItem("OCR", "VisionLLM", True, BoolValidator())
+    ocr_vision_rows = RangeConfigItem("OCR", "VisionRows", 16, RangeValidator(1, 40))
+
     # LLM配置
     llm_service = OptionsConfigItem(
         "LLM",

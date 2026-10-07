@@ -24,7 +24,7 @@ class OcrMetadata:
         sha256(self.source_id)
         if not self.document_id.startswith("ocr-") or not self.observations:
             raise OcrError("Missing OCR lineage")
-        if self.config.profile_snapshot is None:
+        if self.config.profile_snapshot is None and self.config.vision is None:
             raise OcrError("Missing OCR profile snapshot")
         if len({c.id for c in self.observations}) != len(self.observations):
             raise OcrError("Duplicate OCR lineage")
