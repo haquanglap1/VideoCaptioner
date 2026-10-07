@@ -365,3 +365,44 @@ class TestSubtitleThreadError:
         results = run_thread_with_timeout(thread, timeout_ms=5000)
 
         assert "error" in results
+
+
+def test_gui_pipeline_keeps_cues_of_a_context_document_instead_of_failing_split(tmp_path, monkeypatch):
+    """A named-speaker JSON with split enabled used to stop with 'Re-segmentation would change context'."""
+    from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
+    from videocaptioner.core.asr.metadata import ASRMetadata
+    from videocaptioner.core.translate.conversation import (
+        Character,
+        ConversationContext,
+        Evidence,
+        SpeakerMapping,
+    )
+    from videocaptioner.ui.thread import subtitle_thread as module
+
+    meta = ASRMetadata("qwen-local", "scope", "SPEAKER_00")
+    data = ASRData([ASRDataSeg("师父，弟子知错了。", 0, 1000, metadata=meta, cue_id="c1"),
+                    ASRDataSeg("是，师父。", 1000, 2000, metadata=meta, cue_id="c2")])
+    data.conversation_context = ConversationContext(
+        characters=(Character("ai-char-1", "清宵", Evidence("text", "confirmed", ("c1",))),),
+        mappings=(SpeakerMapping("ai-map-1", meta.speaker_id or "", "ai-char-1", evidence=Evidence("text", "confirmed", ("c1",))),))
+    source = tmp_path / "named.json"
+    data.save(str(source))
+
+    class Forbidden:
+        def __init__(self, *a, **k):
+            pytest.fail("split must be skipped for a context document")
+    monkeypatch.setattr(module, "SubtitleSplitter", Forbidden)
+    config = SubtitleConfig(need_split=True, need_optimize=False, need_translate=False, thread_num=1, batch_size=5)
+    output_path = tmp_path / "out" / "named.json"
+    output_path.parent.mkdir()
+    task = SubtitleTask(subtitle_path=str(source), subtitle_config=config, output_path=str(output_path))
+    thread = SubtitleThread(task)
+    messages = []
+    thread.progress.connect(lambda p, m: messages.append(m))
+    results = run_thread_with_timeout(thread)
+    assert "error" not in results, results.get("error")
+    assert any("ngữ cảnh xưng hô" in m for m in messages)
+    # finished emits (video_path, output_path); the helper keeps the first value, so read the task output.
+    assert output_path.is_file()
+    saved = ASRData.from_subtitle_file(str(output_path))
+    assert [s.cue_id for s in saved] == ["c1", "c2"] and saved.conversation_context == data.conversation_context

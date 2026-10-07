@@ -57,8 +57,10 @@ Khi nhận dạng lại, scope request và cue ID native mới khác: dữ liệ
 không tự chuyển mapping sang speaker cùng số. Context gắn ở transcribe chỉ được lưu, không
 khởi chạy dịch ngoài lệnh đã yêu cầu. Dùng `-o ...json` để không mất dữ liệu khi mở lại.
 
-Đã có context thì **tắt split**; re-segmentation hiện dừng để review association. Đây là giới
-hạn chủ động: S4 không tự phân phối lại bằng chứng/người nghe qua các cue mới. Merge/delete làm
+Đã có context thì re-segmentation dừng để review association. Từ 2026-10-07, GUI và CLI `subtitle`/
+`process` tự **bỏ qua bước split** cho tài liệu đã có câu (không phải word-level) khi context đang
+tham chiếu cue hiện tại (`keeps_context_segmentation`), báo một dòng thay vì lỗi; tài liệu word-level
+vẫn dừng. Đây là giới hạn chủ động: S4 không tự phân phối lại bằng chứng/người nghe qua các cue mới. Merge/delete làm
 mất cue tham chiếu sẽ hiện missing khi review, không suy ID thay thế. Optimize giữ ID, còn text
 nguồn thay đổi khiến translation cache đổi fingerprint.
 

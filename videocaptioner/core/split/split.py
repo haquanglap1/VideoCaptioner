@@ -89,6 +89,16 @@ def preprocess_segments(
     return new_segments
 
 
+def keeps_context_segmentation(asr_data: ASRData) -> bool:
+    """True when a sentence-level document carries conversation context.
+
+    Speaker mappings and character evidence point at the current cue IDs, so callers keep the
+    saved segmentation instead of re-splitting; word-level documents still have to stop, because
+    they cannot be translated without sentences.
+    """
+    return asr_data.conversation_context.enabled and not asr_data.is_word_timestamp()
+
+
 class SubtitleSplitter:
     """Smart subtitle splitter.
 

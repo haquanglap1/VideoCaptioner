@@ -45,3 +45,26 @@ def test_malformed_context_cli_keeps_runtime_exit_code(tmp_path):
     args = build_parser().parse_args(["subtitle", str(source), "--no-optimize", "--no-split", "--no-translate",
                                      "--conversation-context", str(bad)])
     assert run(args, build_config(_build_cli_overrides(args))) == 5
+
+
+def test_context_document_keeps_its_cues_when_split_is_enabled(tmp_path, monkeypatch):
+    """Speaker/character evidence points at the saved cues, so the CLI skips splitting instead of failing."""
+    from videocaptioner.cli.commands.subtitle import run
+    from videocaptioner.core.translate.conversation import Evidence, SpeakerMapping
+
+    data = ASRData([ASRDataSeg("师父，弟子知错了。", 0, 1000, cue_id="c1"), ASRDataSeg("起来吧。", 1000, 2000, cue_id="c2")])
+    data.conversation_context = ConversationContext(
+        characters=(Character("ai-char-1", "清宵", Evidence("text", "confirmed", ("c1",))),),
+        mappings=(SpeakerMapping("ai-map-1", "pyannote:scope:SPEAKER_00", "ai-char-1",
+                                 evidence=Evidence("text", "confirmed", ("c1",))),))
+    source, target = tmp_path / "named.json", tmp_path / "out.json"
+    data.save(str(source))
+    monkeypatch.setattr("videocaptioner.core.split.split.SubtitleSplitter.split_subtitle",
+                        lambda *a, **k: pytest.fail("split must be skipped for a context document"))
+    args = build_parser().parse_args(["subtitle", str(source), "-o", str(target), "--no-optimize", "--no-translate"])
+    config = build_config(_build_cli_overrides(args))
+    assert config["subtitle"]["split"] is True
+    assert run(args, config) == 0
+    loaded = ASRData.from_subtitle_file(str(target))
+    assert [s.cue_id for s in loaded] == ["c1", "c2"]
+    assert loaded.conversation_context == data.conversation_context

@@ -25,7 +25,7 @@ from videocaptioner.core.llm.context import (
 from videocaptioner.core.llm.owned_request import OwnedLLMRequest
 from videocaptioner.core.llm.rate_limit import llm_admission_scope
 from videocaptioner.core.optimize.optimize import SubtitleOptimizer
-from videocaptioner.core.split.split import SubtitleSplitter
+from videocaptioner.core.split.split import SubtitleSplitter, keeps_context_segmentation
 from videocaptioner.core.subtitle.publication import SubtitleOutput, publish_subtitles
 from videocaptioner.core.subtitle.reuse import (
     CompletedSubtitles,
@@ -267,7 +267,12 @@ class SubtitleThread(QThread):
             subtitle_config = self._setup_llm_config()
 
         # 2. Re-segment word-level subtitles into sentences
-        if asr_data.is_word_timestamp() or subtitle_config.need_split:
+        if subtitle_config.need_split and keeps_context_segmentation(asr_data):
+            # Speaker/character evidence points at these cue IDs; re-segmenting sentence cues
+            # would detach it, so the saved segmentation is kept instead of failing the job.
+            self.progress.emit(5, self.tr("Giữ nguyên câu: tài liệu đã có ngữ cảnh xưng hô nên bỏ qua phân đoạn lại."))
+            logger.info("Split skipped: conversation context references the current cues")
+        elif asr_data.is_word_timestamp() or subtitle_config.need_split:
             update_stage("split")
             self.progress.emit(5, self.tr("字幕断句..."))
             logger.info("正在字幕断句...")
@@ -348,7 +353,8 @@ class SubtitleThread(QThread):
     def need_llm(self, subtitle_config: SubtitleConfig, asr_data: ASRData):
         return (
             subtitle_config.need_optimize
-            or ((subtitle_config.need_split or asr_data.is_word_timestamp()) and not asr_data.has_metadata)
+            or ((subtitle_config.need_split or asr_data.is_word_timestamp()) and not asr_data.has_metadata
+                and not keeps_context_segmentation(asr_data))
             or (
                 subtitle_config.need_translate
                 and subtitle_config.translator_service

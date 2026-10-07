@@ -238,6 +238,10 @@ def run(args: Namespace, config: dict) -> int:
             if not str(output_path).lower().endswith(".json"):
                 output.warn("SRT/ASS/text cannot retain conversation context; use JSON to reopen it.")
         # 1. Split (if word-level timestamps available)
+        from videocaptioner.core.split.split import keeps_context_segmentation
+        if need_split and keeps_context_segmentation(asr_data):
+            output.warn("Conversation context references the current cues; keeping the saved segmentation instead of splitting.")
+            need_split = False
         if need_split:
             if progress:
                 progress.update(5, "Splitting subtitles...")

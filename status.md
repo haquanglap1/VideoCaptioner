@@ -78,6 +78,21 @@
   khi app đóng: 600 app files đối chiếu, 2 file thay (EXE giữ tên, `base_library.zip`), 32.764 protected files
   nguyên hash, backup `rollback-payload` (lượt 2 trong `rollback-payload-2`), live `local-diarize --help` exit 0;
   dist xóa sau deploy. Chưa có nghiệm thu user kéo JSON vào tab phụ đề trên bản E.
+- User bấm Bắt đầu trên JSON đã đặt tên người nói thì tab phụ đề báo `Split failed: Re-segmentation would change
+  context associations`: guard S4 có sẵn dừng split khi tài liệu có ngữ cảnh, nay đặt tên tự động luôn tạo
+  ngữ cảnh nên mọi JSON có tên đều vướng. Thêm `keeps_context_segmentation()` (`core/split/split.py`): tài
+  liệu đã có câu (không word-level) và có ngữ cảnh → GUI `SubtitleThread` và CLI `subtitle`/`process` bỏ qua
+  bước split, báo "Giữ nguyên câu: tài liệu đã có ngữ cảnh xưng hô" / warn CLI, `need_llm` không đòi LLM cho
+  split nữa; word-level vẫn dừng như cũ. Test mới: `tests/test_cli/test_conversation.py`,
+  `tests/test_subtitle/test_subtitle_thread.py`; docs S4 và speaker-naming cập nhật.
+  Gate: core/CLI/translate/editor/subtitle/split **1357 pass/38 deselected** 67,8 s; GUI/thread/OCR/dubbing **912
+  pass/17 deselected** 165,3 s (không gồm `test_auto_timing.py`); Ruff pass, Pyright 0/0. Build nhẹ
+  `VideoCaptioner-20261007-speaker-naming-4`: exit 0/121,0 s, 6 WARNING/0 ERROR, 31.842.169 bytes, SHA256
+  `b8e3ee348f5a076ba438c1f99c6f5c93dd1ca48d66881a584f406309b2027af1`; `split`, `subtitle_thread`, CLI `subtitle`
+  + 21 module các lượt trước source-match; GUI từ artifact sống 30,6 s/exit 0/0 survivors. Deploy E khi app
+  đóng: 600 app files đối chiếu, 2 file thay (EXE giữ tên, `base_library.zip`), 32.764 protected files nguyên
+  hash, backup `rollback-payload` (lượt 3 trong `rollback-payload-3`), live `local-diarize --help` exit 0; dist
+  xóa sau deploy. Chưa có nghiệm thu user bấm Bắt đầu trên JSON đã đặt tên với bản E mới.
 
 ## 2026-10-07 (OCR đọc chữ bằng vision LLM qua tờ ảnh ghép)
 

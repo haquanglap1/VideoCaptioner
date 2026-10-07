@@ -52,7 +52,9 @@ chiếu với gán tay trên tập BV1GFbk6LEVm.
   nhãn ẩn danh. `TaskFactory.create_transcribe_task` chụp credentials/model/timeout của dịch vụ LLM đang
   chọn và khối nền của video (`speaker_naming_settings`), không ghi vào `os.environ`.
 - **Tab phụ đề**: kéo thả hoặc mở JSON (tab này nhận `.json` từ 2026-10-07; trước đó chỉ srt/ass/vtt). JSON có
-  đề xuất chưa xác nhận → InfoBar "Cần xác nhận tên người nói". **More → Tên
+  đề xuất chưa xác nhận → InfoBar "Cần xác nhận tên người nói". Bấm Bắt đầu với *Phân đoạn* đang bật: pipeline
+  giữ nguyên câu và báo "Giữ nguyên câu: tài liệu đã có ngữ cảnh xưng hô" thay vì lỗi `Re-segmentation would
+  change context associations`, vì Character/Mapping đang trỏ vào cue hiện tại. **More → Tên
   người nói (AI)** mở bảng (`ui/components/speaker_naming_dialog.py`): cụm, số câu, tên (sửa được), vai,
   giới tính, tuổi, độ tin cậy, trạng thái, câu mẫu; hàng `proposed` xếp trước. **Áp dụng tên** ghi quyết
   định; **Để sau** giữ nguyên. Lưu JSON để giữ map; Video Editor handoff/JSON export mang theo khối
