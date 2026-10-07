@@ -53,6 +53,8 @@ SHEET_VERSION = "vision-sheet-png-v1"
 DEFAULT_ROWS, DEFAULT_WIDTH = 16, 1024
 GUTTER, SEPARATOR, MAX_SHEET_HEIGHT = 72, 6, 3600
 MIN_REGION_MS, MERGE_GAP_MS = 100, 150
+# Reasoning models spend completion tokens on hidden reasoning before the JSON; leave headroom.
+COMPLETION_BASE, COMPLETION_PER_ROW, COMPLETION_MAX = 3000, 120, 12000
 MAX_UPSCALE = 3.0
 TRACKING = "text-strokes-v1"
 MAX_TEXT_CHARS = 1024
@@ -239,7 +241,8 @@ class VisionRecognizer:
                       {"role": "user", "content": [
                           {"type": "text", "text": f"Rows: {count}. Subtitle language: {self.language}."},
                           {"type": "image_url", "image_url": {"url": data}}]}],
-            model=self.settings.profile.model, max_completion_tokens=min(4000, 200 + 80 * count),
+            model=self.settings.profile.model,
+            max_completion_tokens=min(COMPLETION_MAX, COMPLETION_BASE + COMPLETION_PER_ROW * count),
         )
         check()
         usage = getattr(response, "usage", None)
@@ -251,6 +254,10 @@ class VisionRecognizer:
         except (AttributeError, IndexError, TypeError):
             raise OcrError("Vision OCR reply is missing") from None
         if getattr(choice, "finish_reason", "stop") not in (None, "stop"):
+            reasoning = getattr(getattr(usage, "completion_tokens_details", None), "reasoning_tokens", None)
+            if not (isinstance(content, str) and content.strip()) or reasoning:
+                raise OcrError("Model dùng hết hạn mức token cho suy luận ẩn mà chưa trả chữ; chọn model không "
+                               "suy luận cho OCR hoặc giảm Số crop mỗi lượt gửi AI")
             raise OcrError("Vision OCR reply was cut off")
         return content
 

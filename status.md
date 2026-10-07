@@ -30,6 +30,15 @@
   `_internal/base_library.zip`), 32.674 protected files nguyên hash, models không chép, backup
   `.tools/ocr-vision-20261007/rollback-payload`, live `ocr --help` exit 0. Chưa có nghiệm thu user
   trên GUI E với video thật và model thật.
+- Lượt thử thật đầu tiên của user (GUI E, `gpt-6-luna`, 26 request): 5 tờ đọc được, các tờ 16 crop
+  sau đó hết hạn mức `1480` completion token vì toàn bộ là reasoning, reply rỗng → job dừng. Sửa:
+  hạn mức `min(12000, 3000 + 120·N)`, lỗi tiếng Việt nêu rõ nguyên nhân; test mới. Gate: focused
+  **557 pass/7 skipped**, rộng **774 pass/12 deselected**, Ruff/Pyright 0/0/sync pass. Build nhẹ
+  `VideoCaptioner-20261007-ocr-vision-fix` (không models, 397 MB): exit 0/109,9 s, 6 WARNING/0 ERROR,
+  31.795.612 bytes, SHA256 `dbedac90b1a1d23adb197cfa1b9c271c3ad4ed6f1e30355d1697098099d6acda`; GUI từ
+  artifact sống 30,5 s/exit 0 không cần `models/`. Deploy E: 2 file thay (EXE giữ tên, `base_library.zip`),
+  32.676 protected files nguyên hash, backup `.tools/ocr-vision-fix-20261007/rollback-payload`, live
+  `ocr --help` exit 0; dist xóa ngay sau deploy. Audit `.tools/ocr-vision-fix-20261007/`.
 - Theo yêu cầu user cùng ngày: không tạo nhiều bản build, bản dist 41 GB và bản ux-dialogs cũ đã
   xóa sau khi đối chiếu hash với E (thu hồi 80 GB); từ nay build nhẹ (không `VC_TEST_MODELS_DIR`)
   rồi chép EXE + `_internal` thẳng vào E, ghi trong AGENTS.md/CLAUDE.md. Commit và push theo yêu cầu.

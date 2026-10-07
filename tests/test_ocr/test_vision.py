@@ -137,7 +137,7 @@ def test_recognizer_sends_one_sheet_per_group_and_keeps_only_metadata():
     assert first[0] == {"role": "system", "content": vision.PROMPT}
     assert first[1]["content"][0] == {"type": "text", "text": "Rows: 3. Subtitle language: zh."}
     assert first[1]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
-    assert request.calls[0]["max_completion_tokens"] == 440
+    assert request.calls[0]["max_completion_tokens"] == 3360
     assert "sk-fixture-only" not in json.dumps(request.calls, default=str)
     assert [r.text for r in reads] == ["学生三人", "", "第一行\n第二行", "尾句"]
     assert all(r.revision == "r" * 64 for r in reads) and len(reads[2].lines) == 2
@@ -384,3 +384,18 @@ def test_text_bounds_and_focus_crop_follow_the_glyphs(text_image):
     assert crop_bounds == bounds and (crop.width, crop.height) == (right - left, bottom - top)
     blank = RoiFrame(1, 100, Fraction(1, 1000), Fraction(100), 640, 120, moving_scene(text_image, "", 5).tobytes())
     assert text_bounds(blank) is None and focus_crop(blank)[1] == (0, 0, 640, 120)
+
+
+def test_reasoning_budget_exhaustion_is_reported_without_retrying_forever():
+    def truncated(reasoning, content=""):
+        usage = SimpleNamespace(prompt_tokens=2600, completion_tokens=1480,
+                                completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning))
+        return SimpleNamespace(choices=[SimpleNamespace(finish_reason="length",
+                               message=SimpleNamespace(content=content))], usage=usage)
+
+    request = FakeRequest([truncated(1480), truncated(1480)])
+    recognizer = VisionRecognizer(settings(rows=16), "r" * 64, request=request)
+    with pytest.raises(OcrError, match="suy luận"):
+        recognizer.recognize_many([frame(i) for i in range(16)], lambda: None)
+    assert request.calls[0]["max_completion_tokens"] == 3000 + 120 * 16
+    assert recognizer.metrics.requests == 2 and recognizer.metrics.retries == 1

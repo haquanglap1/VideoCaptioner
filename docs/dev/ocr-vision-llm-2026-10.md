@@ -17,7 +17,10 @@ cho cả CLI và GUI; đường CPU PP-OCR, PaddleOCR-VL, vạch chọn dòng v�
 - **Tờ ảnh ghép** (`render_sheet`): tối đa 16 crop (1–40) xếp dọc, lề trái trắng ghi số thứ tự,
   vách xám; cao tối đa 3600 px, tự chia tờ. Một request = một tờ: system prompt cố định (`PROMPT`,
   hash vào identity), user gồm `Rows: N. Subtitle language: zh.` và ảnh `data:image/png;base64`.
-  `max_completion_tokens = min(4000, 200 + 80·N)`.
+  `max_completion_tokens = min(12000, 3000 + 120·N)`: lượt chạy thật đầu tiên của user với
+  `gpt-6-luna` (model suy luận) cho thấy hạn mức cũ `200 + 80·N = 1480` bị tiêu hết vào
+  reasoning tokens, reply rỗng, `finish_reason=length`; app giờ báo rõ khi hết hạn mức vì suy luận
+  và khuyên chọn model không suy luận hoặc giảm số crop.
 - **Reply JSON cứng** `{"rows":[{"index":i,"text":"…"}]}`: đúng số dòng, đúng thứ tự, chỉ hai
   field, ≤ 1024 ký tự, không ký tự điều khiển; cho phép bọc ```. Sai schema, bị cắt hoặc lỗi mạng
   → **thử lại đúng một lần** cho tờ đó rồi dừng job bằng `OcrError` đã lọc (không mang HTTP body).
