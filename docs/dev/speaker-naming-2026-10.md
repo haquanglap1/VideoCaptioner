@@ -51,7 +51,8 @@ chiếu với gán tay trên tập BV1GFbk6LEVm.
   diarization bật và dịch vụ LLM đã có key/model; thiếu LLM thì job báo "Speaker naming skipped" và giữ
   nhãn ẩn danh. `TaskFactory.create_transcribe_task` chụp credentials/model/timeout của dịch vụ LLM đang
   chọn và khối nền của video (`speaker_naming_settings`), không ghi vào `os.environ`.
-- **Tab phụ đề**: mở JSON có đề xuất chưa xác nhận → InfoBar "Cần xác nhận tên người nói". **More → Tên
+- **Tab phụ đề**: kéo thả hoặc mở JSON (tab này nhận `.json` từ 2026-10-07; trước đó chỉ srt/ass/vtt). JSON có
+  đề xuất chưa xác nhận → InfoBar "Cần xác nhận tên người nói". **More → Tên
   người nói (AI)** mở bảng (`ui/components/speaker_naming_dialog.py`): cụm, số câu, tên (sửa được), vai,
   giới tính, tuổi, độ tin cậy, trạng thái, câu mẫu; hàng `proposed` xếp trước. **Áp dụng tên** ghi quyết
   định; **Để sau** giữ nguyên. Lưu JSON để giữ map; Video Editor handoff/JSON export mang theo khối

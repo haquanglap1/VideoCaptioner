@@ -122,6 +122,16 @@ class TestFindSupportedSubtitle:
     def test_extension_list(self):
         assert "srt" in editing.supported_subtitle_extensions()
 
+    def test_json_document_is_accepted_because_it_keeps_speaker_metadata(self, tmp_path):
+        from videocaptioner.core.asr.asr_data import ASRData, ASRDataSeg
+        from videocaptioner.core.asr.metadata import ASRMetadata
+
+        document = tmp_path / "named.json"
+        ASRData([ASRDataSeg("你好", 0, 1000, metadata=ASRMetadata("soniox", "job", "1"))]).save(str(document))
+        assert editing.find_supported_subtitle([str(document)]) == (str(document), [])
+        assert "json" in editing.supported_subtitle_extensions()
+        assert ASRData.from_subtitle_file(str(document)).segments[0].speaker == "soniox:job:1"
+
 
 class TestExport:
     def test_export_srt_and_ass(self, table, tmp_path):

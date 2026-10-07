@@ -64,6 +64,20 @@
   32.763 protected files nguyên hash, backup `.tools/speaker-naming-20261007/rollback-payload` (lượt 1 trong
   `rollback-payload-1`), script `deploy2.py` tạo thư mục thiếu và kiểm hash trước/sau; live `local-diarize --help`
   exit 0. Chưa có nghiệm thu GUI E chạy lại tập này với bản sửa.
+- User kéo JSON kết quả vào tab phụ đề bị từ chối ("Định dạng phụ đề hỗ trợ: vtt/ass/srt") dù
+  `ASRData.from_subtitle_file` đọc JSON và chỉ JSON giữ cue ID/speaker/ngữ cảnh/tên người nói. Sửa
+  `core/subtitle/editing.py`: `supported_subtitle_extensions()` và `find_supported_subtitle()` nhận thêm
+  `json` (chỉ tab phụ đề dùng hai hàm này; batch/synthesis giữ `SupportedSubtitleFormats`). Test mới trong
+  `tests/test_subtitle/test_editing.py`. Ghi nhận: chạy riêng tổ hợp `test_editing + test_ui/test_subtitle_interface
+  + test_ui/test_conversation` trong một process bị access violation khi teardown sau khi mọi test PASS, kể cả
+  khi bỏ test speaker naming, nên là lỗi teardown Qt có sẵn, không do thay đổi này; các bộ đầy đủ vẫn exit 0.
+  Gate: GUI/thread/OCR/dubbing/subtitle **989 pass/19 deselected** 181,9 s (không gồm `test_auto_timing.py`),
+  Ruff pass, Pyright 0/0. Build nhẹ `VideoCaptioner-20261007-speaker-naming-3`: exit 0/131,0 s, 6 WARNING/
+  0 ERROR, 31.841.531 bytes, SHA256 `4f531696de46194cbd855d5b5ae91ee7ae21f05bf43d1b50c32860a6cc30c6d4`;
+  `editing` + 20 module các lượt trước source-match; GUI từ artifact sống 30,7 s/exit 0/0 survivors. Deploy E
+  khi app đóng: 600 app files đối chiếu, 2 file thay (EXE giữ tên, `base_library.zip`), 32.764 protected files
+  nguyên hash, backup `rollback-payload` (lượt 2 trong `rollback-payload-2`), live `local-diarize --help` exit 0;
+  dist xóa sau deploy. Chưa có nghiệm thu user kéo JSON vào tab phụ đề trên bản E.
 
 ## 2026-10-07 (OCR đọc chữ bằng vision LLM qua tờ ảnh ghép)
 

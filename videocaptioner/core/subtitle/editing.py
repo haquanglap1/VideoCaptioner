@@ -119,7 +119,7 @@ def find_supported_subtitle(paths: Iterable[str]) -> Tuple[Optional[str], List[s
     Returns ``(path or None, unsupported extensions seen before it)`` so the
     caller can report each rejected drop.
     """
-    supported = {fmt.value for fmt in SupportedSubtitleFormats}
+    supported = set(supported_subtitle_extensions())
     rejected: List[str] = []
     for path in paths:
         if not os.path.isfile(path):
@@ -132,7 +132,9 @@ def find_supported_subtitle(paths: Iterable[str]) -> Tuple[Optional[str], List[s
 
 
 def supported_subtitle_extensions() -> List[str]:
-    return [fmt.value for fmt in SupportedSubtitleFormats]
+    """Formats the subtitle table can open. JSON is the only one that keeps cue IDs,
+    speaker metadata, conversation context and speaker names, so it must load here too."""
+    return [fmt.value for fmt in SupportedSubtitleFormats] + ["json"]
 
 
 def export_subtitle(
