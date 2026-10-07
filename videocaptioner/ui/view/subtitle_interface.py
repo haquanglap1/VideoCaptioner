@@ -341,6 +341,8 @@ class SubtitleInterface(QWidget):
         self.command_bar.addAction(self.prompt_button)
         self.command_bar.addHiddenAction(Action(FIF.PEOPLE, self.tr("Conversation context"),
                                                 triggered=self.edit_conversation_context))
+        self.command_bar.addHiddenAction(Action(FIF.ROBOT, self.tr("Speaker names (AI)"),
+                                                triggered=self.review_speaker_names))
         self.command_bar.addHiddenAction(Action(FIF.LEFT_ARROW, self.tr("Undo context edit"),
                                                 triggered=self._context_stack.undo))
         self.command_bar.addHiddenAction(Action(FIF.RIGHT_ARROW, self.tr("Redo context edit"),
@@ -544,6 +546,7 @@ class SubtitleInterface(QWidget):
         self.model._data = asr_data.to_json()
         self.model.layoutChanged.emit()
         self.status_label.setText(self.tr("已加载文件"))
+        self._offer_speaker_review()
 
     def start_subtitle_optimization(self, need_create_task: bool = True) -> None:
         if self._is_processing():
@@ -708,6 +711,7 @@ class SubtitleInterface(QWidget):
                 audio_identity=self._context_data.audio_identity,
                 visual_source=self._context_data.visual_source,
                 pending_diarization=self._context_data.pending_diarization,
+                speaker_naming=self._context_data.speaker_naming,
             )
             InfoBar.success(
                 self.tr("保存成功"),
@@ -747,6 +751,51 @@ class SubtitleInterface(QWidget):
         self.model._data = asr_data.to_json()
         self.model.layoutChanged.emit()
         self.status_label.setText(self.tr("已加载文件"))
+        self._offer_speaker_review()
+
+    def _offer_speaker_review(self) -> None:
+        """Low-confidence cluster names wait for the user; confident ones are already applied."""
+        naming = self._context_data.speaker_naming
+        if naming is None or not naming.pending:
+            return
+        InfoBar.warning(
+            self.tr("Speaker names to confirm"),
+            self.tr("{0} speaker cluster(s) have a proposed name. Open More → Speaker names (AI) to confirm or edit.")
+            .format(len(naming.pending)),
+            duration=8000,
+            position=InfoBarPosition.BOTTOM,
+            parent=self,
+        )
+
+    def review_speaker_names(self) -> None:
+        from videocaptioner.core.asr.local.speaker_naming import apply_decisions
+        from videocaptioner.core.editor.commands import ApplySpeakerNamesCommand
+        from videocaptioner.ui.components.speaker_naming_dialog import SpeakerNamingDialog
+
+        if not self.model._data or self._is_processing():
+            return
+        document = self.current_context_document()
+        if document.speaker_naming is None:
+            InfoBar.info(
+                self.tr("No speaker names yet"),
+                self.tr("Run local diarization with the LLM naming option enabled, then reopen the JSON result."),
+                duration=6000,
+                position=InfoBarPosition.BOTTOM,
+                parent=self,
+            )
+            return
+        dialog = SpeakerNamingDialog(document, self)
+        if not dialog.exec_() or not dialog.decisions:
+            return
+        try:
+            updated = apply_decisions(document, dialog.decisions)
+            self._context_stack.execute(ApplySpeakerNamesCommand(self._context_data, updated.conversation_context,
+                                                                 updated.speaker_naming))
+        except ValueError as exc:
+            InfoBar.error(self.tr("Speaker names not applied"), str(exc), duration=6000,
+                          position=InfoBarPosition.BOTTOM, parent=self)
+            return
+        self.status_label.setText(self.tr("Speaker names applied; save JSON to keep them."))
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         event.accept() if event.mimeData().hasUrls() else event.ignore()
@@ -897,6 +946,7 @@ class SubtitleInterface(QWidget):
         data.audio_identity = self._context_data.audio_identity
         data.visual_source = self._context_data.visual_source
         data.pending_diarization = self._context_data.pending_diarization
+        data.speaker_naming = self._context_data.speaker_naming
         return data
 
     def edit_conversation_context(self) -> None:
@@ -1033,6 +1083,7 @@ class SubtitleInterface(QWidget):
                 audio_identity=self._context_data.audio_identity,
                 visual_source=self._context_data.visual_source,
                 pending_diarization=self._context_data.pending_diarization,
+                speaker_naming=self._context_data.speaker_naming,
             )
         except Exception as exc:
             InfoBar.error(

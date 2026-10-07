@@ -143,3 +143,119 @@ class ASRAudioEvent:
                 or type(start) is not int or type(end) is not int or start < 0 or end < start):
             raise ValueError("Invalid ASR audio event; review required.")
         return cls(value["text"], start, end, metadata)
+
+
+SPEAKER_NAMING_POLICY = "speaker-naming-v1"
+GENDERS = ("male", "female", "unknown")
+AGE_GROUPS = ("child", "teen", "adult", "senior", "unknown")
+NAMING_STATUSES = ("proposed", "confirmed", "rejected")
+MAX_SPEAKER_NAME, MAX_SPEAKER_ROLE, MAX_NAMING_EVIDENCE = 60, 120, 20
+
+
+def _clean_text(value: object, limit: int) -> str:
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError("Invalid speaker naming text.")
+    if any(ord(c) < 32 for c in value):
+        raise ValueError("Speaker naming text contains control characters.")
+    return value.strip()
+
+
+@dataclass(frozen=True)
+class SpeakerProfile:
+    """One anonymous speaker cluster with the name the LLM (or the user) attached to it.
+
+    ``speaker_id`` is the scoped ASR speaker identity of the cues; ``label`` is the short
+    anonymous tag shown in prompts and tables. An empty ``name`` means nobody is known yet.
+    """
+
+    speaker_id: str
+    label: str
+    name: str = ""
+    role: str = ""
+    gender: str = "unknown"
+    age_group: str = "unknown"
+    confidence: float = 0.0
+    evidence_cue_ids: tuple[str, ...] = ()
+    status: str = "proposed"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.speaker_id, str) or not self.speaker_id or not isinstance(self.label, str) or not self.label:
+            raise ValueError("Speaker profile requires a scoped speaker ID and a label.")
+        object.__setattr__(self, "name", _clean_text(self.name, MAX_SPEAKER_NAME))
+        object.__setattr__(self, "role", _clean_text(self.role, MAX_SPEAKER_ROLE))
+        if self.gender not in GENDERS or self.age_group not in AGE_GROUPS or self.status not in NAMING_STATUSES:
+            raise ValueError("Invalid speaker profile attribute.")
+        confidence = self.confidence
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
+            raise ValueError("Speaker naming confidence must be a number from 0 to 1.")
+        object.__setattr__(self, "confidence", round(float(confidence), 4))
+        ids = self.evidence_cue_ids
+        if (not isinstance(ids, tuple) or len(ids) > MAX_NAMING_EVIDENCE
+                or any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids)):
+            raise ValueError("Invalid speaker naming evidence.")
+
+    def to_dict(self) -> dict:
+        result = asdict(self)
+        result["evidence_cue_ids"] = list(self.evidence_cue_ids)
+        return result
+
+    @classmethod
+    def from_dict(cls, value: object) -> "SpeakerProfile":
+        if not isinstance(value, dict) or set(value) != {
+                "speaker_id", "label", "name", "role", "gender", "age_group", "confidence", "evidence_cue_ids", "status"}:
+            raise ValueError("Invalid speaker profile.")
+        ids = value["evidence_cue_ids"]
+        if not isinstance(ids, (list, tuple)):
+            raise ValueError("Invalid speaker naming evidence.")
+        raw = dict(value)
+        raw["evidence_cue_ids"] = tuple(ids)
+        return cls(**raw)
+
+
+@dataclass(frozen=True)
+class SpeakerNaming:
+    """Document-level result of naming the diarized clusters; cues keep their anonymous labels."""
+
+    model: str
+    prompt_sha256: str
+    profiles: tuple[SpeakerProfile, ...] = ()
+    cue_count: int = 0
+    sampled: bool = False
+    policy: str = SPEAKER_NAMING_POLICY
+
+    def __post_init__(self) -> None:
+        if self.policy != SPEAKER_NAMING_POLICY or not isinstance(self.model, str) or not isinstance(self.prompt_sha256, str):
+            raise ValueError("Invalid speaker naming provenance.")
+        if type(self.cue_count) is not int or self.cue_count < 0 or type(self.sampled) is not bool:
+            raise ValueError("Invalid speaker naming summary.")
+        if (not isinstance(self.profiles, tuple) or any(not isinstance(p, SpeakerProfile) for p in self.profiles)
+                or len({p.speaker_id for p in self.profiles}) != len(self.profiles)):
+            raise ValueError("Speaker naming requires one profile per cluster.")
+
+    @property
+    def pending(self) -> tuple[SpeakerProfile, ...]:
+        """Clusters the user still has to confirm or reject."""
+        return tuple(p for p in self.profiles if p.status == "proposed")
+
+    def profile_for(self, speaker_id: str) -> "SpeakerProfile | None":
+        return next((p for p in self.profiles if p.speaker_id == speaker_id), None)
+
+    def to_dict(self) -> dict:
+        return {"policy": self.policy, "model": self.model, "prompt_sha256": self.prompt_sha256,
+                "cue_count": self.cue_count, "sampled": self.sampled,
+                "profiles": [p.to_dict() for p in self.profiles]}
+
+    @classmethod
+    def from_dict(cls, value: object) -> "SpeakerNaming | None":
+        if value is None:
+            return None
+        if (not isinstance(value, dict)
+                or set(value) != {"policy", "model", "prompt_sha256", "cue_count", "sampled", "profiles"}
+                or not isinstance(value["profiles"], list)):
+            raise ValueError("Invalid speaker naming block; review required.")
+        try:
+            return cls(value["model"], value["prompt_sha256"],
+                       tuple(SpeakerProfile.from_dict(p) for p in value["profiles"]),
+                       value["cue_count"], value["sampled"], value["policy"])
+        except (TypeError, ValueError):
+            raise ValueError("Invalid speaker naming block; review required.") from None

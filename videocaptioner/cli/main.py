@@ -132,6 +132,8 @@ def _add_native_asr_options(parser: argparse.ArgumentParser) -> None:
     local.add_argument("--diarization-runtime", metavar="DIRECTORY")
     local.add_argument("--local-chunk-ms", type=int)
     local.add_argument("--local-timeout", type=int)
+    local.add_argument("--name-speakers", action=argparse.BooleanOptionalAction, default=None,
+                       help="After --local-diarize, name the clusters with the configured LLM")
     group = parser.add_argument_group("Native Chinese ASR (Soniox / ElevenLabs)")
     group.add_argument("--asr-review", metavar="JSON", help="Save rejected native recognition for local timing review")
     for provider in ("soniox", "scribe"):
@@ -496,6 +498,12 @@ def build_parser() -> argparse.ArgumentParser:
     diarize.add_argument("-o", "--output", required=True)
     diarize.add_argument("--runtime")
     diarize.add_argument("--timeout", type=int, default=180)
+    diarize.add_argument("--name-speakers", action="store_true",
+                         help="Name the speaker clusters with the configured LLM (llm.* config); "
+                              "low-confidence names stay proposals in the JSON")
+    diarize.add_argument("--series-context", metavar="FILE",
+                         help="Background text (characters, relationships) sent with --name-speakers; "
+                              "defaults to translate.series_context")
     diarize.set_defaults(func=_run_local_diarize)
     local = subparsers.add_parser("local-asr", help="Install/status/probe isolated S5 runtimes explicitly")
     local.add_argument("action", choices=["status", "probe", "install"])
@@ -643,7 +651,8 @@ def _build_cli_overrides(args: argparse.Namespace) -> dict:
     # Transcribe
     for key, argument in (("model", "qwen_model"), ("diarize", "local_diarize"),
                           ("runtime_root", "qwen_runtime"), ("diarization_root", "diarization_runtime"),
-                          ("chunk_ms", "local_chunk_ms"), ("timeout", "local_timeout")):
+                          ("chunk_ms", "local_chunk_ms"), ("timeout", "local_timeout"),
+                          ("name_speakers", "name_speakers")):
         _set(f"local_asr.{key}", getattr(args, argument, None))
     _set("transcribe.asr", getattr(args, "asr", None))
     _set("transcribe.language", getattr(args, "language", None))
@@ -756,7 +765,8 @@ def _run_local_asr(args: argparse.Namespace) -> int:
 
 def _run_local_diarize(args: argparse.Namespace) -> int:
     from videocaptioner.cli.commands.local_diarize import run
-    return run(args)
+    # The LLM credentials are read only when naming was requested explicitly.
+    return run(args, _load_config(args) if getattr(args, "name_speakers", False) else None)
 
 
 def _run_ocr(args: argparse.Namespace) -> int:

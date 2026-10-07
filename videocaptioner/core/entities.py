@@ -10,6 +10,7 @@ from videocaptioner.core.asr.native_profiles import NativeASRConfig
 
 if TYPE_CHECKING:
     from videocaptioner.core.asr.asr_data import ASRData
+    from videocaptioner.core.asr.local.speaker_naming import SpeakerNamingSettings
     from videocaptioner.core.dubbing.auto_timing import AutoTimingPlan
     from videocaptioner.core.dubbing.config import DubbingConfig
     from videocaptioner.core.dubbing.review import DubbingReview
@@ -621,6 +622,8 @@ class TranscribeConfig:
     whisper_api_request_profile: str = "auto"
     native_asr: Optional[NativeASRConfig] = None
     local_asr: LocalASRConfig = field(default_factory=LocalASRConfig)
+    # LLM snapshot used only when local_asr.name_speakers is set; None skips naming.
+    speaker_naming: Optional["SpeakerNamingSettings"] = field(default=None, repr=False)
 
     def _mask_key(self, key: Optional[str]) -> str:
         """Mask sensitive key for display"""

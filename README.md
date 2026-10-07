@@ -476,6 +476,26 @@ và GPT → alignment → Community-1 đã có smoke API từ source trên audio
 EXE S5.2, còn Whisper API từ EXE gặp HTTP 429. Gate GUI teardown và chất lượng vẫn được ghi riêng.
 Xem [liên kết nguồn, review và nghiệm thu S5.2](docs/dev/asr-s52.md).
 
+## Đặt tên người nói bằng LLM (lớp 1)
+
+Từ 2026-10-07, sau khi Community-1 gắn cụm `SPEAKER_xx` (`--local-diarize`), app gửi **một request** tới
+LLM đang cấu hình để đặt tên, vai, giới tính và độ tuổi cho từng cụm, dùng chính khối nền video/bộ phim ở
+trên. Tên có độ tin cậy ≥ 0,8 và có bằng chứng được đưa thẳng vào **Ngữ cảnh xưng hô** (Character +
+liên kết người nói, nguồn `text`, đã xác nhận); tên thấp hơn là đề xuất và chờ bạn trong **More → Tên người
+nói (AI)** của tab phụ đề (sửa tên, để trống nếu chưa rõ, Áp dụng có undo/redo). Kết quả nằm trong khối
+`speaker_naming` của JSON; SRT/ASS không chèn tên. Cài đặt: **Nhận dạng → Đặt tên người nói bằng AI
+(LLM)** (mặc định bật, cần bật phân biệt người nói và có dịch vụ LLM). CLI:
+
+```bash
+uv run --frozen videocaptioner local-diarize timed.json --audio episode.mp4 -o speakers.json --name-speakers
+uv run --frozen videocaptioner transcribe episode.mp4 --asr qwen-local --language zh --local-diarize --name-speakers -o episode.json
+```
+
+Chỉ gửi chữ, nhãn ẩn danh và khối nền; không gửi audio, đường dẫn hay key. Reply sai định dạng được thử
+lại một lần, lỗi dịch vụ giữ nguyên cụm ẩn danh. Chưa gọi API thật để nghiệm thu chất lượng tên; các lớp
+sau (hồ sơ nhân vật theo bộ phim, tách cue hai người, định tuyến giọng theo vai) chưa làm.
+Xem [contract, giới hạn và phần chưa làm](docs/dev/speaker-naming-2026-10.md).
+
 ## Lồng tiếng Natural
 
 Batch dùng đầu ra theo câu của Faster-Whisper trước khi phân đoạn phụ đề;

@@ -39,11 +39,13 @@ class LocalASRConfig:
     timeout: int = 180
     runtime_root: str = ""
     diarization_root: str = ""
+    # Ask the configured LLM to name the diarized clusters; needs TranscribeConfig.speaker_naming.
+    name_speakers: bool = False
 
     def __post_init__(self):
         if self.model not in ("qwen-1.7b", "qwen-0.6b"):
             raise ValueError("Select qwen-1.7b or qwen-0.6b explicitly.")
-        if type(self.diarize) is not bool:
+        if type(self.diarize) is not bool or type(self.name_speakers) is not bool:
             raise ValueError("Local diarization must be boolean.")
         if type(self.chunk_ms) is not int or not 1000 <= self.chunk_ms <= 240_000:
             raise ValueError("Local ASR chunk duration must be 1000–240000 milliseconds.")

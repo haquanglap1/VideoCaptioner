@@ -20,7 +20,7 @@ from videocaptioner.core.translate.conversation import (
 from ..entities import SubtitleLayoutEnum
 from ..utils.text_utils import is_mainly_cjk
 from .audio_identity import AudioIdentity
-from .metadata import ASRAudioEvent, ASRMetadata
+from .metadata import ASRAudioEvent, ASRMetadata, SpeakerNaming
 
 # 多语言分词模式(支持词级和字符级语言)
 _WORD_SPLIT_PATTERN = (
@@ -146,8 +146,11 @@ class ASRData:
     def __init__(self, segments: List[ASRDataSeg], events: Optional[List[ASRAudioEvent]] = None,
                  conversation_context: Optional[ConversationContext] = None,
                  audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False,
-                 visual_source: Optional[VisualSourceIdentity] = None):
+                 visual_source: Optional[VisualSourceIdentity] = None,
+                 speaker_naming: Optional[SpeakerNaming] = None):
         self.visual_source = visual_source
+        # Cluster names live beside the cues; SRT/ASS never print them into the subtitle text.
+        self.speaker_naming = speaker_naming
         for segment in segments:
             if segment.ocr_metadata is not None:
                 if (not segment.text.strip() or type(segment.start_time) is not int
@@ -183,7 +186,7 @@ class ASRData:
 
     def with_segments(self, segments: List[ASRDataSeg]) -> "ASRData":
         return ASRData(segments, self.events, self.conversation_context, self.audio_identity,
-                       self.pending_diarization, self.visual_source)
+                       self.pending_diarization, self.visual_source, self.speaker_naming)
 
     def context_snapshot(self):
         return prepare_snapshot(tuple(SourceCue(s.cue_id, s.text, s.speaker or "") for s in self.segments),
@@ -425,7 +428,8 @@ class ASRData:
 
     def to_document(self) -> dict:
         self.validate_visual_source()
-        if self.events or self.conversation_context.enabled or self.audio_identity or self.pending_diarization or self.visual_source:
+        if (self.events or self.conversation_context.enabled or self.audio_identity or self.pending_diarization
+                or self.visual_source or self.speaker_naming is not None):
             result = {"schema": "asr-native-v1", "cues": self.to_json(),
                     "conversation_context": self.conversation_context.to_dict(),
                     "events": [event.to_dict() for event in self.events]}
@@ -435,6 +439,8 @@ class ASRData:
                 result["visual_source"] = self.visual_source.to_dict()
             if self.pending_diarization:
                 result["pending_diarization"] = True
+            if self.speaker_naming is not None:
+                result["speaker_naming"] = self.speaker_naming.to_dict()
             return result
         return self.to_json()
 
@@ -703,6 +709,7 @@ class ASRData:
             data.pending_diarization = json_data.get("pending_diarization", False)
             if type(data.pending_diarization) is not bool:
                 raise ValueError("Invalid pending diarization state.")
+            data.speaker_naming = SpeakerNaming.from_dict(json_data.get("speaker_naming"))
             return data
         segments = []
         for i in sorted(json_data.keys(), key=int):

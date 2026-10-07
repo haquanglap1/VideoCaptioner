@@ -57,6 +57,14 @@ Mở trang cài đặt hoặc cửa sổ quản lý không tải, không nạp m
 | `Local runtime stage timed out` | Tăng **Thời gian chờ mỗi bước** (180 → 600 s) hoặc giảm **Độ dài đoạn âm thanh** xuống 60 s. |
 | `Recognition is incomplete …` | Chunk đã xong được giữ trong cache; bấm Bắt đầu lại để chạy tiếp phần thiếu. |
 
+## Đặt tên người nói bằng AI
+
+Khi bật **Phân biệt người nói tại máy**, card **Đặt tên người nói bằng AI (LLM)** (mặc định bật) gửi một
+yêu cầu tới dịch vụ LLM đang cấu hình để đặt tên cho từng cụm `SPEAKER_xx` dựa trên lời thoại và ô *Ngữ
+cảnh bộ phim*. Tên đủ tin cậy vào thẳng Ngữ cảnh xưng hô; tên chưa chắc chờ bạn ở **More → Tên người nói
+(AI)** trong tab phụ đề. Thiếu dịch vụ LLM thì bước này bị bỏ qua, phụ đề vẫn giữ nhãn ẩn danh. Chi tiết:
+[speaker-naming-2026-10.md](../dev/speaker-naming-2026-10.md).
+
 ## CLI tương đương
 
 ```powershell

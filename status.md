@@ -1,5 +1,49 @@
 # Project Status
 
+## 2026-10-07 (Đặt tên người nói bằng LLM — lớp 1 của gán nhãn người nói)
+
+- Theo `docs/plans/speaker-labeling-2026-10.md` và yêu cầu user (Qwen + Community-1, ít thao tác tay, mọi
+  video): thêm `core/asr/local/speaker_naming.py` (Qt-independent). Sau `add_local_speakers`, một request
+  LLM nhận khối nền `compose_context_notes` + `CLUSTERS` + `TRANSCRIPT` đánh số (quá 20.000 ký tự lấy mẫu
+  đầu/giữa/cuối, thêm câu của cụm thiếu; không gửi path/audio/key/cue ID); prompt
+  `core/prompts/asr/speaker_naming.md`. Reply JSON cứng mỗi cụm (`name`, `role`, `gender`, `age_group`,
+  `confidence` 0..1, `evidence_cue_ids` là số dòng → cue ID), validate chặt, thử lại một lần, lỗi
+  provider/hủy không thử lại, tối đa 40 cụm. Kết quả lưu khối `speaker_naming` (`speaker-naming-v1`,
+  `SpeakerProfile`/`SpeakerNaming` trong `core/asr/metadata.py`) của JSON `asr-native-v1`; cue giữ nhãn ẩn
+  danh, SRT/ASS không chèn tên. Đồng bộ S4: Character + SpeakerMapping ID tất định, evidence `text`;
+  `confirmed` khi confidence ≥ 0,8 + có evidence + tên không trùng cụm khác, còn lại `proposed`; không thay
+  mapping user/confirmed; chạy lại idempotent. `apply_decisions` ghi quyết định user (evidence `user`,
+  trống → `rejected`). Hook `name_local_speakers` trong `transcribe()`: lỗi LLM giữ cụm ẩn danh, thiếu LLM
+  báo skipped. CLI `local-diarize --name-speakers [--series-context FILE]` (đọc `llm.*`, sidecar của
+  `--audio`), `transcribe/process --name-speakers` → `local_asr.name_speakers` (CLI mặc định false). GUI:
+  card **Đặt tên người nói bằng AI (LLM)** (`cfg.local_asr_name_speakers`, mặc định bật, cần diarization +
+  LLM), `TaskFactory.speaker_naming_settings` chụp LLM + khối nền; tab phụ đề **More → Tên người nói (AI)**
+  (`speaker_naming_dialog.py`, `ApplySpeakerNamesCommand` có undo/redo), InfoBar khi có đề xuất; export/
+  handoff/`current_context_document` mang khối. 29 chuỗi Việt mới (đã sync). Tài liệu
+  `docs/dev/speaker-naming-2026-10.md`, README, `docs/guide/qwen-local-asr.md`, trạng thái trong plan.
+- Chưa làm: lớp 2 (hồ sơ nhân vật theo series bằng embedding), lớp 3 (tách cue hai người, chấm điểm cue),
+  lớp 4 (định tuyến giọng OmniVoice theo vai); không cache kết quả đặt tên; project Video Editor không giữ
+  khối `speaker_naming` (Character/Mapping vẫn còn). Chưa gọi API thật, chưa đối chiếu BV1GFbk6LEVm.
+- Gate source: focused **60 pass** (`tests/test_asr/test_speaker_naming.py`, `tests/test_cli/test_local_asr.py`
+  +4, `tests/test_ui/test_speaker_naming.py` 4); core/CLI/translate/editor/subtitle offline **1229 pass/
+  29 deselected**, 66,7 s; GUI/thread/OCR/dubbing **912 pass/17 deselected**, 165,6 s, không gồm
+  `tests/test_dubbing/test_auto_timing.py`: lần chạy đầu `test_real_proposal_apply_export_cache_reuse_and_stale_rejection[True]`
+  kẹt ở ffmpeg mix (`amix`+`apad`+`-shortest`, output 48 byte, CPU quay vòng > 6 phút); test này PASS trong
+  4 audit trước cùng ngày và không chạm code đã sửa nên coi là flaky môi trường, chưa tìm nguyên nhân; lệnh
+  dừng process ffmpeg bị từ chối nên process (PID 4716) có thể vẫn chạy, user kiểm tra. Ruff pass, Pyright
+  0/0, translations in sync. Chưa full suite.
+- Build nhẹ `VideoCaptioner-20261007-speaker-naming` (không models, 397 MB): exit 0/116,4 s, 6 WARNING/
+  0 ERROR, 31.840.849 bytes, SHA256 `a17a3433feb205561ce7547d0092d6c977d18907db82c32fc84053a9d0615bd3`;
+  19 module source-match, `vi_VN.json` và prompt `asr/speaker_naming.md` byte-match trong bundle; GUI từ
+  artifact sống 30,6 s/exit 0/0 survivors.
+- Deploy E khi idle: 600 app files đối chiếu, 5 file thay (EXE giữ tên `VideoCaptioner-20260920-e2e7863.exe`,
+  `base_library.zip`, 2 bản `vi_VN.json`, prompt mới `prompts/asr/speaker_naming.md`), 32.763 protected files
+  nguyên hash, models không chép, backup `.tools/speaker-naming-20261007/rollback-payload`. Lần chép đầu
+  dừng sau 3/5 file vì thư mục `_internal/videocaptioner/core/prompts/asr/` chưa tồn tại (script mẫu không
+  mkdir) và bước rollback EXE gặp khóa file tạm thời; `deploy_resume.py` chép nốt, kiểm lại toàn bộ 600 file
+  và protected hash. Live `local-diarize --help` exit 0 có `--name-speakers`; dist xóa sau deploy. Chưa có
+  nghiệm thu GUI E với video và LLM thật.
+
 ## 2026-10-07 (OCR đọc chữ bằng vision LLM qua tờ ảnh ghép)
 
 - Theo yêu cầu user: thay OCR local (kém, nặng máy) bằng cắt crop tự động gửi thẳng API LLM đang

@@ -4,6 +4,12 @@ Yêu cầu user (2026-10-07): nhãn thô dùng **Qwen local + Community-1** (Son
 vì tốn phí); app tự gán tên nhân vật, càng ít thao tác tay càng tốt, chỉ hỏi khi thật sự thiếu ngữ
 cảnh. Mục tiêu thực tế: đúng khoảng 90 % cue, phần còn lại vào hàng đợi review nhỏ.
 
+## Trạng thái
+
+- 2026-10-07: **lớp 1 đã làm** (`core/asr/local/speaker_naming.py`, prompt `asr/speaker_naming.md`, CLI
+  `local-diarize --name-speakers`, card Settings + bảng review trong tab phụ đề). Contract và giới hạn:
+  [speaker-naming-2026-10.md](../dev/speaker-naming-2026-10.md). Chưa gọi API thật; lớp 2–4 chưa làm.
+
 ## Hiện trạng (đã có)
 
 - `--local-diarize`: pyannote Community-1 (`core/asr/local/diarization.py`) gom cụm ẩn danh

@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from videocaptioner.core.asr.asr_data import ASRData
 from videocaptioner.core.asr.audio_identity import AudioIdentity
-from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata
+from videocaptioner.core.asr.metadata import ASRAudioEvent, ASRMetadata, SpeakerNaming
 from videocaptioner.core.entities import SubtitleLayoutEnum, SupportedSubtitleFormats
 from videocaptioner.core.ocr.identity import VisualSourceIdentity
 from videocaptioner.core.ocr.metadata import OcrMetadata, merge_ocr_metadata, merged_cue_id
@@ -143,6 +143,7 @@ def export_subtitle(
     *, events: Optional[List[ASRAudioEvent]] = None, context: Optional[ConversationContext] = None,
     audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False,
     visual_source: Optional[VisualSourceIdentity] = None,
+    speaker_naming: Optional[SpeakerNaming] = None,
 ) -> None:
     """Write the table to ``path``; ``.ass`` uses ``style`` (ASS style block)."""
     asr_data = ASRData.from_json(data)
@@ -151,6 +152,7 @@ def export_subtitle(
     asr_data.audio_identity = audio_identity
     asr_data.visual_source = visual_source
     asr_data.pending_diarization = pending_diarization
+    asr_data.speaker_naming = speaker_naming
     if path.lower().endswith(".ass"):
         asr_data.to_ass(style, layout, path)
     else:
@@ -191,7 +193,8 @@ def reexport_pipeline_outputs(
                             context=document.conversation_context if document else None,
                             audio_identity=document.audio_identity if document else None,
                             visual_source=document.visual_source if document else None,
-                            pending_diarization=document.pending_diarization if document else False)
+                            pending_diarization=document.pending_diarization if document else False,
+                            speaker_naming=document.speaker_naming if document else None)
         except Exception:
             continue
         written.append(target)
@@ -211,6 +214,7 @@ def write_editor_handoff(
     context: Optional[ConversationContext] = None,
     audio_identity: Optional[AudioIdentity] = None, pending_diarization: bool = False,
     visual_source: Optional[VisualSourceIdentity] = None,
+    speaker_naming: Optional[SpeakerNaming] = None,
 ) -> Path:
     """Persist the current table as SRT for the Video Editor without touching
     the task's source subtitle file."""
@@ -222,10 +226,11 @@ def write_editor_handoff(
     asr_data.audio_identity = audio_identity
     asr_data.visual_source = visual_source
     asr_data.pending_diarization = pending_diarization
+    asr_data.speaker_naming = speaker_naming
     # JSON preserves existing IDs; legacy tables without any association can still use SRT.
     keep_ids = any(item.get("cue_id") for item in data.values())
     extension = "json" if (asr_data.has_metadata or asr_data.conversation_context.enabled or keep_ids
-                           or audio_identity or pending_diarization) else "srt"
+                           or audio_identity or pending_diarization or speaker_naming) else "srt"
     target = handoff_dir / f"{name}.{extension}"
     asr_data.save(str(target))
     return target

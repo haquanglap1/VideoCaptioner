@@ -83,6 +83,25 @@ class TaskFactory:
         }
 
     @staticmethod
+    def speaker_naming_settings(video_path: Optional[str]):
+        """Snapshot of the selected LLM for cluster naming; None when naming is off or unconfigured."""
+        if not (cfg.local_asr_diarize.value and cfg.local_asr_name_speakers.value):
+            return None
+        from videocaptioner.core.asr.local.speaker_naming import SpeakerNamingSettings
+        from videocaptioner.core.llm.client import LLMCredentials
+        from videocaptioner.core.llm.services import fill_default_api_key, llm_service_preset
+
+        service = cfg.llm_service.value
+        prefix = llm_service_preset(service).config_attr
+        credentials = LLMCredentials(fill_default_api_key(service, getattr(cfg, prefix + "_api_key").value),
+                                     getattr(cfg, prefix + "_api_base").value)
+        model = getattr(cfg, prefix + "_model").value
+        if not credentials.is_complete or not model:
+            return None
+        return SpeakerNamingSettings(credentials, model, cfg.llm_request_timeout.value,
+                                     TaskFactory.context_notes_for(video_path))
+
+    @staticmethod
     def create_transcribe_task(
         file_path: str,
         need_next_task: bool = False,
@@ -124,6 +143,7 @@ class TaskFactory:
             # Whisper API 配置
             native_asr=native_config(cfg),
             local_asr=local_config(),
+            speaker_naming=TaskFactory.speaker_naming_settings(file_path),
             whisper_api_key=cfg.whisper_api_key.value,
             whisper_api_base=cfg.whisper_api_base.value,
             whisper_api_model=cfg.whisper_api_model.value,

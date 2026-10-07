@@ -30,6 +30,27 @@ def recognize_text(audio_path: str, config: TranscribeConfig, callback=None) -> 
     return TranscriptionResult(text=data.to_txt(), segments=data.segments)
 
 
+def name_local_speakers(data: ASRData, config: TranscribeConfig, callback) -> ASRData:
+    """Optional LLM naming after diarization; any failure keeps the anonymous labels."""
+    if not config.local_asr.name_speakers:
+        return data
+    settings = config.speaker_naming
+    if settings is None:
+        callback(98, "Speaker naming skipped: configure the LLM service to name speaker clusters.")
+        return data
+    from videocaptioner.core.asr.local.speaker_naming import name_speakers
+
+    def check():
+        callback(97, "Naming speaker clusters with the LLM")
+
+    try:
+        return name_speakers(data, settings, check=check, notify=lambda message: callback(97, message))
+    except (ValueError, RuntimeError, OSError) as exc:
+        check()  # Cancellation propagates through the callback; other failures are non-fatal.
+        callback(98, f"Speakers remain anonymous: {exc}")
+        return data
+
+
 def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRData:
     """Transcribe audio file using specified configuration.
 
@@ -85,12 +106,13 @@ def transcribe(audio_path: str, config: TranscribeConfig, callback=None) -> ASRD
         asr_data.pending_diarization = config.local_asr.diarize
         if config.local_asr.diarize:
             try:
-                return add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
+                diarized = add_local_speakers(job_audio, asr_data, config, aligned=isinstance(asr, AlignedAPI), callback=callback)
             except (ValueError, RuntimeError, OSError):
                 # Persistent cancellation still raises here. Optional speaker failure
                 # keeps the measured transcript and an explicit pending state.
                 callback(95, "Subtitles retained; speaker association is pending. Check the optional model in model management.")
                 return asr_data
+            return name_local_speakers(diarized, config, callback)
         if (not config.need_word_time_stamp and config.transcribe_model is not TranscribeModelEnum.FASTER_WHISPER
                 and not isinstance(asr, (AlignedAPI, NativeASR, QwenLocalASR))):
             asr_data.optimize_timing()

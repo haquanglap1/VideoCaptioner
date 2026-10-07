@@ -95,7 +95,7 @@ GUI_LLM_SERVICE_PREFIX: Dict[str, str] = {
 
 DEFAULTS: Dict[str, Any] = {
     "local_asr": {"model": "qwen-1.7b", "diarize": False, "chunk_ms": 120000, "timeout": 180,
-                  "runtime_root": "", "diarization_root": ""},
+                  "runtime_root": "", "diarization_root": "", "name_speakers": False},
     **{provider: {"api_key": "", "api_base": profile.endpoint, "model": profile.model, "diarize": True}
        for provider, profile in NATIVE_PROFILES.items()},
     "llm": {

@@ -242,6 +242,10 @@ class LocalASRCards(QWidget):
         self.diarize = SwitchSettingCard(FIF.PEOPLE, self.tr("Local speaker diarization"),
                         self.tr("Community-1 for Qwen or Whisper API. Ambiguous speakers remain unknown for review."),
                         configItem=cfg.local_asr_diarize, parent=group)
+        self.naming = SwitchSettingCard(FIF.ROBOT, self.tr("Name speakers with the LLM"),
+                        self.tr("After diarization, one request to the configured LLM proposes a name, role and gender "
+                                "per cluster. Confident names are applied; the rest wait in the review table."),
+                        configItem=cfg.local_asr_name_speakers, parent=group)
         self.chunk = ComboBoxSettingCard(cfg.local_asr_chunk, FIF.SETTING, self.tr("Local audio chunk"),
                         self.tr("Audio is recognized in windows of this length. Longer windows keep more context; "
                                 "shorter ones recover faster after a timeout."),
@@ -253,7 +257,7 @@ class LocalASRCards(QWidget):
         self.manager = PushSettingCard(self.tr("Manage models"), FIF.FOLDER, self.tr("Local ASR runtimes"),
                          self.tr("Explicit install, file check and health probe. Opening settings does not start a model."), group)
         self.manager.clicked.connect(self.open_manager)
-        self.cards = [self.model, self.language, self.diarize, self.chunk, self.timeout, self.manager]
+        self.cards = [self.model, self.language, self.diarize, self.naming, self.chunk, self.timeout, self.manager]
         for card in self.cards:
             card.contentLabel.setWordWrap(True)
             card.contentLabel.setMinimumHeight(44)

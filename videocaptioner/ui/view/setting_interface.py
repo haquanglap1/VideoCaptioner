@@ -956,7 +956,8 @@ class SettingInterface(ScrollArea):
         is_whisper_api = current is TranscribeModelEnum.WHISPER_API
         is_qwen = current is TranscribeModelEnum.QWEN_LOCAL
         for card in self.localASRCards.cards:
-            card.setVisible(is_qwen or is_whisper_api and card in (self.localASRCards.diarize, self.localASRCards.manager, self.localASRCards.timeout))
+            card.setVisible(is_qwen or is_whisper_api and card in (self.localASRCards.diarize, self.localASRCards.naming,
+                                                                   self.localASRCards.manager, self.localASRCards.timeout))
         self.fasterWhisperManagerCard.setVisible(
             current is TranscribeModelEnum.FASTER_WHISPER
         )

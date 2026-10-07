@@ -126,6 +126,14 @@ def run(args: Namespace, config: dict) -> int:
         whisper_api_provider=get(config, "whisper_api.provider", "custom"),
         whisper_api_request_profile=get(config, "whisper_api.request_profile", "auto"),
     )
+    if transcribe_config.local_asr.diarize and transcribe_config.local_asr.name_speakers:
+        from videocaptioner.cli.commands.local_diarize import naming_settings
+
+        try:
+            transcribe_config.speaker_naming = naming_settings(config, args, media_path=str(input_path))
+        except (FileNotFoundError, ValueError) as exc:
+            output.error(str(exc))
+            return EXIT.USAGE_ERROR
 
 
     # Progress callback

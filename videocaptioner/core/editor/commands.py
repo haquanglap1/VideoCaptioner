@@ -79,6 +79,33 @@ class EditConversationCommand:
             self.owner.touch()
 
 
+class SpeakerNamingOwner(Protocol):
+    conversation_context: ConversationContext
+    speaker_naming: Any
+
+
+@dataclass
+class ApplySpeakerNamesCommand:
+    """The user's decisions from the speaker review table: context and naming statuses move together."""
+
+    owner: SpeakerNamingOwner
+    context: ConversationContext
+    naming: Any
+    description: str = "Apply speaker names"
+    _old: tuple[ConversationContext, Any] | None = field(default=None, init=False)
+
+    def execute(self) -> None:
+        check_context_update(self.owner.conversation_context, self.context, user_edit=True)
+        if self._old is None:
+            self._old = (self.owner.conversation_context, self.owner.speaker_naming)
+        self.owner.conversation_context = self.context
+        self.owner.speaker_naming = self.naming
+
+    def undo(self) -> None:
+        if self._old is not None:
+            self.owner.conversation_context, self.owner.speaker_naming = self._old
+
+
 class CommandStack:
     def __init__(self, *, limit: int = 200):
         self.limit = max(1, int(limit))
