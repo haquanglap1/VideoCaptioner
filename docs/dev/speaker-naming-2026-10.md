@@ -80,8 +80,13 @@ truyền vào `--audio` (truyền thẳng file video đã tải để có sideca
   (+4: flag/config, `local-diarize --name-speakers` gửi chữ + nền và lưu map, lỗi provider giữ JSON, thiếu
   LLM dừng sớm); `tests/test_ui/test_speaker_naming.py` (4: card/config snapshot, TaskFactory chỉ chụp
   LLM khi đủ cấu hình, dialog, view áp dụng qua stack + undo/redo + export). Kết quả gate ghi ở `status.md`.
-- Chưa gọi API thật; chất lượng tên/vai/giới tính, chi phí token và hành vi model reasoning chưa nghiệm
-  thu. Chưa đối chiếu với gán tay BV1GFbk6LEVm.
+- Thật, 2026-10-07 trên bản E qua CLI `local-diarize --name-speakers` với SRT tiếng Việt đã dịch của
+  BV1GFbk6LEVm P1 và model `gpt-6.1-sol`: Community-1 ra 52 cue/2 cụm (40 cue chưa rõ vì cue SRT rất
+  ngắn), một request LLM trả JSON hợp lệ ngay lần đầu: `SPEAKER_00 → Thanh Tiêu` (confirmed, 0,80, vai
+  "kiếm tu hướng dẫn tu hành"), `SPEAKER_01 → (unknown)` (proposed, vai "vãn bối được tiền bối hướng
+  dẫn"). Đúng với nội dung PV; chưa so từng cue với gán tay, chưa đo trên phụ đề tiếng Trung gốc vì
+  bước căn thời gian Qwen của tập này dừng ở vùng đệm `嗯。` (xem sửa fallback cùng ngày trong
+  `status.md`). Chất lượng trên nhiều tập và chi phí token chưa nghiệm thu.
 
 ## Giới hạn và phần chưa làm
 

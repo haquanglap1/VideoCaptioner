@@ -43,6 +43,27 @@
   mkdir) và bước rollback EXE gặp khóa file tạm thời; `deploy_resume.py` chép nốt, kiểm lại toàn bộ 600 file
   và protected hash. Live `local-diarize --help` exit 0 có `--name-speakers`; dist xóa sau deploy. Chưa có
   nghiệm thu GUI E với video và LLM thật.
+- Nghiệm thu thật cùng ngày trên bản E (CLI `local-diarize --name-speakers`, SRT tiếng Việt đã dịch của
+  BV1GFbk6LEVm P1, model `gpt-6.1-sol`): Community-1 ra 52 cue/2 cụm, một request LLM trả JSON hợp lệ ngay lần
+  đầu, `SPEAKER_00 → Thanh Tiêu` confirmed 0,80 (vai kiếm tu hướng dẫn tu hành), `SPEAKER_01 → unknown`
+  proposed (vai vãn bối). Đúng nội dung PV; chưa so từng cue với gán tay, chưa đo trên chữ Trung gốc.
+- User chạy GUI E với video này nhưng Qwen chỉ xuất TXT: xác minh bằng CLI EXE (`--verbose`) ra lỗi
+  `Whisper fallback returned no speech for a region with Qwen text`; review cho thấy 304/305 token căn được,
+  chỉ chunk 0 (0–6 s, chữ `嗯。` trên nhạc mở đầu) hỏng và Faster-Whisper không nghe thấy lời ở đó nên policy cũ
+  dừng cả tập. Sửa `core/asr/local/sentence_fallback.py`: `WhisperNoSpeech` (subclass `AlignmentError`); vùng
+  không có lời mà chữ Qwen ≤ 6 ký tự chữ/số (`FALLBACK_DROP_MAX_CHARS`) được bỏ khỏi phụ đề, review vẫn lưu đủ
+  chữ Qwen, thông báo ghi số đoạn bị bỏ; chữ dài hơn vẫn dừng để review; kết quả rỗng vẫn không cache. Test mới
+  trong `tests/test_asr/test_qwen_sentence_fallback.py`; README ghi quy tắc. GUI vẫn không hiện lý do khi chỉ lưu
+  TXT (chỉ CLI/log review) — ghi nhận, chưa sửa.
+- Gate bản sửa: core/CLI/translate/editor/subtitle **1230 pass/29 deselected** 70,4 s; GUI/thread/OCR/dubbing
+  **912 pass/17 deselected** 160,7 s (vẫn không gồm `test_auto_timing.py`); Ruff pass, Pyright 0/0, sync pass.
+  Build nhẹ `VideoCaptioner-20261007-speaker-naming-2`: exit 0/116,4 s, 6 WARNING/0 ERROR, 31.841.493 bytes,
+  SHA256 `8e21ca260a6950d467a9aa841646940a5ca376d49dbc1acddbfe1ef790cfee17`; `sentence_fallback` + 19 module
+  lượt trước source-match, vi_VN.json và prompt byte-match; GUI từ artifact sống 30,7 s/exit 0/0 survivors.
+  Deploy E sau khi user đóng app: 600 app files đối chiếu, 2 file thay (EXE giữ tên, `base_library.zip`),
+  32.763 protected files nguyên hash, backup `.tools/speaker-naming-20261007/rollback-payload` (lượt 1 trong
+  `rollback-payload-1`), script `deploy2.py` tạo thư mục thiếu và kiểm hash trước/sau; live `local-diarize --help`
+  exit 0. Chưa có nghiệm thu GUI E chạy lại tập này với bản sửa.
 
 ## 2026-10-07 (OCR đọc chữ bằng vision LLM qua tờ ảnh ghép)
 

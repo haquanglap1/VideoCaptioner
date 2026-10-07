@@ -18,14 +18,14 @@ from videocaptioner.core.asr.review import NativeReview
 from videocaptioner.core.entities import TranscribeConfig
 
 
-def fixture():
+def fixture(middle="原文"):
     audio = Sine(400, sample_rate=16000).to_audio_segment(9000)
     stage = StageProvenance("qwen-local", "qwen-1.7b", "pin", "text")
     raw = [[dict(text="你好", start_ms=100, end_ms=800)],
-           [dict(text="原文", start_ms=0, end_ms=0)],
+           [dict(text=middle, start_ms=0, end_ms=0)],
            [dict(text="结束", start_ms=100, end_ms=900)]]
     review = LocalReview.capture_chunks(stage=stage, scope="fixture", durations=[(0, 3000), (3000, 3000), (6000, 3000)],
-        texts=["你好。", "原文。", "结束。"], raw=raw, word_timing=False, audio_identity=identify_audio(audio))
+        texts=["你好。", f"{middle}。", "结束。"], raw=raw, word_timing=False, audio_identity=identify_audio(audio))
     return audio, replace(review, alignment_policy=PRACTICAL_SENTENCE_POLICY)
 
 
@@ -160,3 +160,25 @@ def test_installed_model_name_and_directory_and_only_valid_results_are_cached(mo
         with pytest.raises(AlignmentError):
             owner(audio, lambda: None)
         assert not cache
+
+
+def test_no_speech_in_a_filler_region_is_left_out_but_longer_text_still_needs_review(monkeypatch, tmp_path):
+    audio, review = fixture()
+
+    def silent(self, region, check):
+        check()
+        raise fallback.WhisperNoSpeech("no speech")
+
+    monkeypatch.setattr(fallback.WhisperSentenceFallback, "__call__", silent)
+    messages = []
+    data = fallback.sentence_subtitles(audio, review, TranscribeConfig(), lambda p, m: messages.append(m))
+    assert [(s.text, s.start_time, s.end_time) for s in data] == [("你好。", 100, 800), ("结束。", 6100, 6900)]
+    assert fallback.fallback_cue_count(data) == 0
+    assert any("1 filler-only chunk(s) had no speech" in m and "0 chunks use Whisper" in m for m in messages)
+    saved, = (tmp_path / "asr-review").glob("*.json")  # the full Qwen text, including the filler, is retained
+    assert NativeReview.load(saved).text == review.text
+    # A longer disagreement is not filler: it still stops for review instead of dropping words.
+    audio, long_review = fixture("原文原文原文原文")
+    with pytest.raises(AlignmentError):
+        fallback.sentence_subtitles(audio, long_review, TranscribeConfig())
+    assert isinstance(fallback.WhisperNoSpeech("x"), AlignmentError)

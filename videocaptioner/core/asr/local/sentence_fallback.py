@@ -21,6 +21,13 @@ from .review import LocalReview
 from .sentence_timing import PRACTICAL_SENTENCE_POLICY, sentence_cues
 
 FALLBACK_POLICY = "qwen-sentence-whisper-fallback-v1"
+# A failed region whose Qwen text is at most this many letters/digits (e.g. "嗯。" over an intro)
+# may be left out when Whisper hears no speech there; anything longer still needs review.
+FALLBACK_DROP_MAX_CHARS = 6
+
+
+class WhisperNoSpeech(AlignmentError):
+    """Whisper heard nothing where Qwen produced text; the caller decides whether it was filler."""
 
 
 def fallback_cue_count(data: ASRData) -> int:
@@ -74,7 +81,7 @@ class WhisperSentenceFallback:
         data = ASRData.from_srt(response, detect_bilingual=False)
         previous = 0
         if not data.segments:
-            raise AlignmentError("Whisper fallback returned no speech for a region with Qwen text.")
+            raise WhisperNoSpeech("Whisper fallback returned no speech for a region with Qwen text.")
         for seg in data:
             if not previous <= seg.start_time < seg.end_time <= len(audio):
                 raise AlignmentError("Whisper fallback returned invalid sentence timing.")
@@ -162,7 +169,7 @@ def sentence_subtitles(audio, review: LocalReview, config, callback=None) -> ASR
         if groups[index] is None and review.chunks[index].duration_ms < 3000:
             groups[index - 1] = None
     fallback = WhisperSentenceFallback(config)
-    index, used = 0, 0
+    index, used, dropped = 0, 0, 0
     output = []
     while index < len(groups):
         if groups[index] is not None:
@@ -183,17 +190,29 @@ def sentence_subtitles(audio, review: LocalReview, config, callback=None) -> ASR
             if callback:
                 callback(90, f"Whisper fallback: replacing text and timing in chunks {first + 1}–{index}")
 
-        data, recognition = fallback(audio[start:end], fallback_check)
+        try:
+            data, recognition = fallback(audio[start:end], fallback_check)
+        except WhisperNoSpeech:
+            text = "".join(review.chunks[i].text for i in range(first, index))
+            if sum(c.isalnum() for c in text) > FALLBACK_DROP_MAX_CHARS:
+                raise
+            # Two independent models disagree about a filler-sized fragment: leave it out of the
+            # export (its Qwen text stays in the retained review) rather than invent timing for it.
+            dropped += index - first
+            continue
         for number, seg in enumerate(data):
             metadata = ASRMetadata("faster-whisper", review.scope, timing="native", recognition=recognition)
             output.append(ASRDataSeg(seg.text, start + seg.start_time, start + seg.end_time,
                 metadata=metadata, cue_id=f"faster-whisper:{review.scope}:fallback-{first}-{number}"))
         used += index - first
     check()
-    if used:
+    if used or dropped:
         # Preserve the complete original Qwen text and raw timings outside the
         # successful hybrid result; never relabel them as Whisper recognition.
         review.save_new()
         if callback:
-            callback(95, f"Subtitles ready; {used} chunks use Whisper text and timing. Original Qwen text retained in ASR review.")
+            note = f"Subtitles ready; {used} chunks use Whisper text and timing"
+            if dropped:
+                note += f"; {dropped} filler-only chunk(s) had no speech in Whisper and were left out"
+            callback(95, note + ". Original Qwen text retained in ASR review.")
     return ASRData(output, audio_identity=review.audio_identity, pending_diarization=review.pending_diarization)

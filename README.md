@@ -440,8 +440,10 @@ Xem [so sánh model và kế hoạch hoàn thiện ASR](docs/plans/asr-completio
 Xuất câu/đoạn dùng mốc bắt đầu/kết thúc của câu từ aligner và kiểm tra âm thanh
 trong câu; lỗi thời lượng của từng token không tự chặn câu có timing dùng được.
 Vùng vẫn lỗi dùng Faster-Whisper dự phòng, lấy cả chữ và thời gian của Whisper.
-Đuôi quá ngắn được xử lý cùng đoạn trước để có ngữ cảnh. App báo số câu dự phòng;
-JSON giữ nguồn từng câu, bản review giữ nguyên chữ và raw Qwen ban đầu.
+Đuôi quá ngắn được xử lý cùng đoạn trước để có ngữ cảnh. Vùng mà Whisper không nghe thấy lời
+và chữ Qwen chỉ là tiếng đệm ngắn (tối đa 6 ký tự, ví dụ `嗯。` trên đoạn nhạc mở đầu) được bỏ
+khỏi phụ đề thay vì dừng cả tập; chữ dài hơn vẫn dừng để review. App báo số câu dự phòng và số
+đoạn bị bỏ; JSON giữ nguồn từng câu, bản review giữ nguyên chữ và raw Qwen ban đầu.
 
 Whisper dự phòng dùng executable/model **đã cài** trong cài đặt Faster-Whisper;
 CLI dùng `--fw-program`, `--fw-model-dir`, `--fw-model`, `--fw-device` ngay cả
