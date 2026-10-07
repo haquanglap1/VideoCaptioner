@@ -212,7 +212,16 @@ end-to-end. Không gọi task hoàn tất vượt quá bằng chứng thực t�
   dành cho file tạm có cơ chế tự xóa. Ưu tiên thư mục riêng dưới `.tools/`; không đổi cấu hình
   hệ thống/global để chuyển đường dẫn và không ghi vào dữ liệu thật của user khi test.
 - Giữ nguyên `.env`, cookies, `AppData/`, `work-dir/`, media đầu vào/đầu ra và log của user.
-- Không xóa hoặc ghi đè artifact khác tên chỉ để dọn build.
+- Theo yêu cầu thường trực ngày 2026-10-04, sau mỗi task phải dọn toàn bộ file rác do agent
+  tạo trong dự án: file tạm, cache test, build trung gian và bản sao artifact đã xác minh hết dùng.
+  Đây là quyền dọn các file đã xác định rõ là rác, không cần hỏi lại từng lần. Không để tích lũy
+  nhiều bản build/test hoặc sao chép model/runtime chỉ để giữ bằng chứng.
+- Trước khi xóa, kiểm tra đường dẫn tuyệt đối nằm trong dự án, không đi qua junction/symlink,
+  không có process/job đang dùng và không chứa source hay thay đổi chưa commit. Giữ dữ liệu user,
+  model/runtime đang dùng, artifact bàn giao mới nhất, backup rollback còn cần và bằng chứng duy nhất
+  cho lỗi/gate đang mở; file chưa rõ vai trò thì giữ và báo. Không coi cả `.tools/` hoặc `dist/` là rác.
+- Cuối task báo phần đã dọn, dung lượng thu hồi thực đo và phần còn giữ cùng lý do. Không xóa
+  artifact khác tên chỉ dựa vào tên/ngày cũ hoặc để dọn build; phải xác minh nó đã hết dùng.
 - Chỉ cập nhật `status.md` khi có thay đổi bền vững về code/behavior/validation; một lần build lại không
   tự động trở thành lịch sử tính năng.
 - Trước khi bàn giao, chạy `git status --short`, liệt kê đúng file đã sửa và nêu các gate đã chạy, chưa
