@@ -185,6 +185,22 @@ def run(args: Namespace, config: dict) -> int:
             return EXIT.FILE_NOT_FOUND
         custom_prompt = p.read_text(encoding="utf-8")
 
+    # Background for the LLM: --series-context file, else the series note from config/GUI,
+    # plus the sidecar written next to a downloaded video when --video is given.
+    from videocaptioner.core.translate.series_context import (
+        compose_context_notes,
+        load_video_context,
+    )
+
+    series_notes = get(config, "translate.series_context", "") or ""
+    series_file = getattr(args, "series_context", None)
+    if series_file:
+        series_path = Path(series_file)
+        if not series_path.is_file():
+            output.error(f"Series context file not found: {series_file}")
+            return EXIT.FILE_NOT_FOUND
+        series_notes = series_path.read_text(encoding="utf-8")
+    context_notes = compose_context_notes(load_video_context(getattr(args, "video", None)), series_notes)
 
     if verbose:
         output.info(f"Optimize: {need_optimize}, Translate: {need_translate}")
@@ -277,6 +293,7 @@ def run(args: Namespace, config: dict) -> int:
                 update_callback=callback,
                 request_timeout=request_timeout,
                 credentials=LLMCredentials(llm_api_key, llm_api_base) if needs_llm else None,
+                context_notes=context_notes,
             )
             components.append(translator)
             asr_data = translator.translate_subtitle(asr_data)

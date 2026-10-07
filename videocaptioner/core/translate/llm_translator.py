@@ -41,6 +41,7 @@ class LLMTranslator(BaseTranslator):
         update_callback: Optional[Callable],
         request_timeout: int = 120,
         credentials: Optional[LLMCredentials] = None,
+        context_notes: str = "",
     ):
         self.request_timeout = validate_request_timeout(request_timeout)
         self._credentials = credentials if credentials is not None else get_llm_credentials()
@@ -53,6 +54,8 @@ class LLMTranslator(BaseTranslator):
 
         self.model = model
         self.custom_prompt = custom_prompt
+        # User-supplied background (video metadata, series note); part of the cache identity.
+        self.context_notes = (context_notes or "").strip()
         self.is_reflect = is_reflect
         self._owned_request = OwnedLLMRequest(self._credentials, self.request_timeout, lambda: not self.is_running)
         # Global context brief (topic/tone/glossary) built by _prepare before translating
@@ -106,6 +109,8 @@ class LLMTranslator(BaseTranslator):
             )
 
         prompt = get_prompt("translate/context", target_language=self.target_language)
+        if self.context_notes:
+            full_text = self.context_notes + "\n\nTRANSCRIPT:\n" + full_text
         try:
             response = self._request(
                 messages=[
@@ -121,6 +126,10 @@ class LLMTranslator(BaseTranslator):
         except Exception as e:
             logger.warning(f"构建全局上下文失败，跳过（不影响翻译）: {e}")
             return ""
+
+    def _context_block(self) -> str:
+        """Background first, then the generated brief; either may be empty."""
+        return "\n\n".join(part for part in (self.context_notes, self.global_context) if part)
 
     def _translate_chunk(
         self, subtitle_chunk: List[SubtitleProcessData]
@@ -139,14 +148,14 @@ class LLMTranslator(BaseTranslator):
                 "translate/reflect",
                 target_language=self.target_language,
                 custom_prompt=self.custom_prompt,
-                global_context=self.global_context,
+                global_context=self._context_block(),
             )
         else:
             prompt = get_prompt(
                 "translate/standard",
                 target_language=self.target_language,
                 custom_prompt=self.custom_prompt,
-                global_context=self.global_context,
+                global_context=self._context_block(),
             )
 
         snapshot = self.conversation_snapshot
@@ -352,7 +361,7 @@ class LLMTranslator(BaseTranslator):
         lang = self.target_language.value
         model = self.model
         settings_sig = hashlib.md5(
-            f"{self.custom_prompt}\n{self.source_signature}\n"
+            f"{self.custom_prompt}\n{self.source_signature}\n{self.context_notes}\n"
             f"{self.RESPONSE_POLICY}\n"
             f"conversation-request-v2\n{self.conversation_snapshot.fingerprint if self.conversation_snapshot else ''}"
             f"\n{self._credentials.base_url if self._credentials else ''}"

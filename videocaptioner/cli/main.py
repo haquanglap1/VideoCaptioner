@@ -249,6 +249,9 @@ def _build_subtitle_parser(subparsers) -> None:
     sub.add_argument("--max-cjk", type=int, metavar="N", help="Max characters per line for CJK text (default: 18)")
     sub.add_argument("--max-english", type=int, metavar="N", help="Max words per line for English text (default: 12)")
     sub.add_argument("--prompt", metavar="TEXT", help="Custom prompt for LLM optimization/translation")
+    sub.add_argument("--series-context", metavar="FILE",
+                     help="Text file with background about the series/video (characters, relationships, terms) "
+                          "sent to the LLM translator; defaults to translate.series_context from config/GUI")
     sub.add_argument("--thread-num", type=int, metavar="N", help="Number of concurrent threads (default: 4)")
     sub.add_argument("--batch-size", type=int, metavar="N", help="Batch size for processing (default: 20)")
 
@@ -387,6 +390,7 @@ def _build_process_parser(subparsers) -> None:
     pipe.add_argument("--layout", choices=["target-above", "source-above", "target-only", "source-only"],
                       help="Subtitle layout (default: target-above)")
     pipe.add_argument("--prompt", metavar="TEXT", help="Custom prompt for LLM optimization/translation")
+    pipe.add_argument("--series-context", metavar="FILE", help="Background text file for the LLM translator")
     pipe.add_argument("--thread-num", type=int, metavar="N", help="Concurrent threads (default: 4)")
     pipe.add_argument("--batch-size", type=int, metavar="N", help="Batch size (default: 20)")
     pipe.add_argument("--llm-timeout", type=int, metavar="SECONDS",

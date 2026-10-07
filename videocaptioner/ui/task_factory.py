@@ -243,6 +243,7 @@ class TaskFactory:
             target_language=cfg.target_language.value,
             # 字幕提示
             custom_prompt_text=cfg.custom_prompt_text.value,
+            context_notes=TaskFactory.context_notes_for(video_path),
         )
 
         task = SubtitleTask(
@@ -256,6 +257,16 @@ class TaskFactory:
         if task_id:
             task.task_id = task_id
         return task
+
+    @staticmethod
+    def context_notes_for(video_path: Optional[str]) -> str:
+        """Sidecar written at download time plus the series note from Settings."""
+        from videocaptioner.core.translate.series_context import (
+            compose_context_notes,
+            load_video_context,
+        )
+
+        return compose_context_notes(load_video_context(video_path), cfg.translate_series_context.value)
 
     @staticmethod
     def create_synthesis_task(

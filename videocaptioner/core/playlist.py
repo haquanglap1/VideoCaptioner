@@ -378,6 +378,15 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
     require_mp4(target)
     if target.parent != folder.resolve() or not target.is_file() or target.stat().st_size <= 0 or target.suffix.lower() in (".part", ".ytdl"):
         raise ValueError("Tải chưa tạo file video hoàn chỉnh.")
+    try:
+        from videocaptioner.core.translate.series_context import (
+            context_from_info,
+            save_video_context,
+        )
+
+        save_video_context(target, context_from_info(info, entry.url))
+    except Exception:  # noqa: BLE001 - the sidecar only feeds translation background
+        pass
     record = {"url": entry.url, "filename": target.name, "size": target.stat().st_size,
               "sha256": _fingerprint(target, check)}
     temporary = receipt.with_suffix(".tmp")

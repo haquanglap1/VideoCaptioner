@@ -43,6 +43,8 @@ class DialogueTranslator(LLMTranslator):
                         self._scenes[cid] = self._scenes.get(cid, "") + "/" + scene.id
         self._prompt = get_prompt("translate/dialogue", target_language=self.target_language.value,
                                   custom_prompt=self.custom_prompt)
+        if self.context_notes:
+            self._prompt += "\n" + self.context_notes
         if self.is_reflect:
             self._prompt += "\nSilently review awkward literal wording and cross-cue coherence before returning the same final schema."
         self.source_signature = fingerprint([self._cue(item).__dict__ for item in translate_data_list])

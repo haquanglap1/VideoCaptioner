@@ -365,6 +365,17 @@ nói hợp lệ ở gần, dùng nguyên mốc provider để xuất SRT. Không
 từng từ. Chế độ word vẫn strict; thiếu/đảo/vượt thời lượng hoặc cue không có anchor
 vẫn giữ review. Bản review câu cũ có thể **Kiểm tra và xuất** lại tại máy, không upload.
 
+## Ngữ cảnh video và bộ phim cho LLM dịch
+
+Từ 2026-10-07, mọi lần dịch bằng LLM (phụ đề ASR lẫn OCR) nhận thêm một khối nền trước transcript:
+metadata của video và ghi chú bộ phim của bạn. Video tải bằng GUI hoặc playlist tự có sidecar
+`<video>.context.json` (tiêu đề, kênh, mô tả, danh sách phần) từ yt-dlp, dùng được cho Bilibili lẫn
+YouTube. **Cài đặt → Dịch và tối ưu → Ngữ cảnh bộ phim cho bản dịch → Sửa** mở ô ghi chú nhân vật,
+quan hệ, xưng hô, thuật ngữ; nút **Lấy từ link** điền tiêu đề/mô tả/phần từ một link video (Bilibili
+đọc thêm mô tả từ trang khi extractor để trống). Khối nền đi vào brief tự động, prompt từng chunk,
+prompt dịch lời thoại và cache key; CLI dùng `--series-context FILE` hoặc `translate.series_context`.
+Chưa nghiệm thu chất lượng dịch có nền với model thật. Xem [contract và giới hạn](docs/dev/series-context-2026-10.md).
+
 ## Ngữ cảnh xưng hô Trung → Việt (S4)
 
 Trong tab phụ đề hoặc Video Editor, mở **More → Ngữ cảnh xưng hô** để khai báo nhân vật,

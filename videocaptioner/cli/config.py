@@ -70,6 +70,7 @@ GUI_KEY_MAP: Dict[str, str] = {
     **{f"{provider.title()}.{gui}": f"{provider}.{key}"
        for provider in NATIVE_PROFILES for gui, key in (("ApiKey", "api_key"), ("ApiBase", "api_base"), ("Model", "model"))},
     "Translate.DeeplxEndpoint": "translate.deeplx_endpoint",
+    "Translate.SeriesContext": "translate.series_context",
     "Dubbing.TTSProvider": "dubbing.tts_provider",
     "OmniVoice.Runtime": "omnivoice.runtime",
     "OmniVoice.ReferenceAudio": "omnivoice.reference_audio",

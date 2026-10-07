@@ -31,6 +31,7 @@ class TranslatorFactory:
         request_timeout: int = 120,
         credentials: Optional[LLMCredentials] = None,
         dialogue: bool = False,
+        context_notes: str = "",
     ) -> BaseTranslator:
         """Create a translator instance."""
         try:
@@ -53,6 +54,7 @@ class TranslatorFactory:
                     update_callback=update_callback,
                     request_timeout=request_timeout,
                     credentials=credentials,
+                    context_notes=context_notes,
                 )
             elif translator_type == TranslatorType.GOOGLE:
                 batch_num = 5

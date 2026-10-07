@@ -77,6 +77,7 @@ hiddenimports += ["videocaptioner.core.asr.review",
                   "videocaptioner.ui.components.asr_review_dialog",
                   "videocaptioner.ui.thread.worker_lifecycle"]
 hiddenimports += ["videocaptioner.ui.components.ocr_dialog", "videocaptioner.ui.thread.ocr_thread",
+                  "videocaptioner.ui.components.series_context_dialog", "videocaptioner.core.translate.series_context",
                   "videocaptioner.core.ocr.installation", "videocaptioner.core.ocr.resume",
                   "videocaptioner.core.ocr.line_selection",
                   "videocaptioner.core.ocr.vl", "videocaptioner.core.ocr.vl_profile",

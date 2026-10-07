@@ -317,6 +317,15 @@ class VideoDownloadThread(QThread):
             video_file_path = Path(ydl.prepare_filename(info_dict))
             require_mp4(video_file_path)
             if video_file_path.exists():
+                try:
+                    from videocaptioner.core.translate.series_context import (
+                        context_from_info,
+                        save_video_context,
+                    )
+
+                    save_video_context(video_file_path, context_from_info(info_dict, self.url))
+                except Exception as exc:  # noqa: BLE001 - background for translation is optional
+                    logger.warning("Video context sidecar skipped: %s", exc)
                 video_file_path = str(video_file_path)
             else:
                 video_file_path = None

@@ -71,6 +71,7 @@ def create_translator_from_config(
         deeplx_endpoint=config.deeplx_endpoint or "",
         request_timeout=config.llm_request_timeout,
         credentials=LLMCredentials(config.api_key or "", config.base_url or ""),
+        context_notes=config.context_notes,
     )
     translator.reuse_cached_chunks = config.reuse_translation
     return translator

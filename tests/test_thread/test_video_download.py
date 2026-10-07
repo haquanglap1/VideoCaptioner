@@ -56,3 +56,39 @@ def test_gui_download_returns_requested_video_instead_of_an_anthology(tmp_path, 
     video, _, _, _ = worker.download(need_subtitle=False)
     assert video and Path(video).read_bytes() == b"synthetic video"
     assert downloaded == [f"Fixture part {part}"]
+
+
+def test_gui_download_writes_a_context_sidecar_beside_the_video(tmp_path, monkeypatch):
+    from videocaptioner.core.translate.series_context import load_video_context
+
+    class Downloader:
+        def __init__(self, params):
+            self.params = params
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def extract_info(self, url, *, download):
+            return {"title": "Fixture PV", "ext": "mp4", "uploader": "Channel", "description": "师徒修行",
+                    "webpage_url": url}
+
+        def process_ie_result(self, info, *, download):
+            target = Path(self.prepare_filename(info))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"synthetic video")
+            return info
+
+        def prepare_filename(self, info):
+            return str(Path(self.params["paths"]["home"]) / f"{info['title']}.mp4")
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", Downloader)
+    monkeypatch.setattr(installer, "deno_path", lambda: tmp_path / "existing-deno.exe")
+    monkeypatch.setattr(video_download_thread, "APPDATA_PATH", tmp_path / "settings")
+    worker = video_download_thread.VideoDownloadThread("https://www.youtube.com/watch?v=fixture", str(tmp_path / "downloads"))
+    video, _, _, _ = worker.download(need_subtitle=False)
+    context = load_video_context(video)
+    assert context is not None and (context.title, context.uploader, context.description) == ("Fixture PV", "Channel", "师徒修行")
+    assert context.url == "https://www.youtube.com/watch?v=fixture"

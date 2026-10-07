@@ -283,6 +283,8 @@ class Config(QConfig):
         "Subtitle", "MaxWordCountEnglish", 20, RangeValidator(8, 100)
     )
     custom_prompt_text = ConfigItem("Subtitle", "CustomPromptText", "")
+    # Background about the current series (characters, relationships, terms) sent with every translation.
+    translate_series_context = ConfigItem("Translate", "SeriesContext", "")
 
     # ------------------- 字幕合成配置 -------------------
     soft_subtitle = ConfigItem("Video", "SoftSubtitle", False, BoolValidator())

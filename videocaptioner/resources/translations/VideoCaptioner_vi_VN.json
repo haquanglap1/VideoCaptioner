@@ -1145,5 +1145,7 @@
   "Audio is recognized in windows of this length. Longer windows keep more context; shorter ones recover faster after a timeout.": "Âm thanh được nhận dạng theo từng cửa sổ dài như vậy. Cửa sổ dài giữ nhiều ngữ cảnh hơn; cửa sổ ngắn phục hồi nhanh hơn sau timeout.",
   "Maximum wait for each step (model load, recognition, alignment). Raise it for slow GPUs or long files.": "Thời gian chờ tối đa cho mỗi bước (nạp model, nhận dạng, căn thời gian). Tăng lên với GPU chậm hoặc file dài.",
   "Preparing the selected model; checking reusable files...": "Đang chuẩn bị model đã chọn; kiểm tra file dùng lại được...",
-  "Model files verified; ready for the next task.": "Đã kiểm tra file model; sẵn sàng cho tác vụ tiếp theo."
+  "Model files verified; ready for the next task.": "Đã kiểm tra file model; sẵn sàng cho tác vụ tiếp theo.",
+  "Series context for translation": "Ngữ cảnh bộ phim cho bản dịch",
+  "Background about the video or series (characters, relationships, terms) sent to the LLM with every translation. Fetch it from a video link or write it yourself.": "Mô tả về video hoặc bộ phim (nhân vật, quan hệ, thuật ngữ) gửi kèm LLM mỗi lần dịch. Lấy từ link video hoặc tự viết."
 }

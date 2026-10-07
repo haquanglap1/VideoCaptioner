@@ -690,6 +690,8 @@ class SubtitleConfig:
     target_language: Optional["TargetLanguage"] = None
     subtitle_style: Optional[str] = None
     custom_prompt_text: Optional[str] = None
+    # Video sidecar metadata plus the series note, already composed into one prompt block.
+    context_notes: str = ""
 
     llm_request_timeout: int = 120
     reuse_translation: bool = True

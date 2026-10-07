@@ -43,6 +43,32 @@
   xóa sau khi đối chiếu hash với E (thu hồi 80 GB); từ nay build nhẹ (không `VC_TEST_MODELS_DIR`)
   rồi chép EXE + `_internal` thẳng vào E, ghi trong AGENTS.md/CLAUDE.md. Commit và push theo yêu cầu.
 
+## 2026-10-07 (Ngữ cảnh video/bộ phim cho LLM dịch)
+
+- User hỏi app có phân tích ngữ cảnh video để LLM dịch tốt hơn không, rồi yêu cầu làm cho mọi video
+  (Bilibili, YouTube). Thêm `core/translate/series_context.py`: sidecar `<video>.context.json`
+  (tiêu đề, kênh, mô tả, danh sách phần) ghi tự động khi tải bằng GUI/playlist từ info dict yt-dlp;
+  ô **Ngữ cảnh bộ phim cho bản dịch** trong Cài đặt (`cfg.translate_series_context`, dialog
+  `series_context_dialog.py`) với nút **Lấy từ link** chạy trong QThread, Bilibili đọc thêm
+  `videoData` (desc/owner/pages) từ trang vì extractor để trống. `compose_context_notes` ghép thành khối
+  nền đi trước transcript trong brief, prompt từng chunk (kể cả khi brief bị bỏ), prompt dialogue và
+  cache key; `SubtitleConfig.context_notes` do `TaskFactory` tính từ `video_path`; CLI
+  `--series-context FILE`/`translate.series_context` (map `Translate.SeriesContext`). Không đổi schema
+  S4. Tài liệu `docs/dev/series-context-2026-10.md`, README; prompt phiên sau cho gán nhãn người nói:
+  `docs/dev/speaker-labeling-next-session-prompt.md`.
+- Kiểm thật không tốn key: fetch link Bilibili PV 清宵 trả tiêu đề, kênh 鸣潮, 4 phần và mô tả gồm
+  trích dẫn + bảng CV (lần đầu lấy nhầm chuỗi quảng cáo `desc` ngoài `videoData`, đã sửa); YouTube
+  trả tiêu đề/kênh/mô tả qua extractor. Chưa nghiệm thu chất lượng dịch có nền với model thật.
+- Gate: `tests/test_translate/test_series_context.py` 7, `tests/test_ui/test_series_context.py` 2,
+  test sidecar trong `test_video_download.py`; focused (translate/thread/cli/settings/vision)
+  **549 pass/24 deselected**, rộng (ui/editor/subtitle/dubbing/ocr, không integration) **1004
+  pass/9 deselected**, 201,6 s; Ruff pass, Pyright 0/0, translations in sync (2 chuỗi Việt mới).
+  Build nhẹ `VideoCaptioner-20261007-series-context` (không models): exit 0/116,4 s, 6 WARNING/0 ERROR,
+  31.811.402 bytes, SHA256 `9da2e939f6b580f65b4dae2e1853847035b140d54cd62798d455103357a6d747`; 15 module
+  source-match; GUI từ artifact sống 30,5 s/exit 0. Deploy E: 5 file thay (EXE giữ tên, `base_library.zip`,
+  2 bản `vi_VN.json`, prompt `translate/context.md`), 32.763 protected files nguyên hash, backup
+  `.tools/series-context-20261007/rollback-payload`, live `ocr --help` exit 0; dist xóa sau deploy.
+
 ## 2026-10-07 (Sửa hiển thị bảng Auto timing, đơn giản hóa Qwen/OCR)
 
 - User báo lỗi hiển thị ở Auto timing và chưa hiểu cách dùng Qwen local/OCR. Ảnh chụp

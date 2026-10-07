@@ -136,6 +136,11 @@ class SettingInterface(ScrollArea):
             self.tr("Use the selected LLM and target language for output filenames. Keep source files unchanged."),
             cfg.translate_video_title, self.translateGroup,
         )
+        self.seriesContextCard = PushSettingCard(
+            self.tr("Edit"), FIF.EDIT, self.tr("Series context for translation"),
+            self.tr("Background about the video or series (characters, relationships, terms) sent to the LLM with every translation. Fetch it from a video link or write it yourself."),
+            self.translateGroup,
+        )
         self.reuseTranslationCard = SwitchSettingCard(
             FIF.SAVE, self.tr("Reuse completed translations"),
             self.tr("Skip splitting, optimization and translation when a completed result matches this source and target language. Turn off to translate again."),
@@ -261,6 +266,7 @@ class SettingInterface(ScrollArea):
         self.translateGroup.addSettingCard(self.subtitleTranslateCard)
         self.translateGroup.addSettingCard(self.targetLanguageCard)
         self.translateGroup.addSettingCard(self.videoTitleCard)
+        self.translateGroup.addSettingCard(self.seriesContextCard)
         self.translateGroup.addSettingCard(self.reuseTranslationCard)
 
         self.subtitleGroup.addSettingCard(self.subtitleStyleCard)
@@ -637,6 +643,7 @@ class SettingInterface(ScrollArea):
 
         # Save path
         self.savePathCard.clicked.connect(self.__onsavePathCardClicked)
+        self.seriesContextCard.clicked.connect(self.__onSeriesContextCardClicked)
 
         # Jump to the subtitle style page
         self.subtitleStyleCard.linkButton.clicked.connect(
@@ -681,6 +688,11 @@ class SettingInterface(ScrollArea):
             duration=INFOBAR_DURATION_SUCCESS,
             parent=self,
         )
+
+    def __onSeriesContextCardClicked(self):
+        from videocaptioner.ui.components.series_context_dialog import SeriesContextDialog
+
+        SeriesContextDialog(self).exec_()
 
     def __onsavePathCardClicked(self):
         """Handle a click on the save path card."""
