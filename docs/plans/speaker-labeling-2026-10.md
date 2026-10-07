@@ -8,7 +8,12 @@ cảnh. Mục tiêu thực tế: đúng khoảng 90 % cue, phần còn lại và
 
 - 2026-10-07: **lớp 1 đã làm** (`core/asr/local/speaker_naming.py`, prompt `asr/speaker_naming.md`, CLI
   `local-diarize --name-speakers`, card Settings + bảng review trong tab phụ đề). Contract và giới hạn:
-  [speaker-naming-2026-10.md](../dev/speaker-naming-2026-10.md). Chưa gọi API thật; lớp 2–4 chưa làm.
+  [speaker-naming-2026-10.md](../dev/speaker-naming-2026-10.md). Đã nghiệm thu một request thật trên bản E;
+  lớp 2–4 chưa làm.
+- 2026-10-07 (cuối ngày), quyết định user: **bỏ Qwen speech-to-text** khỏi luồng này vì bắt giọng kém hơn
+  Whisper trên video thật. Nguồn chữ: OCR phụ đề cứng (vision LLM) khi cần chính xác cao, hoặc Whisper;
+  nguồn tên: ngữ cảnh user đưa và metadata Bilibili/YouTube; cụm người nói vẫn từ Community-1 trên audio.
+  Prompt phiên sau: [speaker-labeling-next-session-prompt.md](../dev/speaker-labeling-next-session-prompt.md).
 
 ## Hiện trạng (đã có)
 

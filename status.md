@@ -93,6 +93,11 @@
   đóng: 600 app files đối chiếu, 2 file thay (EXE giữ tên, `base_library.zip`), 32.764 protected files nguyên
   hash, backup `rollback-payload` (lượt 3 trong `rollback-payload-3`), live `local-diarize --help` exit 0; dist
   xóa sau deploy. Chưa có nghiệm thu user bấm Bắt đầu trên JSON đã đặt tên với bản E mới.
+- Quyết định user cuối ngày: Qwen3-ASR bắt giọng kém hơn Whisper trên video thật → bỏ Qwen speech-to-text
+  khỏi luồng gán nhãn người nói; chữ lấy từ OCR phụ đề cứng (vision LLM) khi cần chính xác cao hoặc Whisper,
+  tên lấy từ ngữ cảnh user đưa và metadata Bilibili/YouTube, cụm người nói vẫn từ Community-1. Prompt phiên
+  sau viết lại trong `docs/dev/speaker-labeling-next-session-prompt.md` (kiểm `local-diarize` trên JSON OCR,
+  hành động GUI gán người nói + đặt tên cho tài liệu đang mở, `--local-diarize` với Faster-Whisper, lớp 2).
 
 ## 2026-10-07 (OCR đọc chữ bằng vision LLM qua tờ ảnh ghép)
 
