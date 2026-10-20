@@ -148,9 +148,12 @@ class PlaylistDialog(QDialog):
         if not entries or not self.output_edit.text().strip():
             self.label.setText("Chọn ít nhất một tập và thư mục đích.")
             return
+        from videocaptioner.ui.task_factory import TaskFactory
+
         self.label.setText(f"Đang tải {len(entries)} tập đã chọn...")
         self._start(PlaylistThread(info=self.info, selected=entries,
-            output=self.output_edit.text().strip(), cookies=self.cookies))
+            output=self.output_edit.text().strip(), cookies=self.cookies,
+            naming=TaskFactory.create_download_naming()))
 
     def _start(self, worker):
         self._result, self._error = None, ""

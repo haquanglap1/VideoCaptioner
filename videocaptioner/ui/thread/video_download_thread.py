@@ -1,13 +1,17 @@
 import os
 import re
+from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from videocaptioner.config import APPDATA_PATH
 from videocaptioner.core.utils.logger import setup_logger
+
+if TYPE_CHECKING:
+    from videocaptioner.core.translate.video_title import VideoTitleConfig
 
 logger = setup_logger("video_download_thread")
 
@@ -16,6 +20,24 @@ ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 def _strip_ansi(value: str) -> str:
     return ANSI_ESCAPE_RE.sub("", value).strip()
+
+
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def _legacy_folder(title: str) -> str:
+    """Folder the downloader used before 2026-10-20 (whole title, applied twice), to adopt those files."""
+    name = title
+    for _ in range(2):
+        name = re.sub(r'[<>:"/\\|?*]', "_", name)
+        name = re.sub(r"[\0-\31]", "", name).rstrip(" .")
+        if len(name) > 255:
+            base, ext = os.path.splitext(name)
+            name = base[:255 - len(ext)] + ext
+        if os.path.splitext(name)[0].upper() in _RESERVED:
+            name = f"{name}_"
+        name = name or "default_filename"
+    return name
 
 
 def _format_bytes(num_bytes: float) -> str:
@@ -37,10 +59,12 @@ class VideoDownloadThread(QThread):
     progress = pyqtSignal(int, str)  # Download progress
     error = pyqtSignal(str)  # Error message
 
-    def __init__(self, url: str, work_dir: str):
+    def __init__(self, url: str, work_dir: str, naming: "VideoTitleConfig | None" = None):
         super().__init__()
         self.url = url
         self.work_dir = work_dir
+        # LLM snapshot taken on the Qt thread; None keeps the clipped page title.
+        self.naming = naming
 
     def run(self):
         from yt_dlp.utils import DownloadError
@@ -123,61 +147,70 @@ class VideoDownloadThread(QThread):
             # Never let progress hook abort the download.
             logger.warning("progress_hook error: %s", exc)
 
-    def sanitize_filename(self, name: str, replacement: str = "_") -> str:
-        """Strip characters that are not allowed in file names."""
-        # Disallowed characters
-        forbidden_chars = r'<>:"/\\|?*'
+    def _download_stem(self, info_dict: Mapping[str, object]) -> tuple[str, str, str]:
+        """Short target-language stem (LLM) chosen before any file exists, its LLM title, and the
+        clipped page-title stem an unnamed earlier download would have."""
+        from videocaptioner.core.translate.video_title import (
+            DOWNLOAD_TITLE_MAX,
+            download_id_tag,
+            download_name,
+        )
 
-        # Replace disallowed characters
-        sanitized = re.sub(f"[{re.escape(forbidden_chars)}]", replacement, name)
+        tag = download_id_tag(info_dict.get("id"), self.url)
+        # Transcripts nest work_dir/<stem>/subtitle/【原始字幕】<stem>-<model>-<lang>.srt.
+        room = 240 - len(os.path.abspath(self.work_dir)) - 2 * len(tag) - 60
+        limit = max(16, min(DOWNLOAD_TITLE_MAX, room // 2))
+        title = str(info_dict.get("title") or "")
+        fallback = download_name(title, None, limit=limit)[0] + tag
+        if self.naming is None:
+            return fallback, "", fallback
+        self.progress.emit(0, "Đang rút gọn tên video bằng LLM...")
+        name, named = download_name(title, self.naming, self.isInterruptionRequested, limit)
+        if not named:
+            self.progress.emit(0, "Không rút gọn được tên bằng LLM; dùng tiêu đề gốc đã cắt ngắn.")
+        return name + tag, name if named else "", fallback
 
-        # Remove control characters
-        sanitized = re.sub(r"[\0-\31]", "", sanitized)
+    def _adopt_earlier_download(self, ydl, info_dict, fallback: str) -> None:
+        """Rename a finished earlier download of this URL to today's name instead of fetching it again."""
+        from videocaptioner.core.translate.series_context import (
+            context_from_info,
+            load_video_context,
+            sidecar_path,
+        )
 
-        # Trim trailing spaces and dots
-        sanitized = sanitized.rstrip(" .")
-
-        # Limit the file name length
-        max_length = 255
-        if len(sanitized) > max_length:
-            base, ext = os.path.splitext(sanitized)
-            base_max_length = max_length - len(ext)
-            sanitized = base[:base_max_length] + ext
-
-        # Handle Windows reserved names
-        windows_reserved_names = {
-            "CON",
-            "PRN",
-            "AUX",
-            "NUL",
-            "COM1",
-            "COM2",
-            "COM3",
-            "COM4",
-            "COM5",
-            "COM6",
-            "COM7",
-            "COM8",
-            "COM9",
-            "LPT1",
-            "LPT2",
-            "LPT3",
-            "LPT4",
-            "LPT5",
-            "LPT6",
-            "LPT7",
-            "LPT8",
-            "LPT9",
-        }
-        name_without_ext = os.path.splitext(sanitized)[0].upper()
-        if name_without_ext in windows_reserved_names:
-            sanitized = f"{sanitized}_"
-
-        # Fall back to a default name when empty
-        if not sanitized:
-            sanitized = "default_filename"
-
-        return sanitized
+        target = Path(ydl.prepare_filename(info_dict))
+        if target.exists():
+            return
+        work_dir = Path(self.work_dir)
+        title = str(info_dict.get("title") or "MyVideo")
+        # The old layout put the whole title in both the folder and the file.
+        legacy = work_dir / _legacy_folder(title) / os.path.basename(
+            ydl.prepare_filename(info_dict, outtmpl="%(title).200s.%(ext)s"))
+        unnamed = work_dir / fallback / (fallback + target.suffix)
+        url = context_from_info(info_dict, self.url).url
+        for earlier in (legacy, unnamed):
+            if earlier == target or not earlier.is_file():
+                continue
+            context = load_video_context(earlier)
+            if context is not None and context.url != url:
+                continue
+            # Pre-sidecar downloads are trusted by path, as yt-dlp's own skip did.
+            if context is None and earlier != legacy:
+                continue
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                earlier.rename(target)
+            except OSError as exc:  # e.g. open in a player: download a fresh copy instead
+                logger.warning("Could not rename the earlier download (%s); downloading again", exc)
+                return
+            sidecar_path(earlier).unlink(missing_ok=True)
+            try:
+                earlier.parent.rmdir()  # only when nothing else was left there
+            except OSError:
+                pass
+            logger.info("Renamed earlier download to %s", target.name)
+            self.progress.emit(0, "Video đã tải trước đó: đổi tên, không tải lại.")
+            return
 
     def download(self, need_subtitle: bool = True, need_thumbnail: bool = False):
         """Download the video, subtitles and thumbnail."""
@@ -210,7 +243,8 @@ class VideoDownloadThread(QThread):
         # Base yt-dlp options
         initial_ydl_opts = {
             "outtmpl": {
-                "default": "%(title).200s.%(ext)s",  # Cap the file name at 200 characters
+                # Replaced by the short stem once the page title is known.
+                "default": "%(title).60s.%(ext)s",
                 "subtitle": "【下载字幕】.%(ext)s",
                 "thumbnail": "thumbnail",
             },
@@ -259,9 +293,9 @@ class VideoDownloadThread(QThread):
             # Extract video info without downloading
             info_dict = ydl.extract_info(self.url, download=False)
 
-            # Download folder named after the video title
-            video_title = self.sanitize_filename(info_dict.get("title") or "MyVideo")
-            video_work_dir = Path(self.work_dir) / self.sanitize_filename(video_title)
+            # The folder matches the file stem so the transcript stage reuses it.
+            stem, file_title, fallback = self._download_stem(info_dict)
+            video_work_dir = Path(self.work_dir) / stem
             subtitle_language = info_dict.get("language", None)
             if subtitle_language:
                 subtitle_language = subtitle_language.lower().split("-")[0]
@@ -302,6 +336,9 @@ class VideoDownloadThread(QThread):
             }
             # Apply the yt-dlp options
             ydl.params.update(cast(Any, ydl_opts))
+            # The stem is already free of %/$, which templates and paths would expand.
+            cast(Any, ydl.params)["outtmpl"]["default"] = stem + ".%(ext)s"
+            self._adopt_earlier_download(ydl, info_dict, fallback)
 
             # Use the public extractor pipeline so format selection, post-processing,
             # and subtitle writing all run as expected.
@@ -323,7 +360,8 @@ class VideoDownloadThread(QThread):
                         save_video_context,
                     )
 
-                    save_video_context(video_file_path, context_from_info(info_dict, self.url))
+                    context = context_from_info(info_dict, self.url)
+                    save_video_context(video_file_path, replace(context, file_title=file_title))
                 except Exception as exc:  # noqa: BLE001 - background for translation is optional
                     logger.warning("Video context sidecar skipped: %s", exc)
                 video_file_path = str(video_file_path)

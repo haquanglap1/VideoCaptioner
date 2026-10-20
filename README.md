@@ -162,12 +162,19 @@ ràng dừng ngay. Nếu vẫn bị từ chối, Batch dừng các hàng còn ch
 hoàn tất để bấm **Bắt đầu xử lý** thử lại. Tăng số luồng không vượt được hạn mức
 của dịch vụ; timeout/mất kết nối vẫn không tự gửi lại request.
 
-**Cài đặt → Dịch và tối ưu → Dịch tiêu đề video đầu ra** đặt tên video lồng
-tiếng/ghép phụ đề theo ngôn ngữ đích bằng LLM đang chọn (mặc định bật).
-Áp dụng cho GUI và Batch, giữ nguyên file nguồn và mã video như `[BV…]`.
-Tên trùng được thêm số thứ tự; dịch lỗi/thiếu cấu hình LLM thì tiếp tục dùng
-tên gốc. Có cache tiêu đề và có thể dừng trong lúc dịch. Không dịch tên file
-vừa tải hoặc đổi tên các video đã có.
+**Cài đặt → Dịch và tối ưu → Dịch và rút gọn tiêu đề video** (mặc định bật) dùng
+LLM đang chọn và ngôn ngữ đích. Video tải bằng GUI được đặt tên ngắn (≤ 60 ký tự,
+giữ số tập/tên riêng) ngay khi đọc xong tiêu đề trang, trước khi ghi file:
+`work-dir/<tên ngắn> [mã video]/<tên ngắn> [mã video].mp4`. Playlist/合集 tải theo
+tên gốc cắt ngắn để nối tiếp được, rồi đổi tên từng tập ngay khi tập đó tải xong
+(receipt ghi tên mới). Video đã được đặt tên lúc tải thì bước xuất cuối không dịch
+lại; video nguồn khác vẫn được dịch tên ở file lồng tiếng/ghép phụ đề, giữ nguyên
+file nguồn và mã `[BV…]`. Tên trùng được thêm số thứ tự; LLM lỗi/thiếu cấu hình/hết
+quota thì dùng tiêu đề gốc đã cắt ngắn, không làm hỏng lượt tải. Có cache tiêu đề.
+Tắt tùy chọn này thì tên tải về vẫn được cắt ngắn để tránh lỗi đường dẫn quá dài.
+Bấm tải lại một video đã tải trước đó (kể cả bản tải theo kiểu tên dài cũ) sẽ chuyển
+file sang tên mới thay vì tải lại; phụ đề/video đầu ra cũ vẫn nằm ở thư mục cũ.
+Với playlist, bấm Tải/Tiếp tục trên các tập đã có sẽ đổi tên tập đó tại chỗ.
 
 Xem chi tiết tham số:
 

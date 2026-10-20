@@ -150,6 +150,119 @@ def test_selection_identity_and_path_receipt_guard(tmp_path, fake_download):
     assert result.items[0].status == "failed"
 
 
+@pytest.fixture
+def short_titles(monkeypatch):
+    from videocaptioner.core.llm.client import LLMCredentials
+    from videocaptioner.core.translate import video_title as titles
+
+    requests = []
+
+    class Request:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __call__(self, messages, model):
+            requests.append(json.loads(messages[1]["content"])["title"])
+            content = json.dumps({"title": "Cùng tên tiếng Việt"})
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+
+    monkeypatch.setattr(titles, "OwnedLLMRequest", Request)
+    monkeypatch.setattr(titles, "is_cache_enabled", lambda: False)
+    config = titles.VideoTitleConfig("", "", "vi", "synthetic-model",
+                                     LLMCredentials("synthetic-secret", "https://synthetic.invalid/v1"))
+    return SimpleNamespace(config=config, requests=requests)
+
+
+def test_finished_entries_are_renamed_before_the_receipt_and_resume_without_naming(tmp_path, fake_download,
+                                                                                  short_titles):
+    from videocaptioner.core.translate.series_context import load_video_context
+    source = info()
+    result = core.download_playlist(source, source.entries, tmp_path, naming=short_titles.config)
+    assert [item.status for item in result.items] == ["downloaded"] * 3
+    names = [Path(path).name for path in result.paths]
+    assert all(name.startswith("Cùng tên tiếng Việt [") and name.endswith("].mp4") for name in names)
+    assert len(set(names)) == 3 and short_titles.requests == ["Same title"] * 3
+    for path in result.paths:
+        receipt = json.loads((Path(path).parent / "completed.json").read_text(encoding="utf-8"))
+        assert receipt["filename"] == Path(path).name and not (Path(path).parent / "same.mp4").exists()
+        assert load_video_context(path).file_title == "Cùng tên tiếng Việt"
+    resumed = core.download_playlist(source, source.entries, tmp_path, naming=short_titles.config)
+    assert [item.status for item in resumed.items] == ["existing"] * 3 and resumed.paths == result.paths
+    assert len(short_titles.requests) == 3 and len(fake_download[0]) == 3
+
+
+def test_rename_collision_or_no_naming_keeps_the_downloaded_name(tmp_path, fake_download, short_titles):
+    from videocaptioner.core.translate.series_context import load_video_context
+    from videocaptioner.core.translate.video_title import download_id_tag
+    source = info()
+    entry = source.entries[0]
+    folder = tmp_path / "entry"
+    folder.mkdir()
+    taken = folder / ("Cùng tên tiếng Việt" + download_id_tag("part", entry.url) + ".mp4")
+    taken.write_bytes(b"user file")
+    result = core._download_entry(entry, folder, None, lambda: None, lambda _: None, short_titles.config)
+    assert Path(result.path).name == "same.mp4" and taken.read_bytes() == b"user file"
+    assert load_video_context(result.path).file_title == ""
+    plain = core.download_playlist(source, source.entries[1:2], tmp_path / "plain")
+    assert Path(plain.paths[0]).name == "same.mp4" and len(short_titles.requests) == 1
+
+
+@pytest.mark.parametrize("had_sidecar", [True, False])
+def test_earlier_entries_are_renamed_in_place_without_downloading(tmp_path, fake_download, short_titles,
+                                                                  had_sidecar):
+    from videocaptioner.core.translate.series_context import load_video_context, sidecar_path
+    source = info()
+    before = core.download_playlist(source, source.entries, tmp_path)
+    old = [Path(path) for path in before.paths]
+    if not had_sidecar:  # downloads before 2026-10-07
+        for path in old:
+            sidecar_path(path).unlink()
+    calls = len(fake_download[0])
+    renamed = core.download_playlist(source, source.entries, tmp_path, naming=short_titles.config)
+    assert [item.status for item in renamed.items] == ["existing"] * 3 and len(fake_download[0]) == calls
+    for path, earlier, entry in zip(map(Path, renamed.paths), old, source.entries):
+        assert path.parent == earlier.parent and path.name.startswith("Cùng tên tiếng Việt [")
+        assert path.read_bytes() == entry.url.encode()
+        assert not earlier.exists() and not sidecar_path(earlier).exists()
+        receipt = json.loads((path.parent / "completed.json").read_text(encoding="utf-8"))
+        assert (receipt["filename"], receipt["previous"]) == (path.name, earlier.name)
+        assert load_video_context(path).file_title == "Cùng tên tiếng Việt"
+    asked = len(short_titles.requests)
+    again = core.download_playlist(source, source.entries, tmp_path, naming=short_titles.config)
+    assert again.paths == renamed.paths and len(short_titles.requests) == asked == 3
+
+
+def test_interrupted_rename_finishes_on_the_next_run(tmp_path, fake_download):
+    source = info()
+    path = Path(core.download_playlist(source, source.entries[:1], tmp_path).paths[0])
+    receipt = path.parent / "completed.json"
+    saved = json.loads(receipt.read_text(encoding="utf-8"))
+    # The receipt moved first; the process stopped before the file did.
+    receipt.write_text(json.dumps({**saved, "filename": "Tên mới [x].mp4", "previous": path.name}), encoding="utf-8")
+    result = core.download_playlist(source, source.entries[:1], tmp_path)
+    assert result.items[0].status == "existing" and Path(result.paths[0]).name == "Tên mới [x].mp4"
+    assert not path.exists()
+    receipt.write_text(json.dumps({**saved, "filename": "x.mp4", "previous": "../../outside.mp4"}), encoding="utf-8")
+    assert core.download_playlist(source, source.entries[:1], tmp_path).items[0].status == "failed"
+
+
+def test_new_folders_are_shorter_but_earlier_runs_keep_their_folders(tmp_path, fake_download):
+    import hashlib
+    from dataclasses import replace
+    long_title = "很长的合集标题" * 12
+    source = info()
+    source = replace(source, title=long_title, entries=tuple(replace(e, title=long_title) for e in source.entries))
+    identity = hashlib.sha256(source.source_url.encode()).hexdigest()[:10]
+    legacy = tmp_path / "old" / f"{core.safe_name(long_title)}-{identity}"
+    legacy.mkdir(parents=True)
+    old = core.download_playlist(source, source.entries[:1], tmp_path / "old")
+    assert Path(old.paths[0]).parent.parent == legacy
+    fresh = core.download_playlist(source, source.entries[:1], tmp_path / "new")
+    playlist_dir, entry_dir = Path(fresh.paths[0]).parent.parent, Path(fresh.paths[0]).parent
+    assert playlist_dir.name == f"{core.safe_name(long_title, 40)}-{identity}"
+    assert len(entry_dir.name) <= 6 + 40 + 11 and len(playlist_dir.name) <= 51
+
+
 def test_cookie_file_is_snapshotted_and_never_written_back(tmp_path, monkeypatch):
     import yt_dlp
     original = tmp_path / "cookies.txt"
@@ -263,7 +376,8 @@ def test_bilibili_transport_recovers_repeated_short_reads_without_resetting_byte
         thread.join(5)
 
 
-def test_real_ytdlp_local_media_completion_and_zero_network_resume(tmp_path):
+@pytest.mark.parametrize("named", [False, True])
+def test_real_ytdlp_local_media_completion_and_zero_network_resume(tmp_path, short_titles, named):
     import functools
     import http.server
     import shutil
@@ -291,13 +405,17 @@ def test_real_ytdlp_local_media_completion_and_zero_network_resume(tmp_path):
     entry = core.PlaylistEntry(1, "fixture", "Fixture", url)
     playlist = core.PlaylistInfo(url, "Fixture playlist", (entry,))
     try:
-        result = core.download_playlist(playlist, playlist.entries, tmp_path / "output")
+        naming = short_titles.config if named else None
+        result = core.download_playlist(playlist, playlist.entries, tmp_path / "output", naming=naming)
         assert result.items[0].status == "downloaded", result
         assert Path(result.paths[0]).read_bytes() == media.read_bytes()
+        assert Path(result.paths[0]).name.startswith("Cùng tên tiếng Việt [" if named else "sample [")
+        assert not list((tmp_path / "output").rglob("*.part"))
         count = len(requests)
         assert count > 0
-        again = core.download_playlist(playlist, playlist.entries, tmp_path / "output")
+        again = core.download_playlist(playlist, playlist.entries, tmp_path / "output", naming=naming)
         assert again.items[0].status == "existing" and len(requests) == count
+        assert again.paths == result.paths and len(short_titles.requests) == int(named)
     finally:
         server.shutdown()
         server.server_close()

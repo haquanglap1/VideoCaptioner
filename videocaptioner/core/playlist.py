@@ -68,11 +68,17 @@ def canonical_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
-def safe_name(value: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value).strip(" .")[:65].rstrip(" .")
+def safe_name(value: str, limit: int = 65) -> str:
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value).strip(" .")[:limit].rstrip(" .")
     if not name or re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", name):
         name = "playlist_" + name
     return name
+
+
+def _folder(parent: Path, title: str, prefix: str, suffix: str) -> Path:
+    """Short names for new folders; a folder from an earlier run keeps its receipts and parts."""
+    legacy = parent / f"{prefix}{safe_name(title)}{suffix}"
+    return legacy if legacy.is_dir() else parent / f"{prefix}{safe_name(title, 40)}{suffix}"
 
 
 def selection(info: PlaylistInfo, expression: str = "") -> tuple[PlaylistEntry, ...]:
@@ -308,7 +314,67 @@ def _recoverable_media_error(error: Exception) -> bool:
         text, re.IGNORECASE))
 
 
-def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress) -> PlaylistItemResult:
+def _short_path(target: Path, title: str, video_id: object, url: str, naming, check) -> tuple[Path | None, str]:
+    """A free path with the LLM-shortened title, or None when naming is off, failed or taken."""
+    from videocaptioner.core.translate.video_title import download_id_tag, download_name
+
+    if naming is None:
+        return None, ""
+
+    def cancelled():
+        try:
+            check()
+            return False
+        except DownloadCancelled:
+            return True
+
+    name, named = download_name(title, naming, cancelled)
+    check()
+    renamed = target.with_name(name + download_id_tag(video_id, url) + target.suffix)
+    if not named or renamed == target or renamed.exists():
+        return None, ""
+    return renamed, name
+
+
+def _write_receipt(receipt: Path, record: dict) -> None:
+    temporary = receipt.with_suffix(".tmp")
+    temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(receipt)
+
+
+def _rename_existing(target: Path, saved: dict, receipt: Path, entry: PlaylistEntry, naming, check) -> Path:
+    """Give an earlier download today's short name in place, without network for the media.
+    The receipt moves first and keeps `previous`, so an interrupted rename finishes next run."""
+    from videocaptioner.core.translate.series_context import (
+        VideoContext,
+        load_video_context,
+        save_video_context,
+        sidecar_path,
+    )
+
+    context = load_video_context(target)
+    if naming is None or (context is not None and context.file_title):
+        return target
+    found = re.search(r"\[([A-Za-z0-9_-]{6,40})\]$", target.stem)
+    title = context.title if context is not None and context.title else entry.title
+    renamed, name = _short_path(target, title, found[1] if found else entry.entry_id, entry.url, naming, check)
+    if renamed is None:
+        return target
+    _write_receipt(receipt, {**saved, "filename": renamed.name, "previous": target.name})
+    try:
+        renamed = target.rename(renamed)
+    except OSError:  # e.g. open in a player: keep the old name
+        _write_receipt(receipt, saved)
+        return target
+    try:
+        save_video_context(renamed, replace(context or VideoContext.make(title=title, url=entry.url), file_title=name))
+        sidecar_path(target).unlink(missing_ok=True)
+    except (OSError, ValueError):  # the sidecar only feeds translation background
+        pass
+    return renamed
+
+
+def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress, naming=None) -> PlaylistItemResult:
     if entry.unavailable_reason or not entry.url:
         raise ValueError(entry.unavailable_reason or "Không có URL")
     folder.mkdir(parents=True, exist_ok=True)
@@ -318,6 +384,10 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
         try:
             saved = json.loads(receipt.read_text(encoding="utf-8"))
             target = folder / saved["filename"]
+            previous = folder / str(saved.get("previous") or "")
+            if (saved.get("previous") and not target.exists() and previous.is_file()
+                    and previous.resolve().parent == folder.resolve() == target.resolve().parent):
+                previous.rename(target)  # finish a rename interrupted after its receipt
             if (target.resolve().parent == folder.resolve() and saved["url"] == entry.url
                 and target.is_file() and target.stat().st_size == saved["size"]
                 and _fingerprint(target, check) == saved["sha256"]):
@@ -326,6 +396,7 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
             pass
         if verified:
             require_mp4(target)
+            target = _rename_existing(target, saved, receipt, entry, naming, check)
             return PlaylistItemResult(entry.index, "existing", str(target.resolve()))
         # Keep a user's modified completed file rather than letting yt-dlp treat it as a cache hit.
         raise ValueError("File/receipt đã thay đổi hoặc thiếu. Chọn thư mục đích mới để tải lại; bản cũ được giữ.")
@@ -341,8 +412,9 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
         check()
         paths.append(Path(filename))
 
+    # A deterministic short name keeps .part resumes stable; the LLM name is applied after.
     options = {"format": mp4_format_selector(bool(shutil.which("ffmpeg"))),
-               "outtmpl": str(folder / "%(title).100s [%(id)s].%(ext)s"), "windowsfilenames": True,
+               "outtmpl": str(folder / "%(title).60s [%(id)s].%(ext)s"), "windowsfilenames": True,
                "progress_hooks": [hook], "postprocessor_hooks": [lambda _: check()],
                "post_hooks": [after_move], "merge_output_format": "mp4"}
     bilibili = urlsplit(entry.url).hostname in ("bilibili.com", "www.bilibili.com")
@@ -378,32 +450,39 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
     require_mp4(target)
     if target.parent != folder.resolve() or not target.is_file() or target.stat().st_size <= 0 or target.suffix.lower() in (".part", ".ytdl"):
         raise ValueError("Tải chưa tạo file video hoàn chỉnh.")
+    renamed, file_title = _short_path(target, str(info.get("title") or entry.title), info.get("id"),
+                                      entry.url, naming, check)
+    if renamed is not None:
+        try:
+            target = target.rename(renamed)
+        except OSError:  # e.g. a scanner still holds the fresh file
+            file_title = ""
     try:
         from videocaptioner.core.translate.series_context import (
             context_from_info,
             save_video_context,
         )
 
-        save_video_context(target, context_from_info(info, entry.url))
+        save_video_context(target, replace(context_from_info(info, entry.url), file_title=file_title))
     except Exception:  # noqa: BLE001 - the sidecar only feeds translation background
         pass
     record = {"url": entry.url, "filename": target.name, "size": target.stat().st_size,
               "sha256": _fingerprint(target, check)}
-    temporary = receipt.with_suffix(".tmp")
-    temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(receipt)
+    _write_receipt(receipt, record)
     return PlaylistItemResult(entry.index, "downloaded", str(target))
 
 
 def download_playlist(info: PlaylistInfo, selected: tuple[PlaylistEntry, ...], output: Path, *,
                       cookies: Path | None = None, cancelled: Callable[[], bool] = lambda: False,
-                      progress: Callable[[PlaylistItemResult, int], None] = lambda *_: None) -> PlaylistResult:
+                      progress: Callable[[PlaylistItemResult, int], None] = lambda *_: None,
+                      naming=None) -> PlaylistResult:
+    """`naming` (a VideoTitleConfig) renames each finished file to a short target-language title."""
     members = {entry.index: entry for entry in info.entries}
     if not selected or len({entry.index for entry in selected}) != len(selected) or any(members.get(e.index) != e for e in selected):
         raise ValueError("Selection không hợp lệ hoặc danh sách đã đổi.")
     selected = tuple(sorted(selected, key=lambda e: e.index))
     identity = hashlib.sha256(info.source_url.encode()).hexdigest()[:10]
-    directory = output / f"{safe_name(info.title)}-{identity}"
+    directory = _folder(output, info.title, "", f"-{identity}")
     results = [PlaylistItemResult(entry.index) for entry in selected]
     def check():
         if cancelled():
@@ -414,9 +493,9 @@ def download_playlist(info: PlaylistInfo, selected: tuple[PlaylistEntry, ...], o
             check()
             progress(replace(results[offset], status="downloading"), 0)
             key = hashlib.sha256(entry.url.encode()).hexdigest()[:10]
-            folder = directory / f"{entry.index:05d}-{safe_name(entry.title)}-{key}"
+            folder = _folder(directory, entry.title, f"{entry.index:05d}-", f"-{key}")
             results[offset] = _download_entry(entry, folder, cookies, check,
-                lambda value: progress(PlaylistItemResult(entry.index, "downloading"), value))
+                lambda value: progress(PlaylistItemResult(entry.index, "downloading"), value), naming)
             progress(results[offset], 100)
         except DownloadCancelled:
             results[offset] = PlaylistItemResult(entry.index, "cancelled")

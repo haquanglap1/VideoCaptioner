@@ -47,7 +47,8 @@ def title_service(monkeypatch):
             calls.append((messages, model))
             if isinstance(response.get("error"), Exception):
                 raise response["error"]
-            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(response)))])
+            content = response["raw"] if "raw" in response else json.dumps(response)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
     monkeypatch.setattr(titles, "OwnedLLMRequest", Request)
     monkeypatch.setattr(titles, "is_cache_enabled", lambda: True)
     monkeypatch.setattr(titles, "get_translate_cache", lambda: SimpleNamespace(
@@ -150,6 +151,79 @@ def test_setting_is_captured_without_network_and_disabled_preserves_names(monkey
     assert not title_service.calls
     monkeypatch.setattr(cfg.translate_video_title, "value", False)
     assert TaskFactory.create_synthesis_task(source, "input.srt").title_translation is None
+
+
+def test_download_name_is_one_short_request_without_paths_and_reuses_cache(title_service):
+    s = title_service
+    s.response["title"] = "Hướng dẫn ánh sáng UE5"
+    assert titles.download_name("UE5 灯光 教程 #虚幻引擎 #新手", s.config) == ("Hướng dẫn ánh sáng UE5", True)
+    request = json.loads(s.calls[0][0][1]["content"])
+    assert request == {"title": "UE5 灯光 教程 #虚幻引擎 #新手", "language": "vi", "max_characters": 60}
+    assert "60 characters" in s.calls[0][0][0]["content"]
+    assert titles.download_name("UE5 灯光 教程 #虚幻引擎 #新手", s.config)[0] == "Hướng dẫn ánh sáng UE5"
+    assert len(s.calls) == 1
+    titles.download_name("UE5 灯光 教程 #虚幻引擎 #新手", s.config, limit=30)
+    assert len(s.calls) == 2
+
+
+@pytest.mark.parametrize("reply", ["A" * 700, "Tập 1: 100% $PATH %USERPROFILE% <đẹp>?", "CON"],
+                         ids=["long", "template", "reserved"])
+def test_download_name_is_bounded_and_safe_for_ytdlp_templates(title_service, reply):
+    title_service.response["title"] = reply
+    name, named = titles.download_name("原标题", title_service.config, limit=40)
+    assert named and 0 < len(name.encode("utf-16-le")) // 2 <= 41
+    assert not any(ch in name for ch in '<>:"/\\|?*%$') and name == name.strip(" .")
+    assert not name.upper().startswith("CON")
+
+
+@pytest.mark.parametrize("failure", [TimeoutError(), "not json", {"title": "a", "extra": 1}, {"title": "a\nb"}, "quota"])
+def test_download_name_failure_keeps_a_clipped_page_title(title_service, failure):
+    from videocaptioner.core.llm.rate_limit import LLMRateLimitError
+    s = title_service
+    if failure == "quota":
+        s.response["error"] = LLMRateLimitError("quota")
+    elif isinstance(failure, Exception):
+        s.response["error"] = failure
+    elif isinstance(failure, dict):
+        s.response.clear()
+        s.response.update(failure)
+    else:
+        s.response["raw"] = failure
+    long_title = "第1集 " + "超长的抖音描述文字" * 30 + "\n#话题 $HOME 50%"
+    name, named = titles.download_name(long_title, s.config)
+    assert not named and name.startswith("第1集") and not s.stored
+    assert len(name) <= 60 and not any(ch in name for ch in "%$\n")
+
+
+def test_download_name_without_llm_or_title_never_fails_and_cancel_propagates(title_service):
+    assert titles.download_name("", None) == ("video", False)
+    assert titles.download_name("Short title", None) == ("Short title", False)
+    assert not title_service.calls
+    with pytest.raises(RuntimeError):
+        titles.download_name("UE5 灯光", title_service.config, cancelled=lambda: True)
+
+
+def test_download_id_tag_keeps_video_ids_and_hashes_odd_ones():
+    assert titles.download_id_tag("BV1GFbk6LEVm_p2", "https://x") == " [BV1GFbk6LEVm_p2]"
+    tag = titles.download_id_tag("12", "https://example.test/v")
+    assert tag == titles.download_id_tag(None, "https://example.test/v") and len(tag) == 13
+    assert tag != titles.download_id_tag("12", "https://example.test/w")
+
+
+def test_output_naming_skips_downloads_already_named(monkeypatch, title_service, tmp_path):
+    from videocaptioner.core.translate.series_context import VideoContext, save_video_context
+    monkeypatch.setattr(cfg.translate_video_title, "value", True)
+    named = tmp_path / "Hướng dẫn ánh sáng UE5 [BVfixture01].mp4"
+    save_video_context(named, VideoContext.make(title="UE5 灯光", file_title="Hướng dẫn ánh sáng UE5"))
+    assert TaskFactory.create_synthesis_task(str(named), "in.srt").title_translation is None
+    assert TaskFactory.create_dubbing_task(str(named), "in.srt").title_translation is None
+    clipped = tmp_path / "UE5 灯光 [BVfixture01].mp4"
+    save_video_context(clipped, VideoContext.make(title="UE5 灯光"))
+    assert TaskFactory.create_synthesis_task(str(clipped), "in.srt").title_translation is not None
+    naming = TaskFactory.create_download_naming()
+    assert naming is not None and naming.target_language == cfg.target_language.value.value
+    monkeypatch.setattr(cfg.translate_video_title, "value", False)
+    assert TaskFactory.create_download_naming() is None and not title_service.calls
 
 
 def test_real_synthesis_publishes_translated_name(qapp, silent_video, tmp_path, title_service):

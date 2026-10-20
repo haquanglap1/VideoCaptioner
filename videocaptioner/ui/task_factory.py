@@ -531,16 +531,33 @@ class TaskFactory:
 
     @staticmethod
     def create_title_translation(video_path: str, output_suffix: str):
+        from videocaptioner.core.translate.series_context import load_video_context
+
+        if not cfg.translate_video_title.value:
+            return None
+        # A download already named in the target language keeps its name; no second request.
+        context = load_video_context(video_path)
+        if context is not None and context.file_title:
+            return None
+        return TaskFactory._title_config(Path(video_path).stem, output_suffix)
+
+    @staticmethod
+    def create_download_naming():
+        """LLM snapshot that shortens a download's name right after its page title is read."""
+        if not cfg.translate_video_title.value:
+            return None
+        return TaskFactory._title_config("", "")
+
+    @staticmethod
+    def _title_config(source_stem: str, output_suffix: str):
         from videocaptioner.core.llm.client import LLMCredentials
         from videocaptioner.core.llm.services import fill_default_api_key, llm_service_preset
         from videocaptioner.core.translate.video_title import VideoTitleConfig
 
-        if not cfg.translate_video_title.value:
-            return None
         service = cfg.llm_service.value
         prefix = llm_service_preset(service).config_attr
         return VideoTitleConfig(
-            Path(video_path).stem, output_suffix, cfg.target_language.value.value,
+            source_stem, output_suffix, cfg.target_language.value.value,
             getattr(cfg, prefix + "_model").value,
             LLMCredentials(fill_default_api_key(service, getattr(cfg, prefix + "_api_key").value),
                            getattr(cfg, prefix + "_api_base").value),

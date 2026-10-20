@@ -1,6 +1,47 @@
 # Project Status
 
-## 2026-10-07 (Đặt tên người nói bằng LLM — lớp 1 của gán nhãn người nói)
+## 2026-10-20 (Rút gọn tên video tiếng Việt ngay khi tải)
+
+- Yêu cầu user: tên file tải từ Bilibili/trang khác quá dài gây lỗi; muốn LLM rút gọn tên sang tiếng Việt
+  ngay sau khi tải thay vì đợi bước xuất cuối. `Video.TranslateTitle` (thẻ **Dịch và rút gọn tiêu đề video**)
+  giờ điều khiển cả hai: `core/translate/video_title.py` thêm `download_name()` (một request ≤ 60 s, prompt
+  inline dịch + rút gọn ≤ 60 ký tự, giữ số tập/tên riêng, bỏ hashtag/emoji; cache `video-title-short-v1`
+  theo title/lang/model/endpoint/limit; mọi lỗi kể cả quota → tiêu đề gốc cắt ngắn, hủy vẫn lan ra),
+  `download_file_name()` (cắt theo UTF-16, ký tự Windows cấm, `%`/`$` đổi sang dạng full-width vì yt-dlp
+  `%`-format + `expandvars` cả template lẫn `paths`), `download_id_tag()` (` [id]` hoặc hash URL).
+- Tải đơn GUI (`VideoDownloadThread`, snapshot `TaskFactory.create_download_naming()` trên Qt thread): đặt
+  tên sau `extract_info`, trước khi ghi file → `work-dir/<tên> [id]/<tên> [id].mp4` (thư mục = stem như
+  trước để bước phiên âm dùng chung); giới hạn tên co theo độ dài work-dir; tải lại cùng URL trúng cache
+  nên yt-dlp nhận file đã có. Bỏ `sanitize_filename` (thư mục 255 + file 200 ký tự cũ).
+- Playlist (`core/playlist.py`): template tạm `%(title).60s [%(id)s]` để nối `.part` tất định, đổi tên
+  ngay khi từng tập xong rồi mới ghi sidecar/receipt (receipt giữ tên mới, chạy lại → `existing`);
+  trùng tên/khóa file → giữ tên đã tải. Thư mục playlist/tập mới cắt 40 ký tự, thư mục cũ đã có vẫn dùng
+  để không tải lại. CLI `download` đơn: `%(title).150B`; CLI playlist không gọi LLM.
+- Sidecar `video-context-v1` thêm `file_title` (không vào prompt dịch); `create_title_translation` bỏ
+  qua video có `file_title` nên không dịch tên lần hai. Video nguồn khác/đặt tên lỗi vẫn dịch ở đầu ra.
+- Tải lại video đã có (user yêu cầu cùng ngày): tải đơn tìm bản cũ ở layout cũ (`_legacy_folder` tái hiện
+  `sanitize_filename` cũ + tên file từ `ydl.prepare_filename(outtmpl="%(title).200s.%(ext)s")`) hoặc bản tên
+  gốc cắt ngắn khi lần trước LLM lỗi; sidecar khác URL → bỏ qua, chưa có sidecar → tin theo path như yt-dlp
+  cũ. Chỉ chuyển video + xóa sidecar cũ, xóa thư mục cũ khi đã rỗng; đổi tên lỗi (file đang mở) → tải lại.
+  Playlist: tập có receipt hợp lệ mà sidecar chưa có `file_title` được đổi tên tại chỗ (tiêu đề từ sidecar
+  hoặc danh sách); receipt ghi trước với `previous`, lần chạy sau hoàn tất nếu bị ngắt giữa chừng.
+- Gate (audit `.tools/download-names-20261020/`): Ruff pass, Pyright 0/0, translations in sync. Focused title/
+  download/playlist/sidecar pass (gồm yt-dlp thật qua HTTP cục bộ cho tải đơn + playlist, đổi tên/nhận lại bản
+  cũ). Suite rộng lần 1 (trước phần tải lại) **2650 pass/4 skip/58 deselected**, exit 0, 305 s. Lần 2 trên code
+  cuối treo 188 phút (0% CPU) ở `test_ui/test_version_checker_lifecycle.py::test_close_during_request...`, đã
+  dừng: 2435 PASSED, 0 dòng FAILED/ERROR trước điểm treo; 17 file sau đó **155 pass**, file treo chạy riêng
+  **11 pass/1 s** → coi là flaky, chưa tìm nguyên nhân. Không gồm `test_dubbing/test_auto_timing.py`.
+- LLM thật (aihubmix `gpt-6-luna`, cache tắt, không đổi file): 4 tiêu đề trả JSON hợp lệ lần đầu, 2–5,5 s,
+  ví dụ playlist thật `F:/Work/AiTranslate/【AI短剧】…` (14 tập, path file 253–263 ký tự, đủ receipt/sidecar/
+  `[BV…]` để đổi tên tại chỗ) → `Phim ngắn AI Bài 1 – Thiết kế nhân vật [BV14iJk67E3r_p1].mp4`. Chưa bấm tải lại
+  playlist đó trên app (để user tự làm).
+- Build nhẹ `VideoCaptioner-20261020-download-names`: exit 0/108 s, 6 WARNING/0 ERROR, 31.850.793 bytes, SHA256
+  `aae7656afdd844bec032c5f8448683808bd6ea2558c8c461f5067075d579fcde`; 10 module source-match, `vi_VN.json`
+  byte-match; GUI từ artifact sống 30,5 s/exit 0/0 survivors. Deploy E khi idle: 600 file app khớp, thay 4
+  (EXE giữ tên cũ, `base_library.zip`, 2 bản `vi_VN.json`), 78.459 file được bảo vệ nguyên hash, models không
+  chép, backup `rollback-payload`; live `download --help` exit 0; dist đã xóa. Chưa nghiệm thu GUI E với URL thật.
+- Đổi chữ thẻ Setting + bản Việt (đã sync), README.
+
 
 - Theo `docs/plans/speaker-labeling-2026-10.md` và yêu cầu user (Qwen + Community-1, ít thao tác tay, mọi
   video): thêm `core/asr/local/speaker_naming.py` (Qt-independent). Sau `add_local_speakers`, một request

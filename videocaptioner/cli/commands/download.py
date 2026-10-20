@@ -62,7 +62,8 @@ def run(args: Namespace, config: dict) -> int:
             "yt-dlp",
             "-f", format_selector,
             "--merge-output-format", "mp4",
-            "-o", f"{out_dir}/%(title)s.%(ext)s",
+            # Byte cap: long page titles (Douyin/X descriptions) overflow file-name limits.
+            "-o", f"{out_dir}/%(title).150B.%(ext)s",
             "--no-playlist",
             "--retries", "5",
             "--fragment-retries", "5",

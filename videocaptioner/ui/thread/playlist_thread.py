@@ -19,12 +19,13 @@ class PlaylistThread(QThread):
     error = pyqtSignal(str)
     cancelled = pyqtSignal()
 
-    def __init__(self, *, url="", scope="auto", info=None, selected=(), output="", cookies=None):
+    def __init__(self, *, url="", scope="auto", info=None, selected=(), output="", cookies=None, naming=None):
         super().__init__()
         self.url, self.scope = url, scope
         self.info, self.selected = info, tuple(selected)
         self.output = Path(output)
         self.cookies = Path(cookies) if cookies else None
+        self.naming = naming
         self.context = copy_context()
 
     def run(self):
@@ -37,7 +38,7 @@ class PlaylistThread(QThread):
                                            cancelled=self.isInterruptionRequested)
             else:
                 result = download_playlist(self.info, self.selected, self.output, cookies=self.cookies,
-                    cancelled=self.isInterruptionRequested, progress=self.progress.emit)
+                    cancelled=self.isInterruptionRequested, progress=self.progress.emit, naming=self.naming)
             self.result.emit(result)
         except DownloadCancelled:
             self.cancelled.emit()

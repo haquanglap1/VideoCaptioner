@@ -46,6 +46,16 @@ def test_video_context_round_trip_and_bounds(tmp_path):
         VideoContext(title="x" * 301)
 
 
+def test_file_title_round_trips_but_stays_out_of_the_prompt(tmp_path):
+    video = tmp_path / "Sư phụ [BV1].mp4"
+    save_video_context(video, VideoContext.make(title="师父", file_title="Sư phụ\nlà ai"))
+    loaded = load_video_context(video)
+    assert loaded is not None and loaded.file_title == "Sư phụ là ai"
+    assert "Sư phụ" not in compose_context_notes(loaded, "")
+    plain = VideoContext.make(title="师父")
+    assert "file_title" not in plain.to_dict() and VideoContext.from_dict(plain.to_dict()) == plain
+
+
 def test_context_from_info_handles_parts_and_odd_shapes():
     info = {"title": "Series", "uploader": "Channel", "description": "About",
             "entries": iter([{"title": "P1"}, {"part": "P2"}, None, {"id": "p3"}]), "webpage_url": "https://x/1"}

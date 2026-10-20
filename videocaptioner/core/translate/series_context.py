@@ -32,22 +32,25 @@ class VideoContext:
     uploader: str = ""
     description: str = ""
     parts: tuple[str, ...] = ()
+    # Target-language name the downloader gave the local file; output naming then skips the LLM.
+    file_title: str = ""
 
     def __post_init__(self) -> None:
         if (any(not isinstance(getattr(self, f.name), str) for f in fields(self) if f.name != "parts")
                 or not isinstance(self.parts, tuple) or any(not isinstance(p, str) for p in self.parts)
                 or len(self.title) > MAX_TITLE or len(self.description) > MAX_DESCRIPTION
                 or len(self.parts) > MAX_PARTS or any(len(p) > MAX_PART_TITLE for p in self.parts)
-                or len(self.url) > 2048 or len(self.uploader) > MAX_TITLE):
+                or len(self.url) > 2048 or len(self.uploader) > MAX_TITLE or len(self.file_title) > MAX_TITLE):
             raise ValueError("Invalid video context")
 
     @classmethod
     def make(cls, *, title: Any = "", url: Any = "", uploader: Any = "", description: Any = "",
-             parts: Any = ()) -> VideoContext:
+             parts: Any = (), file_title: Any = "") -> VideoContext:
         """Normalize untrusted page/extractor values into a bounded context."""
         names = [_clean(p, MAX_PART_TITLE) for p in (parts if isinstance(parts, (list, tuple)) else [])]
         return cls(_clean(title, MAX_TITLE), _clean(url, 2048).split("#")[0], _clean(uploader, MAX_TITLE),
-                   _clean(description, MAX_DESCRIPTION), tuple(p for p in names if p)[:MAX_PARTS])
+                   _clean(description, MAX_DESCRIPTION), tuple(p for p in names if p)[:MAX_PARTS],
+                   _clean(file_title, MAX_TITLE).replace("\n", " "))
 
     @property
     def empty(self) -> bool:
@@ -66,15 +69,19 @@ class VideoContext:
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
-        return {"schema": SCHEMA, "title": self.title, "url": self.url, "uploader": self.uploader,
-                "description": self.description, "parts": list(self.parts)}
+        result = {"schema": SCHEMA, "title": self.title, "url": self.url, "uploader": self.uploader,
+                  "description": self.description, "parts": list(self.parts)}
+        if self.file_title:
+            result["file_title"] = self.file_title
+        return result
 
     @classmethod
     def from_dict(cls, value: Any) -> VideoContext:
         if not isinstance(value, dict) or value.get("schema") != SCHEMA:
             raise ValueError("Unknown video context schema")
         return cls.make(title=value.get("title"), url=value.get("url"), uploader=value.get("uploader"),
-                        description=value.get("description"), parts=value.get("parts") or ())
+                        description=value.get("description"), parts=value.get("parts") or (),
+                        file_title=value.get("file_title"))
 
 
 def sidecar_path(video_path: str | Path) -> Path:

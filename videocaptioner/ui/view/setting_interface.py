@@ -132,8 +132,8 @@ class SettingInterface(ScrollArea):
             parent=self.translateGroup,
         )
         self.videoTitleCard = SwitchSettingCard(
-            FIF.LANGUAGE, self.tr("Translate output video titles"),
-            self.tr("Use the selected LLM and target language for output filenames. Keep source files unchanged."),
+            FIF.LANGUAGE, self.tr("Translate and shorten video titles"),
+            self.tr("Name downloaded videos with a short target-language title right after download (LLM). Other videos get a translated output name; source files keep their names."),
             cfg.translate_video_title, self.translateGroup,
         )
         self.seriesContextCard = PushSettingCard(

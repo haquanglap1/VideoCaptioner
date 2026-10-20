@@ -336,8 +336,11 @@ class TaskCreationInterface(QWidget):
                 parent=self,
             )
 
+        from videocaptioner.ui.task_factory import TaskFactory
+
         # 创建视频下载线程
-        self.video_download_thread = VideoDownloadThread(url, str(cfg.work_dir.value))
+        self.video_download_thread = VideoDownloadThread(url, str(cfg.work_dir.value),
+                                                         TaskFactory.create_download_naming())
         self.video_download_thread.finished.connect(self.on_video_download_finished)
         self.video_download_thread.progress.connect(self.on_create_task_progress)
         self.video_download_thread.error.connect(self.on_create_task_error)
