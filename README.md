@@ -84,8 +84,11 @@ uv run videocaptioner process video.mp4 --target-language vi --dub \
 uv run videocaptioner download "https://youtube.com/watch?v=xxx"
 ```
 
-Tải cả playlist/合集 Bilibili trong GUI: ở **Tạo tác vụ**, bấm **Tải playlist /
-合集 / nhiều phần P**, đọc danh sách, chọn tất cả hoặc một số tập rồi tải.
+Tải cả playlist YouTube hoặc合集 Bilibili trong GUI: ở **Tạo tác vụ**, bấm
+**Tải playlist YouTube / Bilibili**, đọc danh sách, chọn tất cả hoặc một số tập rồi tải.
+Dán link `youtube.com/playlist?list=...` hoặc link video `watch?v=...&list=...`
+(kể cả `youtu.be/...?...&list=...`). Các link này mở toàn bộ playlist theo thứ tự gốc;
+video riêng tư/đã xóa được đánh dấu khi danh sách cung cấp thông tin đó.
 Có dừng/tiếp tục và chuyển các file đã tải sang **Xử lý hàng loạt**; không tự
 chạy ASR/dịch/TTS. CLI thêm `download URL --playlist`, `--list-playlist` và
 `--playlist-items "1,3-5"`. [Cách dùng và giới hạn](docs/dev/bilibili-playlist-2026-10.md).

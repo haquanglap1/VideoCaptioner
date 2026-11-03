@@ -1,4 +1,4 @@
-"""The function entry point must not collect Qt's application or translators early."""
+"""Destroy the GUI tree while Qt and its Python callbacks are still alive."""
 
 import os
 import subprocess
@@ -11,7 +11,7 @@ from videocaptioner.core.utils.subprocess_helper import child_environment
 
 
 @pytest.mark.parametrize("locale", ["vi_VN", "en_US"])
-def test_application_and_translators_outlive_main_scope(tmp_path, locale):
+def test_gui_is_destroyed_before_main_unwinds_but_application_and_translators_stay_alive(tmp_path, locale):
     repo = Path(__file__).resolve().parents[2]
     script = r'''
 import gc
@@ -32,25 +32,38 @@ del sys.frozen
 del sys._MEIPASS
 
 from PyQt5 import sip
-from PyQt5.QtCore import QLocale, QTimer
+from PyQt5.QtCore import QLocale, QThread, QTimer
 from PyQt5.QtWidgets import QApplication, QWidget
 from videocaptioner.ui.common.config import Language, cfg
 import videocaptioner.ui.view.main_window as window_module
 from videocaptioner.ui.main import main
+from videocaptioner.ui.thread.worker_lifecycle import retain_worker
 
 cfg.set(cfg.language, Language(QLocale(locale)))
-translators, windows, observations = [], [], []
+translators, windows, observations, destroyed = [], [], [], []
 install_translator = QApplication.installTranslator
 def observe_install(application, translator):
     translators.append(weakref.ref(translator))
     return install_translator(translator)
 QApplication.installTranslator = observe_install
 
+class Worker(QThread):
+    def run(self):
+        while not self.isInterruptionRequested():
+            self.msleep(1)
+
 class Window(QWidget):
     def __init__(self):
         super().__init__()
         # Model a callback retaining a widget after the entrypoint's frame unwinds.
         windows.append(self)
+        self.child = QWidget(self)
+        self.hidden_dialog = QWidget()
+        windows.append(self.hidden_dialog)
+        self.worker = retain_worker(Worker())
+        self.worker.start()
+        self.destroyed.connect(lambda: destroyed.append(
+            QApplication.instance() is not None and self.worker.wait(0)))
 
     def show(self):
         super().show()
@@ -69,7 +82,9 @@ result = {
     "translator_count": len(translators),
     "translators_alive_in_event_loop": observations == [True],
     "application_alive_after_main": QApplication.instance() is not None,
-    "retained_widget_alive_after_main": not sip.isdeleted(windows[0]),
+    "retained_widgets_destroyed_before_unwind": all(sip.isdeleted(window) for window in windows),
+    "child_destroyed_before_unwind": sip.isdeleted(windows[0].child),
+    "callbacks_ran_with_application_alive": destroyed == [True],
 }
 print(json.dumps(result), flush=True)
 assert result["translator_count"] == 2

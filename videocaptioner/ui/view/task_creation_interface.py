@@ -140,7 +140,7 @@ class TaskCreationInterface(QWidget):
         self.search_layout.addWidget(self.start_button)
         self.search_layout.setSpacing(10)
         self.main_layout.addLayout(self.search_layout)
-        self.playlist_button = PushButton(self.tr("Tải playlist /合集 / nhiều phần P"), self)
+        self.playlist_button = PushButton(self.tr("Tải playlist YouTube / Bilibili"), self)
         self.playlist_button.clicked.connect(self._open_playlist)
         self.main_layout.addWidget(self.playlist_button, 0, Qt.AlignmentFlag.AlignHCenter)
         self.main_layout.addSpacing(50)

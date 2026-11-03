@@ -3,6 +3,7 @@
 import time
 from pathlib import Path
 
+import pytest
 from PyQt5.QtCore import Qt, QThread
 
 from videocaptioner.core.playlist import (
@@ -94,17 +95,20 @@ def test_close_cancels_discovery_without_late_table_update(qapp, tmp_path, monke
     assert dialog.info is None and dialog.table.rowCount() == 0
 
 
-def test_task_creation_opens_playlist_without_calling_single_pipeline(qapp, tmp_path, monkeypatch):
+@pytest.mark.parametrize("url", ["https://www.bilibili.com/video/BVfixture",
+                                 "https://www.youtube.com/watch?v=BaW_jenozKc&list=PLfixture"])
+def test_task_creation_opens_playlist_without_calling_single_pipeline(qapp, tmp_path, monkeypatch, url):
     from videocaptioner.ui.common.config import cfg
     monkeypatch.setattr(cfg.work_dir, "value", str(tmp_path))
     page = TaskCreationInterface()
     single, batch = [], []
     page.finished.connect(single.append)
     page.playlist_files_ready.connect(batch.append)
-    page.search_input.setText("https://www.bilibili.com/video/BVfixture")
+    page.search_input.setText(url)
     page.playlist_button.click()
     dialog = page._playlist_dialog
-    assert dialog.url_edit.text().endswith("BVfixture") and dialog._worker is None
+    assert dialog.url_edit.text() == url and dialog._worker is None
+    assert "YouTube" in dialog.windowTitle() and "YouTube" in page.playlist_button.text()
     dialog.completed[1] = str(tmp_path / "one.mp4")
     dialog._handoff()
     assert batch == [[str(tmp_path / "one.mp4")]] and single == []

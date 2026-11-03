@@ -13,7 +13,7 @@ def main():
     global _application
     import traceback
 
-    from PyQt5.QtCore import Qt, QTranslator
+    from PyQt5.QtCore import QEvent, Qt, QTranslator
     from PyQt5.QtWidgets import QApplication
 
     from videocaptioner.config import TRANSLATIONS_PATH
@@ -88,7 +88,16 @@ def main():
 
     w = MainWindow()
     w.show()
-    sys.exit(app.exec_())
+    exit_code = app.exec_()
+
+    # aboutToQuit has drained workers. Destroy the widget trees with live Python
+    # references, before PyQt's interpreter-exit SIP wrapper-map traversal. Their
+    # destroyed callbacks can otherwise release wrappers during that traversal.
+    windows = app.topLevelWidgets()
+    for window in windows:
+        window.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

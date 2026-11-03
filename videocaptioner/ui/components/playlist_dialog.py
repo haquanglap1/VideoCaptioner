@@ -34,7 +34,7 @@ class PlaylistDialog(QDialog):
         self.setObjectName("PlaylistDialog")
         self._apply_theme()
         qconfig.themeChangedFinished.connect(self._apply_theme)
-        self.setWindowTitle("Tải playlist /合集 Bilibili")
+        self.setWindowTitle("Tải playlist YouTube / Bilibili")
         self.resize(1000, 650)
         self.cookies = cookies
         self.info: PlaylistInfo | None = None
@@ -45,12 +45,12 @@ class PlaylistDialog(QDialog):
         self.completed: dict[int, str] = {}
         layout = QVBoxLayout(self)
         self.url_edit = LineEdit()
-        self.url_edit.setPlaceholderText("Link video trong合集, link danh sách hoặc video nhiều phần P")
+        self.url_edit.setPlaceholderText("Link playlist YouTube, video có list=, hoặc合集 / nhiều phần P Bilibili")
         self.url_edit.setText(url or recent_download_url())
         layout.addWidget(self.url_edit)
         options = QHBoxLayout()
         self.scope_combo = ComboBox()
-        self.scope_combo.addItems(["Tự nhận diện合集 / playlist", "Các phần P của video Bilibili"])
+        self.scope_combo.addItems(["Tự nhận diện playlist YouTube /合集 Bilibili", "Các phần P của video Bilibili"])
         self.scan_btn = PushButton("Đọc danh sách")
         self.scan_btn.clicked.connect(self._discover)
         options.addWidget(self.scope_combo)

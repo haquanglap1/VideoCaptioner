@@ -1,5 +1,92 @@
 # Project Status
 
+## 2026-11-03 (Shutdown Qt/SIP có thứ tự)
+
+- Theo yêu cầu sửa lỗi đóng app sau playlist: giữ nguyên toàn bộ thay đổi playlist chưa commit.
+  Chỉ sửa thêm `videocaptioner/ui/main.py`, `tests/test_ui/test_gui_entry_lifetime.py` và mục này.
+- Evidence trước sửa: probe offscreen **16/16 exit 0**, nhưng Qt Windows/private desktop
+  **1/16 crash 0xc0000005**. WER source ghi SIP offset **0x13a26**; EXE ở lượt playlist trước
+  ghi **0xe58e**. CDB disassembly của đúng SIP đang cài + source PyPI PyQt5 **5.15.11**/
+  PyQt5-sip **12.18.0** ánh xạ hai vị trí vào duyệt wrapper map/lấy địa chỉ đối tượng trong
+  cleanup. Không lấy được dump crash mới dưới debugger, không xác định một widget cụ thể là thủ phạm.
+- `main()` giờ lấy exit code sau event loop, giữ reference các top-level widget, gọi `deleteLater`
+  và xử lý riêng `DeferredDelete` trước `sys.exit`. Widget con/dialog ẩn được hủy khi QApplication,
+  translator và callback Python còn sống, sau khi `aboutToQuit` đã drain worker; không dồn cây UI
+  đến bước SIP duyệt map ở interpreter exit. Giữ exit code, cơ chế cancel/join và global QApplication;
+  không tắt GC/destructor, không dùng `os._exit`, không nâng pin hoặc sửa dependency.
+- Regression lifetime VI/EN: **2 fail trước sửa**, **13 pass** sau sửa cùng version-checker lifecycle.
+  Kiểm widget con/dialog ẩn đã bị hủy trước khi main unwind, callback chạy khi QApplication còn sống,
+  worker QThread thật đã join, translator vẫn sống trong event loop. Source rộng UI/thread/CLI:
+  **527 pass/10 deselected/1 warning**, exit 0; Ruff pass, Pyright **0 errors/0 warnings**,
+  translations in sync. Không chạy full suite hoặc online ASR/LLM/TTS.
+- Native source sau sửa: **64/64 exit 0** (48 startup/close; 16 mở Home, Batch, Subtitle Style,
+  Video Editor, LLM Logs, Settings, playlist dialog ẩn và InfoBar trước close). 16 trace mở rộng
+  không có ERROR/traceback/QThread/wrapped-object error. Probe mở rộng ban đầu gọi trước khi
+  MainWindow tạo các page nên lỗi harness; đã sửa probe và chạy lại đầy đủ, không gộp lượt lỗi vào gate.
+- Build nhẹ `VideoCaptioner-20261103-sip-shutdown`: PyInstaller **exit 0/124,547 s**,
+  **6 WARNING/0 ERROR** (cùng nhóm optional/platform dependencies như lượt playlist),
+  **31.852.187 bytes**, timestamp **2026-11-03T12:37:33Z**, SHA256
+  `5d2dedb1158337c78885eb7bdbc17508b73b7fa17aaa96452f360c8d5c18f247`.
+  Năm module thay đổi (kể cả playlist trước) khớp source, JSON Việt byte-match; không bundle model.
+- Chính artifact native **20/20 startup/WM_CLOSE exit 0**, không process con sót; hai lượt giữ 30 s,
+  các lượt còn lại 3/5 s. Tất cả trên private Windows desktop, không switch desktop/nhập chuột/phím.
+  EXE vẫn đọc được **37 video** của link user, exit 0; không tải lại media hoặc chạy ASR/TTS.
+  Đây là kết quả trên các tình huống đã đo, không bảo đảm mọi biến thể crash native không thể xảy ra.
+- Deploy khi bản chạy thật idle: **603 app files** SHA-match, chỉ thay **EXE và base_library.zip**,
+  giữ tên EXE/shortcut; backup delta tại audit `rollback-payload`. **149.483 protected files** giữ
+  nguyên SHA; không chép models/runtime/data. Live CLI help exit 0, live đọc lại playlist user
+  **37 mục/exit 0**, 1,281 s. GUI gate kế thừa đúng payload đã kiểm 20 lượt, không mở profile GUI user.
+- Dọn **613.049.187 bytes/2.154 file**: dist đã deploy, build/cache, các thư mục test/probe riêng
+  và inventory trùng đã xác minh. Giữ rollback, receipt/log từng gate, WER/disassembly và source
+  reference để kiểm lại chẩn đoán; không dọn artifact của task trước.
+- Audit: `.tools/sip-shutdown-20261103/`; giữ WER/disassembly, regression red/green, trace, build và
+  receipt từng lượt. Không commit/push, không dùng Computer Use.
+
+## 2026-11-03 (Playlist YouTube)
+
+- GUI đổi điểm vào thành **Tải playlist YouTube / Bilibili**, placeholder và phạm vi tự nhận diện
+  ghi rõ YouTube. Core chuẩn hóa link playlist/watch/youtu.be/mobile/music/embed có `list=` về
+  playlist đầy đủ; bỏ index/tracking chỉ trong discovery để các link chia sẻ dùng cùng thư mục
+  resume. URL tải đơn/lịch sử vẫn giữ contract cũ. Từng entry dùng URL video riêng; giữ thứ tự,
+  mục lặp, selection, receipt/SHA, sidecar và handoff Batch. Đánh dấu placeholder video riêng tư/đã xóa.
+- Theo chuyển hướng `url`/`url_transparent` của yt-dlp trước khi kiểm kiểu kết quả; tối đa 6 lượt,
+  chặn vòng lặp/URL không hợp lệ, kiểm hủy giữa lượt. Vẫn giữ generator để phân trang/hủy và giới
+  hạn 2000 mục; redirect sang playlist lồng không được tải ngoài selection. Media YouTube dùng
+  `remote_components=["ejs:github"]` như tải đơn, với Deno đã cài; không đổi dependency/lockfile,
+  không cài package/model. Bilibili giữ xử lý collection/parts và CDN fallback.
+- Source: **285 passed**, không skip, 1 warning; gồm toàn CLI và playlist/download core/UI,
+  regression YouTube dùng extractor yt-dlp thật với metadata fixture, HTTP loopback/FFmpeg thật.
+  Ruff pass, Pyright **0 errors/0 warnings**, translations in sync, diff check pass. Không chạy full
+  suite, ASR/LLM/TTS hoặc tải trọn playlist.
+- Online: source và EXE đọc **162 mục** của playlist công khai; chọn đúng mục 3, tải MP4 **7,500045 s**,
+  AV1 + AAC, **541.829 bytes**, chạy lại `existing`, full FFmpeg decode exit 0. EXE nhận link `youtu.be`
+  có `list/index/si`; không cookies. Link watch/list/index user cung cấp đọc **37 mục**, exit 0,
+  chưa tải media của playlist user.
+- Build nhẹ `VideoCaptioner-20261103-youtube-playlist`: PyInstaller exit **0**, **130,594 s**,
+  **6 WARNING/0 ERROR** (optional/platform imports: emscripten/js, curl_cffi, yt_dlp_ejs, tzdata,
+  sip, AppKit; thêm SyntaxWarning/UserWarning từ dependency). Artifact **31.852.002 bytes**,
+  timestamp **2026-11-03T11:59:10Z**, SHA256
+  `7890f7e5a301ffefab1a6af948b0dc95ec7ec5133ef013f9dffd991a09a53563`.
+  Bốn module sửa bytecode-match source, JSON Việt byte-match. Không bundle model.
+- GUI từ chính artifact trên private Windows desktop (không switch desktop/chuột/bàn phím):
+  startup 30 s có main window. Lượt đầu đóng báo **0xc0000005 trong sip.cp312-win_amd64.pyd**;
+  hai lượt sau đóng qua WM_CLOSE đúng PID, **exit 0**, không process con sót (30,421 s/30,641 s).
+  Bản sao EXE cũ cũng startup/close exit 0. Chưa xác định nguyên nhân crash gián đoạn; không gọi là
+  đã sửa lỗi teardown. Giữ receipt lỗi/event cùng các lần pass trong audit.
+- Deploy khi bản chạy thật idle: **603 app files** khớp SHA, **43 file thay** có backup delta
+  (**35.226.083 bytes**): EXE giữ tên cũ, `base_library.zip`, 41 DLL CRT/API-set do build lấy từ
+  môi trường hiện tại. **149.483 protected files** nguyên SHA (settings/cookies/data và manifest
+  portable); không chép models. Live `download --help` exit 0; live CLI đọc chính link user được
+  **37 mục**, exit 0/1,25 s, không tải media. GUI/download gate kế thừa artifact cùng SHA/payload;
+  không điều khiển GUI của profile user.
+- Dọn **1.004.099.718 bytes**, **1.866 file** ở 14 thư mục đã xác minh trong repo: dist vừa deploy,
+  build/cache, bản sao baseline, media thử và test temp. Giữ `rollback-payload`, receipt/log (kể cả
+  lỗi GUI đầu tiên), script audit để tái hiện; artifact cũ không thuộc task được giữ nguyên.
+- Audit: `.tools/youtube-playlist-20261103/`. Các file source thay đổi: `core/playlist.py`,
+  `cli/main.py`, `ui/components/playlist_dialog.py`, `ui/view/task_creation_interface.py` (dưới
+  `videocaptioner/`); test `tests/test_thread/test_youtube_playlist.py`, `tests/test_ui/test_playlist.py`;
+  `README.md`, `docs/dev/bilibili-playlist-2026-10.md`, `status.md`. Không commit/push.
+
 ## 2026-10-20 (Rút gọn tên video tiếng Việt ngay khi tải)
 
 - Yêu cầu user: tên file tải từ Bilibili/trang khác quá dài gây lỗi; muốn LLM rút gọn tên sang tiếng Việt

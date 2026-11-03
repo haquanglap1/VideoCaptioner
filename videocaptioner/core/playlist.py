@@ -68,6 +68,16 @@ def canonical_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
 
 
+def _youtube_playlist_url(url: str) -> str:
+    """Use the whole playlist, independent of the shared video's index or tracking query."""
+    parts = urlsplit(url)
+    if parts.hostname in ("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"):
+        playlist_id = parse_qs(parts.query).get("list", [""])[0]
+        if playlist_id:
+            return "https://www.youtube.com/playlist?" + urlencode({"list": playlist_id})
+    return url
+
+
 def safe_name(value: str, limit: int = 65) -> str:
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value).strip(" .")[:limit].rstrip(" .")
     if not name or re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", name):
@@ -103,7 +113,7 @@ def friendly_error(error: Exception) -> str:
         return "Không có định dạng MP4 phù hợp để tải. Kiểm tra FFmpeg và quyền truy cập chất lượng video."
     status = re.search(r"\bHTTP(?:\s+Error)?\s+(403|412|429)\b", text, re.IGNORECASE)
     if status:
-        return f"Bilibili/dịch vụ đang hạn chế truy cập (HTTP {status[1]}). Kiểm tra cookies/quyền truy cập hoặc thử lại sau."
+        return f"Dịch vụ đang hạn chế truy cập (HTTP {status[1]}). Kiểm tra cookies/quyền truy cập hoặc thử lại sau."
     status = re.search(r"\bHTTP(?:\s+Error)?\s+(500|502|503|504)\b", text, re.IGNORECASE)
     if status:
         return (f"Máy chủ tải video tạm thời lỗi (HTTP {status[1]}). "
@@ -154,6 +164,15 @@ def _entry(index: int, value: dict | None) -> PlaylistEntry:
         duration = None
     if value.get("_type") in ("playlist", "multi_video"):
         reason = "Danh sách lồng nhau; mở URL này riêng để chọn tập."
+    elif url:
+        parts = urlsplit(url)
+        if parts.hostname in ("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"):
+            video_id = (parts.path.strip("/") if parts.hostname == "youtu.be"
+                        else parse_qs(parts.query).get("v", [""])[0])
+            if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+                url = "https://www.youtube.com/watch?" + urlencode({"v": video_id})
+            if value.get("title") in ("[Private video]", "[Deleted video]"):
+                reason = "Video riêng tư hoặc đã bị xóa; không có quyền tải từ danh sách này."
     return PlaylistEntry(index, str(value.get("id") or index), str(value.get("title") or value.get("id") or f"Tập {index}"),
                          url, duration, reason)
 
@@ -193,18 +212,38 @@ def _bilibili_page(ydl, url: str, scope: str, check) -> PlaylistInfo | None:
     return None
 
 
+def _extract_unprocessed(ydl, url: str, check):
+    """Follow extractor redirects without consuming playlists or downloading their entries."""
+    seen = set()
+    extractor = None
+    for _ in range(6):
+        check()
+        identity = (url, extractor)
+        if identity in seen:
+            raise ValueError("URL chuyển hướng lặp; chưa bắt đầu tải.")
+        seen.add(identity)
+        kwargs = {"ie_key": extractor} if extractor else {}
+        info = ydl.extract_info(url, download=False, process=False, **kwargs)
+        check()
+        if not isinstance(info, dict) or info.get("_type") not in ("url", "url_transparent"):
+            return info
+        url = canonical_url(info.get("url") or "")
+        extractor = info.get("ie_key")
+    raise ValueError("URL chuyển hướng quá nhiều lần; chưa bắt đầu tải.")
+
+
 def _extract_list(ydl, url: str, check) -> PlaylistInfo:
     # process=False retains the generator so pagination can be cancelled and bounded.
-    info = ydl.extract_info(url, download=False, process=False)
+    info = _extract_unprocessed(ydl, url, check)
     if not isinstance(info, dict):
         raise ValueError("Không đọc được danh sách video.")
     if info.get("_type") not in ("playlist", "multi_video"):
-        raise ValueError("URL này không trả danh sách. Với Bilibili, chọn link合集 hoặc video có nhiều phần.")
+        raise ValueError("URL này không trả danh sách. Dùng link playlist YouTube có list=, hoặc link合集/video nhiều phần Bilibili.")
     entries = []
     for index, value in enumerate(info.get("entries") or [], 1):
         check()
         if index > 2000:
-            raise ValueError("Danh sách vượt 2000 mục; chọn một合集 nhỏ hơn. Chưa bắt đầu tải.")
+            raise ValueError("Danh sách vượt 2000 mục; chọn một playlist nhỏ hơn. Chưa bắt đầu tải.")
         entries.append(_entry(index, value))
     count = info.get("playlist_count")
     if isinstance(count, int) and count > len(entries):
@@ -216,7 +255,7 @@ def _extract_list(ydl, url: str, check) -> PlaylistInfo:
 
 def discover_playlist(url: str, *, cookies: Path | None = None, scope: str = "auto",
                       cancelled: Callable[[], bool] = lambda: False) -> PlaylistInfo:
-    url = canonical_url(url)
+    url = _youtube_playlist_url(canonical_url(url))
     if scope not in ("auto", "parts"):
         raise ValueError("Unknown playlist scope")
 
@@ -418,13 +457,16 @@ def _download_entry(entry: PlaylistEntry, folder: Path, cookies, check, progress
                "progress_hooks": [hook], "postprocessor_hooks": [lambda _: check()],
                "post_hooks": [after_move], "merge_output_format": "mp4"}
     bilibili = urlsplit(entry.url).hostname in ("bilibili.com", "www.bilibili.com")
+    if urlsplit(entry.url).hostname in ("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"):
+        # Match single-video downloads: yt-dlp's Deno solver needs its EJS component.
+        options["remote_components"] = ["ejs:github"]
     if bilibili:
         # Bilibili media connections can end early. Bound each Range request and
         # retain yt-dlp's normal finite retry budget instead of the discovery cap.
         options.update(http_chunk_size=1024 * 1024, retries=10)
     with _downloader(options, cookies, check) as ydl:
         with _bilibili_media_backups(ydl, bilibili) as backups:
-            info = ydl.extract_info(entry.url, download=False, process=False)
+            info = _extract_unprocessed(ydl, entry.url, check)
         check()
         if not isinstance(info, dict) or info.get("_type", "video") != "video":
             raise ValueError("Mục này trả danh sách lồng nhau; chưa tải để tránh tải ngoài selection.")

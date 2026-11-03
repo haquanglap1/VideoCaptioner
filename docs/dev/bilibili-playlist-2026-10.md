@@ -1,11 +1,13 @@
-# Tải playlist /合集 / nhiều phần P
+# Tải playlist YouTube /合集 / nhiều phần P Bilibili
 
 ## Dùng trong app
 
-Ở **Tạo tác vụ**, bấm **Tải playlist /合集 / nhiều phần P**. Dán URL rồi
+Ở **Tạo tác vụ**, bấm **Tải playlist YouTube / Bilibili**. Dán URL rồi
 **Đọc danh sách**. Mở cửa sổ chưa gọi mạng. Có hai phạm vi:
 
-- **Tự nhận diện合集 / playlist**: link một video thuộc合集 Bilibili được mở
+- **Tự nhận diện playlist YouTube /合集 Bilibili**: link YouTube có `list=` (playlist,
+  watch, youtu.be, mobile, music hoặc embed) mở toàn bộ playlist; bỏ index/tham số
+  chia sẻ để cùng playlist dùng cùng thư mục tải tiếp. Link một video thuộc合集 Bilibili được mở
   thành danh sách video của合集; cũng nhận link danh sách trực tiếp.
 - **Các phần P của video Bilibili**: đọc các phần của riêng BV hiện tại,
   kể cả link nhập có `?p=2`. Không chuyển sang合集 chứa video đó.
